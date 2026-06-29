@@ -114,6 +114,7 @@ class PublicationService:
         if snapshot.stage is PublicationStage.PUSH:
             return checks
 
+        expected_draft = publication.pull_request_readiness == "draft_for_followup_commits"
         checks.append(
             _check(
                 "github.login",
@@ -134,9 +135,9 @@ class PublicationService:
                     pull_request.author_login,
                 ),
                 _check(
-                    "pull_request.draft",
-                    pull_request.is_draft is publication.require_draft_pr,
-                    str(publication.require_draft_pr).lower(),
+                    "pull_request.readiness",
+                    pull_request.is_draft is expected_draft,
+                    publication.pull_request_readiness,
                     str(pull_request.is_draft).lower(),
                 ),
                 _check(

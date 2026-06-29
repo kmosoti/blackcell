@@ -68,7 +68,7 @@ def config_data() -> dict[str, Any]:
             "push_remote": "origin",
             "push_ssh_host": "github.com-kz",
             "branch_prefix": "blackcell/",
-            "require_draft_pr": True,
+            "pull_request_readiness": "ready_for_review",
         },
     }
 

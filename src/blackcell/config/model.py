@@ -99,7 +99,9 @@ class PublicationConfig(BaseModel):
     push_remote: str = Field(default="origin", min_length=1)
     push_ssh_host: str = Field(min_length=1)
     branch_prefix: str = Field(min_length=1)
-    require_draft_pr: Literal[True] = True
+    pull_request_readiness: Literal["ready_for_review", "draft_for_followup_commits"] = (
+        "ready_for_review"
+    )
 
 
 class BlackcellConfig(BaseModel):

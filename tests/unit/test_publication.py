@@ -46,6 +46,7 @@ def snapshot(
     *,
     github_login: str | None = None,
     pr_author: str | None = None,
+    is_draft: bool = False,
 ) -> PublicationSnapshot:
     executor = config.identity.executor_github_login
     return PublicationSnapshot(
@@ -72,7 +73,7 @@ def snapshot(
         pull_request=PullRequestSnapshot(
             number=2,
             author_login=pr_author or executor,
-            is_draft=True,
+            is_draft=is_draft,
             state="OPEN",
             base_branch="main",
             head_branch="blackcell/BCP-0001-planner-proof",
@@ -91,6 +92,42 @@ def test_publication_preflight_accepts_one_executor_identity(
 
     assert report.ready is True
     assert all(check.passed for check in report.checks)
+
+
+def test_publication_preflight_accepts_draft_only_for_followup_commits(
+    config: BlackcellConfig,
+) -> None:
+    draft_config = config.model_copy(
+        update={
+            "publication": config.publication.model_copy(
+                update={"pull_request_readiness": "draft_for_followup_commits"}
+            )
+        }
+    )
+
+    report = PublicationService(
+        draft_config,
+        FakePublicationBackend(snapshot(draft_config, is_draft=True)),
+    ).preflight(PublicationStage.PULL_REQUEST)
+
+    assert report.ready is True
+    assert all(check.passed for check in report.checks)
+
+
+def test_publication_preflight_rejects_draft_when_ready_for_review_is_required(
+    config: BlackcellConfig,
+) -> None:
+    service = PublicationService(
+        config,
+        FakePublicationBackend(snapshot(config, is_draft=True)),
+    )
+
+    with pytest.raises(PolicyFailure) as failure:
+        service.preflight(PublicationStage.PULL_REQUEST)
+
+    failed = failure.value.details["checks"][0]
+    assert failed["invariant"] == "pull_request.readiness"
+    assert failed["expected"] == "ready_for_review"
 
 
 @pytest.mark.parametrize(
@@ -210,7 +247,7 @@ def test_local_adapter_only_inspects_open_pull_requests(config: BlackcellConfig)
                         {
                             "number": 2,
                             "author": {"login": "kz-harbringer"},
-                            "isDraft": True,
+                            "isDraft": False,
                             "state": "OPEN",
                             "baseRefName": "main",
                             "headRefName": branch,

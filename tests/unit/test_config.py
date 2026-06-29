@@ -19,6 +19,7 @@ def test_config_accepts_pinned_authority() -> None:
     assert config.linear.project_workflow.priority == "high"
     assert config.linear.project_workflow.label_names == ["BlackCell", "BCP-0001"]
     assert config.identity.planner_user_id == "1ed22c47-390f-41e6-b63d-497f58cccb3b"
+    assert config.publication.pull_request_readiness == "ready_for_review"
     assert config.ledger.append_only is True
 
 
@@ -29,7 +30,7 @@ def test_config_accepts_pinned_authority() -> None:
         (("linear", "issue_sync_mode"), "one_way"),
         (("ledger", "append_only"), False),
         (("materialization", "projection_timeout_seconds"), 0),
-        (("publication", "require_draft_pr"), False),
+        (("publication", "pull_request_readiness"), "always_draft"),
     ],
 )
 def test_config_rejects_contract_drift(path: tuple[str, ...], value: object) -> None:
