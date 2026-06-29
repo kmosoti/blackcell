@@ -32,6 +32,7 @@ from blackcell.contracts.publication import PublicationStage
 from blackcell.contracts.result import ResultEnvelope
 from blackcell.ledger.sqlite import Chronicle, EventType
 from blackcell.policy.identity import verify_viewer_and_team
+from blackcell.policy.lifecycle import ProjectCapability, ProjectStateMachine
 from blackcell.policy.sync import sanitized_environment
 from blackcell.runtime.execution import (
     AnomalyAspect,
@@ -421,9 +422,93 @@ class BlackcellClient:
                         "url": issue["url"],
                     }
                 )
+            self._verify_assignment_relations(plan, references)
             return {"plan_id": plan_id, "verified": verified}
 
         return self._result(OperationId.ASSIGNMENT_VERIFY, operation, plan_id=plan_id)
+
+    def _verify_assignment_relations(
+        self, plan: PlanSpec, references: dict[str, dict[str, Any]]
+    ) -> None:
+        plan_issue_ids = {issue["id"] for issue in references.values()}
+        issue_keys_by_id = {issue["id"]: key for key, issue in references.items()}
+        declared_relations: set[tuple[str, str]] = set()
+        for item in plan.ordered_work_items():
+            blocked_id = references[item.key]["id"]
+            for dependency_key in item.blocked_by:
+                declared_relations.add((references[dependency_key]["id"], blocked_id))
+
+        observed_relations = set[tuple[str, str]]()
+        for issue in references.values():
+            observed_relations.update(self._extract_blocking_relations(issue))
+
+        in_scope_observed = {
+            relation
+            for relation in observed_relations
+            if relation[0] in plan_issue_ids and relation[1] in plan_issue_ids
+        }
+        missing = sorted(
+            [
+                {
+                    "blocker_key": issue_keys_by_id[relation[0]],
+                    "blocked_key": issue_keys_by_id[relation[1]],
+                }
+                for relation in sorted(declared_relations - in_scope_observed)
+            ],
+            key=lambda item: (item["blocker_key"], item["blocked_key"]),
+        )
+        extra = sorted(
+            [
+                {
+                    "blocker_key": issue_keys_by_id[relation[0]],
+                    "blocked_key": issue_keys_by_id[relation[1]],
+                }
+                for relation in sorted(in_scope_observed - declared_relations)
+            ],
+            key=lambda item: (item["blocker_key"], item["blocked_key"]),
+        )
+        wrong_direction = sorted(
+            [
+                {
+                    "declared_blocker_key": issue_keys_by_id[declared_blocker_id],
+                    "declared_blocked_key": issue_keys_by_id[declared_blocked_id],
+                    "observed_blocker_key": issue_keys_by_id[declared_blocked_id],
+                    "observed_blocked_key": issue_keys_by_id[declared_blocker_id],
+                }
+                for declared_blocker_id, declared_blocked_id in declared_relations
+                if (declared_blocked_id, declared_blocker_id) in in_scope_observed
+            ],
+            key=lambda item: (
+                item["declared_blocker_key"],
+                item["declared_blocked_key"],
+            ),
+        )
+
+        if missing or extra or wrong_direction:
+            raise ConflictFailure(
+                "Linear blocking relations diverge from the directive.",
+                details={
+                    "plan_id": plan.plan_id,
+                    "relation_conflicts": {
+                        "missing": missing,
+                        "extra": extra,
+                        "wrong_direction": wrong_direction,
+                    },
+                },
+            )
+
+    @staticmethod
+    def _extract_blocking_relations(issue: dict[str, Any]) -> set[tuple[str, str]]:
+        relations = []
+        for relation in (issue.get("relations") or {}).get("nodes", []):
+            if relation.get("type") != "blocks":
+                continue
+            issue_id = (relation.get("issue") or {}).get("id")
+            related_issue_id = (relation.get("relatedIssue") or {}).get("id")
+            if issue_id is None or related_issue_id is None:
+                continue
+            relations.append((str(issue_id), str(related_issue_id)))
+        return set(relations)
 
     def echoes(self, plan_id: str) -> ResultEnvelope:
         def operation() -> dict[str, Any] | PendingOutcome:
@@ -564,7 +649,7 @@ class BlackcellClient:
             self._record_workflow_step(
                 plan_id,
                 workflow_id,
-                "proposal_sync",
+                "project_contract",
                 "project_workflow",
                 "ok",
                 data={
@@ -576,11 +661,22 @@ class BlackcellClient:
             )
         )
 
-        approved = status_name == self.config.linear.project_statuses.approved
-        if not approved:
-            recovery = (
+        try:
+            ProjectStateMachine(self.config.linear.project_statuses).require(
+                status_name,
+                ProjectCapability.MATERIALIZE_ASSIGNMENTS,
+                message="Workflow requires a materializable Linear Project status.",
+                recovery=(
+                    f"Move the Linear Project for {plan_id} to "
+                    f"{self.config.linear.project_statuses.approved} or "
+                    f"{self.config.linear.project_statuses.active}."
+                ),
+            )
+        except PolicyFailure as error:
+            recovery = error.recovery or (
                 f"Move the Linear Project for {plan_id} to "
-                f"{self.config.linear.project_statuses.approved}."
+                f"{self.config.linear.project_statuses.approved} or "
+                f"{self.config.linear.project_statuses.active}."
             )
             steps.append(
                 self._record_workflow_step(
@@ -612,22 +708,37 @@ class BlackcellClient:
         )
 
         materialized = self._materialization_service().materialize(plan_id)
-        if materialized["pending_relations"] or materialized["pending_echoes"]:
+        steps.append(
+            self._record_workflow_step(
+                plan_id,
+                workflow_id,
+                "assignment_materialize",
+                "assignment_contract",
+                "ok",
+                data={
+                    "assignment_mutations": materialized["assignment_mutations"],
+                },
+            )
+        )
+        if materialized["pending_relations"]:
             recovery = materialized["recovery"] or f"blackcell workflow resume {plan_id}"
             steps.append(
                 self._record_workflow_step(
                     plan_id,
                     workflow_id,
-                    "materialize_linear",
+                    "dependency_relations",
                     "assignment_contract",
                     "pending",
                     recovery=recovery,
-                    data=materialized,
+                    data={
+                        "relation_mutations": materialized["relation_mutations"],
+                        "pending_relations": materialized["pending_relations"],
+                    },
                 )
             )
             return PendingOutcome(
-                code="materialization_pending",
-                message="Workflow materialization is waiting for provider readback.",
+                code="dependency_relations_pending",
+                message="Workflow dependency relations are waiting for provider readback.",
                 recovery=recovery,
                 data={"workflow_id": workflow_id, "plan_id": plan_id, "steps": steps},
             )
@@ -635,20 +746,41 @@ class BlackcellClient:
             self._record_workflow_step(
                 plan_id,
                 workflow_id,
-                "materialize_linear",
+                "dependency_relations",
                 "assignment_contract",
                 "ok",
                 data={
-                    "assignment_mutations": materialized["assignment_mutations"],
                     "relation_mutations": materialized["relation_mutations"],
                 },
             )
         )
+        if materialized["pending_echoes"]:
+            recovery = materialized["recovery"] or f"blackcell workflow resume {plan_id}"
+            steps.append(
+                self._record_workflow_step(
+                    plan_id,
+                    workflow_id,
+                    "github_echoes",
+                    "echo_contract",
+                    "pending",
+                    recovery=recovery,
+                    data={
+                        "verified_echoes": materialized["verified_echoes"],
+                        "pending_echoes": materialized["pending_echoes"],
+                    },
+                )
+            )
+            return PendingOutcome(
+                code="github_echoes_pending",
+                message="Workflow GitHub echoes are waiting for Linear projection.",
+                recovery=recovery,
+                data={"workflow_id": workflow_id, "plan_id": plan_id, "steps": steps},
+            )
         steps.append(
             self._record_workflow_step(
                 plan_id,
                 workflow_id,
-                "verify_github_echoes",
+                "github_echoes",
                 "echo_contract",
                 "ok",
                 data={"echoes": len(materialized["verified_echoes"])},

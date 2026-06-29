@@ -16,8 +16,11 @@ def verify_approved_project(
     ProjectStateMachine(config.linear.project_statuses).require(
         status_name,
         ProjectCapability.MATERIALIZE_ASSIGNMENTS,
-        message="Linear operation is not manually approved.",
-        recovery=f"Move the Linear Project to {config.linear.project_statuses.approved}.",
+        message="Linear operation is not in a materializable project state.",
+        recovery=(
+            f"Move the Linear Project to {config.linear.project_statuses.approved} "
+            f"or {config.linear.project_statuses.active}."
+        ),
     )
     expected_marker = plan_marker(plan)
     directive_text = project.get("content") or project.get("description") or ""

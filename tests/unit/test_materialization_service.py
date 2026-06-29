@@ -3,7 +3,10 @@
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from blackcell.config.model import BlackcellConfig
+from blackcell.contracts.errors import ConflictFailure
 from blackcell.contracts.plan import PlanSpec
 from blackcell.ledger.sqlite import Chronicle
 from blackcell.services.materialization_service import MaterializationService
@@ -60,7 +63,38 @@ class FakeLinear:
             "status": {"name": config.linear.project_statuses.approved},
             "description": render_project_summary(plan),
             "content": render_project_description(plan, config),
+            "icon": None,
+            "color": config.linear.project_presentation.color,
+            "lead": {
+                "id": config.linear.project_workflow.lead_user_id,
+                "name": config.identity.planner_name,
+                "email": config.identity.planner_email,
+            },
+            "members": {
+                "nodes": [
+                    {"id": user_id, "name": "Member", "email": "member@example.test"}
+                    for user_id in config.linear.project_workflow.member_user_ids
+                ]
+            },
+            "labels": {
+                "nodes": [
+                    {"id": f"project-label-{name}", "name": name, "archivedAt": None}
+                    for name in config.linear.project_workflow.label_names
+                ]
+            },
+            "priority": 2,
+            "priorityLabel": "High",
             "teams": {"nodes": [{"id": config.linear.team_id}]},
+            "externalLinks": {
+                "nodes": [
+                    {
+                        "id": "link-1",
+                        "url": "https://github.com/kmosoti/blackcell",
+                        "label": config.linear.project_presentation.repository_link_label,
+                        "archivedAt": None,
+                    }
+                ]
+            },
         }
 
     def identity_snapshot(self, team_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -261,3 +295,31 @@ def test_digest_matching_assignment_drift_is_repaired_once(
     assert repaired["assignment_update_mutations"] == 1
     assert linear.issue_update_mutations == 1
     assert clean["assignment_mutations"] == 0
+
+
+def test_active_project_can_materialize_when_project_contract_matches(
+    tmp_path: Path, config: BlackcellConfig, plan: PlanSpec
+) -> None:
+    service, linear, _ = build_service(tmp_path, config, plan)
+    linear.project["status"] = {"name": config.linear.project_statuses.active}
+
+    result = service.materialize(plan.plan_id, projection_timeout=0)
+
+    assert result["assignment_create_mutations"] == len(plan.work_items)
+    assert linear.issue_mutations == len(plan.work_items)
+
+
+def test_active_project_workflow_drift_blocks_before_assignment_mutation(
+    tmp_path: Path, config: BlackcellConfig, plan: PlanSpec
+) -> None:
+    service, linear, _ = build_service(tmp_path, config, plan)
+    linear.project["status"] = {"name": config.linear.project_statuses.active}
+    linear.project["labels"] = {
+        "nodes": [{"id": "project-label-BlackCell", "name": "BlackCell", "archivedAt": None}]
+    }
+
+    with pytest.raises(ConflictFailure) as failure:
+        service.materialize(plan.plan_id, projection_timeout=0)
+
+    assert linear.issue_mutations == 0
+    assert failure.value.details["workflow_drift"]["label_names"]["missing"] == ["BCP-0001"]

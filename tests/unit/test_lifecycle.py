@@ -35,6 +35,14 @@ def test_lifecycle_maps_provider_names_to_semantic_capabilities(
     assert (
         lifecycle.require(
             config.linear.project_statuses.active,
+            ProjectCapability.MATERIALIZE_ASSIGNMENTS,
+            message="not materializable",
+        )
+        is ProjectState.ACTIVE
+    )
+    assert (
+        lifecycle.require(
+            config.linear.project_statuses.active,
             ProjectCapability.VERIFY_IMMUTABLE,
             message="not immutable",
         )
@@ -42,16 +50,38 @@ def test_lifecycle_maps_provider_names_to_semantic_capabilities(
     )
 
 
-@pytest.mark.parametrize("status", [None, "Triaged", "Active"])
 def test_lifecycle_rejects_unknown_or_disallowed_state(
     config: BlackcellConfig,
-    status: str | None,
 ) -> None:
     lifecycle = ProjectStateMachine(config.linear.project_statuses)
 
     with pytest.raises(PolicyFailure):
         lifecycle.require(
-            status,
+            None,
+            ProjectCapability.MATERIALIZE_ASSIGNMENTS,
+            message="not approved",
+        )
+    with pytest.raises(PolicyFailure):
+        lifecycle.require(
+            "Triaged",
+            ProjectCapability.MATERIALIZE_ASSIGNMENTS,
+            message="not approved",
+        )
+    with pytest.raises(PolicyFailure):
+        lifecycle.require(
+            config.linear.project_statuses.proposal,
+            ProjectCapability.MATERIALIZE_ASSIGNMENTS,
+            message="not approved",
+        )
+    with pytest.raises(PolicyFailure):
+        lifecycle.require(
+            config.linear.project_statuses.completed,
+            ProjectCapability.MATERIALIZE_ASSIGNMENTS,
+            message="not approved",
+        )
+    with pytest.raises(PolicyFailure):
+        lifecycle.require(
+            config.linear.project_statuses.canceled,
             ProjectCapability.MATERIALIZE_ASSIGNMENTS,
             message="not approved",
         )

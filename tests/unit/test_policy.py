@@ -73,19 +73,37 @@ def test_plan_target_rejects_wrong_repository(config: BlackcellConfig, plan: Pla
         verify_plan_target(changed, config)
 
 
-def test_approval_requires_manual_approved_status(config: BlackcellConfig, plan: PlanSpec) -> None:
+def test_approval_rejects_non_materializable_status(
+    config: BlackcellConfig, plan: PlanSpec
+) -> None:
     project = {
-        "status": {"name": "Proposal"},
+        "status": {"name": config.linear.project_statuses.proposal},
         "description": plan_marker(plan),
     }
 
-    with pytest.raises(PolicyFailure, match="not manually approved"):
+    with pytest.raises(PolicyFailure, match="materializable project state"):
         verify_approved_project(project, plan, config)
+
+
+def test_approval_rejects_completed_or_canceled_status(
+    config: BlackcellConfig, plan: PlanSpec
+) -> None:
+    for status in (
+        config.linear.project_statuses.completed,
+        config.linear.project_statuses.canceled,
+    ):
+        project = {
+            "status": {"name": status},
+            "description": plan_marker(plan),
+        }
+
+        with pytest.raises(PolicyFailure, match="materializable project state"):
+            verify_approved_project(project, plan, config)
 
 
 def test_approval_rejects_digest_divergence(config: BlackcellConfig, plan: PlanSpec) -> None:
     project = {
-        "status": {"name": "Approved"},
+        "status": {"name": config.linear.project_statuses.approved},
         "description": plan_marker(plan).replace(plan.digest().value, "0" * 64),
     }
 
@@ -93,9 +111,13 @@ def test_approval_rejects_digest_divergence(config: BlackcellConfig, plan: PlanS
         verify_approved_project(project, plan, config)
 
 
-def test_approval_accepts_exact_marker(config: BlackcellConfig, plan: PlanSpec) -> None:
+@pytest.mark.parametrize("status_attr", ["approved", "active"])
+def test_approval_accepts_exact_marker_for_materializable_states(
+    config: BlackcellConfig, plan: PlanSpec, status_attr: str
+) -> None:
+    status = getattr(config.linear.project_statuses, status_attr)
     project = {
-        "status": {"name": "Approved"},
+        "status": {"name": status},
         "description": f"Human summary\n\n{plan_marker(plan)}",
     }
 

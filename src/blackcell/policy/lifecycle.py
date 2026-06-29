@@ -35,7 +35,12 @@ _CAPABILITIES = {
             ProjectCapability.VERIFY_IMMUTABLE,
         }
     ),
-    ProjectState.ACTIVE: frozenset({ProjectCapability.VERIFY_IMMUTABLE}),
+    ProjectState.ACTIVE: frozenset(
+        {
+            ProjectCapability.MATERIALIZE_ASSIGNMENTS,
+            ProjectCapability.VERIFY_IMMUTABLE,
+        }
+    ),
     ProjectState.COMPLETED: frozenset({ProjectCapability.VERIFY_IMMUTABLE}),
     ProjectState.CANCELED: frozenset({ProjectCapability.VERIFY_IMMUTABLE}),
 }

@@ -1,6 +1,6 @@
 """Idempotent approved assignment and relation materialization."""
 
-from typing import Any
+from typing import Any, cast
 
 from blackcell.backends.directives import PlanReader
 from blackcell.backends.planning import MaterializationPlanningBackend
@@ -12,6 +12,7 @@ from blackcell.contracts.plan import PlanSpec, Priority, WorkItemSpec
 from blackcell.ledger.sqlite import Chronicle, EventType
 from blackcell.policy.approval import verify_approved_project
 from blackcell.policy.identity import verify_viewer_and_team
+from blackcell.services.project_integration import ProjectIntegration
 from blackcell.services.rendering import (
     normalize_presentation_text,
     render_issue_description,
@@ -321,16 +322,24 @@ class MaterializationService:
         project = matches[0]
         verify_approved_project(project, plan, self.config)
         expected_team_ids = {team["id"] for team in (project.get("teams") or {}).get("nodes", [])}
+        project_drift = ProjectIntegration(self.config, cast(Any, self.linear)).assess(
+            project, plan
+        )
         if (
             project.get("name") != plan.linear.project_name
             or project.get("description") != render_project_summary(plan)
             or normalize_presentation_text(project.get("content"))
             != normalize_presentation_text(render_project_description(plan, self.config))
             or self.config.linear.team_id not in expected_team_ids
+            or not project_drift.matches
         ):
             raise ConflictFailure(
                 "Approved Linear Project contract diverges from the directive.",
-                details={"plan_id": plan.plan_id, "project_id": project.get("id")},
+                details={
+                    "plan_id": plan.plan_id,
+                    "project_id": project.get("id"),
+                    **project_drift.model_dump(mode="json"),
+                },
             )
         self.chronicle.append(
             EventType.OPERATION_VERIFIED,
