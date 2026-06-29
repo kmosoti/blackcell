@@ -15,6 +15,8 @@ from blackcell.cli.commands import (
     profile,
     publication,
     recon,
+    schema,
+    workflow,
 )
 from blackcell.cli.output import OutputFormat, emit, invoke, resolve_format, root_format
 from blackcell.contracts.errors import ValidationFailure
@@ -28,11 +30,13 @@ app = typer.Typer(
 )
 
 app.add_typer(profile.app, name="profile")
+app.add_typer(schema.app, name="schema")
 app.add_typer(directive.app, name="directive")
 app.add_typer(operation.app, name="operation")
 app.add_typer(assignment.app, name="assignment")
 app.add_typer(echo.app, name="echo")
 app.add_typer(recon.app, name="recon")
+app.add_typer(workflow.app, name="workflow")
 app.add_typer(chronicle.app, name="chronicle")
 app.add_typer(anomaly.app, name="anomaly")
 app.add_typer(publication.app, name="publication")

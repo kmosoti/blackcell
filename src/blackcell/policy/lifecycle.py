@@ -17,12 +17,18 @@ class ProjectState(StrEnum):
 
 class ProjectCapability(StrEnum):
     RECONCILE_PRESENTATION = "reconcile_presentation"
+    RECONCILE_WORKFLOW = "reconcile_workflow"
     MATERIALIZE_ASSIGNMENTS = "materialize_assignments"
     VERIFY_IMMUTABLE = "verify_immutable"
 
 
 _CAPABILITIES = {
-    ProjectState.PROPOSAL: frozenset({ProjectCapability.RECONCILE_PRESENTATION}),
+    ProjectState.PROPOSAL: frozenset(
+        {
+            ProjectCapability.RECONCILE_PRESENTATION,
+            ProjectCapability.RECONCILE_WORKFLOW,
+        }
+    ),
     ProjectState.APPROVED: frozenset(
         {
             ProjectCapability.MATERIALIZE_ASSIGNMENTS,

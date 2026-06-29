@@ -81,6 +81,7 @@ class MaterializationService:
             existing = self.linear.team_issues(self.config.linear.team_id)
             references: dict[str, dict[str, Any]] = {}
             created_count = 0
+            updated_count = 0
             for item in plan.ordered_work_items():
                 identity_marker = f"blackcell://item/{plan.plan_id}/{item.key}?"
                 matches = [
@@ -110,24 +111,51 @@ class MaterializationService:
                                 "issue_id": issue.get("id"),
                             },
                         )
-                    actual_parent = (issue.get("parent") or {}).get("id")
-                    if actual_parent != parent_id:
-                        raise ConflictFailure(
-                            "Existing Linear issue parent contradicts the directive.",
-                            details={
-                                "plan_id": plan.plan_id,
-                                "item_key": item.key,
-                                "expected_parent_id": parent_id,
-                                "actual_parent_id": actual_parent,
+                    label_ids = {labels[label] for label in item.labels}
+                    drift = self._issue_contract_drift(
+                        issue,
+                        plan,
+                        item,
+                        project_id=project["id"],
+                        state_id=states[backlog_name]["id"],
+                        parent_id=parent_id,
+                        label_ids=label_ids,
+                    )
+                    if drift:
+                        issue = self.linear.update_issue(
+                            issue["id"],
+                            team_id=self.config.linear.team_id,
+                            project_id=project["id"],
+                            state_id=states[backlog_name]["id"],
+                            title=item.title,
+                            description=render_issue_description(plan, item),
+                            priority=LINEAR_PRIORITY[item.priority],
+                            label_ids=[labels[label] for label in item.labels],
+                            parent_id=parent_id,
+                        )
+                        updated_count += 1
+                        existing = [
+                            issue if current.get("id") == issue.get("id") else current
+                            for current in existing
+                        ]
+                        self.chronicle.append(
+                            EventType.ASSIGNMENT_REPAIRED,
+                            plan.plan_id,
+                            {
+                                "issue_id": issue["id"],
+                                "identifier": issue["identifier"],
+                                "fields": sorted(drift),
                             },
+                            item.key,
                         )
                     self._verify_issue_contract(
                         issue,
                         plan,
                         item,
                         project_id=project["id"],
+                        state_id=states[backlog_name]["id"],
                         parent_id=parent_id,
-                        label_ids={labels[label] for label in item.labels},
+                        label_ids=label_ids,
                     )
                     self.chronicle.append(
                         EventType.ASSIGNMENT_LOCATED,
@@ -253,7 +281,9 @@ class MaterializationService:
                     EventType.MATERIALIZATION_COMPLETED,
                     plan.plan_id,
                     {
-                        "assignment_mutations": created_count,
+                        "assignment_mutations": created_count + updated_count,
+                        "assignment_create_mutations": created_count,
+                        "assignment_update_mutations": updated_count,
                         "relation_mutations": relation_mutations,
                         "echoes": len(verified),
                     },
@@ -261,7 +291,9 @@ class MaterializationService:
             return {
                 "plan_id": plan.plan_id,
                 "project": {"id": project["id"], "url": project["url"]},
-                "assignment_mutations": created_count,
+                "assignment_mutations": created_count + updated_count,
+                "assignment_create_mutations": created_count,
+                "assignment_update_mutations": updated_count,
                 "relation_mutations": relation_mutations,
                 "pending_relations": pending_relations,
                 "verified_echoes": verified,
@@ -314,9 +346,36 @@ class MaterializationService:
         item: WorkItemSpec,
         *,
         project_id: str,
+        state_id: str,
         parent_id: str | None,
         label_ids: set[str],
     ) -> None:
+        drift = self._issue_contract_drift(
+            issue,
+            plan,
+            item,
+            project_id=project_id,
+            state_id=state_id,
+            parent_id=parent_id,
+            label_ids=label_ids,
+        )
+        if drift:
+            raise ConflictFailure(
+                "Existing Linear assignment diverges from the directive.",
+                details={"plan_id": plan.plan_id, "item_key": item.key, "drift": drift},
+            )
+
+    def _issue_contract_drift(
+        self,
+        issue: dict[str, Any],
+        plan: PlanSpec,
+        item: WorkItemSpec,
+        *,
+        project_id: str,
+        state_id: str,
+        parent_id: str | None,
+        label_ids: set[str],
+    ) -> dict[str, Any]:
         actual_label_ids = {label["id"] for label in (issue.get("labels") or {}).get("nodes", [])}
         expected = {
             "title": item.title,
@@ -324,6 +383,7 @@ class MaterializationService:
             "priority": LINEAR_PRIORITY[item.priority],
             "project_id": project_id,
             "team_id": self.config.linear.team_id,
+            "state_id": state_id,
             "parent_id": parent_id,
             "label_ids": label_ids,
         }
@@ -333,6 +393,7 @@ class MaterializationService:
             "priority": issue.get("priority"),
             "project_id": (issue.get("project") or {}).get("id"),
             "team_id": (issue.get("team") or {}).get("id"),
+            "state_id": (issue.get("state") or {}).get("id"),
             "parent_id": (issue.get("parent") or {}).get("id"),
             "label_ids": actual_label_ids,
         }
@@ -344,14 +405,18 @@ class MaterializationService:
                 "expected": expected["description"],
                 "actual": actual["description"],
             }
-        for key in ("title", "priority", "project_id", "team_id", "parent_id", "label_ids"):
+        for key in (
+            "title",
+            "priority",
+            "project_id",
+            "team_id",
+            "state_id",
+            "parent_id",
+            "label_ids",
+        ):
             if actual[key] != expected[key]:
                 drift[key] = {"expected": expected[key], "actual": actual[key]}
-        if drift:
-            raise ConflictFailure(
-                "Existing Linear assignment diverges from the directive.",
-                details={"plan_id": plan.plan_id, "item_key": item.key, "drift": drift},
-            )
+        return drift
 
     def _relation_creation_recorded(self, plan_id: str, blocker_id: str, blocked_id: str) -> bool:
         return any(

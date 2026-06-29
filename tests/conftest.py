@@ -36,10 +36,16 @@ def config_data() -> dict[str, Any]:
                 "color": "#111827",
                 "repository_link_label": "BlackCell repository",
             },
+            "project_workflow": {
+                "lead_user_id": "1ed22c47-390f-41e6-b63d-497f58cccb3b",
+                "member_user_ids": ["1ed22c47-390f-41e6-b63d-497f58cccb3b"],
+                "priority": "high",
+                "label_names": ["BlackCell", "BCP-0001"],
+            },
             "project_statuses": {
                 "proposal": "Proposal",
                 "approved": "Approved",
-                "active": "Active",
+                "active": "In Progress",
                 "completed": "Completed",
                 "canceled": "Canceled",
             },

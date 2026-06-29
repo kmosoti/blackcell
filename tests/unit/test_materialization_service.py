@@ -50,6 +50,7 @@ class FakeLinear:
         self.config = config
         self.plan = plan
         self.issue_mutations = 0
+        self.issue_update_mutations = 0
         self.relation_mutations = 0
         self.issues: list[dict[str, Any]] = []
         self.project: dict[str, Any] = {
@@ -115,7 +116,10 @@ class FakeLinear:
         priority: int,
         label_ids: list[str],
         parent_id: str | None,
+        assignee_id: str | None = None,
+        delegate_id: str | None = None,
     ) -> dict[str, Any]:
+        del assignee_id, delegate_id
         assert team_id == self.config.linear.team_id
         assert project_id == self.project["id"]
         assert state_id == "state-backlog"
@@ -139,6 +143,46 @@ class FakeLinear:
             "relations": {"nodes": []},
             "inverseRelations": {"nodes": []},
         }
+        return issue
+
+    def update_issue(
+        self,
+        issue_id: str,
+        *,
+        team_id: str,
+        project_id: str,
+        state_id: str,
+        title: str,
+        description: str,
+        priority: int,
+        label_ids: list[str],
+        parent_id: str | None,
+        assignee_id: str | None = None,
+        delegate_id: str | None = None,
+    ) -> dict[str, Any]:
+        del assignee_id, delegate_id
+        assert team_id == self.config.linear.team_id
+        assert project_id == self.project["id"]
+        assert state_id == "state-backlog"
+        self.issue_update_mutations += 1
+        issue = next(issue for issue in self.issues if issue["id"] == issue_id)
+        issue.update(
+            {
+                "title": title,
+                "description": description,
+                "priority": priority,
+                "parent": {"id": parent_id} if parent_id else None,
+                "team": {"id": team_id},
+                "project": {"id": project_id},
+                "state": {"id": state_id},
+                "labels": {
+                    "nodes": [
+                        {"id": label_id, "name": label_id.removeprefix("label-")}
+                        for label_id in label_ids
+                    ]
+                },
+            }
+        )
         return issue
 
     def create_blocking_relation(self, blocker_id: str, blocked_id: str) -> dict[str, Any]:
@@ -187,6 +231,7 @@ def test_repeated_materialization_performs_zero_remote_mutations(
     assert second["assignment_mutations"] == 0
     assert second["relation_mutations"] == 0
     assert linear.issue_mutations == issue_mutations == len(plan.work_items)
+    assert linear.issue_update_mutations == 0
     assert linear.relation_mutations == relation_mutations == 1
     assert len(linear.issues) == len(plan.work_items)
     completed = [
@@ -197,3 +242,22 @@ def test_repeated_materialization_performs_zero_remote_mutations(
     assert len(completed) == 2
     assert completed[-1].payload["assignment_mutations"] == 0
     assert completed[-1].payload["relation_mutations"] == 0
+
+
+def test_digest_matching_assignment_drift_is_repaired_once(
+    tmp_path: Path, config: BlackcellConfig, plan: PlanSpec
+) -> None:
+    service, linear, _ = build_service(tmp_path, config, plan)
+
+    service.materialize(plan.plan_id, projection_timeout=0)
+    linear.issues[0]["title"] = "Drifted title"
+    linear.issues[0]["priority"] = 4
+    linear.issues[0]["labels"] = {"nodes": []}
+
+    repaired = service.materialize(plan.plan_id, projection_timeout=0)
+    clean = service.materialize(plan.plan_id, projection_timeout=0)
+
+    assert repaired["assignment_mutations"] == 1
+    assert repaired["assignment_update_mutations"] == 1
+    assert linear.issue_update_mutations == 1
+    assert clean["assignment_mutations"] == 0

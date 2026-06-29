@@ -54,6 +54,15 @@ class ProjectPresentationConfig(BaseModel):
     icon: str | None = Field(default=None, min_length=1)
 
 
+class ProjectWorkflowConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    lead_user_id: str = Field(min_length=1)
+    member_user_ids: list[str] = Field(default_factory=list)
+    priority: Literal["low", "medium", "high", "critical"]
+    label_names: list[str] = Field(default_factory=list)
+
+
 class LinearConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -64,6 +73,7 @@ class LinearConfig(BaseModel):
     issue_projection_provider: Literal["linear_github_sync"]
     issue_sync_mode: Literal["two_way"]
     project_presentation: ProjectPresentationConfig
+    project_workflow: ProjectWorkflowConfig
     project_statuses: ProjectStatusesConfig
     issue_states: IssueStatesConfig
 

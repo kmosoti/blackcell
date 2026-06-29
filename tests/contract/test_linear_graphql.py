@@ -322,6 +322,105 @@ def test_adapter_omits_unmanaged_project_icon() -> None:
     }
 
 
+def test_adapter_updates_project_workflow_with_schema_backed_fields() -> None:
+    transport = ProjectMutationTransport()
+    adapter = LinearGraphQLAdapter(transport)
+
+    adapter.update_project_workflow(
+        "project-1",
+        lead_id="user-lead",
+        member_ids=["user-lead", "user-member"],
+        label_ids=["project-label-1"],
+        priority=2,
+        status_id="status-approved",
+    )
+
+    assert transport.variables["input"] == {
+        "leadId": "user-lead",
+        "memberIds": ["user-lead", "user-member"],
+        "labelIds": ["project-label-1"],
+        "priority": 2,
+        "statusId": "status-approved",
+    }
+
+
+class IssueUpdateTransport:
+    def __init__(self) -> None:
+        self.query = ""
+        self.variables: dict[str, Any] = {}
+
+    def execute(
+        self,
+        query: str,
+        variables: dict[str, Any] | None = None,
+        *,
+        mutation: bool = False,
+    ) -> dict[str, Any]:
+        assert mutation is True
+        assert "issueUpdate" in query
+        self.query = query
+        self.variables = dict(variables or {})
+        return {
+            "issueUpdate": {
+                "success": True,
+                "issue": {
+                    "id": "issue-1",
+                    "identifier": "BLCELL-1",
+                    "title": "Foundation",
+                    "description": "body",
+                    "url": "https://linear.test/issue-1",
+                    "archivedAt": None,
+                    "priority": 2,
+                    "assignee": {"id": "assignee-1"},
+                    "delegate": {"id": "delegate-1"},
+                    "parent": None,
+                    "team": {"id": "team-1"},
+                    "state": {"id": "state-1"},
+                    "project": {"id": "project-1"},
+                    "labels": {"nodes": [{"id": "label-1", "name": "area:foundation"}]},
+                    "relations": {"nodes": []},
+                    "inverseRelations": {"nodes": []},
+                },
+            }
+        }
+
+
+def test_adapter_updates_issue_assignment_contract_fields() -> None:
+    transport = IssueUpdateTransport()
+    adapter = LinearGraphQLAdapter(transport)
+
+    issue = adapter.update_issue(
+        "issue-1",
+        team_id="team-1",
+        project_id="project-1",
+        state_id="state-1",
+        title="Foundation",
+        description="body",
+        priority=2,
+        label_ids=["label-1"],
+        parent_id=None,
+        assignee_id="assignee-1",
+        delegate_id="delegate-1",
+    )
+
+    assert transport.variables == {
+        "id": "issue-1",
+        "input": {
+            "teamId": "team-1",
+            "projectId": "project-1",
+            "stateId": "state-1",
+            "title": "Foundation",
+            "description": "body",
+            "priority": 2,
+            "labelIds": ["label-1"],
+            "parentId": None,
+            "assigneeId": "assignee-1",
+            "delegateId": "delegate-1",
+        },
+    }
+    assert issue["assignee"]["id"] == "assignee-1"
+
+
 class IntegrationTransport:
     def execute(
         self,

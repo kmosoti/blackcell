@@ -10,6 +10,7 @@ from blackcell.contracts.facade import (
     Effect,
     Facade,
     InvariantAspect,
+    InvariantGroup,
     operation,
 )
 from blackcell.ledger.sqlite import Chronicle, EventType
@@ -29,6 +30,8 @@ def test_operation_catalog_has_unique_names_and_baseline_aspects() -> None:
     for item in OPERATIONS.values():
         assert InvariantAspect.OUTPUT in item.aspects
         assert InvariantAspect.OBSERVABILITY in item.aspects
+        assert InvariantGroup.OUTPUT in item.invariant_groups
+        assert InvariantGroup.OBSERVABILITY in item.invariant_groups
 
 
 def test_materialization_contract_classifies_remote_safety_invariants() -> None:
@@ -44,6 +47,65 @@ def test_materialization_contract_classifies_remote_safety_invariants() -> None:
         InvariantAspect.IMMUTABILITY,
         InvariantAspect.IDEMPOTENCY,
     } <= contract.aspects
+    assert {
+        InvariantGroup.AUTHORITY,
+        InvariantGroup.CREDENTIAL,
+        InvariantGroup.IDENTITY,
+        InvariantGroup.LIFECYCLE,
+        InvariantGroup.DIGEST,
+        InvariantGroup.ASSIGNMENT_CONTRACT,
+        InvariantGroup.ECHO_CONTRACT,
+    } <= contract.invariant_groups
+
+
+def test_publication_contract_has_publication_invariant_group() -> None:
+    contract = OPERATIONS[OperationId.PUBLICATION_PREFLIGHT]
+
+    assert InvariantGroup.PUBLICATION_IDENTITY in contract.invariant_groups
+    assert InvariantAspect.PUBLICATION_IDENTITY in contract.aspects
+
+
+def test_contract_invariant_groups_infer_from_aspects() -> None:
+    contract = OPERATIONS[OperationId.PULSE]
+
+    assert InvariantGroup.AUTHORITY in contract.invariant_groups
+    assert InvariantGroup.CREDENTIAL in contract.invariant_groups
+    assert InvariantGroup.IDENTITY in contract.invariant_groups
+    assert InvariantGroup.LIFECYCLE in contract.invariant_groups
+
+
+def test_key_public_operations_have_formal_invariant_coverage() -> None:
+    required = {
+        OperationId.OPERATION_INSPECT: {
+            InvariantGroup.AUTHORITY,
+            InvariantGroup.CREDENTIAL,
+            InvariantGroup.IDENTITY,
+            InvariantGroup.LIFECYCLE,
+            InvariantGroup.DIGEST,
+            InvariantGroup.PROJECT_WORKFLOW,
+            InvariantGroup.PROJECT_PRESENTATION,
+        },
+        OperationId.OPERATION_RECONCILE: {
+            InvariantGroup.PROJECT_WORKFLOW,
+            InvariantGroup.PROJECT_PRESENTATION,
+        },
+        OperationId.DIRECTIVE_MATERIALIZE: {
+            InvariantGroup.DIGEST,
+            InvariantGroup.ASSIGNMENT_CONTRACT,
+            InvariantGroup.ECHO_CONTRACT,
+        },
+        OperationId.ECHO_VERIFY: {InvariantGroup.ECHO_CONTRACT},
+        OperationId.PUBLICATION_PREFLIGHT: {InvariantGroup.PUBLICATION_IDENTITY},
+        OperationId.SCHEMA_AUDIT: {InvariantGroup.SCHEMA, InvariantGroup.DIGEST},
+        OperationId.WORKFLOW_RUN: {
+            InvariantGroup.SCHEMA,
+            InvariantGroup.ASSIGNMENT_CONTRACT,
+            InvariantGroup.ECHO_CONTRACT,
+        },
+    }
+
+    for operation_id, groups in required.items():
+        assert groups <= OPERATIONS[operation_id].invariant_groups
 
 
 def test_executor_serializes_pending_outcome_and_structured_events() -> None:

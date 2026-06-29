@@ -34,7 +34,7 @@ def test_lifecycle_maps_provider_names_to_semantic_capabilities(
     )
     assert (
         lifecycle.require(
-            "Active",
+            config.linear.project_statuses.active,
             ProjectCapability.VERIFY_IMMUTABLE,
             message="not immutable",
         )

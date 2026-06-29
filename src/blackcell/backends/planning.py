@@ -25,6 +25,24 @@ class PlanningProjectLocator(Protocol):
     def find_projects_by_marker(self, team_id: str, marker: str) -> list[dict[str, Any]]: ...
 
 
+class PlanningProjectLabelReader(Protocol):
+    def project_labels(self) -> list[dict[str, Any]]: ...
+
+
+class PlanningProjectLabelWriter(Protocol):
+    def create_project_label(
+        self,
+        *,
+        name: str,
+        color: str,
+        description: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def add_project_label(self, project_id: str, label_id: str) -> dict[str, Any]: ...
+
+    def remove_project_label(self, project_id: str, label_id: str) -> dict[str, Any]: ...
+
+
 class PlanningProjectIssueReader(Protocol):
     def project_issues(self, project_id: str) -> list[dict[str, Any]]: ...
 
@@ -44,6 +62,10 @@ class PlanningProjectWriter(Protocol):
         status_id: str,
         icon: str | None,
         color: str,
+        lead_id: str | None = None,
+        member_ids: list[str] | None = None,
+        label_ids: list[str] | None = None,
+        priority: int | None = None,
     ) -> dict[str, Any]: ...
 
     def update_project_presentation(
@@ -54,6 +76,17 @@ class PlanningProjectWriter(Protocol):
         content: str,
         icon: str | None,
         color: str,
+    ) -> dict[str, Any]: ...
+
+    def update_project_workflow(
+        self,
+        project_id: str,
+        *,
+        lead_id: str | None = None,
+        member_ids: list[str] | None = None,
+        label_ids: list[str] | None = None,
+        priority: int | None = None,
+        status_id: str | None = None,
     ) -> dict[str, Any]: ...
 
     def create_project_external_link(
@@ -91,6 +124,24 @@ class PlanningAssignmentWriter(Protocol):
         priority: int,
         label_ids: list[str],
         parent_id: str | None,
+        assignee_id: str | None = None,
+        delegate_id: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def update_issue(
+        self,
+        issue_id: str,
+        *,
+        team_id: str,
+        project_id: str,
+        state_id: str,
+        title: str,
+        description: str,
+        priority: int,
+        label_ids: list[str],
+        parent_id: str | None,
+        assignee_id: str | None = None,
+        delegate_id: str | None = None,
     ) -> dict[str, Any]: ...
 
     def create_blocking_relation(self, blocker_id: str, blocked_id: str) -> dict[str, Any]: ...
@@ -111,6 +162,8 @@ class PlanWorkflowBackend(
     PlanningIdentityReader,
     PlanningProjectStatusReader,
     PlanningProjectLocator,
+    PlanningProjectLabelReader,
+    PlanningProjectLabelWriter,
     PlanningProjectWriter,
     Protocol,
 ):
@@ -122,6 +175,8 @@ class PlanningBackend(
     PlanningProjectStatusReader,
     PlanningIssueWorkflowReader,
     PlanningIntegrationReader,
+    PlanningProjectLabelReader,
+    PlanningProjectLabelWriter,
     PlanningProjectReader,
     PlanningProjectWriter,
     PlanningAssignmentReader,

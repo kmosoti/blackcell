@@ -58,6 +58,8 @@ class PlanService:
             reconciliation = self._projects().reconcile(project, plan)
             project = reconciliation.project
             reconciled_fields = reconciliation.reconciled_fields
+            workflow_fields = reconciliation.workflow_fields
+            presentation_fields = reconciliation.presentation_fields
             event_type = EventType.OPERATION_LOCATED
             created = False
         else:
@@ -65,6 +67,8 @@ class PlanService:
             event_type = EventType.OPERATION_PROPOSED
             created = True
             reconciled_fields = []
+            workflow_fields = []
+            presentation_fields = []
 
         path = self.store.save(plan)
         self.chronicle.append(
@@ -78,21 +82,32 @@ class PlanService:
             {"project_id": project["id"], "url": project["url"], "created": created},
         )
         if reconciled_fields:
-            self.chronicle.append(
-                EventType.OPERATION_PRESENTATION_RECONCILED,
-                plan.plan_id,
-                {
-                    "project_id": project["id"],
-                    "fields": sorted(reconciled_fields),
-                },
-            )
+            if workflow_fields:
+                self.chronicle.append(
+                    EventType.OPERATION_WORKFLOW_RECONCILED,
+                    plan.plan_id,
+                    {
+                        "project_id": project["id"],
+                        "fields": sorted(workflow_fields),
+                    },
+                )
+            if presentation_fields:
+                self.chronicle.append(
+                    EventType.OPERATION_PRESENTATION_RECONCILED,
+                    plan.plan_id,
+                    {
+                        "project_id": project["id"],
+                        "fields": sorted(presentation_fields),
+                    },
+                )
         return {
             "plan_id": plan.plan_id,
             "revision": plan.revision,
             "digest": str(plan.digest()),
             "project": project,
             "created": created,
-            "presentation_reconciled": bool(reconciled_fields),
+            "presentation_reconciled": bool(presentation_fields),
+            "workflow_reconciled": bool(workflow_fields),
         }
 
     def reconcile_operation(self, plan_id: str) -> dict[str, Any]:

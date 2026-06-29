@@ -8,6 +8,7 @@ from blackcell.contracts.facade import (
     Effect,
     Facade,
     InvariantAspect,
+    InvariantGroup,
     OperationSpec,
     operation,
 )
@@ -16,6 +17,7 @@ from blackcell.contracts.facade import (
 class OperationId(StrEnum):
     PROFILE_VALIDATE = "profile.validate"
     PROFILE_SHOW = "profile.show"
+    SCHEMA_AUDIT = "schema.audit"
     DIRECTIVE_VALIDATE = "directive.validate"
     DIRECTIVE_PROPOSE = "directive.propose"
     DIRECTIVE_STATUS = "directive.status"
@@ -28,6 +30,9 @@ class OperationId(StrEnum):
     ASSIGNMENT_VERIFY = "assignment.verify"
     ECHO_VERIFY = "echo.verify"
     RECON_STATUS = "recon.status"
+    WORKFLOW_RUN = "workflow.run"
+    WORKFLOW_STATUS = "workflow.status"
+    WORKFLOW_RESUME = "workflow.resume"
     CHRONICLE_SHOW = "chronicle.show"
     ANOMALY_LIST = "anomaly.list"
     ANOMALY_RESOLVE = "anomaly.resolve"
@@ -47,6 +52,29 @@ def _specs() -> dict[OperationId, OperationSpec]:
         InvariantAspect.STATE,
         InvariantAspect.IMMUTABILITY,
     )
+    schema_digest = (InvariantGroup.SCHEMA, InvariantGroup.DIGEST)
+    project_contract = (
+        InvariantGroup.AUTHORITY,
+        InvariantGroup.CREDENTIAL,
+        InvariantGroup.IDENTITY,
+        InvariantGroup.LIFECYCLE,
+        InvariantGroup.DIGEST,
+        InvariantGroup.PROJECT_WORKFLOW,
+        InvariantGroup.PROJECT_PRESENTATION,
+    )
+    assignment_contract = (
+        InvariantGroup.AUTHORITY,
+        InvariantGroup.CREDENTIAL,
+        InvariantGroup.IDENTITY,
+        InvariantGroup.LIFECYCLE,
+        InvariantGroup.DIGEST,
+        InvariantGroup.ASSIGNMENT_CONTRACT,
+    )
+    echo_contract = (
+        InvariantGroup.AUTHORITY,
+        InvariantGroup.CREDENTIAL,
+        InvariantGroup.ECHO_CONTRACT,
+    )
     return {
         OperationId.PROFILE_VALIDATE: operation(
             OperationId.PROFILE_VALIDATE,
@@ -54,6 +82,7 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Authority.BLACKCELL,
             Effect.READ,
             InvariantAspect.INPUT,
+            invariant_groups=(InvariantGroup.SCHEMA, InvariantGroup.AUTHORITY),
         ),
         OperationId.PROFILE_SHOW: operation(
             OperationId.PROFILE_SHOW,
@@ -61,6 +90,16 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Authority.BLACKCELL,
             Effect.READ,
             InvariantAspect.INPUT,
+            invariant_groups=(InvariantGroup.SCHEMA, InvariantGroup.AUTHORITY),
+        ),
+        OperationId.SCHEMA_AUDIT: operation(
+            OperationId.SCHEMA_AUDIT,
+            Facade.SCHEMA,
+            Authority.BLACKCELL,
+            Effect.READ,
+            InvariantAspect.INPUT,
+            InvariantAspect.IMMUTABILITY,
+            invariant_groups=schema_digest,
         ),
         OperationId.DIRECTIVE_VALIDATE: operation(
             OperationId.DIRECTIVE_VALIDATE,
@@ -68,6 +107,12 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Authority.BLACKCELL,
             Effect.READ,
             *input_authority,
+            InvariantAspect.IMMUTABILITY,
+            invariant_groups=(
+                InvariantGroup.SCHEMA,
+                InvariantGroup.AUTHORITY,
+                InvariantGroup.DIGEST,
+            ),
         ),
         OperationId.DIRECTIVE_PROPOSE: operation(
             OperationId.DIRECTIVE_PROPOSE,
@@ -78,8 +123,10 @@ def _specs() -> dict[OperationId, OperationSpec]:
             InvariantAspect.AUTHENTICATION,
             InvariantAspect.IDENTITY,
             InvariantAspect.STATE,
+            InvariantAspect.IMMUTABILITY,
             InvariantAspect.IDEMPOTENCY,
             credentials=(Credential.LINEAR,),
+            invariant_groups=project_contract,
         ),
         OperationId.DIRECTIVE_STATUS: operation(
             OperationId.DIRECTIVE_STATUS,
@@ -88,6 +135,7 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Effect.READ,
             *immutable_remote,
             credentials=(Credential.LINEAR,),
+            invariant_groups=project_contract,
         ),
         OperationId.DIRECTIVE_MATERIALIZE: operation(
             OperationId.DIRECTIVE_MATERIALIZE,
@@ -97,6 +145,10 @@ def _specs() -> dict[OperationId, OperationSpec]:
             *immutable_remote,
             InvariantAspect.IDEMPOTENCY,
             credentials=(Credential.LINEAR, Credential.GITHUB),
+            invariant_groups=(
+                *assignment_contract,
+                InvariantGroup.ECHO_CONTRACT,
+            ),
         ),
         OperationId.DIRECTIVE_RECONCILE: operation(
             OperationId.DIRECTIVE_RECONCILE,
@@ -106,6 +158,10 @@ def _specs() -> dict[OperationId, OperationSpec]:
             *immutable_remote,
             InvariantAspect.IDEMPOTENCY,
             credentials=(Credential.LINEAR, Credential.GITHUB),
+            invariant_groups=(
+                *assignment_contract,
+                InvariantGroup.ECHO_CONTRACT,
+            ),
         ),
         OperationId.OPERATION_INSPECT: operation(
             OperationId.OPERATION_INSPECT,
@@ -115,6 +171,7 @@ def _specs() -> dict[OperationId, OperationSpec]:
             *remote_identity,
             InvariantAspect.IMMUTABILITY,
             credentials=(Credential.LINEAR,),
+            invariant_groups=project_contract,
         ),
         OperationId.OPERATION_RECONCILE: operation(
             OperationId.OPERATION_RECONCILE,
@@ -124,6 +181,7 @@ def _specs() -> dict[OperationId, OperationSpec]:
             *immutable_remote,
             InvariantAspect.IDEMPOTENCY,
             credentials=(Credential.LINEAR,),
+            invariant_groups=project_contract,
         ),
         OperationId.OPERATION_VERIFY: operation(
             OperationId.OPERATION_VERIFY,
@@ -132,6 +190,7 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Effect.READ,
             *immutable_remote,
             credentials=(Credential.LINEAR,),
+            invariant_groups=project_contract,
         ),
         OperationId.ASSIGNMENT_LIST: operation(
             OperationId.ASSIGNMENT_LIST,
@@ -140,6 +199,12 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Effect.READ,
             *remote_identity,
             credentials=(Credential.LINEAR,),
+            invariant_groups=(
+                InvariantGroup.AUTHORITY,
+                InvariantGroup.CREDENTIAL,
+                InvariantGroup.IDENTITY,
+                InvariantGroup.ASSIGNMENT_CONTRACT,
+            ),
         ),
         OperationId.ASSIGNMENT_VERIFY: operation(
             OperationId.ASSIGNMENT_VERIFY,
@@ -148,6 +213,7 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Effect.READ,
             *immutable_remote,
             credentials=(Credential.LINEAR,),
+            invariant_groups=assignment_contract,
         ),
         OperationId.ECHO_VERIFY: operation(
             OperationId.ECHO_VERIFY,
@@ -158,6 +224,7 @@ def _specs() -> dict[OperationId, OperationSpec]:
             InvariantAspect.AUTHORITY,
             InvariantAspect.IMMUTABILITY,
             credentials=(Credential.GITHUB,),
+            invariant_groups=echo_contract,
         ),
         OperationId.RECON_STATUS: operation(
             OperationId.RECON_STATUS,
@@ -166,6 +233,55 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Effect.READ,
             *immutable_remote,
             credentials=(Credential.LINEAR, Credential.GITHUB),
+            invariant_groups=(
+                *project_contract,
+                InvariantGroup.ASSIGNMENT_CONTRACT,
+                InvariantGroup.ECHO_CONTRACT,
+            ),
+        ),
+        OperationId.WORKFLOW_RUN: operation(
+            OperationId.WORKFLOW_RUN,
+            Facade.WORKFLOW,
+            Authority.CROSS_SYSTEM,
+            Effect.RECONCILE,
+            *immutable_remote,
+            InvariantAspect.IDEMPOTENCY,
+            credentials=(Credential.LINEAR,),
+            invariant_groups=(
+                InvariantGroup.SCHEMA,
+                *project_contract,
+                InvariantGroup.ASSIGNMENT_CONTRACT,
+                InvariantGroup.ECHO_CONTRACT,
+                InvariantGroup.PUBLICATION_IDENTITY,
+            ),
+        ),
+        OperationId.WORKFLOW_STATUS: operation(
+            OperationId.WORKFLOW_STATUS,
+            Facade.WORKFLOW,
+            Authority.BLACKCELL,
+            Effect.READ,
+            InvariantAspect.IMMUTABILITY,
+            invariant_groups=(
+                InvariantGroup.SCHEMA,
+                InvariantGroup.DIGEST,
+                InvariantGroup.LIFECYCLE,
+            ),
+        ),
+        OperationId.WORKFLOW_RESUME: operation(
+            OperationId.WORKFLOW_RESUME,
+            Facade.WORKFLOW,
+            Authority.CROSS_SYSTEM,
+            Effect.RECONCILE,
+            *immutable_remote,
+            InvariantAspect.IDEMPOTENCY,
+            credentials=(Credential.LINEAR,),
+            invariant_groups=(
+                InvariantGroup.SCHEMA,
+                *project_contract,
+                InvariantGroup.ASSIGNMENT_CONTRACT,
+                InvariantGroup.ECHO_CONTRACT,
+                InvariantGroup.PUBLICATION_IDENTITY,
+            ),
         ),
         OperationId.CHRONICLE_SHOW: operation(
             OperationId.CHRONICLE_SHOW,
@@ -173,6 +289,7 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Authority.BLACKCELL,
             Effect.READ,
             InvariantAspect.IMMUTABILITY,
+            invariant_groups=(InvariantGroup.DIGEST,),
         ),
         OperationId.ANOMALY_LIST: operation(
             OperationId.ANOMALY_LIST,
@@ -180,6 +297,7 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Authority.BLACKCELL,
             Effect.READ,
             InvariantAspect.IMMUTABILITY,
+            invariant_groups=(InvariantGroup.DIGEST,),
         ),
         OperationId.ANOMALY_RESOLVE: operation(
             OperationId.ANOMALY_RESOLVE,
@@ -188,6 +306,7 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Effect.APPEND,
             InvariantAspect.INPUT,
             InvariantAspect.IMMUTABILITY,
+            invariant_groups=(InvariantGroup.SCHEMA, InvariantGroup.DIGEST),
         ),
         OperationId.PULSE: operation(
             OperationId.PULSE,
@@ -196,6 +315,12 @@ def _specs() -> dict[OperationId, OperationSpec]:
             Effect.READ,
             *remote_identity,
             credentials=(Credential.LINEAR, Credential.GITHUB),
+            invariant_groups=(
+                InvariantGroup.AUTHORITY,
+                InvariantGroup.CREDENTIAL,
+                InvariantGroup.IDENTITY,
+                InvariantGroup.LIFECYCLE,
+            ),
         ),
         OperationId.PUBLICATION_PREFLIGHT: operation(
             OperationId.PUBLICATION_PREFLIGHT,
@@ -206,6 +331,11 @@ def _specs() -> dict[OperationId, OperationSpec]:
             InvariantAspect.AUTHORITY,
             InvariantAspect.STATE,
             InvariantAspect.PUBLICATION_IDENTITY,
+            invariant_groups=(
+                InvariantGroup.AUTHORITY,
+                InvariantGroup.LIFECYCLE,
+                InvariantGroup.PUBLICATION_IDENTITY,
+            ),
         ),
     }
 

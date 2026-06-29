@@ -79,6 +79,26 @@ Adding another Linear field starts in the adapter response model and the
 narrowest applicable capability protocol. It only reaches a service or facade
 when a BlackCell invariant or packaged workflow consumes it.
 
+`scripts/linear_schema_jsonl.py` captures the live Linear GraphQL schema through
+introspection as streaming JSONL and records the public Apollo Studio reference
+for the same current variant:
+
+```text
+https://studio.apollographql.com/public/Linear-API/variant/current/schema/reference
+```
+
+```bash
+set -a
+source ~/.config/blackcell/env
+set +a
+uv run python scripts/linear_schema_jsonl.py > /tmp/linear-schema.jsonl
+```
+
+The stream emits a `schema_source` record, schema, directive, and per-type
+records, then a final `schema_digest` record. This keeps provider schema review
+incremental and agent-friendly without persisting credentials or requiring a
+monolithic pasted schema.
+
 ## Authority
 
 Linear is authoritative for approval and work planning. GitHub is authoritative

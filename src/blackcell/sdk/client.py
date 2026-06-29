@@ -11,11 +11,17 @@ from pydantic import SecretStr
 from blackcell.adapters.github_rest import GitHubRestAdapter
 from blackcell.adapters.linear_graphql import LinearGraphQLAdapter, LinearGraphQLTransport
 from blackcell.adapters.local_publication import LocalPublicationAdapter
+from blackcell.backends.capabilities import (
+    PLANNING_PROTOCOL_CAPABILITIES,
+    capability_is_schema_backed,
+    missing_capabilities,
+)
 from blackcell.backends.publication import PublicationBackend
 from blackcell.config.loader import load_config
 from blackcell.config.model import BlackcellConfig, RuntimeSecrets
 from blackcell.contracts.errors import (
     AuthenticationFailure,
+    BlackcellError,
     ConflictFailure,
     NotFoundFailure,
     PolicyFailure,
@@ -33,8 +39,10 @@ from blackcell.runtime.execution import (
     OperationExecutor,
     PendingOutcome,
     StructuredEventAspect,
+    current_operation,
 )
 from blackcell.runtime.observability import EventSink, event_sink_from_environment
+from blackcell.schema.linear import default_linear_schema_path, load_linear_schema
 from blackcell.sdk.operations import OperationId, spec
 from blackcell.services.materialization_service import (
     LINEAR_PRIORITY,
@@ -291,10 +299,34 @@ class BlackcellClient:
 
         return self._result(OperationId.PROFILE_VALIDATE, operation)
 
+    def schema_audit(self) -> ResultEnvelope:
+        return self._result(OperationId.SCHEMA_AUDIT, self._schema_audit_data)
+
     def operation(self, plan_id: str) -> ResultEnvelope:
         return self._result(
             OperationId.OPERATION_VERIFY,
             lambda: self._plan_service(require_linear=True).operation(plan_id),
+            plan_id=plan_id,
+        )
+
+    def workflow_run(self, plan_id: str) -> ResultEnvelope:
+        return self._result(
+            OperationId.WORKFLOW_RUN,
+            lambda: self._workflow_run(plan_id),
+            plan_id=plan_id,
+        )
+
+    def workflow_resume(self, plan_id: str) -> ResultEnvelope:
+        return self._result(
+            OperationId.WORKFLOW_RESUME,
+            lambda: self._workflow_run(plan_id),
+            plan_id=plan_id,
+        )
+
+    def workflow_status(self, plan_id: str) -> ResultEnvelope:
+        return self._result(
+            OperationId.WORKFLOW_STATUS,
+            lambda: self._workflow_status_data(plan_id),
             plan_id=plan_id,
         )
 
@@ -480,6 +512,228 @@ class BlackcellClient:
             OperationId.PUBLICATION_PREFLIGHT,
             lambda: self._publication_service().preflight(stage).model_dump(mode="json"),
         )
+
+    def _schema_audit_data(self) -> dict[str, Any]:
+        schema = load_linear_schema()
+        protocols = {}
+        for protocol in sorted(PLANNING_PROTOCOL_CAPABILITIES, key=lambda item: item.__name__):
+            missing = missing_capabilities(schema, protocol)
+            capabilities = sorted(
+                PLANNING_PROTOCOL_CAPABILITIES[protocol],
+                key=lambda capability: capability.label,
+            )
+            protocols[protocol.__name__] = {
+                "capabilities": [capability.label for capability in capabilities],
+                "missing": [capability.label for capability in missing],
+                "schema_backed": all(
+                    capability_is_schema_backed(capability, schema) for capability in capabilities
+                ),
+            }
+        return {
+            "schema": {
+                "path": str(default_linear_schema_path()),
+                "sha256": schema.schema_sha256,
+                "query_type": schema.query_name,
+                "mutation_type": schema.mutation_name,
+                "types": len(schema.types),
+            },
+            "protocols": protocols,
+            "valid": all(not item["missing"] for item in protocols.values()),
+        }
+
+    def _workflow_run(self, plan_id: str) -> dict[str, Any] | PendingOutcome:
+        workflow_id = f"blackcell://workflow/{plan_id}"
+        steps: list[dict[str, Any]] = []
+
+        schema = self._schema_audit_data()
+        steps.append(
+            self._record_workflow_step(
+                plan_id,
+                workflow_id,
+                "schema_audit",
+                "schema",
+                "ok",
+                data={"schema_sha256": schema["schema"]["sha256"]},
+            )
+        )
+
+        proposal = self._plan_service(require_linear=True).reconcile_operation(plan_id)
+        project = proposal["project"]
+        status_name = (project.get("status") or {}).get("name")
+        steps.append(
+            self._record_workflow_step(
+                plan_id,
+                workflow_id,
+                "proposal_sync",
+                "project_workflow",
+                "ok",
+                data={
+                    "project_id": project["id"],
+                    "status": status_name,
+                    "workflow_reconciled": proposal["workflow_reconciled"],
+                    "presentation_reconciled": proposal["presentation_reconciled"],
+                },
+            )
+        )
+
+        approved = status_name == self.config.linear.project_statuses.approved
+        if not approved:
+            recovery = (
+                f"Move the Linear Project for {plan_id} to "
+                f"{self.config.linear.project_statuses.approved}."
+            )
+            steps.append(
+                self._record_workflow_step(
+                    plan_id,
+                    workflow_id,
+                    "approval_wait",
+                    "lifecycle",
+                    "pending",
+                    recovery=recovery,
+                    data={"status": status_name},
+                )
+            )
+            return PendingOutcome(
+                code="approval_wait",
+                message="Workflow is waiting for manual Linear Project approval.",
+                recovery=recovery,
+                data={"workflow_id": workflow_id, "plan_id": plan_id, "steps": steps},
+            )
+
+        steps.append(
+            self._record_workflow_step(
+                plan_id,
+                workflow_id,
+                "approval_wait",
+                "lifecycle",
+                "ok",
+                data={"status": status_name},
+            )
+        )
+
+        materialized = self._materialization_service().materialize(plan_id)
+        if materialized["pending_relations"] or materialized["pending_echoes"]:
+            recovery = materialized["recovery"] or f"blackcell workflow resume {plan_id}"
+            steps.append(
+                self._record_workflow_step(
+                    plan_id,
+                    workflow_id,
+                    "materialize_linear",
+                    "assignment_contract",
+                    "pending",
+                    recovery=recovery,
+                    data=materialized,
+                )
+            )
+            return PendingOutcome(
+                code="materialization_pending",
+                message="Workflow materialization is waiting for provider readback.",
+                recovery=recovery,
+                data={"workflow_id": workflow_id, "plan_id": plan_id, "steps": steps},
+            )
+        steps.append(
+            self._record_workflow_step(
+                plan_id,
+                workflow_id,
+                "materialize_linear",
+                "assignment_contract",
+                "ok",
+                data={
+                    "assignment_mutations": materialized["assignment_mutations"],
+                    "relation_mutations": materialized["relation_mutations"],
+                },
+            )
+        )
+        steps.append(
+            self._record_workflow_step(
+                plan_id,
+                workflow_id,
+                "verify_github_echoes",
+                "echo_contract",
+                "ok",
+                data={"echoes": len(materialized["verified_echoes"])},
+            )
+        )
+
+        try:
+            preflight = self._publication_service().preflight(PublicationStage.PUSH)
+        except BlackcellError as error:
+            recovery = error.recovery or "Correct publication identity before publishing."
+            steps.append(
+                self._record_workflow_step(
+                    plan_id,
+                    workflow_id,
+                    "publication_preflight",
+                    "publication_identity",
+                    "pending",
+                    recovery=recovery,
+                    data={"code": error.code, "details": error.details},
+                )
+            )
+            return PendingOutcome(
+                code="publication_preflight_pending",
+                message="Workflow stopped before publication because preflight failed.",
+                recovery=recovery,
+                data={"workflow_id": workflow_id, "plan_id": plan_id, "steps": steps},
+            )
+        steps.append(
+            self._record_workflow_step(
+                plan_id,
+                workflow_id,
+                "publication_preflight",
+                "publication_identity",
+                "ok",
+                data=preflight.model_dump(mode="json"),
+            )
+        )
+        return {"workflow_id": workflow_id, "plan_id": plan_id, "steps": steps}
+
+    def _workflow_status_data(self, plan_id: str) -> dict[str, Any]:
+        events = [
+            event
+            for event in self.chronicle.events(plan_id)
+            if event.event_type
+            in {
+                EventType.WORKFLOW_STEP_COMPLETED,
+                EventType.WORKFLOW_STEP_PENDING,
+                EventType.WORKFLOW_STEP_FAILED,
+            }
+        ]
+        steps = [event.payload for event in events]
+        return {
+            "workflow_id": f"blackcell://workflow/{plan_id}",
+            "plan_id": plan_id,
+            "steps": steps,
+            "last_step": steps[-1] if steps else None,
+        }
+
+    def _record_workflow_step(
+        self,
+        plan_id: str,
+        workflow_id: str,
+        step_id: str,
+        invariant_group: str,
+        result: str,
+        *,
+        recovery: str | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        context = current_operation.get()
+        payload = {
+            "workflow_id": workflow_id,
+            "step_id": step_id,
+            "invariant_group": invariant_group,
+            "result": result,
+            "recovery": recovery,
+            "correlation_id": context.correlation_id if context else None,
+            "data": data or {},
+        }
+        event_type = {
+            "ok": EventType.WORKFLOW_STEP_COMPLETED,
+            "pending": EventType.WORKFLOW_STEP_PENDING,
+        }.get(result, EventType.WORKFLOW_STEP_FAILED)
+        self.chronicle.append(event_type, plan_id, payload)
+        return payload
 
     def _result(
         self,

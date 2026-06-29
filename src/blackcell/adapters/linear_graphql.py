@@ -62,6 +62,8 @@ class LinearLabel(BaseModel):
 
     id: str
     name: str
+    color: str | None = None
+    description: str | None = None
     archivedAt: str | None = None
 
 
@@ -76,8 +78,14 @@ class LinearProject(BaseModel):
     color: str
     url: str
     archivedAt: str | None = None
+    lead: dict[str, Any] | None = None
+    members: dict[str, Any] = Field(default_factory=dict)
+    labels: dict[str, Any] = Field(default_factory=dict)
+    priority: int | None = None
+    priorityLabel: str | None = None
     status: LinearStatus
     teams: dict[str, Any]
+    issues: dict[str, Any] = Field(default_factory=dict)
     externalLinks: dict[str, Any]
 
 
@@ -107,6 +115,16 @@ class LinearIssue(BaseModel):
     title: str
     description: str | None = None
     url: str
+    priority: int | None = None
+    assignee: dict[str, Any] | None = None
+    delegate: dict[str, Any] | None = None
+    parent: dict[str, Any] | None = None
+    team: dict[str, Any] | None = None
+    state: dict[str, Any] | None = None
+    project: dict[str, Any] | None = None
+    labels: dict[str, Any] = Field(default_factory=dict)
+    relations: dict[str, Any] = Field(default_factory=dict)
+    inverseRelations: dict[str, Any] = Field(default_factory=dict)
 
 
 class LinearRelation(BaseModel):
@@ -346,15 +364,36 @@ class LinearGraphQLAdapter:
         )
         return [self._validate(LinearIntegration, node, "integration") for node in nodes]
 
+    def project_labels(self) -> list[dict[str, Any]]:
+        nodes = list(
+            self._paginate(
+                """
+                query ProjectLabels($after: String) {
+                  projectLabels(first: 50, after: $after, includeArchived: false) {
+                    nodes { id name color description archivedAt }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+                """,
+                ("projectLabels",),
+            )
+        )
+        return [self._validate(LinearLabel, node, "project label") for node in nodes]
+
     def projects(self, team_id: str) -> list[dict[str, Any]]:
         nodes = list(
             self._paginate(
                 """
                 query Projects($teamId: String!, $after: String) {
                   team(id: $teamId) {
-                    projects(first: 50, after: $after, includeArchived: false) {
+                    projects(first: 25, after: $after, includeArchived: false) {
                       nodes {
                         id name description content icon color url archivedAt
+                        lead { id name email }
+                        members(first: 50) { nodes { id name email } }
+                        labels(first: 50) { nodes { id name color archivedAt } }
+                        priority
+                        priorityLabel
                         status { id name type }
                         teams(first: 10) { nodes { id key name } }
                         externalLinks(first: 50) {
@@ -390,6 +429,10 @@ class LinearGraphQLAdapter:
         status_id: str,
         icon: str | None,
         color: str,
+        lead_id: str | None = None,
+        member_ids: list[str] | None = None,
+        label_ids: list[str] | None = None,
+        priority: int | None = None,
     ) -> dict[str, Any]:
         input_data = {
             "name": name,
@@ -401,6 +444,14 @@ class LinearGraphQLAdapter:
         }
         if icon is not None:
             input_data["icon"] = icon
+        if lead_id is not None:
+            input_data["leadId"] = lead_id
+        if member_ids is not None:
+            input_data["memberIds"] = member_ids
+        if label_ids is not None:
+            input_data["labelIds"] = label_ids
+        if priority is not None:
+            input_data["priority"] = priority
         data = self.transport.execute(
             """
             mutation CreateProject($input: ProjectCreateInput!) {
@@ -408,8 +459,16 @@ class LinearGraphQLAdapter:
                 success
                 project {
                   id name description content icon color url archivedAt
+                  lead { id name email }
+                  members(first: 50) { nodes { id name email } }
+                  labels(first: 50) { nodes { id name color archivedAt } }
+                  priority
+                  priorityLabel
                   status { id name type }
                   teams(first: 10) { nodes { id key name } }
+                  issues(first: 50) {
+                    nodes { id identifier title url archivedAt }
+                  }
                   externalLinks(first: 50) {
                     nodes { id url label archivedAt }
                   }
@@ -448,8 +507,16 @@ class LinearGraphQLAdapter:
                 success
                 project {
                   id name description content icon color url archivedAt
+                  lead { id name email }
+                  members(first: 50) { nodes { id name email } }
+                  labels(first: 50) { nodes { id name color archivedAt } }
+                  priority
+                  priorityLabel
                   status { id name type }
                   teams(first: 10) { nodes { id key name } }
+                  issues(first: 50) {
+                    nodes { id identifier title url archivedAt }
+                  }
                   externalLinks(first: 50) {
                     nodes { id url label archivedAt }
                   }
@@ -466,6 +533,152 @@ class LinearGraphQLAdapter:
         payload = self._mapping(data.get("projectUpdate"), "projectUpdate")
         if not payload.get("success") or not payload.get("project"):
             raise RemoteFailure("Linear did not confirm Project presentation update.")
+        return self._validate(LinearProject, payload["project"], "updated project")
+
+    def update_project_workflow(
+        self,
+        project_id: str,
+        *,
+        lead_id: str | None = None,
+        member_ids: list[str] | None = None,
+        label_ids: list[str] | None = None,
+        priority: int | None = None,
+        status_id: str | None = None,
+    ) -> dict[str, Any]:
+        input_data: dict[str, Any] = {}
+        if lead_id is not None:
+            input_data["leadId"] = lead_id
+        if member_ids is not None:
+            input_data["memberIds"] = member_ids
+        if label_ids is not None:
+            input_data["labelIds"] = label_ids
+        if priority is not None:
+            input_data["priority"] = priority
+        if status_id is not None:
+            input_data["statusId"] = status_id
+        data = self.transport.execute(
+            """
+            mutation UpdateProjectWorkflow($id: String!, $input: ProjectUpdateInput!) {
+              projectUpdate(id: $id, input: $input) {
+                success
+                project {
+                  id name description content icon color url archivedAt
+                  lead { id name email }
+                  members(first: 50) { nodes { id name email } }
+                  labels(first: 50) { nodes { id name color archivedAt } }
+                  priority
+                  priorityLabel
+                  status { id name type }
+                  teams(first: 10) { nodes { id key name } }
+                  issues(first: 50) {
+                    nodes { id identifier title url archivedAt }
+                  }
+                  externalLinks(first: 50) {
+                    nodes { id url label archivedAt }
+                  }
+                }
+              }
+            }
+            """,
+            {"id": project_id, "input": input_data},
+            mutation=True,
+        )
+        payload = self._mapping(data.get("projectUpdate"), "projectUpdate")
+        if not payload.get("success") or not payload.get("project"):
+            raise RemoteFailure("Linear did not confirm Project workflow update.")
+        return self._validate(LinearProject, payload["project"], "updated project")
+
+    def create_project_label(
+        self,
+        *,
+        name: str,
+        color: str,
+        description: str | None = None,
+    ) -> dict[str, Any]:
+        input_data: dict[str, Any] = {"name": name, "color": color}
+        if description is not None:
+            input_data["description"] = description
+        data = self.transport.execute(
+            """
+            mutation CreateProjectLabel($input: ProjectLabelCreateInput!) {
+              projectLabelCreate(input: $input) {
+                success
+                projectLabel { id name color description archivedAt }
+              }
+            }
+            """,
+            {"input": input_data},
+            mutation=True,
+        )
+        payload = self._mapping(data.get("projectLabelCreate"), "projectLabelCreate")
+        if not payload.get("success") or not payload.get("projectLabel"):
+            raise RemoteFailure("Linear did not confirm Project label creation.")
+        return self._validate(LinearLabel, payload["projectLabel"], "created project label")
+
+    def add_project_label(self, project_id: str, label_id: str) -> dict[str, Any]:
+        data = self.transport.execute(
+            """
+            mutation AddProjectLabel($id: String!, $labelId: String!) {
+              projectAddLabel(id: $id, labelId: $labelId) {
+                success
+                project {
+                  id name description content icon color url archivedAt
+                  lead { id name email }
+                  members(first: 50) { nodes { id name email } }
+                  labels(first: 50) { nodes { id name color archivedAt } }
+                  priority
+                  priorityLabel
+                  status { id name type }
+                  teams(first: 10) { nodes { id key name } }
+                  issues(first: 50) {
+                    nodes { id identifier title url archivedAt }
+                  }
+                  externalLinks(first: 50) {
+                    nodes { id url label archivedAt }
+                  }
+                }
+              }
+            }
+            """,
+            {"id": project_id, "labelId": label_id},
+            mutation=True,
+        )
+        payload = self._mapping(data.get("projectAddLabel"), "projectAddLabel")
+        if not payload.get("success") or not payload.get("project"):
+            raise RemoteFailure("Linear did not confirm Project label addition.")
+        return self._validate(LinearProject, payload["project"], "updated project")
+
+    def remove_project_label(self, project_id: str, label_id: str) -> dict[str, Any]:
+        data = self.transport.execute(
+            """
+            mutation RemoveProjectLabel($id: String!, $labelId: String!) {
+              projectRemoveLabel(id: $id, labelId: $labelId) {
+                success
+                project {
+                  id name description content icon color url archivedAt
+                  lead { id name email }
+                  members(first: 50) { nodes { id name email } }
+                  labels(first: 50) { nodes { id name color archivedAt } }
+                  priority
+                  priorityLabel
+                  status { id name type }
+                  teams(first: 10) { nodes { id key name } }
+                  issues(first: 50) {
+                    nodes { id identifier title url archivedAt }
+                  }
+                  externalLinks(first: 50) {
+                    nodes { id url label archivedAt }
+                  }
+                }
+              }
+            }
+            """,
+            {"id": project_id, "labelId": label_id},
+            mutation=True,
+        )
+        payload = self._mapping(data.get("projectRemoveLabel"), "projectRemoveLabel")
+        if not payload.get("success") or not payload.get("project"):
+            raise RemoteFailure("Linear did not confirm Project label removal.")
         return self._validate(LinearProject, payload["project"], "updated project")
 
     def create_project_external_link(
@@ -634,34 +847,133 @@ class LinearGraphQLAdapter:
         priority: int,
         label_ids: list[str],
         parent_id: str | None,
+        assignee_id: str | None = None,
+        delegate_id: str | None = None,
     ) -> dict[str, Any]:
+        input_data = {
+            "teamId": team_id,
+            "projectId": project_id,
+            "stateId": state_id,
+            "title": title,
+            "description": description,
+            "priority": priority,
+            "labelIds": label_ids,
+            "parentId": parent_id,
+        }
+        if assignee_id is not None:
+            input_data["assigneeId"] = assignee_id
+        if delegate_id is not None:
+            input_data["delegateId"] = delegate_id
         data = self.transport.execute(
             """
             mutation CreateIssue($input: IssueCreateInput!) {
               issueCreate(input: $input) {
                 success
-                issue { id identifier title description url parent { id identifier } }
+                issue {
+                  id identifier title description url archivedAt
+                  priority
+                  assignee { id name email }
+                  delegate { id name email }
+                  parent { id identifier }
+                  team { id key name }
+                  state { id name type }
+                  project { id }
+                  labels(first: 50) { nodes { id name } }
+                  relations(first: 50) {
+                    nodes {
+                      id type
+                      issue { id identifier }
+                      relatedIssue { id identifier }
+                    }
+                  }
+                  inverseRelations(first: 50) {
+                    nodes {
+                      id type
+                      issue { id identifier }
+                      relatedIssue { id identifier }
+                    }
+                  }
+                }
               }
             }
             """,
-            {
-                "input": {
-                    "teamId": team_id,
-                    "projectId": project_id,
-                    "stateId": state_id,
-                    "title": title,
-                    "description": description,
-                    "priority": priority,
-                    "labelIds": label_ids,
-                    "parentId": parent_id,
-                }
-            },
+            {"input": input_data},
             mutation=True,
         )
         payload = self._mapping(data.get("issueCreate"), "issueCreate")
         if not payload.get("success") or not payload.get("issue"):
             raise RemoteFailure("Linear did not confirm issue creation.")
         return self._validate(LinearIssue, payload["issue"], "created issue")
+
+    def update_issue(
+        self,
+        issue_id: str,
+        *,
+        team_id: str,
+        project_id: str,
+        state_id: str,
+        title: str,
+        description: str,
+        priority: int,
+        label_ids: list[str],
+        parent_id: str | None,
+        assignee_id: str | None = None,
+        delegate_id: str | None = None,
+    ) -> dict[str, Any]:
+        input_data = {
+            "teamId": team_id,
+            "projectId": project_id,
+            "stateId": state_id,
+            "title": title,
+            "description": description,
+            "priority": priority,
+            "labelIds": label_ids,
+            "parentId": parent_id,
+        }
+        if assignee_id is not None:
+            input_data["assigneeId"] = assignee_id
+        if delegate_id is not None:
+            input_data["delegateId"] = delegate_id
+        data = self.transport.execute(
+            """
+            mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
+              issueUpdate(id: $id, input: $input) {
+                success
+                issue {
+                  id identifier title description url archivedAt
+                  priority
+                  assignee { id name email }
+                  delegate { id name email }
+                  parent { id identifier }
+                  team { id key name }
+                  state { id name type }
+                  project { id }
+                  labels(first: 50) { nodes { id name } }
+                  relations(first: 50) {
+                    nodes {
+                      id type
+                      issue { id identifier }
+                      relatedIssue { id identifier }
+                    }
+                  }
+                  inverseRelations(first: 50) {
+                    nodes {
+                      id type
+                      issue { id identifier }
+                      relatedIssue { id identifier }
+                    }
+                  }
+                }
+              }
+            }
+            """,
+            {"id": issue_id, "input": input_data},
+            mutation=True,
+        )
+        payload = self._mapping(data.get("issueUpdate"), "issueUpdate")
+        if not payload.get("success") or not payload.get("issue"):
+            raise RemoteFailure("Linear did not confirm issue update.")
+        return self._validate(LinearIssue, payload["issue"], "updated issue")
 
     def create_blocking_relation(self, blocker_id: str, blocked_id: str) -> dict[str, Any]:
         data = self.transport.execute(
