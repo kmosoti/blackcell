@@ -1,0 +1,62 @@
+schema_version = "0.1"
+
+[identity]
+planner_user_id = "1ed22c47-390f-41e6-b63d-497f58cccb3b"
+planner_name = "Kennedy Mosoti"
+planner_email = "kennedy.rmosoti@gmail.com"
+owner_github_login = "kmosoti"
+executor_github_login = "kz-harbringer"
+
+[repository]
+owner = "kmosoti"
+name = "blackcell"
+default_branch = "main"
+
+[linear]
+team_id = "f200f3d3-ca1b-4cc8-a9c2-3d218a278332"
+team_key = "BLCELL"
+team_name = "BlackCell"
+planning_authority = "linear"
+issue_projection_provider = "linear_github_sync"
+issue_sync_mode = "two_way"
+
+[linear.project_presentation]
+brand = "BlackCell"
+color = "#111827"
+repository_link_label = "BlackCell repository"
+
+[linear.project_workflow]
+lead_user_id = "1ed22c47-390f-41e6-b63d-497f58cccb3b"
+member_user_ids = ["1ed22c47-390f-41e6-b63d-497f58cccb3b"]
+priority = "high"
+label_names = ["BlackCell", "BCP-0001"]
+
+[linear.project_statuses]
+proposal = "Proposal"
+approved = "Approved"
+active = "In Progress"
+completed = "Completed"
+canceled = "Canceled"
+
+[linear.issue_states]
+backlog = "Backlog"
+ready = "Ready"
+in_progress = "In Progress"
+in_review = "In Review"
+done = "Done"
+canceled = "Canceled"
+
+[ledger]
+backend = "sqlite"
+append_only = true
+
+[materialization]
+marker_prefix = "blackcell"
+projection_timeout_seconds = 120
+
+[publication]
+commit_email = "290864439+kz-harbringer@users.noreply.github.com"
+push_remote = "origin"
+push_ssh_host = "github.com-kz"
+branch_prefix = "blackcell/"
+pull_request_readiness = "ready_for_review"
