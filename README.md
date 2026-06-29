@@ -26,10 +26,12 @@ uv run blackcell directive validate path/to/plan.json
 uv run blackcell operation inspect BCP-0001
 uv run blackcell operation reconcile BCP-0001
 uv run blackcell operation verify BCP-0001
+uv run blackcell publication preflight --stage commit
 ```
 
 Text is the default format in a terminal; piped output defaults to JSON.
-Use `--format text` or `--format json` to override it.
+Use `--format text`, `--format json`, or `--format jsonl` to override it.
+Set `BLACKCELL_EVENTS=jsonl` to emit redacted operation events to stderr.
 
 ## Authority boundaries
 
@@ -41,3 +43,8 @@ Use `--format text` or `--format json` to override it.
 BlackCell never writes GitHub resources during this proof. The Linear API key is
 read from the environment and is never included in configuration, logs,
 chronicle events, exceptions, or subprocess environments.
+
+Before commit, push, or pull-request work, `publication preflight` verifies the
+configured executor identity, branch namespace, commit author, push target, and
+active GitHub/PR identity for the selected stage. The workflow is read-only; it
+does not commit, push, create a PR, approve, or merge.

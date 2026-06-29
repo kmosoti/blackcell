@@ -1,4 +1,4 @@
-"""Shared deterministic fixtures for Blackcell tests."""
+"""Shared deterministic fixtures for BlackCell tests."""
 
 from collections.abc import Callable
 from typing import Any
@@ -56,6 +56,13 @@ def config_data() -> dict[str, Any]:
         "materialization": {
             "marker_prefix": "blackcell",
             "projection_timeout_seconds": 120,
+        },
+        "publication": {
+            "commit_email": "290864439+kz-harbringer@users.noreply.github.com",
+            "push_remote": "origin",
+            "push_ssh_host": "github.com-kz",
+            "branch_prefix": "blackcell/",
+            "require_draft_pr": True,
         },
     }
 

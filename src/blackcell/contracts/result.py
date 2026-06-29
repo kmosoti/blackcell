@@ -16,6 +16,14 @@ class ErrorDetail(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class ResultMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    operation: str
+    facade: str
+    correlation_id: str
+
+
 class ResultEnvelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -23,6 +31,7 @@ class ResultEnvelope(BaseModel):
     exit_class: str
     data: dict[str, Any] = Field(default_factory=dict)
     error: ErrorDetail | None = None
+    meta: ResultMetadata | None = None
 
     @classmethod
     def ok(cls, data: dict[str, Any] | None = None) -> ResultEnvelope:
@@ -50,4 +59,21 @@ class ResultEnvelope(BaseModel):
                 recovery=error.recovery,
                 details=error.details,
             ),
+        )
+
+    def with_context(
+        self,
+        *,
+        operation: str,
+        facade: str,
+        correlation_id: str,
+    ) -> ResultEnvelope:
+        return self.model_copy(
+            update={
+                "meta": ResultMetadata(
+                    operation=operation,
+                    facade=facade,
+                    correlation_id=correlation_id,
+                )
+            }
         )

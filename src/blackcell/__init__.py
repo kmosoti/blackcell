@@ -1,4 +1,4 @@
-"""Blackcell public SDK."""
+"""BlackCell public SDK."""
 
 from blackcell.contracts.plan import PlanSpec
 from blackcell.sdk.client import BlackcellClient

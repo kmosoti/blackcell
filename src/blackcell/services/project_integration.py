@@ -5,10 +5,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from blackcell.backends.planning import PlanningProjectWriter
 from blackcell.config.model import BlackcellConfig
-from blackcell.contracts.errors import ConflictFailure
+from blackcell.contracts.errors import ConflictFailure, PolicyFailure
 from blackcell.contracts.markers import plan_marker
 from blackcell.contracts.plan import PlanSpec
+from blackcell.policy.lifecycle import ProjectCapability, ProjectStateMachine
 from blackcell.services.rendering import (
     normalize_presentation_text,
     render_project_description,
@@ -39,7 +41,7 @@ class ProjectReconciliation(BaseModel):
 
 
 class ProjectIntegration:
-    def __init__(self, config: BlackcellConfig, linear: Any) -> None:
+    def __init__(self, config: BlackcellConfig, linear: PlanningProjectWriter) -> None:
         self.config = config
         self.linear = linear
 
@@ -97,7 +99,13 @@ class ProjectIntegration:
             return ProjectReconciliation(project=project)
 
         status_name = (project.get("status") or {}).get("name")
-        if status_name != self.config.linear.project_statuses.proposal:
+        try:
+            ProjectStateMachine(self.config.linear.project_statuses).require(
+                status_name,
+                ProjectCapability.RECONCILE_PRESENTATION,
+                message="Linear Project presentation diverges after the Proposal gate.",
+            )
+        except PolicyFailure as error:
             raise ConflictFailure(
                 "Linear Project presentation diverges after the Proposal gate.",
                 details={
@@ -106,7 +114,7 @@ class ProjectIntegration:
                     "status": status_name,
                     "drift": assessment.presentation_drift,
                 },
-            )
+            ) from error
 
         drift = assessment.presentation_drift
         presentation = self.config.linear.project_presentation

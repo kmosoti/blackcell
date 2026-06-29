@@ -1,4 +1,4 @@
-"""Blackcell SDK."""
+"""BlackCell SDK."""
 
 from blackcell.sdk.client import BlackcellClient
 

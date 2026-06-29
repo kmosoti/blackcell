@@ -27,6 +27,7 @@ def test_config_accepts_pinned_authority() -> None:
         (("linear", "issue_sync_mode"), "one_way"),
         (("ledger", "append_only"), False),
         (("materialization", "projection_timeout_seconds"), 0),
+        (("publication", "require_draft_pr"), False),
     ],
 )
 def test_config_rejects_contract_drift(path: tuple[str, ...], value: object) -> None:
@@ -70,5 +71,5 @@ def test_load_config_wraps_invalid_toml(tmp_path: Path) -> None:
     path = tmp_path / "blackcell.toml"
     path.write_text("not = [valid", encoding="utf-8")
 
-    with pytest.raises(ValidationFailure, match="Invalid Blackcell configuration"):
+    with pytest.raises(ValidationFailure, match="Invalid BlackCell configuration"):
         load_config(path)

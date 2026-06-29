@@ -43,8 +43,8 @@ def load_config(path: str | Path | None = None) -> BlackcellConfig:
             for item in error.errors(include_input=False, include_url=False)
         ]
         raise ValidationFailure(
-            "Invalid Blackcell configuration.",
+            "Invalid BlackCell configuration.",
             details={"failures": failures},
         ) from error
     except (OSError, tomllib.TOMLDecodeError) as error:
-        raise ValidationFailure(f"Invalid Blackcell configuration: {error}") from error
+        raise ValidationFailure(f"Invalid BlackCell configuration: {error}") from error

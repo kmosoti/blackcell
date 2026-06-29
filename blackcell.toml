@@ -47,3 +47,10 @@ append_only = true
 [materialization]
 marker_prefix = "blackcell"
 projection_timeout_seconds = 120
+
+[publication]
+commit_email = "290864439+kz-harbringer@users.noreply.github.com"
+push_remote = "origin"
+push_ssh_host = "github.com-kz"
+branch_prefix = "blackcell/"
+require_draft_pr = true

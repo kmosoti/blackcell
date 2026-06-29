@@ -1,1 +1,1 @@
-"""Thematic Blackcell command groups."""
+"""Thematic BlackCell command groups."""

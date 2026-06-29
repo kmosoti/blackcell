@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from blackcell.adapters.linear_graphql import LinearGraphQLAdapter
+from blackcell.backends.planning import PlanWorkflowBackend
 from blackcell.config.model import BlackcellConfig
 from blackcell.contracts.errors import ConflictFailure, NotFoundFailure, PolicyFailure
 from blackcell.contracts.plan import PlanSpec
@@ -19,7 +19,7 @@ class PlanService:
         config: BlackcellConfig,
         chronicle: Chronicle,
         store: PlanStore,
-        linear: LinearGraphQLAdapter | None = None,
+        linear: PlanWorkflowBackend | None = None,
     ) -> None:
         self.config = config
         self.chronicle = chronicle
@@ -134,7 +134,7 @@ class PlanService:
             )
         return plan, matches[0]
 
-    def _linear(self) -> LinearGraphQLAdapter:
+    def _linear(self) -> PlanWorkflowBackend:
         if self.linear is None:
             raise PolicyFailure("This operation requires LINEAR_API_KEY.")
         return self.linear

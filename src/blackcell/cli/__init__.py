@@ -1,1 +1,1 @@
-"""Blackcell command-line interface."""
+"""BlackCell command-line interface."""

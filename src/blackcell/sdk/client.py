@@ -1,7 +1,8 @@
-"""Provider-neutral public Blackcell SDK client."""
+"""Provider-neutral public BlackCell SDK client."""
 
 import subprocess
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -9,26 +10,39 @@ from pydantic import SecretStr
 
 from blackcell.adapters.github_rest import GitHubRestAdapter
 from blackcell.adapters.linear_graphql import LinearGraphQLAdapter, LinearGraphQLTransport
+from blackcell.adapters.local_publication import LocalPublicationAdapter
+from blackcell.backends.publication import PublicationBackend
 from blackcell.config.loader import load_config
 from blackcell.config.model import BlackcellConfig, RuntimeSecrets
 from blackcell.contracts.errors import (
     AuthenticationFailure,
-    BlackcellError,
     ConflictFailure,
     NotFoundFailure,
     PolicyFailure,
 )
+from blackcell.contracts.facade import Credential, OperationSpec
 from blackcell.contracts.plan import PlanSpec
+from blackcell.contracts.publication import PublicationStage
 from blackcell.contracts.result import ResultEnvelope
 from blackcell.ledger.sqlite import Chronicle, EventType
 from blackcell.policy.identity import verify_viewer_and_team
 from blackcell.policy.sync import sanitized_environment
+from blackcell.runtime.execution import (
+    AnomalyAspect,
+    CredentialAspect,
+    OperationExecutor,
+    PendingOutcome,
+    StructuredEventAspect,
+)
+from blackcell.runtime.observability import EventSink, event_sink_from_environment
+from blackcell.sdk.operations import OperationId, spec
 from blackcell.services.materialization_service import (
     LINEAR_PRIORITY,
     MaterializationService,
 )
 from blackcell.services.plan_service import PlanService
 from blackcell.services.plan_store import PlanStore
+from blackcell.services.publication_service import PublicationService
 from blackcell.services.rendering import normalize_presentation_text, render_issue_description
 from blackcell.services.sync_service import SyncService
 from blackcell.services.verification_service import VerificationService
@@ -44,6 +58,8 @@ class BlackcellClient:
         store: PlanStore | None = None,
         linear: LinearGraphQLAdapter | None = None,
         github: GitHubRestAdapter | None = None,
+        publication: PublicationBackend | None = None,
+        event_sink: EventSink | None = None,
     ) -> None:
         self.config = config
         self.secrets = secrets or RuntimeSecrets()
@@ -51,6 +67,14 @@ class BlackcellClient:
         self.store = store or PlanStore()
         self._linear = linear
         self._github = github
+        self._publication = publication
+        self._executor = OperationExecutor(
+            (
+                StructuredEventAspect(event_sink or event_sink_from_environment()),
+                CredentialAspect(self._prepare_credential),
+                AnomalyAspect(self.chronicle),
+            )
+        )
 
     def close(self) -> None:
         if self._linear is not None:
@@ -80,25 +104,31 @@ class BlackcellClient:
                 "work_items": len(validated.work_items),
             }
 
-        return self._result(operation)
+        return self._result(OperationId.DIRECTIVE_VALIDATE, operation)
 
     def propose_plan(self, plan: PlanSpec | str | Path) -> ResultEnvelope:
-        return self._result(lambda: self._plan_service(require_linear=True).propose(plan))
+        return self._result(
+            OperationId.DIRECTIVE_PROPOSE,
+            lambda: self._plan_service(require_linear=True).propose(plan),
+        )
 
     def get_plan_status(self, plan_id: str) -> ResultEnvelope:
         return self._result(
+            OperationId.DIRECTIVE_STATUS,
             lambda: self._plan_service(require_linear=True).operation(plan_id),
             plan_id=plan_id,
         )
 
     def inspect_operation(self, plan_id: str) -> ResultEnvelope:
         return self._result(
+            OperationId.OPERATION_INSPECT,
             lambda: self._plan_service(require_linear=True).inspect_operation(plan_id),
             plan_id=plan_id,
         )
 
     def reconcile_operation(self, plan_id: str) -> ResultEnvelope:
         return self._result(
+            OperationId.OPERATION_RECONCILE,
             lambda: self._plan_service(require_linear=True).reconcile_operation(plan_id),
             plan_id=plan_id,
         )
@@ -106,32 +136,46 @@ class BlackcellClient:
     def materialize_plan(
         self, plan_id: str, *, projection_timeout: float | None = None
     ) -> ResultEnvelope:
-        def operation() -> dict[str, Any]:
+        return self._materialize(
+            plan_id,
+            operation_id=OperationId.DIRECTIVE_MATERIALIZE,
+            projection_timeout=projection_timeout,
+        )
+
+    def reconcile_plan(self, plan_id: str) -> ResultEnvelope:
+        return self._materialize(
+            plan_id,
+            operation_id=OperationId.DIRECTIVE_RECONCILE,
+        )
+
+    def _materialize(
+        self,
+        plan_id: str,
+        *,
+        operation_id: OperationId,
+        projection_timeout: float | None = None,
+    ) -> ResultEnvelope:
+        def operation() -> dict[str, Any] | PendingOutcome:
             result = self._materialization_service().materialize(
                 plan_id, projection_timeout=projection_timeout
             )
             if result["pending_relations"]:
-                return {
-                    **result,
-                    "_pending": True,
-                    "_pending_code": "pending_relation_verification",
-                    "_pending_message": (
-                        "One or more Linear blocking relations await readback verification."
-                    ),
-                }
+                return PendingOutcome(
+                    code="pending_relation_verification",
+                    message="One or more Linear blocking relations await readback verification.",
+                    recovery=result["recovery"],
+                    data=result,
+                )
             if result["pending_echoes"]:
-                return {
-                    **result,
-                    "_pending": True,
-                    "_pending_code": "pending_projection",
-                    "_pending_message": ("One or more GitHub Issue echoes are not visible yet."),
-                }
+                return PendingOutcome(
+                    code="pending_projection",
+                    message="One or more GitHub Issue echoes are not visible yet.",
+                    recovery=result["recovery"],
+                    data=result,
+                )
             return result
 
-        return self._result(operation, plan_id=plan_id)
-
-    def reconcile_plan(self, plan_id: str) -> ResultEnvelope:
-        return self.materialize_plan(plan_id)
+        return self._result(operation_id, operation, plan_id=plan_id)
 
     def pulse(self, target: str | None = None) -> ResultEnvelope:
         def operation() -> dict[str, Any]:
@@ -218,13 +262,41 @@ class BlackcellClient:
                 }
             return {"checks": checks}
 
-        return self._result(operation)
+        credentials = {
+            "linear": frozenset({Credential.LINEAR}),
+            "github": frozenset({Credential.GITHUB}),
+            "echo": frozenset({Credential.GITHUB}),
+        }.get(target, frozenset({Credential.LINEAR, Credential.GITHUB}))
+        pulse_spec = replace(spec(OperationId.PULSE), credentials=credentials)
+        return self._execute(pulse_spec, operation)
 
     def profile(self) -> ResultEnvelope:
-        return ResultEnvelope.ok(self.config.model_dump(mode="json"))
+        return self._result(
+            OperationId.PROFILE_SHOW,
+            lambda: self.config.model_dump(mode="json"),
+        )
+
+    def validate_profile(self) -> ResultEnvelope:
+        def operation() -> dict[str, Any]:
+            return {
+                "valid": True,
+                "schema_version": self.config.schema_version,
+                "repository": f"{self.config.repository.owner}/{self.config.repository.name}",
+                "linear_team": {
+                    "id": self.config.linear.team_id,
+                    "key": self.config.linear.team_key,
+                    "name": self.config.linear.team_name,
+                },
+            }
+
+        return self._result(OperationId.PROFILE_VALIDATE, operation)
 
     def operation(self, plan_id: str) -> ResultEnvelope:
-        return self.get_plan_status(plan_id)
+        return self._result(
+            OperationId.OPERATION_VERIFY,
+            lambda: self._plan_service(require_linear=True).operation(plan_id),
+            plan_id=plan_id,
+        )
 
     def assignments(self, plan_id: str) -> ResultEnvelope:
         def operation() -> dict[str, Any]:
@@ -233,7 +305,7 @@ class BlackcellClient:
             issues = self._linear_adapter().project_issues(operation_data["project"]["id"])
             return {"plan_id": plan.plan_id, "assignments": issues}
 
-        return self._result(operation, plan_id=plan_id)
+        return self._result(OperationId.ASSIGNMENT_LIST, operation, plan_id=plan_id)
 
     def verify_assignments(self, plan_id: str) -> ResultEnvelope:
         def operation() -> dict[str, Any]:
@@ -319,52 +391,64 @@ class BlackcellClient:
                 )
             return {"plan_id": plan_id, "verified": verified}
 
-        return self._result(operation, plan_id=plan_id)
+        return self._result(OperationId.ASSIGNMENT_VERIFY, operation, plan_id=plan_id)
 
     def echoes(self, plan_id: str) -> ResultEnvelope:
-        def operation() -> dict[str, Any]:
+        def operation() -> dict[str, Any] | PendingOutcome:
             plan = self.store.load(plan_id)
             verified, pending = self._verification_service().verify_echoes(plan)
-            return {
+            data = {
                 "plan_id": plan_id,
                 "verified": verified,
                 "pending": pending,
-                "_pending": bool(pending),
                 "recovery": f"blackcell directive reconcile {plan_id}" if pending else None,
             }
+            if pending:
+                return PendingOutcome(
+                    code="pending_projection",
+                    message="One or more GitHub Issue echoes are not visible yet.",
+                    recovery=f"blackcell directive reconcile {plan_id}",
+                    data=data,
+                )
+            return data
 
-        return self._result(operation, plan_id=plan_id)
+        return self._result(OperationId.ECHO_VERIFY, operation, plan_id=plan_id)
 
     def recon_status(self, plan_id: str) -> ResultEnvelope:
         return self._result(
+            OperationId.RECON_STATUS,
             lambda: self._sync_service().status(plan_id),
             plan_id=plan_id,
         )
 
     def chronicle_events(self, plan_id: str | None = None) -> ResultEnvelope:
-        return ResultEnvelope.ok(
-            {"events": [event.model_dump(mode="json") for event in self.chronicle.events(plan_id)]}
+        return self._result(
+            OperationId.CHRONICLE_SHOW,
+            lambda: {
+                "events": [
+                    event.model_dump(mode="json") for event in self.chronicle.events(plan_id)
+                ]
+            },
+            plan_id=plan_id,
         )
 
     def anomalies(self, anomaly_id: int | None = None) -> ResultEnvelope:
-        all_events = self.chronicle.events()
-        events = [
-            event
-            for event in all_events
-            if event.event_type == EventType.ANOMALY_DETECTED
-            and (anomaly_id is None or event.id == anomaly_id)
-        ]
-        if anomaly_id is not None and not events:
-            return ResultEnvelope.from_error(
-                NotFoundFailure(f"Anomaly event {anomaly_id} was not found.")
-            )
-        resolutions = {
-            event.payload["anomaly_id"]: event
-            for event in all_events
-            if event.event_type == EventType.ANOMALY_RESOLVED
-        }
-        return ResultEnvelope.ok(
-            {
+        def operation() -> dict[str, Any]:
+            all_events = self.chronicle.events()
+            events = [
+                event
+                for event in all_events
+                if event.event_type == EventType.ANOMALY_DETECTED
+                and (anomaly_id is None or event.id == anomaly_id)
+            ]
+            if anomaly_id is not None and not events:
+                raise NotFoundFailure(f"Anomaly event {anomaly_id} was not found.")
+            resolutions = {
+                event.payload["anomaly_id"]: event
+                for event in all_events
+                if event.event_type == EventType.ANOMALY_RESOLVED
+            }
+            return {
                 "anomalies": [
                     {
                         **event.model_dump(mode="json"),
@@ -378,50 +462,42 @@ class BlackcellClient:
                     for event in events
                 ]
             }
-        )
+
+        return self._result(OperationId.ANOMALY_LIST, operation)
 
     def resolve_anomaly(self, anomaly_id: int, note: str) -> ResultEnvelope:
         def operation() -> dict[str, Any]:
             resolution_id = self.chronicle.resolve_anomaly(anomaly_id, note)
             return {"anomaly_id": anomaly_id, "resolution_event_id": resolution_id}
 
-        return self._result(operation)
+        return self._result(OperationId.ANOMALY_RESOLVE, operation)
+
+    def publication_preflight(
+        self,
+        stage: PublicationStage = PublicationStage.PULL_REQUEST,
+    ) -> ResultEnvelope:
+        return self._result(
+            OperationId.PUBLICATION_PREFLIGHT,
+            lambda: self._publication_service().preflight(stage).model_dump(mode="json"),
+        )
 
     def _result(
         self,
-        operation: Callable[[], dict[str, Any]],
+        operation_id: OperationId,
+        operation: Callable[[], dict[str, Any] | PendingOutcome],
         *,
         plan_id: str | None = None,
     ) -> ResultEnvelope:
-        try:
-            data = operation()
-            if data.pop("_pending", False):
-                result_plan_id = data.get("plan_id", "<plan-id>")
-                code = data.pop("_pending_code", "pending_remote_read")
-                message = data.pop(
-                    "_pending_message",
-                    "Remote verification is incomplete but safe to resume.",
-                )
-                return ResultEnvelope.pending(
-                    code,
-                    message,
-                    data.get("recovery") or f"blackcell directive reconcile {result_plan_id}",
-                    data,
-                )
-            return ResultEnvelope.ok(data)
-        except BlackcellError as error:
-            if isinstance(error, ConflictFailure):
-                event_plan_id = str(error.details.get("plan_id") or plan_id or "BCP-0000")
-                self.chronicle.append(
-                    EventType.ANOMALY_DETECTED,
-                    event_plan_id,
-                    {
-                        "code": error.code,
-                        "message": error.message,
-                        "details": error.details,
-                    },
-                )
-            return ResultEnvelope.from_error(error)
+        return self._execute(spec(operation_id), operation, plan_id=plan_id)
+
+    def _execute(
+        self,
+        operation_spec: OperationSpec,
+        operation: Callable[[], dict[str, Any] | PendingOutcome],
+        *,
+        plan_id: str | None = None,
+    ) -> ResultEnvelope:
+        return self._executor.execute(operation_spec, operation, plan_id=plan_id)
 
     def _plan_service(self, *, require_linear: bool = False) -> PlanService:
         linear = self._linear_adapter() if require_linear else self._linear
@@ -446,6 +522,16 @@ class BlackcellClient:
             self._plan_service(require_linear=True),
             self._verification_service(),
         )
+
+    def _publication_service(self) -> PublicationService:
+        backend = self._publication or LocalPublicationAdapter(self.config)
+        return PublicationService(self.config, backend)
+
+    def _prepare_credential(self, credential: Credential) -> None:
+        if credential is Credential.LINEAR:
+            self._linear_adapter()
+        elif credential is Credential.GITHUB:
+            self._github_adapter()
 
     def _linear_adapter(self) -> LinearGraphQLAdapter:
         if self._linear is not None:

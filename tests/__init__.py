@@ -1,1 +1,1 @@
-"""Blackcell automated tests."""
+"""BlackCell automated tests."""

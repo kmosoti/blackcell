@@ -1,10 +1,8 @@
 """Stable CLI output, redaction, and exit-code handling."""
 
 import json
-import os
-import re
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from enum import StrEnum
 from typing import Any
 
@@ -15,37 +13,14 @@ from rich.tree import Tree
 
 from blackcell.contracts.errors import BlackcellError, ExitClass
 from blackcell.contracts.result import ResultEnvelope
+from blackcell.runtime.observability import redact
 from blackcell.sdk.client import BlackcellClient
-
-_SENSITIVE_KEYS = ("authorization", "api_key", "password", "secret", "token")
-_AUTHORIZATION_PATTERN = re.compile(r"(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s,;]+")
-_LINEAR_TOKEN_PATTERN = re.compile(r"\blin_api_[A-Za-z0-9_-]+\b")
-_GITHUB_TOKEN_PATTERN = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+)\b")
 
 
 class OutputFormat(StrEnum):
     TEXT = "text"
     JSON = "json"
-
-
-def redact(value: Any, *, key: str | None = None) -> Any:
-    """Recursively remove credential-shaped values before rendering."""
-    if key is not None and any(part in key.casefold() for part in _SENSITIVE_KEYS):
-        return "[redacted]"
-    if isinstance(value, Mapping):
-        return {str(item_key): redact(item, key=str(item_key)) for item_key, item in value.items()}
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return [redact(item) for item in value]
-    if isinstance(value, str):
-        value = _AUTHORIZATION_PATTERN.sub(r"\1[redacted]", value)
-        value = _LINEAR_TOKEN_PATTERN.sub("[redacted]", value)
-        value = _GITHUB_TOKEN_PATTERN.sub("[redacted]", value)
-        for variable in ("LINEAR_API_KEY", "GITHUB_TOKEN", "GH_TOKEN"):
-            secret = os.environ.get(variable)
-            if secret:
-                value = value.replace(secret, "[redacted]")
-        return value
-    return value
+    JSONL = "jsonl"
 
 
 def resolve_format(
@@ -90,7 +65,7 @@ def invoke(
 
 def emit(envelope: ResultEnvelope, output_format: OutputFormat) -> None:
     payload = redact(envelope.model_dump(mode="json", exclude_none=True))
-    if output_format is OutputFormat.JSON:
+    if output_format in {OutputFormat.JSON, OutputFormat.JSONL}:
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
     else:
         _render_text(payload)

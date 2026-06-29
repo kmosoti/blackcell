@@ -5,8 +5,6 @@ from typing import Annotated
 import typer
 
 from blackcell.cli.output import OutputFormat, invoke
-from blackcell.contracts.result import ResultEnvelope
-from blackcell.sdk.client import BlackcellClient
 
 app = typer.Typer(help="Validate and inspect the non-secret BlackCell profile.")
 
@@ -22,23 +20,7 @@ def validate_profile(
     output_format: FormatOption = None,
 ) -> None:
     """Validate the discovered BlackCell profile."""
-
-    def validate(client: BlackcellClient) -> ResultEnvelope:
-        config = client.config
-        return ResultEnvelope.ok(
-            {
-                "valid": True,
-                "schema_version": config.schema_version,
-                "repository": f"{config.repository.owner}/{config.repository.name}",
-                "linear_team": {
-                    "id": config.linear.team_id,
-                    "key": config.linear.team_key,
-                    "name": config.linear.team_name,
-                },
-            }
-        )
-
-    invoke(context, validate, output_format)
+    invoke(context, lambda client: client.validate_profile(), output_format)
 
 
 @app.command("show")

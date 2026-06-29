@@ -2,6 +2,9 @@
 
 from typing import Any
 
+from blackcell.backends.directives import PlanReader
+from blackcell.backends.planning import MaterializationPlanningBackend
+from blackcell.backends.verification import EchoVerifier
 from blackcell.config.model import BlackcellConfig
 from blackcell.contracts.errors import ConflictFailure, NotFoundFailure, PolicyFailure
 from blackcell.contracts.markers import item_marker
@@ -29,9 +32,9 @@ class MaterializationService:
         self,
         config: BlackcellConfig,
         chronicle: Chronicle,
-        store: Any,
-        linear: Any,
-        verification: Any,
+        store: PlanReader,
+        linear: MaterializationPlanningBackend,
+        verification: EchoVerifier,
     ) -> None:
         self.config = config
         self.chronicle = chronicle

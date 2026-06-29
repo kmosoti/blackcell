@@ -13,6 +13,7 @@ from blackcell.cli.commands import (
     echo,
     operation,
     profile,
+    publication,
     recon,
 )
 from blackcell.cli.output import OutputFormat, emit, invoke, resolve_format, root_format
@@ -34,10 +35,14 @@ app.add_typer(echo.app, name="echo")
 app.add_typer(recon.app, name="recon")
 app.add_typer(chronicle.app, name="chronicle")
 app.add_typer(anomaly.app, name="anomaly")
+app.add_typer(publication.app, name="publication")
 
 FormatOption = Annotated[
     OutputFormat | None,
-    typer.Option("--format", help="Output format. Defaults to text on a TTY and JSON otherwise."),
+    typer.Option(
+        "--format",
+        help="Output format: text, json, or jsonl. Defaults to text on a TTY and JSON otherwise.",
+    ),
 ]
 
 

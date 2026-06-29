@@ -82,6 +82,16 @@ class MaterializationConfig(BaseModel):
     projection_timeout_seconds: int = Field(gt=0, le=900)
 
 
+class PublicationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    commit_email: str = Field(pattern=r"^[^@\s]+@[^@\s]+$")
+    push_remote: str = Field(default="origin", min_length=1)
+    push_ssh_host: str = Field(min_length=1)
+    branch_prefix: str = Field(min_length=1)
+    require_draft_pr: Literal[True] = True
+
+
 class BlackcellConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -91,6 +101,7 @@ class BlackcellConfig(BaseModel):
     linear: LinearConfig
     ledger: LedgerConfig
     materialization: MaterializationConfig
+    publication: PublicationConfig
 
 
 class RuntimeSecrets(BaseSettings):

@@ -3,7 +3,7 @@
 import time
 from typing import Any
 
-from blackcell.adapters.github_rest import GitHubRestAdapter
+from blackcell.backends.repository import RepositoryReader
 from blackcell.config.model import BlackcellConfig
 from blackcell.contracts.errors import ConflictFailure
 from blackcell.contracts.markers import item_marker
@@ -11,7 +11,7 @@ from blackcell.contracts.plan import PlanSpec
 
 
 class VerificationService:
-    def __init__(self, config: BlackcellConfig, github: GitHubRestAdapter) -> None:
+    def __init__(self, config: BlackcellConfig, github: RepositoryReader) -> None:
         self.config = config
         self.github = github
 
