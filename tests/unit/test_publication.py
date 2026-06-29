@@ -1,5 +1,6 @@
 """Strongly typed read-only publication preflight."""
 
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -156,3 +157,74 @@ def test_local_adapter_builds_typed_push_snapshot(config: BlackcellConfig) -> No
     assert actual.push_target is not None
     assert actual.push_target.host == "github.com-kz"
     assert actual.push_target.repository == "kmosoti/blackcell"
+
+
+def test_local_adapter_only_inspects_open_pull_requests(config: BlackcellConfig) -> None:
+    branch = "blackcell/BCP-0001-planner-proof"
+    pr_command = (
+        "gh",
+        "pr",
+        "list",
+        "--head",
+        branch,
+        "--state",
+        "open",
+        "--limit",
+        "2",
+        "--json",
+        "number,author,isDraft,state,baseRefName,headRefName,url",
+    )
+    runner = FakeRunner(
+        {
+            ("git", "branch", "--show-current"): CommandResult(branch),
+            ("git", "config", "user.name"): CommandResult("kz-harbringer"),
+            ("git", "config", "user.email"): CommandResult(
+                "290864439+kz-harbringer@users.noreply.github.com"
+            ),
+            (
+                "git",
+                "show",
+                "-s",
+                "--format=%H%x00%an%x00%ae",
+                "HEAD",
+            ): CommandResult(
+                "\0".join(
+                    (
+                        "abc123",
+                        "kz-harbringer",
+                        "290864439+kz-harbringer@users.noreply.github.com",
+                    )
+                )
+            ),
+            (
+                "git",
+                "remote",
+                "get-url",
+                "--push",
+                "origin",
+            ): CommandResult("git@github.com-kz:kmosoti/blackcell.git"),
+            ("gh", "api", "user", "--jq", ".login"): CommandResult("kz-harbringer"),
+            pr_command: CommandResult(
+                json.dumps(
+                    [
+                        {
+                            "number": 2,
+                            "author": {"login": "kz-harbringer"},
+                            "isDraft": True,
+                            "state": "OPEN",
+                            "baseRefName": "main",
+                            "headRefName": branch,
+                            "url": "https://github.com/kmosoti/blackcell/pull/2",
+                        }
+                    ]
+                )
+            ),
+        }
+    )
+
+    actual = LocalPublicationAdapter(config, root=Path.cwd(), runner=runner).snapshot(
+        PublicationStage.PULL_REQUEST
+    )
+
+    assert actual.pull_request is not None
+    assert actual.pull_request.number == 2

@@ -131,7 +131,7 @@ class LocalPublicationAdapter:
                 "--head",
                 branch,
                 "--state",
-                "all",
+                "open",
                 "--limit",
                 "2",
                 "--json",
