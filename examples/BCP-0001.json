@@ -1,0 +1,62 @@
+{
+  "schema_version": "0.1",
+  "plan_id": "BCP-0001",
+  "revision": 1,
+  "title": "Blackcell Planner Project Proof",
+  "objective": "Prove deterministic approved planning materialization and GitHub echo verification.",
+  "repository": {
+    "owner": "kmosoti",
+    "name": "blackcell"
+  },
+  "linear": {
+    "team_id": "f200f3d3-ca1b-4cc8-a9c2-3d218a278332",
+    "team_key": "BLCELL",
+    "project_name": "Blackcell Planner Project Proof"
+  },
+  "work_items": [
+    {
+      "key": "BCP-0001-001",
+      "title": "Foundation CLI skeleton",
+      "description": "Create the package, CLI entrypoint, configuration, and CI.",
+      "type": "task",
+      "priority": "high",
+      "labels": ["area:foundation"],
+      "acceptance": [
+        "Package installs with uv",
+        "Blackcell emits structured output",
+        "Ruff and pytest run in CI"
+      ],
+      "parent_key": null,
+      "blocked_by": []
+    },
+    {
+      "key": "BCP-0001-002",
+      "title": "Typed planning contracts",
+      "description": "Implement deterministic typed planning contracts and graph validation.",
+      "type": "task",
+      "priority": "high",
+      "labels": ["area:contracts"],
+      "acceptance": [
+        "Digest is stable across object key ordering",
+        "Duplicate keys and dependency cycles fail validation"
+      ],
+      "parent_key": "BCP-0001-001",
+      "blocked_by": ["BCP-0001-001"]
+    },
+    {
+      "key": "BCP-0001-003",
+      "title": "Linear materialization proof",
+      "description": "Materialize assignments and verify GitHub echoes.",
+      "type": "task",
+      "priority": "high",
+      "labels": ["area:linear", "area:sync"],
+      "acceptance": [
+        "Assignments are created once",
+        "Second materialization performs zero mutations",
+        "GitHub echoes are verified"
+      ],
+      "parent_key": null,
+      "blocked_by": ["BCP-0001-002"]
+    }
+  ]
+}

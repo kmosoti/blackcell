@@ -205,9 +205,13 @@ tempCodeRunnerFile.py
 
 # Ruff stuff:
 .ruff_cache/
+.ty/
 
 # PyPI configuration file
 .pypirc
+
+# Blackcell local state and plans
+.blackcell/
 
 # Marimo
 marimo/_static/
