@@ -1,0 +1,151 @@
+{
+  "enums": {
+    "ProjectV2CustomFieldType": [
+      "DATE",
+      "NUMBER",
+      "SINGLE_SELECT",
+      "TEXT"
+    ],
+    "ProjectV2ItemType": [
+      "DRAFT_ISSUE",
+      "ISSUE",
+      "PULL_REQUEST",
+      "REDACTED"
+    ]
+  },
+  "generated_at": "2026-06-30T00:00:00Z",
+  "input_objects": {
+    "AddProjectV2ItemByIdInput": [
+      "clientMutationId",
+      "contentId",
+      "projectId"
+    ],
+    "ArchiveProjectV2ItemInput": [
+      "clientMutationId",
+      "itemId",
+      "projectId"
+    ],
+    "CreateIssueInput": [
+      "assigneeIds",
+      "body",
+      "clientMutationId",
+      "issueTemplate",
+      "labelIds",
+      "milestoneId",
+      "projectIds",
+      "projectV2Ids",
+      "repositoryId",
+      "title"
+    ],
+    "CreateProjectV2FieldInput": [
+      "clientMutationId",
+      "dataType",
+      "name",
+      "projectId",
+      "singleSelectOptions"
+    ],
+    "CreateProjectV2Input": [
+      "clientMutationId",
+      "ownerId",
+      "repositoryId",
+      "teamId",
+      "title"
+    ],
+    "DeleteProjectV2ItemInput": [
+      "clientMutationId",
+      "itemId",
+      "projectId"
+    ],
+    "LinkProjectV2ToRepositoryInput": [
+      "clientMutationId",
+      "projectId",
+      "repositoryId"
+    ],
+    "UpdateIssueInput": [
+      "assigneeIds",
+      "body",
+      "clientMutationId",
+      "id",
+      "labelIds",
+      "milestoneId",
+      "projectIds",
+      "state",
+      "stateReason",
+      "title"
+    ],
+    "UpdateProjectV2ItemFieldValueInput": [
+      "clientMutationId",
+      "fieldId",
+      "itemId",
+      "projectId",
+      "value"
+    ]
+  },
+  "mutations": [
+    "addProjectV2ItemById",
+    "archiveProjectV2Item",
+    "createIssue",
+    "createProjectV2",
+    "createProjectV2Field",
+    "deleteProjectV2Item",
+    "linkProjectV2ToRepository",
+    "unarchiveProjectV2Item",
+    "updateIssue",
+    "updateProjectV2ItemFieldValue"
+  ],
+  "objects": {
+    "Issue": [
+      "body",
+      "id",
+      "number",
+      "repository",
+      "state",
+      "title",
+      "url"
+    ],
+    "ProjectV2": [
+      "fields",
+      "id",
+      "items",
+      "number",
+      "repositories",
+      "title",
+      "url",
+      "workflows"
+    ],
+    "ProjectV2Item": [
+      "content",
+      "fieldValueByName",
+      "id",
+      "isArchived",
+      "type"
+    ],
+    "ProjectV2Workflow": [
+      "createdAt",
+      "enabled",
+      "id",
+      "name",
+      "number",
+      "project"
+    ],
+    "Query": [
+      "node",
+      "repository"
+    ],
+    "Repository": [
+      "id",
+      "issue",
+      "issues",
+      "name",
+      "owner",
+      "url"
+    ]
+  },
+  "reference_urls": [
+    "https://docs.github.com/en/graphql/reference",
+    "https://docs.github.com/en/graphql/reference/projects",
+    "https://docs.github.com/en/graphql/reference/issues",
+    "https://docs.github.com/en/graphql/overview/public-schema"
+  ],
+  "schema_url": "https://docs.github.com/public/fpt/schema.docs.graphql"
+}

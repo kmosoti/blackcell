@@ -1,6 +1,23 @@
-"""Configuration loading."""
+from blackcell.config.loader import (
+    CONFIG_FILENAME,
+    ConfigError,
+    find_config_path,
+    find_repo_root,
+    load_config,
+    render_config_toml,
+    write_config,
+)
+from blackcell.config.models import BlackcellConfig, ProjectRef, RepositoryRef
 
-from blackcell.config.loader import load_config
-from blackcell.config.model import BlackcellConfig, RuntimeSecrets
-
-__all__ = ["BlackcellConfig", "RuntimeSecrets", "load_config"]
+__all__ = [
+    "CONFIG_FILENAME",
+    "BlackcellConfig",
+    "ConfigError",
+    "ProjectRef",
+    "RepositoryRef",
+    "find_config_path",
+    "find_repo_root",
+    "load_config",
+    "render_config_toml",
+    "write_config",
+]

@@ -1,50 +1,101 @@
 # BlackCell
 
-BlackCell is a Python-first planning SDK and covert-themed CLI. It validates
-local planning directives, materializes approved work into Linear, records
-recoverable operations in an append-only chronicle, and verifies read-only
-GitHub Issue echoes created by Linear's native integration.
+BlackCell is a Python-first project workflow tool with a typed provider
+interface around repo-local project config and GitHub Project operations.
 
-The initial proof deliberately excludes code execution, branch and pull-request
-automation, GitHub mutations, webhooks, plugins, and additional planning
-backends.
-
-## Requirements
-
-- Python 3.14.6
-- [`uv`](https://docs.astral.sh/uv/)
-- A planner-scoped `LINEAR_API_KEY` for remote Linear commands
-- GitHub CLI authentication or a read-only `GITHUB_TOKEN` for echo verification
-
-## Quick start
+## Bootstrap
 
 ```bash
-uv sync
-uv run blackcell profile validate
-uv run blackcell pulse
-uv run blackcell directive validate path/to/plan.json
-uv run blackcell operation inspect BCP-0001
-uv run blackcell operation reconcile BCP-0001
-uv run blackcell operation verify BCP-0001
-uv run blackcell publication preflight --stage commit
+uv sync --all-groups
+uv run blackcell config show
+uv run blackcell providers list
+uv run blackcell control-plane validate
 ```
 
-Text is the default format in a terminal; piped output defaults to JSON.
-Use `--format text`, `--format json`, or `--format jsonl` to override it.
-Set `BLACKCELL_EVENTS=jsonl` to emit redacted operation events to stderr.
+The CLI defaults to JSON for agent-readable output. Use `--jsonl` for
+line-delimited records and `--rich` for human-oriented terminal rendering:
 
-## Authority boundaries
+```bash
+uv run blackcell config show
+uv run blackcell --jsonl providers list
+uv run blackcell --rich config show
+uv run blackcell --rich control-plane validate
+```
 
-- Linear owns planning state and approval.
-- GitHub owns repositories, code review, and merge authority.
-- BlackCell owns local validation, canonical digests, deterministic markers,
-  idempotent materialization, recovery, and anomaly detection.
+The current repository config lives in `blackcell.toml`. It binds this checkout
+to the GitHub repository and the BlackCell project:
 
-BlackCell never writes GitHub resources during this proof. The Linear API key is
-read from the environment and is never included in configuration, logs,
-chronicle events, exceptions, or subprocess environments.
+```toml
+provider = "github"
 
-Before commit, push, or pull-request work, `publication preflight` verifies the
-configured executor identity, branch namespace, commit author, push target, and
-active GitHub/PR identity for the selected stage. The workflow is read-only; it
-does not commit, push, create a PR, approve, or merge.
+[repository]
+owner = "kmosoti"
+name = "blackcell"
+node_id = "R_kgDOTH7xUQ"
+
+[project]
+id = "PVT_kwHOAtZ1m84BcCSO"
+title = "BlackCell"
+number = 7
+url = "https://github.com/users/kmosoti/projects/7"
+```
+
+To initialize another checkout:
+
+```bash
+uv run blackcell init \
+  --repository kmosoti/blackcell \
+  --repository-id R_kgDOTH7xUQ \
+  --project-id PVT_kwHOAtZ1m84BcCSO \
+  --project-number 7 \
+  --project-title BlackCell \
+  --project-url https://github.com/users/kmosoti/projects/7
+```
+
+Live GitHub API commands use `GITHUB_TOKEN` or `GH_TOKEN`.
+
+```bash
+uv run blackcell issue read 5
+uv run blackcell project items
+uv run blackcell --rich project items
+```
+
+## Control Plane
+
+`blackcell.plan.yaml` is the durable, repo-authored planning contract. It is
+separate from `blackcell.toml`, which only binds this checkout to a provider,
+repository, and project ID.
+
+```bash
+uv run blackcell control-plane validate
+uv run blackcell control-plane schema
+uv run blackcell control-plane agent-context BCP-0001
+uv run blackcell control-plane capabilities check
+uv run blackcell control-plane sync
+uv run blackcell control-plane sync --apply
+```
+
+The control-plane contract validates hierarchy, strict
+status/type/priority/complexity enums, issue DAG dependencies, inherited
+acceptance/readiness/done criteria, and cached GitHub GraphQL capabilities.
+Sync is local-to-GitHub and dry-run by default; pass `--apply` to create or
+update GitHub issues and attach them to the configured GitHub Project.
+
+Project and issue configuration details live in
+[`docs/control-plane-configuration.md`](docs/control-plane-configuration.md).
+
+The cached GitHub capability manifest lives under `generated/cache/` and can be
+refreshed from GitHub's public GraphQL schema docs:
+
+```bash
+uv run blackcell control-plane capabilities refresh
+```
+
+## Development
+
+```bash
+uv run ruff format .
+uv run ruff check .
+uv run pytest
+uv run ty check
+```

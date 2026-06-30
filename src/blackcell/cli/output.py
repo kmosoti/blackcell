@@ -1,141 +1,110 @@
-"""Stable CLI output, redaction, and exit-code handling."""
-
 import json
-import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
-import typer
 from rich.console import Console
-from rich.text import Text
-from rich.tree import Tree
-
-from blackcell.contracts.errors import BlackcellError, ExitClass
-from blackcell.contracts.result import ResultEnvelope
-from blackcell.runtime.observability import redact
-from blackcell.sdk.client import BlackcellClient
 
 
-class OutputFormat(StrEnum):
-    TEXT = "text"
+class OutputMode(StrEnum):
     JSON = "json"
     JSONL = "jsonl"
+    RICH = "rich"
 
 
-def resolve_format(
-    explicit: OutputFormat | None,
-    inherited: OutputFormat | None = None,
-) -> OutputFormat:
-    if explicit is not None:
-        return explicit
-    if inherited is not None:
-        return inherited
-    return OutputFormat.TEXT if sys.stdout.isatty() else OutputFormat.JSON
+@dataclass(slots=True)
+class OutputRenderer:
+    mode: OutputMode = OutputMode.JSON
+    console: Console = field(default_factory=Console)
+    error_console: Console = field(default_factory=lambda: Console(stderr=True))
+
+    @classmethod
+    def from_flags(
+        cls,
+        *,
+        rich: bool = False,
+        jsonl: bool = False,
+        output_format: str | None = None,
+    ) -> OutputRenderer:
+        requested_modes: list[OutputMode] = []
+
+        if rich:
+            requested_modes.append(OutputMode.RICH)
+        if jsonl:
+            requested_modes.append(OutputMode.JSONL)
+        if output_format:
+            try:
+                requested_modes.append(OutputMode(output_format))
+            except ValueError as error:
+                raise ValueError("--format must be one of: json, jsonl, rich") from error
+
+        if len(set(requested_modes)) > 1:
+            raise ValueError("--rich, --jsonl, and --format cannot request different modes")
+
+        if requested_modes:
+            return cls(mode=requested_modes[0])
+
+        return cls(mode=OutputMode.JSON)
+
+    def emit(self, value: object, *, rich: object | None = None) -> None:
+        if self.mode is OutputMode.RICH and rich is not None:
+            self.console.print(rich)
+            return
+
+        if self.mode is OutputMode.JSONL:
+            for record in _records(value):
+                self.console.print(_json(record), markup=False, soft_wrap=True)
+            return
+
+        self.console.print(_json(value, indent=2), markup=False, soft_wrap=True)
+
+    def emit_collection(
+        self,
+        key: str,
+        records: Sequence[object],
+        *,
+        rich: object | None = None,
+    ) -> None:
+        if self.mode is OutputMode.JSONL:
+            self.emit(records, rich=rich)
+            return
+        self.emit({key: records}, rich=rich)
+
+    def emit_error(self, message: str) -> None:
+        if self.mode is OutputMode.RICH:
+            self.error_console.print(f"[red]error:[/red] {message}")
+            return
+
+        payload = {"error": {"message": message}}
+        if self.mode is OutputMode.JSONL:
+            self.error_console.print(_json(payload), markup=False, soft_wrap=True)
+            return
+        self.error_console.print(_json(payload, indent=2), markup=False, soft_wrap=True)
 
 
-def root_format(context: typer.Context) -> OutputFormat | None:
-    root = context.find_root()
-    if isinstance(root.obj, dict):
-        value = root.obj.get("format")
-        if isinstance(value, OutputFormat):
-            return value
-    return None
+def _records(value: object) -> list[object]:
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return list(value)
+    return [value]
 
 
-def invoke(
-    context: typer.Context,
-    operation: Callable[[BlackcellClient], ResultEnvelope],
-    output_format: OutputFormat | None = None,
-) -> None:
-    """Invoke one SDK operation, render its envelope, and exit predictably."""
-    try:
-        envelope = operation(BlackcellClient.from_environment())
-    except BlackcellError as error:
-        envelope = ResultEnvelope.from_error(error)
-    except Exception:
-        envelope = ResultEnvelope.from_error(
-            BlackcellError(
-                "Unexpected BlackCell failure.",
-                recovery="Re-run with a valid profile and inspect local diagnostics.",
-            )
-        )
-    emit(envelope, resolve_format(output_format, root_format(context)))
+def _json(value: object, *, indent: int | None = None) -> str:
+    return json.dumps(_jsonable(value), indent=indent, sort_keys=True)
 
 
-def emit(envelope: ResultEnvelope, output_format: OutputFormat) -> None:
-    payload = redact(envelope.model_dump(mode="json", exclude_none=True))
-    if output_format in {OutputFormat.JSON, OutputFormat.JSONL}:
-        sys.stdout.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
-    else:
-        _render_text(payload)
+def _jsonable(value: object) -> Any:
+    if is_dataclass(value) and not isinstance(value, type):
+        return _jsonable(asdict(value))
 
-    exit_code = _exit_code(envelope.exit_class)
-    if exit_code:
-        raise typer.Exit(exit_code)
-
-
-def _exit_code(exit_class: str) -> int:
-    try:
-        return int(ExitClass[exit_class.upper()])
-    except KeyError:
-        return int(ExitClass.ERROR)
-
-
-def _render_text(payload: Mapping[str, Any]) -> None:
-    console = Console(file=sys.stdout)
-    status = str(payload.get("status", "error")).upper()
-    color = {"OK": "green", "PENDING": "yellow"}.get(status, "red")
-    console.print(
-        Text.assemble(
-            (status, f"bold {color}"),
-            ("  "),
-            (str(payload["exit_class"]), "dim"),
-        )
-    )
-
-    error = payload.get("error")
-    if isinstance(error, Mapping):
-        console.print(Text(str(error.get("message", "Unknown error")), style="bold"))
-        if code := error.get("code"):
-            console.print(Text.assemble(("Code: ", "dim"), (str(code), "cyan")))
-        if recovery := error.get("recovery"):
-            console.print(Text.assemble(("Recovery: ", "dim"), (str(recovery), "yellow")))
-        details = error.get("details")
-        if details:
-            console.print(_tree("Details", details))
-
-    data = payload.get("data")
-    if data:
-        console.print(_tree("Data", data))
-
-
-def _tree(label: str, value: Any) -> Tree:
-    tree = Tree(Text(label, style="bold"))
-    _add_tree_value(tree, value)
-    return tree
-
-
-def _add_tree_value(tree: Tree, value: Any) -> None:
     if isinstance(value, Mapping):
-        for key, item in value.items():
-            if isinstance(item, (Mapping, list)):
-                branch = tree.add(Text(str(key), style="cyan"))
-                _add_tree_value(branch, item)
-            else:
-                tree.add(Text.assemble((f"{key}: ", "cyan"), (_scalar(item), "")))
-        return
-    if isinstance(value, list):
-        for index, item in enumerate(value):
-            branch = tree.add(Text(f"[{index}]", style="cyan"))
-            _add_tree_value(branch, item)
-        return
-    tree.add(Text(_scalar(value)))
+        return {str(key): _jsonable(item) for key, item in value.items()}
 
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return [_jsonable(item) for item in value]
 
-def _scalar(value: Any) -> str:
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
+    if isinstance(value, Path):
+        return str(value)
+
+    return value
