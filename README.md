@@ -73,6 +73,11 @@ uv run blackcell control-plane agent-context BCP-0001
 uv run blackcell control-plane capabilities check
 uv run blackcell control-plane sync
 uv run blackcell control-plane sync --apply
+uv run blackcell control-plane pr status --issue-key BCP-0001
+uv run blackcell control-plane pr sync --issue-key BCP-0001
+uv run blackcell control-plane pr sync --issue-key BCP-0001 --apply
+uv run blackcell control-plane pr ready --issue-key BCP-0001
+uv run blackcell control-plane pr ready --issue-key BCP-0001 --apply
 ```
 
 The control-plane contract validates hierarchy, strict
@@ -80,6 +85,9 @@ status/type/priority/complexity enums, issue DAG dependencies, inherited
 acceptance/readiness/done criteria, and cached GitHub GraphQL capabilities.
 Sync is local-to-GitHub and dry-run by default; pass `--apply` to create or
 update GitHub issues and attach them to the configured GitHub Project.
+The PR workflow is also dry-run by default; it guides local committed changes
+through draft PR creation and marks the draft ready only after the contract
+status is `Review Required` and configured checks pass.
 
 Project and issue configuration details live in
 [`docs/control-plane-configuration.md`](docs/control-plane-configuration.md).

@@ -15,6 +15,21 @@ class IssueRef:
 
 
 @dataclass(frozen=True, slots=True)
+class PullRequestRef:
+    id: str
+    number: int
+    title: str
+    url: str
+    state: str
+    is_draft: bool
+    base_ref_name: str
+    head_ref_name: str
+    head_ref_oid: str
+    repository: RepositoryRef
+    body: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ProjectItemRef:
     id: str
     type: str

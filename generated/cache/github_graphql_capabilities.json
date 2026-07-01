@@ -51,6 +51,16 @@
       "teamId",
       "title"
     ],
+    "CreatePullRequestInput": [
+      "baseRefName",
+      "body",
+      "clientMutationId",
+      "draft",
+      "headRefName",
+      "maintainerCanModify",
+      "repositoryId",
+      "title"
+    ],
     "DeleteProjectV2ItemInput": [
       "clientMutationId",
       "itemId",
@@ -60,6 +70,10 @@
       "clientMutationId",
       "projectId",
       "repositoryId"
+    ],
+    "MarkPullRequestReadyForReviewInput": [
+      "clientMutationId",
+      "pullRequestId"
     ],
     "UpdateIssueInput": [
       "assigneeIds",
@@ -79,6 +93,14 @@
       "itemId",
       "projectId",
       "value"
+    ],
+    "UpdatePullRequestInput": [
+      "baseRefName",
+      "body",
+      "clientMutationId",
+      "maintainerCanModify",
+      "pullRequestId",
+      "title"
     ]
   },
   "mutations": [
@@ -87,11 +109,14 @@
     "createIssue",
     "createProjectV2",
     "createProjectV2Field",
+    "createPullRequest",
     "deleteProjectV2Item",
     "linkProjectV2ToRepository",
+    "markPullRequestReadyForReview",
     "unarchiveProjectV2Item",
     "updateIssue",
-    "updateProjectV2ItemFieldValue"
+    "updateProjectV2ItemFieldValue",
+    "updatePullRequest"
   ],
   "objects": {
     "Issue": [
@@ -128,6 +153,19 @@
       "number",
       "project"
     ],
+    "PullRequest": [
+      "baseRefName",
+      "body",
+      "headRefName",
+      "headRefOid",
+      "id",
+      "isDraft",
+      "number",
+      "repository",
+      "state",
+      "title",
+      "url"
+    ],
     "Query": [
       "node",
       "repository"
@@ -138,6 +176,7 @@
       "issues",
       "name",
       "owner",
+      "pullRequests",
       "url"
     ]
   },

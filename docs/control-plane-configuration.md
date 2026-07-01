@@ -230,10 +230,113 @@ sequenceDiagram
         CLI->>GH: discover by exact title
     end
     alt no remote issue
-        CLI->>GH: createIssue(projectV2Ids)
+        CLI->>GH: create GitHub issue attached to project
     else body or title differs
         CLI->>GH: updateIssue
     end
-    CLI->>GH: addProjectV2ItemById when not attached
+    CLI->>GH: attach issue to GitHub Project when absent
     CLI->>Cache: store node IDs and digests on apply
 ```
+
+## Pull Request Workflow
+
+`blackcell control-plane pr` is a guarded, idempotent workflow for moving one
+issue from committed local changes to a reviewable pull request. It guides local
+git state but does not commit, push, or merge. Mutating remote operations remain
+dry-run by default unless `--apply` is passed.
+
+| Command | Purpose |
+| --- | --- |
+| `blackcell control-plane pr status --issue-key BCP-0001` | Report the current workflow state and next commands. |
+| `blackcell control-plane pr sync --issue-key BCP-0001` | Plan creation or update of the managed draft PR. |
+| `blackcell control-plane pr sync --issue-key BCP-0001 --apply` | Create/update the managed draft PR and attach it to the GitHub Project. |
+| `blackcell control-plane pr ready --issue-key BCP-0001` | Check whether the draft PR can move to review. |
+| `blackcell control-plane pr ready --issue-key BCP-0001 --apply` | Mark the draft PR ready when all gates pass. |
+
+The workflow is intentionally one issue to one pull request. The PR title is the
+contract issue title. The body is rendered from the local contract and includes
+hidden BlackCell markers for rediscovery.
+
+```mermaid
+stateDiagram
+    [*] --> NeedsChanges: dirty worktree or detached HEAD
+    [*] --> NeedsPush: committed branch is not pushed
+    [*] --> NeedsDraftPR: issue synced and branch pushed
+    NeedsChanges --> NeedsPush: user commits changes
+    NeedsPush --> NeedsDraftPR: user pushes branch
+    NeedsDraftPR --> DraftOpen: pr sync --apply
+    DraftOpen --> ReadyBlocked: status/check gate fails
+    ReadyBlocked --> DraftOpen: contract or checks fixed
+    DraftOpen --> ReviewReady: pr ready --apply
+    ReviewReady --> [*]
+
+    note right of NeedsChanges
+      BlackCell reports git commands only.
+      It does not commit or push.
+    end note
+
+    note right of ReviewReady
+      Merge policy is deferred.
+      The command only moves draft to review.
+    end note
+```
+
+Ready-to-review requires all of the following:
+
+| Gate | Source |
+| --- | --- |
+| Clean attached branch | Local git inspection. |
+| Branch pushed to its upstream | Local git inspection. |
+| Managed draft PR exists | GitHub GraphQL and SQLite cache. |
+| Issue status is `Review Required` | `blackcell.plan.yaml`. |
+| Required checks pass | `pr_policy.required_checks`. |
+| PR attached to the GitHub Project | GitHub GraphQL and SQLite cache. |
+
+```mermaid
+sequenceDiagram
+    participant User as Agent or maintainer
+    participant CLI as blackcell control-plane pr
+    participant Git as local git
+    participant Plan as blackcell.plan.yaml
+    participant Cache as SQLite cache
+    participant GH as GitHub GraphQL
+
+    User->>CLI: pr sync/status/ready --issue-key
+    CLI->>Git: inspect branch, HEAD, upstream, dirty state
+    alt local work not committed or pushed
+        CLI-->>User: needs_changes or needs_push with commands
+    else branch is clean and pushed
+        CLI->>Plan: load issue contract and PR policy
+        CLI->>Cache: read issue and PR bindings
+        CLI->>GH: rediscover issue or PR when cache is missing/stale
+        alt no PR and sync --apply
+            CLI->>GH: createPullRequest(draft: true)
+            CLI->>GH: attach PR to GitHub Project
+            CLI->>Cache: store PR node ID and digest
+        else PR differs from contract and --apply
+            CLI->>GH: updatePullRequest
+            CLI->>Cache: update rendered digest
+        end
+        opt ready command
+            CLI->>CLI: run required checks
+            CLI->>Plan: require issue status Review Required
+            CLI->>GH: markPullRequestReadyForReview when gates pass
+        end
+        CLI-->>User: JSON workflow result
+    end
+```
+
+`pr_policy` configures the local readiness gate:
+
+```yaml
+pr_policy:
+  require_issue_link: true
+  required_checks:
+    - ruff
+    - ty
+    - pytest
+  merge_strategy: squash
+```
+
+Supported check names are `ruff`, `ruff-format`, `ty`, and `pytest`. Merge
+strategy is contract metadata in this slice; merge execution is not managed.

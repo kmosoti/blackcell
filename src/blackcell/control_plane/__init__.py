@@ -1,6 +1,7 @@
 from blackcell.control_plane.cache import (
     CONTROL_PLANE_CACHE_PATH,
     ControlPlaneSyncCache,
+    PullRequestCacheEntry,
     SyncCacheEntry,
 )
 from blackcell.control_plane.capabilities import (
@@ -40,13 +41,24 @@ from blackcell.control_plane.models import (
     ValidationMessage,
     ValidationResult,
 )
+from blackcell.control_plane.pr import (
+    PullRequestAction,
+    PullRequestActionType,
+    PullRequestCommand,
+    PullRequestWorkflowResult,
+    PullRequestWorkflowState,
+    run_pull_request_workflow,
+)
 from blackcell.control_plane.rendering import (
     extract_contract_digest,
     extract_prior_remote_body,
     has_blackcell_issue_marker,
+    has_blackcell_pull_request_marker,
     issue_body_digest,
     issue_contract_digest,
+    pull_request_body_digest,
     render_issue_body,
+    render_pull_request_body,
 )
 from blackcell.control_plane.schema import plan_contract_schema
 from blackcell.control_plane.sync import SyncAction, SyncActionType, SyncResult
@@ -83,6 +95,12 @@ __all__ = [
     "Priority",
     "ProjectPlan",
     "ProjectShape",
+    "PullRequestAction",
+    "PullRequestActionType",
+    "PullRequestCacheEntry",
+    "PullRequestCommand",
+    "PullRequestWorkflowResult",
+    "PullRequestWorkflowState",
     "Roadmap",
     "SyncAction",
     "SyncActionType",
@@ -94,13 +112,17 @@ __all__ = [
     "extract_prior_remote_body",
     "find_contract_path",
     "has_blackcell_issue_marker",
+    "has_blackcell_pull_request_marker",
     "issue_body_digest",
     "issue_contract_digest",
     "load_contract",
     "load_github_capabilities",
     "plan_contract_schema",
+    "pull_request_body_digest",
     "refresh_github_capabilities",
     "render_issue_body",
+    "render_pull_request_body",
+    "run_pull_request_workflow",
     "validate_contract",
     "validate_github_capabilities",
     "validate_status_transition",

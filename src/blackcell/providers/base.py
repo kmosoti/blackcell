@@ -1,13 +1,22 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from blackcell.models import IssueRef, ProjectItemRef
+from blackcell.models import IssueRef, ProjectItemRef, PullRequestRef
 
 
 @dataclass(frozen=True, slots=True)
 class CreateIssueRequest:
     title: str
     body: str
+
+
+@dataclass(frozen=True, slots=True)
+class CreatePullRequestRequest:
+    title: str
+    body: str
+    base_ref_name: str
+    head_ref_name: str
+    draft: bool = True
 
 
 class ProjectProvider(Protocol):
@@ -38,4 +47,25 @@ class ProjectProvider(Protocol):
         raise NotImplementedError
 
     def add_project_item_by_id(self, content_id: str) -> ProjectItemRef:
+        raise NotImplementedError
+
+    def read_pull_request_by_id(self, pull_request_id: str) -> PullRequestRef | None:
+        raise NotImplementedError
+
+    def list_repository_pull_requests(self, *, first: int = 100) -> list[PullRequestRef]:
+        raise NotImplementedError
+
+    def find_pull_requests_by_blackcell_marker(self, issue_key: str) -> list[PullRequestRef]:
+        raise NotImplementedError
+
+    def find_pull_requests_by_head(self, head_ref_name: str) -> list[PullRequestRef]:
+        raise NotImplementedError
+
+    def create_pull_request(self, request: CreatePullRequestRequest) -> PullRequestRef:
+        raise NotImplementedError
+
+    def update_pull_request(self, *, pull_request_id: str, title: str, body: str) -> PullRequestRef:
+        raise NotImplementedError
+
+    def mark_pull_request_ready_for_review(self, pull_request_id: str) -> PullRequestRef:
         raise NotImplementedError

@@ -13,6 +13,11 @@ from blackcell.control_plane.models import (
     ProjectShape,
     ValidationResult,
 )
+from blackcell.control_plane.pr import (
+    PullRequestCommand,
+    PullRequestWorkflowResult,
+    run_pull_request_workflow,
+)
 from blackcell.control_plane.sync import SyncResult, sync_issues
 from blackcell.control_plane.validation import blocked_dependencies, validate_contract
 from blackcell.providers import ProjectProvider, default_registry
@@ -58,6 +63,19 @@ class ControlPlane(Protocol):
         raise NotImplementedError
 
     def reconcile(self) -> None:
+        raise NotImplementedError
+
+    def pull_request_workflow(
+        self,
+        *,
+        issue_key: str,
+        command: PullRequestCommand,
+        apply_changes: bool = False,
+        run_checks: bool = False,
+        base_ref_name: str = "main",
+        provider: ProjectProvider | None = None,
+        cache_path: Path | None = None,
+    ) -> PullRequestWorkflowResult:
         raise NotImplementedError
 
 
@@ -215,3 +233,40 @@ class LocalControlPlane:
 
     def reconcile(self) -> None:
         raise NotImplementedError("bidirectional reconcile is reserved for a later slice")
+
+    def pull_request_workflow(
+        self,
+        *,
+        issue_key: str,
+        command: PullRequestCommand,
+        apply_changes: bool = False,
+        run_checks: bool = False,
+        base_ref_name: str = "main",
+        provider: ProjectProvider | None = None,
+        cache_path: Path | None = None,
+    ) -> PullRequestWorkflowResult:
+        contract = self.load_contract()
+        validation = validate_contract(contract)
+        if not validation.valid:
+            codes = ", ".join(error.code for error in validation.errors)
+            raise ValueError(f"control-plane contract is invalid: {codes}")
+
+        capability_validation = self.validate_github_capabilities()
+        if not capability_validation.valid:
+            codes = ", ".join(error.code for error in capability_validation.errors)
+            raise ValueError(f"GitHub capability validation failed: {codes}")
+
+        config = load_config(self._start)
+        workflow_provider = provider or default_registry().create(config.provider, config)
+        return run_pull_request_workflow(
+            contract=contract,
+            config=config,
+            provider=workflow_provider,
+            issue_key=issue_key,
+            command=command,
+            apply_changes=apply_changes,
+            run_checks=run_checks,
+            base_ref_name=base_ref_name,
+            start=self._start,
+            cache_path=cache_path,
+        )

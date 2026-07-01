@@ -121,6 +121,21 @@ REQUIRED_GITHUB_CAPABILITIES: tuple[CapabilityRequirement, ...] = (
         purpose="issue updates",
     ),
     CapabilityRequirement(
+        kind="mutation",
+        name="createPullRequest",
+        purpose="draft pull request creation",
+    ),
+    CapabilityRequirement(
+        kind="mutation",
+        name="updatePullRequest",
+        purpose="pull request updates",
+    ),
+    CapabilityRequirement(
+        kind="mutation",
+        name="markPullRequestReadyForReview",
+        purpose="draft pull request review transition",
+    ),
+    CapabilityRequirement(
         kind="input_object",
         name="CreateProjectV2Input",
         purpose="project creation input",
@@ -166,6 +181,21 @@ REQUIRED_GITHUB_CAPABILITIES: tuple[CapabilityRequirement, ...] = (
         purpose="issue update input",
     ),
     CapabilityRequirement(
+        kind="input_object",
+        name="CreatePullRequestInput",
+        purpose="draft pull request creation input",
+    ),
+    CapabilityRequirement(
+        kind="input_object",
+        name="UpdatePullRequestInput",
+        purpose="pull request update input",
+    ),
+    CapabilityRequirement(
+        kind="input_object",
+        name="MarkPullRequestReadyForReviewInput",
+        purpose="draft pull request review transition input",
+    ),
+    CapabilityRequirement(
         kind="object",
         name="ProjectV2",
         purpose="project shape planning",
@@ -184,6 +214,11 @@ REQUIRED_GITHUB_CAPABILITIES: tuple[CapabilityRequirement, ...] = (
         kind="object",
         name="Repository",
         purpose="repository binding",
+    ),
+    CapabilityRequirement(
+        kind="object",
+        name="PullRequest",
+        purpose="pull request reads and workflow state",
     ),
     CapabilityRequirement(
         kind="enum",
@@ -212,6 +247,12 @@ REQUIRED_GITHUB_CAPABILITIES: tuple[CapabilityRequirement, ...] = (
         parent="Repository",
         name="issue",
         purpose="read issue by number",
+    ),
+    CapabilityRequirement(
+        kind="field",
+        parent="Repository",
+        name="pullRequests",
+        purpose="read repository pull requests",
     ),
     CapabilityRequirement(
         kind="field",

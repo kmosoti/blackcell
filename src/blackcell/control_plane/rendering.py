@@ -8,6 +8,8 @@ from blackcell.control_plane.models import IssuePlan, PlanContract
 
 ISSUE_KEY_MARKER_PREFIX = "<!-- blackcell:issue-key "
 CONTRACT_DIGEST_MARKER_PREFIX = "<!-- blackcell:contract-digest "
+PR_ISSUE_KEY_MARKER_PREFIX = "<!-- blackcell:pr-issue-key "
+PR_DIGEST_MARKER_PREFIX = "<!-- blackcell:pr-digest "
 PRIOR_CONTEXT_START = "<!-- blackcell:prior-context-start -->"
 PRIOR_CONTEXT_END = "<!-- blackcell:prior-context-end -->"
 
@@ -22,6 +24,10 @@ def issue_contract_digest(contract: PlanContract, issue: IssuePlan) -> str:
 
 
 def issue_body_digest(body: str) -> str:
+    return _sha256(body)
+
+
+def pull_request_body_digest(body: str) -> str:
     return _sha256(body)
 
 
@@ -96,8 +102,33 @@ def render_issue_body(
     return "\n".join(sections).rstrip() + "\n"
 
 
+def render_pull_request_body(
+    issue: IssuePlan,
+    *,
+    issue_number: int | None,
+    head_ref_name: str,
+) -> str:
+    body_without_digest = _render_pull_request_body(
+        issue,
+        issue_number=issue_number,
+        head_ref_name=head_ref_name,
+        digest=None,
+    )
+    digest = pull_request_body_digest(body_without_digest)
+    return _render_pull_request_body(
+        issue,
+        issue_number=issue_number,
+        head_ref_name=head_ref_name,
+        digest=digest,
+    )
+
+
 def has_blackcell_issue_marker(body: str, issue_key: str) -> bool:
     return ISSUE_KEY_MARKER_PREFIX + issue_key + " -->" in body
+
+
+def has_blackcell_pull_request_marker(body: str, issue_key: str) -> bool:
+    return PR_ISSUE_KEY_MARKER_PREFIX + issue_key + " -->" in body
 
 
 def extract_contract_digest(body: str) -> str | None:
@@ -113,6 +144,36 @@ def extract_prior_remote_body(body: str) -> str | None:
     if start == -1 or end == -1 or end < start:
         return None
     return body[start + len(PRIOR_CONTEXT_START) : end].strip()
+
+
+def _render_pull_request_body(
+    issue: IssuePlan,
+    *,
+    issue_number: int | None,
+    head_ref_name: str,
+    digest: str | None,
+) -> str:
+    related_issue = f"#{issue_number}" if issue_number is not None else "not materialized"
+    sections = [
+        PR_ISSUE_KEY_MARKER_PREFIX + issue.key + " -->",
+        PR_DIGEST_MARKER_PREFIX + (digest or "pending") + " -->",
+        "",
+        "## BlackCell PR",
+        "",
+        f"- Issue key: {issue.key}",
+        f"- Related issue: {related_issue}",
+        f"- Branch: {head_ref_name}",
+        f"- Status: {issue.status.value}",
+        "",
+        "## Change Spec",
+        "",
+        *_bullets(issue.change_spec),
+        "",
+        "## Acceptance Criteria",
+        "",
+        *_bullets(issue.acceptance_criteria),
+    ]
+    return "\n".join(sections).rstrip() + "\n"
 
 
 def _bullets(values: tuple[str, ...]) -> list[str]:

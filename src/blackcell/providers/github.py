@@ -4,9 +4,12 @@ from typing import Any
 import httpx
 
 from blackcell.config.models import BlackcellConfig, ProjectRef, RepositoryRef
-from blackcell.control_plane.rendering import has_blackcell_issue_marker
-from blackcell.models import IssueRef, ProjectItemRef
-from blackcell.providers.base import CreateIssueRequest
+from blackcell.control_plane.rendering import (
+    has_blackcell_issue_marker,
+    has_blackcell_pull_request_marker,
+)
+from blackcell.models import IssueRef, ProjectItemRef, PullRequestRef
+from blackcell.providers.base import CreateIssueRequest, CreatePullRequestRequest
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 
@@ -241,6 +244,11 @@ class GitHubProjectsProvider:
                               title
                               url
                             }
+                            ... on PullRequest {
+                              id
+                              title
+                              url
+                            }
                             ... on DraftIssue {
                               title
                               body
@@ -297,6 +305,11 @@ class GitHubProjectsProvider:
                       title
                       url
                     }
+                    ... on PullRequest {
+                      id
+                      title
+                      url
+                    }
                     ... on DraftIssue {
                       title
                       body
@@ -309,6 +322,223 @@ class GitHubProjectsProvider:
             {"projectId": self._config.project.id, "contentId": content_id},
         )
         return _project_item_ref(self._config.project, data["addProjectV2ItemById"]["item"])
+
+    def read_pull_request_by_id(self, pull_request_id: str) -> PullRequestRef | None:
+        data = self._graphql(
+            """
+            query($pullRequestId: ID!) {
+              node(id: $pullRequestId) {
+                ... on PullRequest {
+                  id
+                  number
+                  title
+                  url
+                  state
+                  isDraft
+                  baseRefName
+                  headRefName
+                  headRefOid
+                  body
+                  repository {
+                    owner { login }
+                    name
+                  }
+                }
+              }
+            }
+            """,
+            {"pullRequestId": pull_request_id},
+        )
+        pull_request = data.get("node")
+        if not isinstance(pull_request, dict):
+            return None
+        return _pull_request_ref(pull_request)
+
+    def list_repository_pull_requests(self, *, first: int = 100) -> list[PullRequestRef]:
+        pull_requests: list[PullRequestRef] = []
+        cursor: str | None = None
+        remaining = first
+
+        while remaining > 0:
+            page_size = min(remaining, 100)
+            data = self._graphql(
+                """
+                query($owner: String!, $repo: String!, $first: Int!, $after: String) {
+                  repository(owner: $owner, name: $repo) {
+                    pullRequests(
+                      first: $first
+                      after: $after
+                      states: [OPEN]
+                      orderBy: {field: UPDATED_AT, direction: DESC}
+                    ) {
+                      nodes {
+                        id
+                        number
+                        title
+                        url
+                        state
+                        isDraft
+                        baseRefName
+                        headRefName
+                        headRefOid
+                        body
+                        repository {
+                          owner { login }
+                          name
+                        }
+                      }
+                      pageInfo {
+                        hasNextPage
+                        endCursor
+                      }
+                    }
+                  }
+                }
+                """,
+                {
+                    "owner": self._config.repository.owner,
+                    "repo": self._config.repository.name,
+                    "first": page_size,
+                    "after": cursor,
+                },
+            )
+            connection = data["repository"]["pullRequests"]
+            nodes = connection.get("nodes") or []
+            pull_requests.extend(_pull_request_ref(pull_request) for pull_request in nodes)
+            remaining -= len(nodes)
+
+            page_info = connection.get("pageInfo") or {}
+            cursor = page_info.get("endCursor")
+            if not page_info.get("hasNextPage") or not nodes:
+                break
+
+        return pull_requests
+
+    def find_pull_requests_by_blackcell_marker(self, issue_key: str) -> list[PullRequestRef]:
+        return [
+            pull_request
+            for pull_request in self.list_repository_pull_requests(first=100)
+            if has_blackcell_pull_request_marker(pull_request.body or "", issue_key)
+        ]
+
+    def find_pull_requests_by_head(self, head_ref_name: str) -> list[PullRequestRef]:
+        return [
+            pull_request
+            for pull_request in self.list_repository_pull_requests(first=100)
+            if pull_request.head_ref_name == head_ref_name
+        ]
+
+    def create_pull_request(self, request: CreatePullRequestRequest) -> PullRequestRef:
+        repository_id = self._config.repository.node_id or self._repository_id()
+        data = self._graphql(
+            """
+            mutation(
+              $repoId: ID!
+              $baseRefName: String!
+              $headRefName: String!
+              $title: String!
+              $body: String!
+              $draft: Boolean!
+            ) {
+              createPullRequest(input: {
+                repositoryId: $repoId
+                baseRefName: $baseRefName
+                headRefName: $headRefName
+                title: $title
+                body: $body
+                draft: $draft
+              }) {
+                pullRequest {
+                  id
+                  number
+                  title
+                  url
+                  state
+                  isDraft
+                  baseRefName
+                  headRefName
+                  headRefOid
+                  body
+                  repository {
+                    owner { login }
+                    name
+                  }
+                }
+              }
+            }
+            """,
+            {
+                "repoId": repository_id,
+                "baseRefName": request.base_ref_name,
+                "headRefName": request.head_ref_name,
+                "title": request.title,
+                "body": request.body,
+                "draft": request.draft,
+            },
+        )
+        return _pull_request_ref(data["createPullRequest"]["pullRequest"])
+
+    def update_pull_request(self, *, pull_request_id: str, title: str, body: str) -> PullRequestRef:
+        data = self._graphql(
+            """
+            mutation($pullRequestId: ID!, $title: String!, $body: String!) {
+              updatePullRequest(input: {
+                pullRequestId: $pullRequestId
+                title: $title
+                body: $body
+              }) {
+                pullRequest {
+                  id
+                  number
+                  title
+                  url
+                  state
+                  isDraft
+                  baseRefName
+                  headRefName
+                  headRefOid
+                  body
+                  repository {
+                    owner { login }
+                    name
+                  }
+                }
+              }
+            }
+            """,
+            {"pullRequestId": pull_request_id, "title": title, "body": body},
+        )
+        return _pull_request_ref(data["updatePullRequest"]["pullRequest"])
+
+    def mark_pull_request_ready_for_review(self, pull_request_id: str) -> PullRequestRef:
+        data = self._graphql(
+            """
+            mutation($pullRequestId: ID!) {
+              markPullRequestReadyForReview(input: {
+                pullRequestId: $pullRequestId
+              }) {
+                pullRequest {
+                  id
+                  number
+                  title
+                  url
+                  state
+                  isDraft
+                  baseRefName
+                  headRefName
+                  headRefOid
+                  body
+                  repository {
+                    owner { login }
+                    name
+                  }
+                }
+              }
+            }
+            """,
+            {"pullRequestId": pull_request_id},
+        )
+        return _pull_request_ref(data["markPullRequestReadyForReview"]["pullRequest"])
 
     def _repository_id(self) -> str:
         data = self._graphql(
@@ -355,6 +585,23 @@ def _issue_ref(data: dict[str, Any]) -> IssueRef:
         title=data["title"],
         url=data["url"],
         state=data["state"],
+        repository=RepositoryRef(owner=repository["owner"]["login"], name=repository["name"]),
+        body=data.get("body"),
+    )
+
+
+def _pull_request_ref(data: dict[str, Any]) -> PullRequestRef:
+    repository = data["repository"]
+    return PullRequestRef(
+        id=data["id"],
+        number=data["number"],
+        title=data["title"],
+        url=data["url"],
+        state=data["state"],
+        is_draft=data["isDraft"],
+        base_ref_name=data["baseRefName"],
+        head_ref_name=data["headRefName"],
+        head_ref_oid=data["headRefOid"],
         repository=RepositoryRef(owner=repository["owner"]["login"], name=repository["name"]),
         body=data.get("body"),
     )

@@ -28,6 +28,7 @@ from blackcell.control_plane import (
 )
 from blackcell.control_plane.capabilities import capability_summary
 from blackcell.control_plane.models import AgentIssueContext, ProjectShape, ValidationResult
+from blackcell.control_plane.pr import PullRequestCommand, PullRequestWorkflowResult
 from blackcell.control_plane.sync import SyncResult
 from blackcell.models import IssueRef, ProjectItemRef
 from blackcell.providers import CreateIssueRequest, ProjectProvider, default_registry
@@ -40,6 +41,7 @@ project_app = typer.Typer(no_args_is_help=True)
 issue_app = typer.Typer(no_args_is_help=True)
 control_plane_app = typer.Typer(no_args_is_help=True)
 capabilities_app = typer.Typer(no_args_is_help=True)
+pull_request_app = typer.Typer(no_args_is_help=True)
 
 app.add_typer(config_app, name="config")
 app.add_typer(provider_app, name="providers")
@@ -47,6 +49,7 @@ app.add_typer(project_app, name="project")
 app.add_typer(issue_app, name="issue")
 app.add_typer(control_plane_app, name="control-plane")
 control_plane_app.add_typer(capabilities_app, name="capabilities")
+control_plane_app.add_typer(pull_request_app, name="pr")
 
 
 @app.callback()
@@ -294,6 +297,87 @@ def sync_control_plane(
     _output(context).emit(result, rich=_sync_table(result))
 
 
+@pull_request_app.command("status")
+def pull_request_status(
+    context: typer.Context,
+    issue_key: Annotated[
+        str,
+        typer.Option("--issue-key", help="Planning contract issue key."),
+    ],
+    base_ref_name: Annotated[
+        str,
+        typer.Option("--base", help="Base branch for draft pull request creation."),
+    ] = "main",
+    run_checks: Annotated[
+        bool,
+        typer.Option("--run-checks", help="Run local required checks while reporting status."),
+    ] = False,
+) -> None:
+    """Report the guarded PR workflow state for an issue."""
+    _run_pull_request_workflow(
+        context,
+        issue_key=issue_key,
+        command=PullRequestCommand.STATUS,
+        apply_changes=False,
+        run_checks=run_checks,
+        base_ref_name=base_ref_name,
+    )
+
+
+@pull_request_app.command("sync")
+def pull_request_sync(
+    context: typer.Context,
+    issue_key: Annotated[
+        str,
+        typer.Option("--issue-key", help="Planning contract issue key."),
+    ],
+    apply_changes: Annotated[
+        bool,
+        typer.Option("--apply", help="Apply remote GitHub PR changes. Defaults to dry run."),
+    ] = False,
+    base_ref_name: Annotated[
+        str,
+        typer.Option("--base", help="Base branch for draft pull request creation."),
+    ] = "main",
+) -> None:
+    """Create or update the managed draft pull request for an issue."""
+    _run_pull_request_workflow(
+        context,
+        issue_key=issue_key,
+        command=PullRequestCommand.SYNC,
+        apply_changes=apply_changes,
+        run_checks=False,
+        base_ref_name=base_ref_name,
+    )
+
+
+@pull_request_app.command("ready")
+def pull_request_ready(
+    context: typer.Context,
+    issue_key: Annotated[
+        str,
+        typer.Option("--issue-key", help="Planning contract issue key."),
+    ],
+    apply_changes: Annotated[
+        bool,
+        typer.Option("--apply", help="Mark the draft PR ready when all gates pass."),
+    ] = False,
+    base_ref_name: Annotated[
+        str,
+        typer.Option("--base", help="Base branch for draft pull request creation."),
+    ] = "main",
+) -> None:
+    """Move a managed draft pull request to review when gates pass."""
+    _run_pull_request_workflow(
+        context,
+        issue_key=issue_key,
+        command=PullRequestCommand.READY,
+        apply_changes=apply_changes,
+        run_checks=True,
+        base_ref_name=base_ref_name,
+    )
+
+
 @capabilities_app.command("refresh")
 def refresh_capabilities(
     context: typer.Context,
@@ -405,6 +489,46 @@ def _sync_table(result: SyncResult) -> Table:
             action.issue_url or "",
         )
     return table
+
+
+def _pull_request_table(result: PullRequestWorkflowResult) -> Table:
+    title = "Control Plane PR"
+    if result.dry_run:
+        title += " (dry run)"
+    table = Table(title=title)
+    table.add_column("Key")
+    table.add_column("Value")
+    table.add_row("issue", result.issue_key)
+    table.add_row("state", result.state.value)
+    table.add_row("branch", result.git.branch or "")
+    table.add_row("pull_request", result.pull_request.url if result.pull_request else "")
+    table.add_row("blockers", "\n".join(result.blockers))
+    table.add_row("next", "\n".join(result.next_commands))
+    return table
+
+
+def _run_pull_request_workflow(
+    context: typer.Context,
+    *,
+    issue_key: str,
+    command: PullRequestCommand,
+    apply_changes: bool,
+    run_checks: bool,
+    base_ref_name: str,
+) -> None:
+    control_plane = LocalControlPlane()
+    try:
+        result = control_plane.pull_request_workflow(
+            issue_key=issue_key,
+            command=command,
+            apply_changes=apply_changes,
+            run_checks=run_checks,
+            base_ref_name=base_ref_name,
+        )
+    except (ContractError, ConfigError, FileNotFoundError, GitHubApiError, ValueError) as error:
+        _fail(context, str(error))
+
+    _output(context).emit(result, rich=_pull_request_table(result))
 
 
 @project_app.command("items")
