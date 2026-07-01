@@ -659,7 +659,11 @@ def test_pull_request_workflow_apply_create_then_noop_uses_cache(tmp_path: Path)
     _write_contract(tmp_path, _contract_yaml())
     contract = load_contract(tmp_path)
     config = _config()
-    provider = MemorySyncProvider(config, issues=[_remote_issue(config)])
+    provider = MemorySyncProvider(
+        config,
+        issues=[_remote_issue(config)],
+        fields=_project_fields(),
+    )
     cache_path = tmp_path / "control_plane.sqlite3"
 
     created = run_pull_request_workflow(
@@ -689,10 +693,15 @@ def test_pull_request_workflow_apply_create_then_noop_uses_cache(tmp_path: Path)
     assert [action.type.value for action in created.actions] == [
         "create_pull_request",
         "attach_project_item",
+        "update_project_item_field",
+        "update_project_item_field",
+        "update_project_item_field",
+        "update_project_item_field",
     ]
     assert [action.type.value for action in noop.actions] == ["noop"]
     assert len(provider.created_pull_request_requests) == 1
     assert provider.attached_content_ids == ["PR_created_1"]
+    assert len(provider.updated_project_item_field_values) == 4
 
 
 def test_pull_request_workflow_ready_blocks_until_issue_review_required(
@@ -708,6 +717,7 @@ def test_pull_request_workflow_ready_blocks_until_issue_review_required(
         issues=[issue],
         pull_requests=[pull_request],
         project_items=[_pull_request_project_item(config, pull_request)],
+        fields=_project_fields(),
     )
 
     result = run_pull_request_workflow(
@@ -744,6 +754,7 @@ def test_pull_request_workflow_ready_marks_draft_ready_when_gates_pass(
         issues=[issue],
         pull_requests=[pull_request],
         project_items=[_pull_request_project_item(config, pull_request)],
+        fields=_project_fields(),
     )
 
     result = run_pull_request_workflow(
@@ -760,8 +771,15 @@ def test_pull_request_workflow_ready_marks_draft_ready_when_gates_pass(
     )
 
     assert result.state is PullRequestWorkflowState.REVIEW_READY
-    assert [action.type.value for action in result.actions] == ["mark_ready_for_review"]
+    assert [action.type.value for action in result.actions] == [
+        "update_project_item_field",
+        "update_project_item_field",
+        "update_project_item_field",
+        "update_project_item_field",
+        "mark_ready_for_review",
+    ]
     assert provider.ready_pull_request_ids == ["PR_1"]
+    assert len(provider.updated_project_item_field_values) == 4
     assert result.pull_request is not None
     assert result.pull_request.is_draft is False
 
@@ -780,6 +798,7 @@ def test_pull_request_workflow_ready_blocks_on_failed_check(tmp_path: Path) -> N
         issues=[issue],
         pull_requests=[pull_request],
         project_items=[_pull_request_project_item(config, pull_request)],
+        fields=_project_fields(),
     )
 
     result = run_pull_request_workflow(
@@ -1155,6 +1174,46 @@ def _config() -> BlackcellConfig:
         repository=RepositoryRef(owner="kmosoti", name="blackcell", node_id="R_123"),
         project=ProjectRef(id="PVT_123", number=7, title="BlackCell"),
     )
+
+
+def _project_fields() -> list[ProjectFieldRef]:
+    return [
+        ProjectFieldRef(
+            id="FIELD_Status",
+            name="Status",
+            data_type="SINGLE_SELECT",
+            options=(
+                ProjectFieldOptionRef(id="status_backlog", name="Backlog"),
+                ProjectFieldOptionRef(id="status_todo", name="Todo"),
+                ProjectFieldOptionRef(id="status_in_progress", name="In Progress"),
+                ProjectFieldOptionRef(id="status_review_required", name="Review Required"),
+                ProjectFieldOptionRef(id="status_done", name="Done"),
+            ),
+        ),
+        ProjectFieldRef(
+            id="FIELD_Priority",
+            name="Priority",
+            data_type="SINGLE_SELECT",
+            options=(
+                ProjectFieldOptionRef(id="priority_p0", name="P0"),
+                ProjectFieldOptionRef(id="priority_p1", name="P1"),
+                ProjectFieldOptionRef(id="priority_p2", name="P2"),
+                ProjectFieldOptionRef(id="priority_p3", name="P3"),
+            ),
+        ),
+        ProjectFieldRef(id="FIELD_Complexity", name="Complexity", data_type="NUMBER"),
+        ProjectFieldRef(
+            id="FIELD_Type",
+            name="Type",
+            data_type="SINGLE_SELECT",
+            options=(
+                ProjectFieldOptionRef(id="type_feature", name="feature"),
+                ProjectFieldOptionRef(id="type_bug", name="bug"),
+                ProjectFieldOptionRef(id="type_refactor", name="refactor"),
+                ProjectFieldOptionRef(id="type_chore", name="chore"),
+            ),
+        ),
+    ]
 
 
 def _remote_issue(config: BlackcellConfig) -> IssueRef:

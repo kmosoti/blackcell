@@ -9,6 +9,14 @@ from blackcell.control_plane.cache import (
     now_timestamp,
 )
 from blackcell.control_plane.models import IssuePlan, PlanContract
+from blackcell.control_plane.project_fields import (
+    current_field_value,
+    desired_project_field_values,
+    field_value_matches,
+    missing_required_fields,
+    project_field_specs,
+    project_field_value,
+)
 from blackcell.control_plane.rendering import (
     extract_prior_remote_body,
     has_blackcell_issue_marker,
@@ -16,11 +24,10 @@ from blackcell.control_plane.rendering import (
     issue_contract_digest,
     render_issue_body,
 )
-from blackcell.models import IssueRef, ProjectFieldRef, ProjectItemFieldValueRef, ProjectItemRef
+from blackcell.models import IssueRef, ProjectFieldRef, ProjectItemRef
 from blackcell.providers import (
     CreateIssueRequest,
     CreateProjectFieldRequest,
-    ProjectFieldValue,
     ProjectProvider,
 )
 
@@ -352,7 +359,7 @@ def _sync_project_representation(
         apply_changes=apply_changes,
     )
     actions.extend(field_actions)
-    if _missing_required_fields(fields):
+    if missing_required_fields(fields):
         return tuple(actions)
 
     field_by_name = {field.name: field for field in fields}
@@ -402,7 +409,7 @@ def _ensure_project_fields(
     actions: list[SyncAction] = []
     field_by_name = {field.name: field for field in fields}
     ensured_fields = list(fields)
-    for field_name, data_type, options in _project_field_specs():
+    for field_name, data_type, options in project_field_specs():
         field = field_by_name.get(field_name)
         if field is None:
             actions.append(
@@ -471,17 +478,11 @@ def _sync_issue_field_values(
     apply_changes: bool,
 ) -> tuple[SyncAction, ...]:
     actions: list[SyncAction] = []
-    desired_values = (
-        ("Status", issue.status.value),
-        ("Priority", issue.priority.value),
-        ("Complexity", issue.complexity.value),
-        ("Type", issue.kind.value),
-    )
-    for field_name, desired_value in desired_values:
+    for field_name, desired_value in desired_project_field_values(issue):
         field = field_by_name[field_name]
-        value = _project_field_value(field, desired_value)
-        current = _current_field_value(project_item, field.id)
-        if _field_value_matches(current, desired_value):
+        value = project_field_value(field, desired_value)
+        current = current_field_value(project_item, field.id)
+        if field_value_matches(current, desired_value):
             continue
         if apply_changes:
             provider.update_project_item_field_value(
@@ -661,55 +662,6 @@ def _project_items_by_content_id(items: list[ProjectItemRef]) -> dict[str, Proje
 
 def _repository_cache_id(config: BlackcellConfig) -> str:
     return config.repository.node_id or config.repository.name_with_owner
-
-
-def _project_field_specs() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
-    return (
-        ("Status", "SINGLE_SELECT", ("Backlog", "Todo", "In Progress", "Review Required", "Done")),
-        ("Priority", "SINGLE_SELECT", ("P0", "P1", "P2", "P3")),
-        ("Complexity", "NUMBER", ()),
-        ("Type", "SINGLE_SELECT", ("feature", "bug", "refactor", "chore")),
-    )
-
-
-def _missing_required_fields(fields: list[ProjectFieldRef]) -> bool:
-    field_names = {field.name for field in fields}
-    return any(field_name not in field_names for field_name, _, _ in _project_field_specs())
-
-
-def _project_field_value(field: ProjectFieldRef, desired_value: str | int) -> ProjectFieldValue:
-    if field.data_type == "NUMBER":
-        if not isinstance(desired_value, int):
-            raise ValueError(f"GitHub Project field {field.name} expected numeric value")
-        return ProjectFieldValue(number=float(desired_value))
-    if field.data_type == "SINGLE_SELECT":
-        option_by_name = {option.name: option for option in field.options}
-        option = option_by_name.get(str(desired_value))
-        if option is None or option.id is None:
-            raise ValueError(f"GitHub Project field {field.name} missing option {desired_value}")
-        return ProjectFieldValue(single_select_option_id=option.id)
-    raise ValueError(f"unsupported GitHub Project field type for {field.name}: {field.data_type}")
-
-
-def _current_field_value(
-    project_item: ProjectItemRef,
-    field_id: str,
-) -> ProjectItemFieldValueRef | None:
-    for value in project_item.field_values:
-        if value.field_id == field_id:
-            return value
-    return None
-
-
-def _field_value_matches(
-    current: ProjectItemFieldValueRef | None,
-    desired_value: str | int,
-) -> bool:
-    if current is None:
-        return False
-    if isinstance(desired_value, int):
-        return current.number == float(desired_value)
-    return current.option_name == desired_value or current.text == desired_value
 
 
 def _summary(actions: list[SyncAction]) -> dict[str, int]:

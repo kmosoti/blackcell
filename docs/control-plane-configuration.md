@@ -271,7 +271,9 @@ dry-run by default unless `--apply` is passed.
 
 The workflow is intentionally one issue to one pull request. The PR title is the
 contract issue title. The body is rendered from the local contract and includes
-hidden BlackCell markers for rediscovery.
+hidden BlackCell markers for rediscovery. Managed PR Project items mirror the
+same `Status`, `Priority`, `Complexity`, and `Type` values as their issue
+contract so the Project remains scannable from either row.
 
 ```mermaid
 stateDiagram
@@ -328,9 +330,11 @@ sequenceDiagram
         alt no PR and sync --apply
             CLI->>GH: createPullRequest(draft: true)
             CLI->>GH: attach PR to GitHub Project
+            CLI->>GH: sync PR item Status/Priority/Complexity/Type
             CLI->>Cache: store PR node ID and digest
         else PR differs from contract and --apply
             CLI->>GH: updatePullRequest
+            CLI->>GH: sync PR item Status/Priority/Complexity/Type
             CLI->>Cache: update rendered digest
         end
         opt ready command

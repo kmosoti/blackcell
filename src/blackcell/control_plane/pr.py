@@ -16,11 +16,18 @@ from blackcell.control_plane.git import (
     run_required_checks,
 )
 from blackcell.control_plane.models import IssuePlan, IssueStatus, PlanContract
+from blackcell.control_plane.project_fields import (
+    current_field_value,
+    desired_project_field_values,
+    field_value_matches,
+    missing_required_fields,
+    project_field_value,
+)
 from blackcell.control_plane.rendering import (
     pull_request_body_digest,
     render_pull_request_body,
 )
-from blackcell.models import IssueRef, ProjectItemRef, PullRequestRef
+from blackcell.models import IssueRef, ProjectFieldRef, ProjectItemRef, PullRequestRef
 from blackcell.providers import CreatePullRequestRequest, ProjectProvider
 
 GitInspector = Callable[[Path | None], GitState]
@@ -46,6 +53,7 @@ class PullRequestActionType(StrEnum):
     CREATE_PULL_REQUEST = "create_pull_request"
     UPDATE_PULL_REQUEST = "update_pull_request"
     ATTACH_PROJECT_ITEM = "attach_project_item"
+    UPDATE_PROJECT_ITEM_FIELD = "update_project_item_field"
     MARK_READY_FOR_REVIEW = "mark_ready_for_review"
     NOOP = "noop"
 
@@ -60,6 +68,8 @@ class PullRequestAction:
     pull_request_number: int | None = None
     pull_request_url: str | None = None
     project_item_id: str | None = None
+    field_name: str | None = None
+    field_value: str | int | float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +216,15 @@ def run_pull_request_workflow(
                     project_item_id=project_item.id,
                 )
             )
+        if project_item is not None:
+            _sync_pull_request_project_item_fields(
+                provider=provider,
+                issue=issue,
+                pull_request=pull_request,
+                project_item=project_item,
+                actions=actions,
+                apply_changes=apply_changes,
+            )
 
         checks: tuple[CheckResult, ...] = ()
         blockers: list[str] = []
@@ -346,7 +365,7 @@ def _handle_missing_pull_request(
         )
     )
     project_item = provider.add_project_item_by_id(pull_request.id)
-    actions = (
+    actions = [
         _action(
             PullRequestActionType.CREATE_PULL_REQUEST,
             issue,
@@ -362,6 +381,14 @@ def _handle_missing_pull_request(
             message="attached pull request to GitHub Project",
             project_item_id=project_item.id,
         ),
+    ]
+    _sync_pull_request_project_item_fields(
+        provider=provider,
+        issue=issue,
+        pull_request=pull_request,
+        project_item=project_item,
+        actions=actions,
+        apply_changes=True,
     )
     _write_cache(
         cache=cache,
@@ -379,7 +406,7 @@ def _handle_missing_pull_request(
         apply_changes=True,
         blockers=(),
         next_commands=_next_commands(PullRequestWorkflowState.DRAFT_OPEN, issue.key, git),
-        actions=actions,
+        actions=tuple(actions),
         checks=(),
         git=git,
         issue=remote_issue,
@@ -415,6 +442,46 @@ def _sync_existing_pull_request(
         )
 
     return pull_request
+
+
+def _sync_pull_request_project_item_fields(
+    *,
+    provider: ProjectProvider,
+    issue: IssuePlan,
+    pull_request: PullRequestRef,
+    project_item: ProjectItemRef,
+    actions: list[PullRequestAction],
+    apply_changes: bool,
+) -> None:
+    fields = provider.list_project_fields(first=50)
+    if missing_required_fields(fields):
+        raise ValueError(
+            "GitHub Project is missing required contract fields; "
+            f"run blackcell control-plane sync --issue-key {issue.key} --apply"
+        )
+    field_by_name = {field.name: field for field in fields}
+    for field_name, desired_value in desired_project_field_values(issue):
+        field = field_by_name[field_name]
+        value = project_field_value(field, desired_value)
+        current = current_field_value(project_item, field.id)
+        if field_value_matches(current, desired_value):
+            continue
+        if apply_changes:
+            provider.update_project_item_field_value(
+                item_id=project_item.id,
+                field_id=field.id,
+                value=value,
+            )
+        actions.append(
+            _project_field_action(
+                issue=issue,
+                pull_request=pull_request,
+                project_item=project_item,
+                field=field,
+                desired_value=desired_value,
+                applied=apply_changes,
+            )
+        )
 
 
 def _discover_issue(
@@ -602,6 +669,29 @@ def _action(
         project_item_id=project_item_id,
         applied=applied,
         message=message,
+    )
+
+
+def _project_field_action(
+    *,
+    issue: IssuePlan,
+    pull_request: PullRequestRef,
+    project_item: ProjectItemRef,
+    field: ProjectFieldRef,
+    desired_value: str | int,
+    applied: bool,
+) -> PullRequestAction:
+    return PullRequestAction(
+        type=PullRequestActionType.UPDATE_PROJECT_ITEM_FIELD,
+        issue_key=issue.key,
+        pull_request_id=pull_request.id,
+        pull_request_number=pull_request.number,
+        pull_request_url=pull_request.url,
+        project_item_id=project_item.id,
+        applied=applied,
+        message=f"{'updated' if applied else 'would update'} GitHub Project {field.name}",
+        field_name=field.name,
+        field_value=desired_value,
     )
 
 
