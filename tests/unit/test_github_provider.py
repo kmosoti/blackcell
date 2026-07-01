@@ -201,6 +201,70 @@ def test_add_project_item_by_id_posts_graphql_and_returns_project_item() -> None
     assert requests[0]["variables"] == {"projectId": "PVT_123", "contentId": "I_123"}
 
 
+def test_add_project_item_by_id_adopts_existing_duplicate_item() -> None:
+    requests: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        requests.append(payload)
+        query = payload["query"]
+        assert isinstance(query, str)
+        if "addProjectV2ItemById" in query:
+            return httpx.Response(
+                200,
+                json={
+                    "data": {"addProjectV2ItemById": None},
+                    "errors": [
+                        {
+                            "type": "UNPROCESSABLE",
+                            "path": ["addProjectV2ItemById"],
+                            "message": "Content already exists in this project",
+                        }
+                    ],
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "node": {
+                        "id": "PVT_123",
+                        "number": 7,
+                        "title": "BlackCell",
+                        "url": "https://github.com/users/kmosoti/projects/7",
+                        "items": {
+                            "nodes": [
+                                {
+                                    "id": "PVTI_existing",
+                                    "type": "ISSUE",
+                                    "isArchived": False,
+                                    "content": {
+                                        "__typename": "Issue",
+                                        "id": "I_123",
+                                        "title": "Issue",
+                                        "url": "https://github.com/kmosoti/blackcell/issues/5",
+                                    },
+                                }
+                            ],
+                            "pageInfo": {
+                                "hasNextPage": False,
+                                "endCursor": None,
+                            },
+                        },
+                    }
+                }
+            },
+        )
+
+    provider = GitHubProjectsProvider(_config(), token="token", client=_client(handler))
+
+    item = provider.add_project_item_by_id("I_123")
+
+    assert item.id == "PVTI_existing"
+    assert item.content_id == "I_123"
+    assert len(requests) == 2
+
+
 def test_create_pull_request_posts_graphql_and_returns_pull_request() -> None:
     requests: list[dict[str, object]] = []
 

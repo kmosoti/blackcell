@@ -4,14 +4,12 @@ from typing import Any
 import httpx
 
 from blackcell.config.models import BlackcellConfig, ProjectRef, RepositoryRef
-from blackcell.control_plane.rendering import (
-    has_blackcell_issue_marker,
-    has_blackcell_pull_request_marker,
-)
 from blackcell.models import IssueRef, ProjectItemRef, PullRequestRef
 from blackcell.providers.base import CreateIssueRequest, CreatePullRequestRequest
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
+ISSUE_KEY_MARKER_PREFIX = "<!-- blackcell:issue-key "
+PR_ISSUE_KEY_MARKER_PREFIX = "<!-- blackcell:pr-issue-key "
 
 
 class GitHubApiError(RuntimeError):
@@ -182,7 +180,7 @@ class GitHubProjectsProvider:
         return [
             issue
             for issue in self.list_repository_issues(first=100)
-            if has_blackcell_issue_marker(issue.body or "", issue_key)
+            if _has_blackcell_issue_marker(issue.body or "", issue_key)
         ]
 
     def find_issues_by_exact_title(self, title: str) -> list[IssueRef]:
@@ -287,41 +285,59 @@ class GitHubProjectsProvider:
         return items
 
     def add_project_item_by_id(self, content_id: str) -> ProjectItemRef:
-        data = self._graphql(
-            """
-            mutation($projectId: ID!, $contentId: ID!) {
-              addProjectV2ItemById(input: {
-                projectId: $projectId
-                contentId: $contentId
-              }) {
-                item {
-                  id
-                  type
-                  isArchived
-                  content {
-                    __typename
-                    ... on Issue {
+        try:
+            data = self._graphql(
+                """
+                mutation($projectId: ID!, $contentId: ID!) {
+                  addProjectV2ItemById(input: {
+                    projectId: $projectId
+                    contentId: $contentId
+                  }) {
+                    item {
                       id
-                      title
-                      url
-                    }
-                    ... on PullRequest {
-                      id
-                      title
-                      url
-                    }
-                    ... on DraftIssue {
-                      title
-                      body
+                      type
+                      isArchived
+                      content {
+                        __typename
+                        ... on Issue {
+                          id
+                          title
+                          url
+                        }
+                        ... on PullRequest {
+                          id
+                          title
+                          url
+                        }
+                        ... on DraftIssue {
+                          title
+                          body
+                        }
+                      }
                     }
                   }
                 }
-              }
-            }
-            """,
-            {"projectId": self._config.project.id, "contentId": content_id},
-        )
+                """,
+                {"projectId": self._config.project.id, "contentId": content_id},
+            )
+        except GitHubApiError as error:
+            existing = self._existing_project_item(content_id, error)
+            if existing is not None:
+                return existing
+            raise
         return _project_item_ref(self._config.project, data["addProjectV2ItemById"]["item"])
+
+    def _existing_project_item(
+        self,
+        content_id: str,
+        error: GitHubApiError,
+    ) -> ProjectItemRef | None:
+        if "Content already exists in this project" not in str(error):
+            return None
+        for item in self.list_project_items(first=100):
+            if item.content_id == content_id:
+                return item
+        return None
 
     def read_pull_request_by_id(self, pull_request_id: str) -> PullRequestRef | None:
         data = self._graphql(
@@ -418,7 +434,7 @@ class GitHubProjectsProvider:
         return [
             pull_request
             for pull_request in self.list_repository_pull_requests(first=100)
-            if has_blackcell_pull_request_marker(pull_request.body or "", issue_key)
+            if _has_blackcell_pull_request_marker(pull_request.body or "", issue_key)
         ]
 
     def find_pull_requests_by_head(self, head_ref_name: str) -> list[PullRequestRef]:
@@ -605,6 +621,14 @@ def _pull_request_ref(data: dict[str, Any]) -> PullRequestRef:
         repository=RepositoryRef(owner=repository["owner"]["login"], name=repository["name"]),
         body=data.get("body"),
     )
+
+
+def _has_blackcell_issue_marker(body: str, issue_key: str) -> bool:
+    return ISSUE_KEY_MARKER_PREFIX + issue_key + " -->" in body
+
+
+def _has_blackcell_pull_request_marker(body: str, issue_key: str) -> bool:
+    return PR_ISSUE_KEY_MARKER_PREFIX + issue_key + " -->" in body
 
 
 def _project_item_ref(project: ProjectRef, data: dict[str, Any]) -> ProjectItemRef:
