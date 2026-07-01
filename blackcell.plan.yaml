@@ -70,7 +70,7 @@ issues:
   - key: BCP-0002
     title: Guard GitHub GraphQL capabilities
     type: feature
-    status: Backlog
+    status: Done
     priority: P1
     complexity: 3
     epic: EPIC-CONTROL-PLANE
@@ -92,7 +92,7 @@ issues:
   - key: BCP-0003
     title: Expose JSON-first control-plane CLI commands
     type: feature
-    status: Backlog
+    status: Done
     priority: P1
     complexity: 3
     epic: EPIC-CONTROL-PLANE
@@ -110,6 +110,41 @@ issues:
       - Wire control-plane commands into the Typer app.
     acceptance_criteria:
       - CLI validation errors remain JSON-readable by default.
+
+  - key: BCP-0004
+    title: Add guarded PR workflow
+    type: feature
+    status: Review Required
+    priority: P0
+    complexity: 8
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0001
+      - BCP-0002
+      - BCP-0003
+    areas_of_responsibility:
+      - cli
+      - github/pull-requests
+      - control-plane/cache
+    scope:
+      - Add a guarded state machine for issue-to-PR workflow progression.
+      - Create or update a managed draft pull request and attach it to the GitHub Project.
+      - Move the draft pull request to review only after local gates pass.
+      - Keep PR identity and rendered digests in the generated SQLite cache.
+    context:
+      - BlackCell guides local git state but does not commit, push, merge, or close PRs.
+      - The workflow is one issue to one pull request and uses BlackCell body markers for rediscovery.
+    change_spec:
+      - Add control-plane PR status, sync, and ready commands.
+      - Add provider methods for GitHub pull request discovery, creation, updates, and ready transition.
+      - Add deterministic PR body rendering, PR cache rows, and capability validation.
+      - Document project and issue configuration plus the guarded PR workflow.
+    acceptance_criteria:
+      - PR commands emit JSON-first workflow state, actions, blockers, checks, and next commands.
+      - Draft PR creation and update are idempotent and dry-run by default.
+      - Ready transition requires status Review Required and passing configured checks.
+      - Unit tests cover rendering, cache behavior, provider GraphQL calls, workflow gates, and CLI output.
 
 native_automation:
   - key: native-validate-contract
