@@ -30,6 +30,33 @@ class PullRequestRef:
 
 
 @dataclass(frozen=True, slots=True)
+class ProjectFieldOptionRef:
+    id: str | None
+    name: str
+    color: str = "GRAY"
+    description: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectFieldRef:
+    id: str
+    name: str
+    data_type: str
+    options: tuple[ProjectFieldOptionRef, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectItemFieldValueRef:
+    field_id: str
+    field_name: str
+    type: str
+    text: str | None = None
+    number: float | None = None
+    option_id: str | None = None
+    option_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ProjectItemRef:
     id: str
     type: str
@@ -39,3 +66,4 @@ class ProjectItemRef:
     content_title: str | None = None
     content_url: str | None = None
     content_type: str | None = None
+    field_values: tuple[ProjectItemFieldValueRef, ...] = ()

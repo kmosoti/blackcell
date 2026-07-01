@@ -32,8 +32,20 @@ from blackcell.control_plane.pr import (
     PullRequestWorkflowState,
 )
 from blackcell.control_plane.sync import sync_issues
-from blackcell.models import IssueRef, ProjectItemRef, PullRequestRef
-from blackcell.providers import CreateIssueRequest, CreatePullRequestRequest
+from blackcell.models import (
+    IssueRef,
+    ProjectFieldOptionRef,
+    ProjectFieldRef,
+    ProjectItemFieldValueRef,
+    ProjectItemRef,
+    PullRequestRef,
+)
+from blackcell.providers import (
+    CreateIssueRequest,
+    CreateProjectFieldRequest,
+    CreatePullRequestRequest,
+    ProjectFieldValue,
+)
 
 runner = CliRunner()
 
@@ -150,8 +162,9 @@ def test_sync_dry_run_create_issue_has_no_mutations_or_cache(tmp_path: Path) -> 
         issue_key="BCP-0001",
     )
 
-    assert [action.type.value for action in result.actions] == ["create_issue"]
+    assert result.actions[0].type.value == "create_issue"
     assert result.actions[0].applied is False
+    assert "create_project_field" in [action.type.value for action in result.actions]
     assert provider.created_requests == []
     assert not cache_path.exists()
 
@@ -182,9 +195,192 @@ def test_sync_apply_create_then_noop_uses_cache(tmp_path: Path) -> None:
         issue_key="BCP-0001",
     )
 
-    assert [action.type.value for action in created.actions] == ["create_issue"]
+    assert created.actions[0].type.value == "create_issue"
+    assert "update_project_item_field" in [action.type.value for action in created.actions]
     assert [action.type.value for action in noop.actions] == ["noop"]
     assert len(provider.created_requests) == 1
+
+
+def test_sync_dry_run_reports_missing_project_fields(tmp_path: Path) -> None:
+    _write_contract(tmp_path, _contract_yaml())
+    contract = load_contract(tmp_path)
+    provider = MemorySyncProvider(_config())
+
+    result = sync_issues(
+        contract=contract,
+        config=_config(),
+        provider=provider,
+        start=tmp_path,
+        issue_key="BCP-0001",
+    )
+
+    assert [action.type.value for action in result.actions] == [
+        "create_issue",
+        "create_project_field",
+        "create_project_field",
+        "create_project_field",
+        "create_project_field",
+    ]
+    assert provider.created_project_field_requests == []
+
+
+def test_sync_apply_sets_project_fields_then_noops(tmp_path: Path) -> None:
+    _write_contract(tmp_path, _contract_yaml())
+    contract = load_contract(tmp_path)
+    config = _config()
+    provider = MemorySyncProvider(config)
+    cache_path = tmp_path / "control_plane.sqlite3"
+
+    created = sync_issues(
+        contract=contract,
+        config=config,
+        provider=provider,
+        start=tmp_path,
+        cache_path=cache_path,
+        apply_changes=True,
+        issue_key="BCP-0001",
+    )
+    noop = sync_issues(
+        contract=contract,
+        config=config,
+        provider=provider,
+        start=tmp_path,
+        cache_path=cache_path,
+        apply_changes=True,
+        issue_key="BCP-0001",
+    )
+
+    assert [action.type.value for action in created.actions] == [
+        "create_issue",
+        "create_project_field",
+        "create_project_field",
+        "create_project_field",
+        "create_project_field",
+        "update_project_item_field",
+        "update_project_item_field",
+        "update_project_item_field",
+        "update_project_item_field",
+    ]
+    assert [action.type.value for action in noop.actions] == ["noop"]
+    assert len(provider.created_project_field_requests) == 4
+    assert len(provider.updated_project_item_field_values) == 4
+
+
+def test_sync_updates_missing_status_options(tmp_path: Path) -> None:
+    _write_contract(tmp_path, _contract_yaml(status="Review Required"))
+    contract = load_contract(tmp_path)
+    config = _config()
+    provider = MemorySyncProvider(
+        config,
+        fields=[
+            ProjectFieldRef(
+                id="FIELD_Status",
+                name="Status",
+                data_type="SINGLE_SELECT",
+                options=(
+                    ProjectFieldOptionRef(id="status_todo", name="Todo"),
+                    ProjectFieldOptionRef(id="status_done", name="Done"),
+                ),
+            ),
+            ProjectFieldRef(
+                id="FIELD_Priority",
+                name="Priority",
+                data_type="SINGLE_SELECT",
+                options=(
+                    ProjectFieldOptionRef(id="priority_p0", name="P0"),
+                    ProjectFieldOptionRef(id="priority_p1", name="P1"),
+                    ProjectFieldOptionRef(id="priority_p2", name="P2"),
+                    ProjectFieldOptionRef(id="priority_p3", name="P3"),
+                ),
+            ),
+            ProjectFieldRef(id="FIELD_Complexity", name="Complexity", data_type="NUMBER"),
+            ProjectFieldRef(
+                id="FIELD_Type",
+                name="Type",
+                data_type="SINGLE_SELECT",
+                options=(
+                    ProjectFieldOptionRef(id="type_feature", name="feature"),
+                    ProjectFieldOptionRef(id="type_bug", name="bug"),
+                    ProjectFieldOptionRef(id="type_refactor", name="refactor"),
+                    ProjectFieldOptionRef(id="type_chore", name="chore"),
+                ),
+            ),
+        ],
+    )
+
+    result = sync_issues(
+        contract=contract,
+        config=config,
+        provider=provider,
+        start=tmp_path,
+        cache_path=tmp_path / "control_plane.sqlite3",
+        apply_changes=True,
+        issue_key="BCP-0001",
+    )
+
+    assert "update_project_field" in [action.type.value for action in result.actions]
+    assert provider.updated_project_field_options == [
+        ("FIELD_Status", ("Backlog", "Todo", "In Progress", "Review Required", "Done"))
+    ]
+
+
+def test_sync_full_contract_archives_unmanaged_issue_project_items(tmp_path: Path) -> None:
+    _write_contract(tmp_path, _contract_yaml())
+    contract = load_contract(tmp_path)
+    config = _config()
+    unmanaged = ProjectItemRef(
+        id="PVTI_unmanaged",
+        type="ISSUE",
+        is_archived=False,
+        project=config.project,
+        content_id="I_unmanaged",
+        content_title="Obsolete issue",
+        content_url="https://example.test/issues/99",
+        content_type="Issue",
+    )
+    provider = MemorySyncProvider(config, project_items=[unmanaged])
+
+    result = sync_issues(
+        contract=contract,
+        config=config,
+        provider=provider,
+        start=tmp_path,
+        cache_path=tmp_path / "control_plane.sqlite3",
+        apply_changes=True,
+    )
+
+    assert "archive_project_item" in [action.type.value for action in result.actions]
+    assert provider.archived_project_item_ids == ["PVTI_unmanaged"]
+
+
+def test_sync_issue_key_does_not_archive_unmanaged_project_items(tmp_path: Path) -> None:
+    _write_contract(tmp_path, _contract_yaml())
+    contract = load_contract(tmp_path)
+    config = _config()
+    unmanaged = ProjectItemRef(
+        id="PVTI_unmanaged",
+        type="ISSUE",
+        is_archived=False,
+        project=config.project,
+        content_id="I_unmanaged",
+        content_title="Obsolete issue",
+        content_url="https://example.test/issues/99",
+        content_type="Issue",
+    )
+    provider = MemorySyncProvider(config, project_items=[unmanaged])
+
+    result = sync_issues(
+        contract=contract,
+        config=config,
+        provider=provider,
+        start=tmp_path,
+        cache_path=tmp_path / "control_plane.sqlite3",
+        apply_changes=True,
+        issue_key="BCP-0001",
+    )
+
+    assert "archive_project_item" not in [action.type.value for action in result.actions]
+    assert provider.archived_project_item_ids == []
 
 
 def test_sync_issue_key_filters_contract_issues(tmp_path: Path) -> None:
@@ -239,11 +435,12 @@ def test_sync_adopts_exact_title_and_preserves_prior_body_once(tmp_path: Path) -
         issue_key="BCP-0001",
     )
 
-    assert [action.type.value for action in first.actions] == [
+    assert [action.type.value for action in first.actions[:3]] == [
         "adopt_issue",
         "update_issue",
         "attach_project_item",
     ]
+    assert "update_project_item_field" in [action.type.value for action in first.actions]
     assert provider.issues["I_existing"].body
     assert provider.issues["I_existing"].body.count("## Prior remote context") == 1
     assert extract_prior_remote_body(provider.issues["I_existing"].body or "") == "human notes"
@@ -649,16 +846,23 @@ class MemorySyncProvider:
         issues: list[IssueRef] | None = None,
         pull_requests: list[PullRequestRef] | None = None,
         project_items: list[ProjectItemRef] | None = None,
+        fields: list[ProjectFieldRef] | None = None,
     ) -> None:
         self.config = config
         self.issues = {issue.id: issue for issue in issues or []}
         self.pull_requests = {pr.id: pr for pr in pull_requests or []}
         self.project_items = list(project_items or [])
+        self.fields = list(fields or [])
+        self.field_values: dict[tuple[str, str], ProjectFieldValue] = {}
         self.created_requests: list[CreateIssueRequest] = []
         self.updated_requests: list[tuple[str, str, str]] = []
         self.created_pull_request_requests: list[CreatePullRequestRequest] = []
         self.updated_pull_request_requests: list[tuple[str, str, str]] = []
         self.ready_pull_request_ids: list[str] = []
+        self.created_project_field_requests: list[CreateProjectFieldRequest] = []
+        self.updated_project_field_options: list[tuple[str, tuple[str, ...]]] = []
+        self.updated_project_item_field_values: list[tuple[str, str, ProjectFieldValue]] = []
+        self.archived_project_item_ids: list[str] = []
         self.attached_content_ids: list[str] = []
 
     def create_issue(self, request: CreateIssueRequest) -> IssueRef:
@@ -790,7 +994,7 @@ class MemorySyncProvider:
         return updated
 
     def list_project_items(self, *, first: int = 20) -> list[ProjectItemRef]:
-        return self.project_items[:first]
+        return [self._with_field_values(item) for item in self.project_items[:first]]
 
     def add_project_item_by_id(self, content_id: str) -> ProjectItemRef:
         self.attached_content_ids.append(content_id)
@@ -802,6 +1006,76 @@ class MemorySyncProvider:
             raise ValueError(f"unknown project content ID: {content_id}")
         self.project_items.append(item)
         return item
+
+    def archive_project_item(self, item_id: str) -> None:
+        self.archived_project_item_ids.append(item_id)
+        self.project_items = [
+            ProjectItemRef(
+                id=item.id,
+                type=item.type,
+                is_archived=True if item.id == item_id else item.is_archived,
+                project=item.project,
+                content_id=item.content_id,
+                content_title=item.content_title,
+                content_url=item.content_url,
+                content_type=item.content_type,
+                field_values=item.field_values,
+            )
+            for item in self.project_items
+        ]
+
+    def list_project_fields(self, *, first: int = 50) -> list[ProjectFieldRef]:
+        return self.fields[:first]
+
+    def create_project_field(self, request: CreateProjectFieldRequest) -> ProjectFieldRef:
+        self.created_project_field_requests.append(request)
+        field = ProjectFieldRef(
+            id=f"FIELD_{request.name}",
+            name=request.name,
+            data_type=request.data_type,
+            options=tuple(
+                ProjectFieldOptionRef(
+                    id=f"{request.name.lower()}_{option_name.lower().replace(' ', '_')}",
+                    name=option_name,
+                )
+                for option_name in request.single_select_options
+            ),
+        )
+        self.fields.append(field)
+        return field
+
+    def update_project_single_select_field_options(
+        self,
+        field: ProjectFieldRef,
+        option_names: tuple[str, ...],
+    ) -> ProjectFieldRef:
+        self.updated_project_field_options.append((field.id, option_names))
+        existing_by_name = {option.name: option for option in field.options}
+        updated = ProjectFieldRef(
+            id=field.id,
+            name=field.name,
+            data_type=field.data_type,
+            options=tuple(
+                existing_by_name.get(option_name)
+                or ProjectFieldOptionRef(
+                    id=f"{field.name.lower()}_{option_name.lower().replace(' ', '_')}",
+                    name=option_name,
+                )
+                for option_name in option_names
+            ),
+        )
+        self.fields = [updated if item.id == field.id else item for item in self.fields]
+        return updated
+
+    def update_project_item_field_value(
+        self,
+        *,
+        item_id: str,
+        field_id: str,
+        value: ProjectFieldValue,
+    ) -> None:
+        self.updated_project_item_field_values.append((item_id, field_id, value))
+        self.field_values[(item_id, field_id)] = value
 
     def _project_item(self, issue: IssueRef) -> ProjectItemRef:
         return ProjectItemRef(
@@ -825,6 +1099,45 @@ class MemorySyncProvider:
             content_title=pull_request.title,
             content_url=pull_request.url,
             content_type="PullRequest",
+        )
+
+    def _with_field_values(self, item: ProjectItemRef) -> ProjectItemRef:
+        values: list[ProjectItemFieldValueRef] = []
+        field_by_id = {field.id: field for field in self.fields}
+        for (item_id, field_id), value in self.field_values.items():
+            if item_id != item.id:
+                continue
+            field = field_by_id[field_id]
+            if value.number is not None:
+                values.append(
+                    ProjectItemFieldValueRef(
+                        field_id=field.id,
+                        field_name=field.name,
+                        type="number",
+                        number=value.number,
+                    )
+                )
+            elif value.single_select_option_id is not None:
+                option_name = _option_name(field, value.single_select_option_id)
+                values.append(
+                    ProjectItemFieldValueRef(
+                        field_id=field.id,
+                        field_name=field.name,
+                        type="single_select",
+                        option_id=value.single_select_option_id,
+                        option_name=option_name,
+                    )
+                )
+        return ProjectItemRef(
+            id=item.id,
+            type=item.type,
+            is_archived=item.is_archived,
+            project=item.project,
+            content_id=item.content_id,
+            content_title=item.content_title,
+            content_url=item.content_url,
+            content_type=item.content_type,
+            field_values=tuple(values),
         )
 
 
@@ -899,6 +1212,13 @@ def _pull_request_project_item(
         content_url=pull_request.url,
         content_type="PullRequest",
     )
+
+
+def _option_name(field: ProjectFieldRef, option_id: str) -> str | None:
+    for option in field.options:
+        if option.id == option_id:
+            return option.name
+    return None
 
 
 def _git_state(

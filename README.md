@@ -84,7 +84,8 @@ The control-plane contract validates hierarchy, strict
 status/type/priority/complexity enums, issue DAG dependencies, inherited
 acceptance/readiness/done criteria, and cached GitHub GraphQL capabilities.
 Sync is local-to-GitHub and dry-run by default; pass `--apply` to create or
-update GitHub issues and attach them to the configured GitHub Project.
+update GitHub issues, attach them to the configured GitHub Project, and sync
+Project fields for Status, Priority, Complexity, and Type.
 The PR workflow is also dry-run by default; it guides local committed changes
 through draft PR creation and marks the draft ready only after the contract
 status is `Review Required` and configured checks pass.

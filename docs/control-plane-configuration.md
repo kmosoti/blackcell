@@ -211,8 +211,19 @@ flowchart LR
 
 `blackcell control-plane sync` is local-to-GitHub and dry-run by default.
 `--apply` creates or updates GitHub issues and ensures each issue is attached to
-the configured GitHub Project. Project field values such as Status, Priority,
-Complexity, and Type are intentionally deferred.
+the configured GitHub Project. It also makes the Project representative of the
+planning contract by ensuring these fields and item values:
+
+| Field | Type | Source |
+| --- | --- | --- |
+| `Status` | Single select | `issues[].status` |
+| `Priority` | Single select | `issues[].priority` |
+| `Complexity` | Number | `issues[].complexity` |
+| `Type` | Single select | `issues[].type` |
+
+When the whole contract is synced, unmanaged GitHub issue items in the Project
+are archived so the Project rows match the local contract. Targeted
+`--issue-key` sync does not archive unrelated Project items.
 
 ```mermaid
 sequenceDiagram
@@ -235,6 +246,11 @@ sequenceDiagram
         CLI->>GH: updateIssue
     end
     CLI->>GH: attach issue to GitHub Project when absent
+    CLI->>GH: ensure Project fields and options
+    CLI->>GH: update item Status/Priority/Complexity/Type
+    opt whole-contract sync
+        CLI->>GH: archive unmanaged issue items
+    end
     CLI->>Cache: store node IDs and digests on apply
 ```
 
