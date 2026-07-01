@@ -1,1 +1,0 @@
-"""Thematic BlackCell command groups."""

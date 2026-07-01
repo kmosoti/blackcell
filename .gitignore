@@ -210,8 +210,14 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
-# Blackcell local state and plans
+# BlackCell local state, editor settings, and generated operational cache
 .blackcell/
+.github/*.env
+.vscode/
+generated/cache/*.sqlite3
+generated/cache/*.sqlite3-*
+generated/cache/*.db
+generated/cache/*.db-*
 
 # Marimo
 marimo/_static/

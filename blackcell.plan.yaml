@@ -1,0 +1,191 @@
+version: 1
+project:
+  key: BCP
+  name: BlackCell
+  description: Typed project workflow tooling and agent orchestration.
+
+global:
+  acceptance_criteria:
+    - Commands emit machine-readable JSON by default.
+    - Contract changes are represented in typed Python models and tests.
+  definition_of_ready:
+    - Scope, context, and acceptance criteria are present.
+    - Dependencies are declared by issue key.
+  definition_of_done:
+    - Unit tests cover success and failure paths.
+    - CLI behavior is documented and verified.
+
+pr_policy:
+  require_issue_link: true
+  required_checks:
+    - pytest
+    - ruff
+  merge_strategy: squash
+
+roadmaps:
+  - key: RM-2026-CONTROL
+    title: Control-plane facade
+    epics:
+      - EPIC-CONTROL-PLANE
+
+epics:
+  - key: EPIC-CONTROL-PLANE
+    title: Contract-driven project orchestration
+    roadmap: RM-2026-CONTROL
+    milestones:
+      - MS-CP-1
+
+milestones:
+  - key: MS-CP-1
+    title: Contract and read-only validation
+    epic: EPIC-CONTROL-PLANE
+    target: 2026-Q3
+
+issues:
+  - key: BCP-0001
+    title: Define the durable planning contract
+    type: feature
+    status: Done
+    priority: P0
+    complexity: 5
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    areas_of_responsibility:
+      - contract/schema
+    scope:
+      - Add typed dataclasses and strict enum parsing.
+      - Validate hierarchy, DAG dependencies, and inherited policy text.
+    context:
+      - blackcell.toml remains provider binding; blackcell.plan.yaml is repo-authored planning state.
+    change_spec:
+      - Add blackcell.control_plane contract models and validators.
+    acceptance_criteria:
+      - Invalid enum values fail during contract load.
+      - Duplicate keys, missing nodes, and cycles are validation errors.
+    definition_of_ready:
+      - The first-slice contract fields are listed in the schema command.
+    definition_of_done:
+      - Agent context includes global and issue-local readiness and done criteria.
+
+  - key: BCP-0002
+    title: Guard GitHub GraphQL capabilities
+    type: feature
+    status: Done
+    priority: P1
+    complexity: 3
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0001
+    areas_of_responsibility:
+      - github/capabilities
+    scope:
+      - Cache GitHub public schema metadata under generated/cache.
+      - Fail validation when referenced GraphQL capabilities are absent from the cache.
+    context:
+      - First slice is read-only; live GitHub mutations are out of scope.
+    change_spec:
+      - Add capability refresh and check commands.
+    acceptance_criteria:
+      - Required mutation, object, field, enum, and input names are checked against the cache.
+
+  - key: BCP-0003
+    title: Expose JSON-first control-plane CLI commands
+    type: feature
+    status: Done
+    priority: P1
+    complexity: 3
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0001
+      - BCP-0002
+    areas_of_responsibility:
+      - cli
+    scope:
+      - Add validate, schema, capabilities, and agent-context commands.
+    context:
+      - Root output flags already define JSON, JSONL, and Rich modes.
+    change_spec:
+      - Wire control-plane commands into the Typer app.
+    acceptance_criteria:
+      - CLI validation errors remain JSON-readable by default.
+
+  - key: BCP-0004
+    title: Add guarded PR workflow
+    type: feature
+    status: Review Required
+    priority: P0
+    complexity: 8
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0001
+      - BCP-0002
+      - BCP-0003
+    areas_of_responsibility:
+      - cli
+      - github/pull-requests
+      - control-plane/cache
+    scope:
+      - Add a guarded state machine for issue-to-PR workflow progression.
+      - Create or update a managed draft pull request and attach it to the GitHub Project.
+      - Move the draft pull request to review only after local gates pass.
+      - Keep PR identity and rendered digests in the generated SQLite cache.
+    context:
+      - BlackCell guides local git state but does not commit, push, merge, or close PRs.
+      - The workflow is one issue to one pull request and uses BlackCell body markers for rediscovery.
+    change_spec:
+      - Add control-plane PR status, sync, and ready commands.
+      - Add provider methods for GitHub pull request discovery, creation, updates, and ready transition.
+      - Add deterministic PR body rendering, PR cache rows, and capability validation.
+      - Document project and issue configuration plus the guarded PR workflow.
+    acceptance_criteria:
+      - PR commands emit JSON-first workflow state, actions, blockers, checks, and next commands.
+      - Draft PR creation and update are idempotent and dry-run by default.
+      - Ready transition requires status Review Required and passing configured checks.
+      - Unit tests cover rendering, cache behavior, provider GraphQL calls, workflow gates, and CLI output.
+
+native_automation:
+  - key: native-validate-contract
+    name: Validate contract before project sync
+    trigger: pre-sync
+    action: blackcell control-plane validate
+    enabled: true
+  - key: native-check-github-capabilities
+    name: Check cached GitHub GraphQL capabilities
+    trigger: pre-sync
+    action: blackcell control-plane capabilities check
+    enabled: true
+
+agent_workflow:
+  model: gpt-5.3-codex-spark
+  workers:
+    - key: contract-schema
+      name: Contract/schema worker
+      owns:
+        - blackcell.plan.yaml
+        - src/blackcell/control_plane/models.py
+        - src/blackcell/control_plane/validation.py
+      change_spec:
+        - Own YAML schema and validators.
+    - key: github-capability
+      name: GitHub capability worker
+      owns:
+        - generated/cache/github_graphql_capabilities.json
+        - src/blackcell/control_plane/capabilities.py
+      change_spec:
+        - Own docs/schema cache and reference validation.
+    - key: cli
+      name: CLI worker
+      owns:
+        - src/blackcell/cli/app.py
+      change_spec:
+        - Own command wiring and JSON/Rich output.
+    - key: tests
+      name: Test worker
+      owns:
+        - tests/unit/test_control_plane.py
+        - tests/unit/test_control_plane_cli.py
+      change_spec:
+        - Own fixtures and validation scenarios.

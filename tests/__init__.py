@@ -1,1 +1,0 @@
-"""BlackCell automated tests."""

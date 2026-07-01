@@ -1,50 +1,82 @@
-"""TOML configuration discovery and validation."""
-
-import os
 import tomllib
 from pathlib import Path
 
-from pydantic import ValidationError
+from blackcell.config.models import BlackcellConfig
 
-from blackcell.config.model import BlackcellConfig
-from blackcell.contracts.errors import ValidationFailure
+CONFIG_FILENAME = "blackcell.toml"
 
 
-def find_config(explicit: str | Path | None = None) -> Path:
-    candidates: list[Path] = []
-    if explicit:
-        candidates.append(Path(explicit))
-    if environment_path := os.environ.get("BLACKCELL_CONFIG"):
-        candidates.append(Path(environment_path))
-    candidates.extend(
-        [Path.cwd() / "blackcell.toml", Path.home() / ".config/blackcell/config.toml"]
+class ConfigError(RuntimeError):
+    pass
+
+
+def find_repo_root(start: Path | None = None) -> Path:
+    current = (start or Path.cwd()).resolve()
+    if current.is_file():
+        current = current.parent
+
+    for candidate in (current, *current.parents):
+        if (candidate / ".git").exists():
+            return candidate
+
+    raise ConfigError(f"could not find a git repository from {current}")
+
+
+def find_config_path(start: Path | None = None) -> Path:
+    return find_repo_root(start) / CONFIG_FILENAME
+
+
+def load_config(start: Path | None = None) -> BlackcellConfig:
+    path = find_config_path(start)
+    if not path.exists():
+        raise ConfigError(f"missing {CONFIG_FILENAME}; run `blackcell init` first")
+
+    data = tomllib.loads(path.read_text(encoding="utf-8"))
+    return BlackcellConfig.from_mapping(data)
+
+
+def write_config(
+    config: BlackcellConfig,
+    *,
+    start: Path | None = None,
+    overwrite: bool = False,
+) -> Path:
+    path = find_config_path(start)
+    if path.exists() and not overwrite:
+        raise ConfigError(f"{path} already exists; pass --overwrite to replace it")
+
+    path.write_text(render_config_toml(config), encoding="utf-8")
+    return path
+
+
+def render_config_toml(config: BlackcellConfig) -> str:
+    repository_node_id = _optional_string("node_id", config.repository.node_id)
+    project_number = _optional_int("number", config.project.number)
+    project_url = _optional_string("url", config.project.url)
+
+    return (
+        f'provider = "{config.provider}"\n'
+        "\n"
+        "[repository]\n"
+        f'owner = "{config.repository.owner}"\n'
+        f'name = "{config.repository.name}"\n'
+        f"{repository_node_id}"
+        "\n"
+        "[project]\n"
+        f'id = "{config.project.id}"\n'
+        f'title = "{config.project.title}"\n'
+        f"{project_number}"
+        f"{project_url}"
     )
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate.resolve()
-    raise ValidationFailure(
-        "blackcell.toml was not found.",
-        recovery="Run from the repository root or set BLACKCELL_CONFIG.",
-    )
 
 
-def load_config(path: str | Path | None = None) -> BlackcellConfig:
-    config_path = find_config(path)
-    try:
-        with config_path.open("rb") as handle:
-            return BlackcellConfig.model_validate(tomllib.load(handle))
-    except ValidationError as error:
-        failures = [
-            {
-                "location": ".".join(str(component) for component in item["loc"]),
-                "type": item["type"],
-                "message": item["msg"],
-            }
-            for item in error.errors(include_input=False, include_url=False)
-        ]
-        raise ValidationFailure(
-            "Invalid BlackCell configuration.",
-            details={"failures": failures},
-        ) from error
-    except (OSError, tomllib.TOMLDecodeError) as error:
-        raise ValidationFailure(f"Invalid BlackCell configuration: {error}") from error
+def _optional_string(key: str, value: str | None) -> str:
+    if value is None:
+        return ""
+    return f'{key} = "{value}"\n'
+
+
+def _optional_int(key: str, value: int | None) -> str:
+    if value is None:
+        return ""
+    return f"{key} = {value}\n"
