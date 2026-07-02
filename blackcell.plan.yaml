@@ -299,6 +299,43 @@ issues:
       - check-drift exits non-zero when any managed artifact differs, is missing, or conflicts.
       - Tests cover rendering, idempotence, conflict handling, Markdown preservation, validation, and CLI behavior.
 
+  - key: BCP-0009
+    title: Add BlackCell GitHub auth cache
+    type: feature
+    status: In Progress
+    priority: P1
+    complexity: 5
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    areas_of_responsibility:
+      - README.md
+      - docs/control-plane-configuration.md
+      - src/blackcell/auth.py
+      - src/blackcell/cli/app.py
+      - src/blackcell/providers/github.py
+      - tests/unit/test_auth.py
+      - tests/unit/test_cli_output.py
+    scope:
+      - Add a BlackCell-owned GitHub device-flow login command.
+      - Cache sanitized session metadata and tokens outside the repository.
+      - Let GitHub provider calls fall back to the BlackCell auth cache after environment tokens.
+      - Support browser and terminal QR prompt preferences for device-flow login.
+    context:
+      - Agent shells may not inherit GH_TOKEN from the operator's interactive shell.
+      - GitHub OAuth app registration requires homepage and callback URLs even when Device Flow is used.
+      - Token values must not be printed in CLI output.
+    change_spec:
+      - Add auth status, login, and logout commands.
+      - Add device-flow polling and owner-only cache writes.
+      - Add --browser and --qr login prompt helpers.
+      - Document OAuth app registration and auth precedence.
+    acceptance_criteria:
+      - Auth commands emit JSON-first sanitized status.
+      - Missing remote token errors point operators to blackcell auth login.
+      - Cached tokens are ignored after expiration.
+      - Browser and QR prompt helpers keep sanitized JSON output machine-readable.
+      - Tests cover cache behavior, CLI output, provider fallback, and device-flow polling.
+
 native_automation:
   - key: native-validate-contract
     name: Validate contract before project sync

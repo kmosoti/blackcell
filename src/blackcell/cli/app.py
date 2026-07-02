@@ -1,7 +1,8 @@
 import os
 import re
 import subprocess
-from collections.abc import Sequence
+import webbrowser
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Annotated, Never
 
@@ -9,6 +10,15 @@ import httpx
 import typer
 from rich.table import Table
 
+from blackcell.auth import (
+    DEFAULT_GITHUB_SCOPES,
+    AuthError,
+    DeviceCode,
+    delete_auth_session,
+    load_auth_session,
+    login_with_device_flow,
+    render_terminal_qr,
+)
 from blackcell.cli.output import OutputRenderer
 from blackcell.config import (
     BlackcellConfig,
@@ -43,6 +53,7 @@ from blackcell.vanguard import (
 )
 
 app = typer.Typer(no_args_is_help=True)
+auth_app = typer.Typer(no_args_is_help=True)
 config_app = typer.Typer(no_args_is_help=True)
 provider_app = typer.Typer(no_args_is_help=True)
 project_app = typer.Typer(no_args_is_help=True)
@@ -56,6 +67,7 @@ vanguard_changespec_app = typer.Typer(no_args_is_help=True)
 vanguard_qa_app = typer.Typer(no_args_is_help=True)
 vanguard_templates_app = typer.Typer(no_args_is_help=True)
 
+app.add_typer(auth_app, name="auth")
 app.add_typer(config_app, name="config")
 app.add_typer(provider_app, name="providers")
 app.add_typer(project_app, name="project")
@@ -292,6 +304,87 @@ def init_config(
     )
 
 
+@auth_app.command("status")
+def auth_status(context: typer.Context) -> None:
+    """Show the BlackCell cached authentication state without printing tokens."""
+    try:
+        session = load_auth_session()
+    except (OSError, ValueError, AuthError) as error:
+        _fail(context, str(error))
+
+    if session is None:
+        payload = {"authenticated": False, "provider": "github", "host": "github.com"}
+        _output(context).emit(payload, rich=_auth_status_table(payload))
+        raise typer.Exit(1)
+
+    payload = session.sanitized()
+    _output(context).emit(payload, rich=_auth_status_table(payload))
+    if not payload["authenticated"]:
+        raise typer.Exit(1)
+
+
+@auth_app.command("login")
+def auth_login(
+    context: typer.Context,
+    client_id: Annotated[
+        str | None,
+        typer.Option(
+            "--client-id",
+            help="GitHub OAuth or GitHub App client ID. Defaults to BLACKCELL_GITHUB_CLIENT_ID.",
+        ),
+    ] = None,
+    scopes: Annotated[
+        list[str] | None,
+        typer.Option("--scope", help="OAuth scope to request. Repeat for multiple scopes."),
+    ] = None,
+    min_ttl_hours: Annotated[
+        int,
+        typer.Option("--min-ttl-hours", min=1, help="Minimum accepted expiring token lifetime."),
+    ] = 5,
+    browser: Annotated[
+        bool,
+        typer.Option("--browser", help="Open GitHub device login in the default browser."),
+    ] = False,
+    qr: Annotated[
+        bool,
+        typer.Option("--qr", help="Render a terminal QR code for the GitHub device login URL."),
+    ] = False,
+) -> None:
+    """Authenticate BlackCell through GitHub's device flow."""
+    resolved_client_id = client_id or os.getenv("BLACKCELL_GITHUB_CLIENT_ID")
+    if not resolved_client_id:
+        _fail(context, "missing --client-id or BLACKCELL_GITHUB_CLIENT_ID")
+
+    requested_scopes = tuple(scopes or DEFAULT_GITHUB_SCOPES)
+
+    try:
+        result = login_with_device_flow(
+            client_id=resolved_client_id,
+            scopes=requested_scopes,
+            min_ttl_seconds=min_ttl_hours * 60 * 60,
+            prompt=lambda code: _prompt_device_login(context, code, browser=browser, qr=qr),
+        )
+    except (httpx.HTTPError, OSError, AuthError) as error:
+        _fail(context, str(error))
+
+    payload = result.sanitized()
+    _output(context).emit(payload, rich=_auth_status_table(payload, title="BlackCell Auth Login"))
+
+
+@auth_app.command("logout")
+def auth_logout(context: typer.Context) -> None:
+    """Delete the BlackCell cached authentication session."""
+    try:
+        deleted = delete_auth_session()
+    except OSError as error:
+        _fail(context, str(error))
+
+    _output(context).emit(
+        {"deleted": deleted},
+        rich="[green]Deleted[/green] BlackCell auth session" if deleted else "No auth session",
+    )
+
+
 @config_app.command("show")
 def show_config(context: typer.Context) -> None:
     """Show the discovered repo-local config."""
@@ -315,6 +408,70 @@ def _config_table(config: BlackcellConfig) -> Table:
     table.add_row("project_number", str(config.project.number or ""))
     table.add_row("project_url", config.project.url or "")
     return table
+
+
+def _auth_status_table(
+    payload: Mapping[str, object],
+    *,
+    title: str = "BlackCell Auth",
+) -> Table:
+    table = Table(title=title)
+    table.add_column("Key")
+    table.add_column("Value")
+    table.add_row("authenticated", str(payload.get("authenticated", False)))
+    table.add_row("provider", str(payload.get("provider", "")))
+    table.add_row("host", str(payload.get("host", "")))
+    scopes = payload.get("scopes")
+    if isinstance(scopes, Sequence) and not isinstance(scopes, str | bytes | bytearray):
+        table.add_row("scopes", ", ".join(str(scope) for scope in scopes))
+    table.add_row("created_at", str(payload.get("created_at") or ""))
+    table.add_row("expires_at", str(payload.get("expires_at") or ""))
+    table.add_row("refresh_expires_at", str(payload.get("refresh_expires_at") or ""))
+    table.add_row("path", str(payload.get("path") or ""))
+    return table
+
+
+def _prompt_device_login(
+    context: typer.Context,
+    code: DeviceCode,
+    *,
+    browser: bool = False,
+    qr: bool = False,
+) -> None:
+    output = _output(context)
+    lines: list[str] = []
+
+    if browser:
+        try:
+            opened = webbrowser.open(code.login_uri)
+        except webbrowser.Error as error:
+            lines.append(f"Browser open failed: {error}")
+        else:
+            if opened:
+                lines.append("Opened GitHub device login in your default browser.")
+            else:
+                lines.append("Could not open GitHub device login in the default browser.")
+
+    if qr:
+        try:
+            rendered_qr = render_terminal_qr(code.login_uri)
+        except AuthError as error:
+            lines.append(f"QR unavailable: {error}")
+        else:
+            lines.extend(("Scan this QR code to open GitHub device login:", rendered_qr))
+
+    lines.extend(
+        (
+            "Open this URL and enter the code:",
+            code.verification_uri,
+            code.user_code,
+        )
+    )
+
+    if output.mode.value == "rich":
+        output.error_console.print("\n".join(lines), markup=False)
+        return
+    typer.echo("\n".join(lines), err=True)
 
 
 @provider_app.command("list")
