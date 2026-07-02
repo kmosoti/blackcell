@@ -36,6 +36,11 @@ DEFAULT_ESCALATION_RULES: tuple[str, ...] = (
     "Treat candidate_invariants as evidence until reviewed into behavior_contract.",
 )
 
+GH_READ_ONLY_SUBCOMMANDS: dict[str, frozenset[str]] = {
+    "issue": frozenset({"list", "status", "view"}),
+    "pr": frozenset({"checks", "diff", "list", "status", "view"}),
+}
+
 
 def draft_changespec_from_agent_context(agent_context: AgentIssueContext) -> ChangeSpec:
     return ChangeSpec(
@@ -115,6 +120,20 @@ def validate_changespec_mapping(data: object) -> ValidationResult:
 
     messages: list[ValidationMessage] = []
     _validate_text(
+        data.get("change_id"),
+        "missing_change_id",
+        "change_id must be non-empty",
+        "$.change_id",
+        messages,
+    )
+    _validate_text(
+        data.get("issue_key"),
+        "missing_issue_key",
+        "issue_key must be non-empty",
+        "$.issue_key",
+        messages,
+    )
+    _validate_text(
         data.get("intent"), "missing_intent", "intent must be non-empty", "$.intent", messages
     )
     _validate_non_empty_strings(
@@ -175,6 +194,20 @@ def validate_changespec_mapping(data: object) -> ValidationResult:
 
 def validate_changespec(spec: ChangeSpec) -> ValidationResult:
     messages: list[ValidationMessage] = []
+    _validate_text(
+        spec.change_id,
+        "missing_change_id",
+        "change_id must be non-empty",
+        "$.change_id",
+        messages,
+    )
+    _validate_text(
+        spec.issue_key,
+        "missing_issue_key",
+        "issue_key must be non-empty",
+        "$.issue_key",
+        messages,
+    )
     _validate_text(spec.intent, "missing_intent", "intent must be non-empty", "$.intent", messages)
     if not spec.acceptance_criteria:
         messages.append(
@@ -271,8 +304,8 @@ def mutating_command_reason(command: str) -> str | None:
 
     program = normalized[0]
     if program == "ruff":
-        if len(normalized) > 1 and normalized[1] == "check" and "--fix" in normalized:
-            return "ruff check --fix is mutating and cannot be reviewer verification"
+        if len(normalized) > 1 and normalized[1] == "check" and _has_ruff_fix_flag(normalized):
+            return "ruff check fix-mode commands cannot be reviewer verification"
         if len(normalized) > 1 and normalized[1] == "format" and "--check" not in normalized:
             return "ruff format verification must include --check"
 
@@ -283,10 +316,11 @@ def mutating_command_reason(command: str) -> str | None:
         return f"git {normalized[1]} is not allowed in reviewer verification"
 
     if program == "gh" and len(normalized) > 2:
-        if normalized[1] == "pr" and normalized[2] in {"merge", "close", "reopen", "ready"}:
-            return f"gh pr {normalized[2]} mutates remote pull request state"
-        if normalized[1] == "issue" and normalized[2] in {"close", "edit", "reopen", "transfer"}:
-            return f"gh issue {normalized[2]} mutates remote issue state"
+        namespace = normalized[1]
+        command = normalized[2]
+        read_only_commands = GH_READ_ONLY_SUBCOMMANDS.get(namespace)
+        if read_only_commands is not None and command not in read_only_commands:
+            return f"gh {namespace} {command} mutates or may mutate remote GitHub state"
 
     if program == "blackcell" and "--apply" in normalized:
         return "blackcell --apply commands mutate remote workflow state"
@@ -441,6 +475,15 @@ def _contains_snapshot_update(tokens: Sequence[str]) -> bool:
         "--snapshot-update=1",
     }
     return any(token in snapshot_flags or "snapshot-update" in token for token in tokens)
+
+
+def _has_ruff_fix_flag(tokens: Sequence[str]) -> bool:
+    return any(
+        token in {"--fix", "--fix-only"}
+        or token.startswith("--fix=")
+        or token.startswith("--fix-only=")
+        for token in tokens
+    )
 
 
 def _error(code: str, message: str, path: str) -> ValidationMessage:

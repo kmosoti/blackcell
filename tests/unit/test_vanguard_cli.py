@@ -83,6 +83,24 @@ def test_vanguard_qa_plan_outputs_deterministic_commands(tmp_path: Path) -> None
     assert all(not command["mutating"] for command in payload["commands"])
 
 
+def test_vanguard_qa_plan_rejects_missing_issue_binding(tmp_path: Path) -> None:
+    changespec = _valid_changespec()
+    del changespec["issue_key"]
+    path = tmp_path / "changespec.json"
+    path.write_text(json.dumps(changespec), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["vanguard", "qa", "plan", str(path)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["valid"] is False
+    assert payload["errors"][0]["code"] == "missing_issue_key"
+
+
 def test_vanguard_templates_render_outputs_deterministic_records() -> None:
     result = runner.invoke(
         app,
