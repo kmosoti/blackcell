@@ -91,6 +91,7 @@ def test_request_device_code_preserves_complete_login_uri() -> None:
 
 def test_device_authorization_polls_until_token() -> None:
     requests: list[str] = []
+    sleeps: list[float] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(str(request.url))
@@ -121,13 +122,14 @@ def test_device_authorization_polls_until_token() -> None:
             interval=5,
         ),
         client=client,
-        sleep=lambda _: None,
+        sleep=lambda interval: sleeps.append(interval),
         now=lambda: now,
     )
 
     assert session.access_token == "token"
     assert session.scopes == ("repo", "project")
     assert session.expires_at == (now + timedelta(hours=8)).isoformat().replace("+00:00", "Z")
+    assert sleeps == [5, 5]
 
 
 def test_github_provider_uses_blackcell_auth_cache(

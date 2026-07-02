@@ -207,6 +207,7 @@ def poll_device_authorization(
     http = client or httpx.Client(timeout=20)
     interval = device_code.interval
     deadline = time.monotonic() + device_code.expires_in
+    sleep(interval)
     while True:
         response = http.post(
             "https://github.com/login/oauth/access_token",
