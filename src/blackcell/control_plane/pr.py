@@ -146,7 +146,7 @@ def run_pull_request_workflow(
                 state=PullRequestWorkflowState.READY_BLOCKED,
                 apply_changes=apply_changes,
                 blockers=("issue_not_synced",),
-                next_commands=(f"blackcell control-plane sync --issue-key {issue.key} --apply",),
+                next_commands=_issue_not_synced_next_commands(issue.key),
                 actions=(),
                 checks=(),
                 git=git,
@@ -502,7 +502,7 @@ def _preflight_pull_request_project_item_fields(
     if missing_required_fields(fields):
         raise ValueError(
             "GitHub Project is missing required contract fields; "
-            f"run blackcell control-plane sync --issue-key {issue.key} --apply"
+            f"run: uv run blackcell control-plane sync --issue-key {issue.key} --apply"
         )
     field_by_name = {field.name: field for field in fields}
     for field_name, desired_value in desired_project_field_values(issue):
@@ -638,10 +638,17 @@ def _next_commands(
             return ("git push",)
         return (f"git push -u origin {git.branch or '<branch>'}",)
     if state is PullRequestWorkflowState.NEEDS_DRAFT_PR:
-        return (f"blackcell control-plane pr sync --issue-key {issue_key} --apply",)
+        return (f"uv run blackcell control-plane pr sync --issue-key {issue_key} --apply",)
     if state is PullRequestWorkflowState.DRAFT_OPEN:
-        return (f"blackcell control-plane pr ready --issue-key {issue_key} --apply",)
+        return (f"uv run blackcell control-plane pr ready --issue-key {issue_key} --apply",)
     return ()
+
+
+def _issue_not_synced_next_commands(issue_key: str) -> tuple[str, ...]:
+    return (
+        f"uv run blackcell control-plane sync --issue-key {issue_key} --apply",
+        f"uv run blackcell control-plane pr sync --issue-key {issue_key} --apply",
+    )
 
 
 def _write_cache(

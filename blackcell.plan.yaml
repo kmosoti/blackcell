@@ -182,7 +182,7 @@ issues:
   - key: BCP-0006
     title: Add Vanguard CLI scope
     type: feature
-    status: Review Required
+    status: Done
     priority: P0
     complexity: 5
     epic: EPIC-CONTROL-PLANE
@@ -224,7 +224,7 @@ issues:
   - key: BCP-0007
     title: Harden Vanguard publishing workflow ergonomics
     type: bug
-    status: Todo
+    status: Review Required
     priority: P1
     complexity: 3
     epic: EPIC-CONTROL-PLANE
