@@ -87,6 +87,11 @@ REQUIRED_GITHUB_CAPABILITIES: tuple[CapabilityRequirement, ...] = (
     ),
     CapabilityRequirement(
         kind="mutation",
+        name="updateProjectV2Field",
+        purpose="project field option updates",
+    ),
+    CapabilityRequirement(
+        kind="mutation",
         name="updateProjectV2ItemFieldValue",
         purpose="item field updates and status transitions",
     ),
@@ -144,6 +149,21 @@ REQUIRED_GITHUB_CAPABILITIES: tuple[CapabilityRequirement, ...] = (
         kind="input_object",
         name="CreateProjectV2FieldInput",
         purpose="field creation input",
+    ),
+    CapabilityRequirement(
+        kind="input_object",
+        name="ProjectV2SingleSelectFieldOptionInput",
+        purpose="single-select field option input",
+    ),
+    CapabilityRequirement(
+        kind="input_object",
+        name="UpdateProjectV2FieldInput",
+        purpose="field option update input",
+    ),
+    CapabilityRequirement(
+        kind="input_object",
+        name="ProjectV2FieldValue",
+        purpose="project item field value input",
     ),
     CapabilityRequirement(
         kind="input_object",
@@ -207,6 +227,26 @@ REQUIRED_GITHUB_CAPABILITIES: tuple[CapabilityRequirement, ...] = (
     ),
     CapabilityRequirement(
         kind="object",
+        name="ProjectV2SingleSelectField",
+        purpose="project single-select field option reads",
+    ),
+    CapabilityRequirement(
+        kind="object",
+        name="ProjectV2ItemFieldSingleSelectValue",
+        purpose="project single-select item value reads",
+    ),
+    CapabilityRequirement(
+        kind="object",
+        name="ProjectV2ItemFieldNumberValue",
+        purpose="project number item value reads",
+    ),
+    CapabilityRequirement(
+        kind="object",
+        name="ProjectV2ItemFieldTextValue",
+        purpose="project title/text item value reads",
+    ),
+    CapabilityRequirement(
+        kind="object",
         name="Issue",
         purpose="issue reads",
     ),
@@ -265,6 +305,12 @@ REQUIRED_GITHUB_CAPABILITIES: tuple[CapabilityRequirement, ...] = (
         parent="ProjectV2",
         name="fields",
         purpose="read project fields",
+    ),
+    CapabilityRequirement(
+        kind="field",
+        parent="ProjectV2Item",
+        name="fieldValues",
+        purpose="read project item field values",
     ),
     CapabilityRequirement(
         kind="field",

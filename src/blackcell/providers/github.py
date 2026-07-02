@@ -4,12 +4,25 @@ from typing import Any
 import httpx
 
 from blackcell.config.models import BlackcellConfig, ProjectRef, RepositoryRef
-from blackcell.models import IssueRef, ProjectItemRef, PullRequestRef
-from blackcell.providers.base import CreateIssueRequest, CreatePullRequestRequest
+from blackcell.models import (
+    IssueRef,
+    ProjectFieldOptionRef,
+    ProjectFieldRef,
+    ProjectItemFieldValueRef,
+    ProjectItemRef,
+    PullRequestRef,
+)
+from blackcell.providers.base import (
+    CreateIssueRequest,
+    CreateProjectFieldRequest,
+    CreatePullRequestRequest,
+    ProjectFieldValue,
+)
 
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 ISSUE_KEY_MARKER_PREFIX = "<!-- blackcell:issue-key "
 PR_ISSUE_KEY_MARKER_PREFIX = "<!-- blackcell:pr-issue-key "
+BLACKCELL_REQUIRED_PROJECT_FIELD_NAMES = frozenset({"Status", "Priority", "Complexity", "Type"})
 
 
 class GitHubApiError(RuntimeError):
@@ -214,13 +227,13 @@ class GitHubProjectsProvider:
         )
         return _issue_ref(data["updateIssue"]["issue"])
 
-    def list_project_items(self, *, first: int = 20) -> list[ProjectItemRef]:
+    def list_project_items(self, *, first: int | None = 20) -> list[ProjectItemRef]:
         items: list[ProjectItemRef] = []
         cursor: str | None = None
         remaining = first
 
-        while remaining > 0:
-            page_size = min(remaining, 100)
+        while remaining is None or remaining > 0:
+            page_size = 100 if remaining is None else min(remaining, 100)
             data = self._graphql(
                 """
                 query($projectId: ID!, $first: Int!, $after: String) {
@@ -252,6 +265,39 @@ class GitHubProjectsProvider:
                               body
                             }
                           }
+                          fieldValues(first: 50) {
+                            nodes {
+                              __typename
+                              ... on ProjectV2ItemFieldTextValue {
+                                text
+                                field {
+                                  ... on ProjectV2FieldCommon {
+                                    id
+                                    name
+                                  }
+                                }
+                              }
+                              ... on ProjectV2ItemFieldNumberValue {
+                                number
+                                field {
+                                  ... on ProjectV2FieldCommon {
+                                    id
+                                    name
+                                  }
+                                }
+                              }
+                              ... on ProjectV2ItemFieldSingleSelectValue {
+                                optionId
+                                name
+                                field {
+                                  ... on ProjectV2FieldCommon {
+                                    id
+                                    name
+                                  }
+                                }
+                              }
+                            }
+                          }
                         }
                         pageInfo {
                           hasNextPage
@@ -275,7 +321,8 @@ class GitHubProjectsProvider:
             connection = project["items"]
             nodes = connection.get("nodes") or []
             items.extend(_project_item_ref(project_ref, item) for item in nodes)
-            remaining -= len(nodes)
+            if remaining is not None:
+                remaining -= len(nodes)
 
             page_info = connection.get("pageInfo") or {}
             cursor = page_info.get("endCursor")
@@ -314,6 +361,39 @@ class GitHubProjectsProvider:
                           body
                         }
                       }
+                      fieldValues(first: 50) {
+                        nodes {
+                          __typename
+                          ... on ProjectV2ItemFieldTextValue {
+                            text
+                            field {
+                              ... on ProjectV2FieldCommon {
+                                id
+                                name
+                              }
+                            }
+                          }
+                          ... on ProjectV2ItemFieldNumberValue {
+                            number
+                            field {
+                              ... on ProjectV2FieldCommon {
+                                id
+                                name
+                              }
+                            }
+                          }
+                          ... on ProjectV2ItemFieldSingleSelectValue {
+                            optionId
+                            name
+                            field {
+                              ... on ProjectV2FieldCommon {
+                                id
+                                name
+                              }
+                            }
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -327,6 +407,206 @@ class GitHubProjectsProvider:
             raise
         return _project_item_ref(self._config.project, data["addProjectV2ItemById"]["item"])
 
+    def archive_project_item(self, item_id: str) -> None:
+        self._graphql(
+            """
+            mutation($projectId: ID!, $itemId: ID!) {
+              archiveProjectV2Item(input: {
+                projectId: $projectId
+                itemId: $itemId
+              }) {
+                item {
+                  id
+                }
+              }
+            }
+            """,
+            {"projectId": self._config.project.id, "itemId": item_id},
+        )
+
+    def list_project_fields(self, *, first: int = 50) -> list[ProjectFieldRef]:
+        fields: list[ProjectFieldRef] = []
+        cursor: str | None = None
+        remaining = first
+
+        while remaining > 0:
+            page_size = min(remaining, 100)
+            data = self._graphql(
+                """
+                query($projectId: ID!, $first: Int!, $after: String) {
+                  node(id: $projectId) {
+                    ... on ProjectV2 {
+                      fields(first: $first, after: $after) {
+                        nodes {
+                          __typename
+                          ... on ProjectV2FieldCommon {
+                            id
+                            name
+                            dataType
+                          }
+                          ... on ProjectV2SingleSelectField {
+                            options {
+                              id
+                              name
+                              color
+                              description
+                            }
+                          }
+                        }
+                        pageInfo {
+                          hasNextPage
+                          endCursor
+                        }
+                      }
+                    }
+                  }
+                }
+                """,
+                {"projectId": self._config.project.id, "first": page_size, "after": cursor},
+            )
+            connection = data["node"]["fields"]
+            nodes = connection.get("nodes") or []
+            for field in nodes:
+                if not field:
+                    continue
+                field_ref = _project_field_ref(field)
+                if field_ref is not None:
+                    fields.append(field_ref)
+            remaining -= len(nodes)
+
+            page_info = connection.get("pageInfo") or {}
+            cursor = page_info.get("endCursor")
+            if not page_info.get("hasNextPage") or not nodes:
+                break
+
+        return fields
+
+    def create_project_field(self, request: CreateProjectFieldRequest) -> ProjectFieldRef:
+        data = self._graphql(
+            """
+            mutation(
+              $projectId: ID!
+              $name: String!
+              $dataType: ProjectV2CustomFieldType!
+              $singleSelectOptions: [ProjectV2SingleSelectFieldOptionInput!]
+            ) {
+              createProjectV2Field(input: {
+                projectId: $projectId
+                name: $name
+                dataType: $dataType
+                singleSelectOptions: $singleSelectOptions
+              }) {
+                projectV2Field {
+                  __typename
+                  ... on ProjectV2Field {
+                    id
+                    name
+                    dataType
+                  }
+                  ... on ProjectV2SingleSelectField {
+                    id
+                    name
+                    dataType
+                    options {
+                      id
+                      name
+                      color
+                      description
+                    }
+                  }
+                }
+              }
+            }
+            """,
+            {
+                "projectId": self._config.project.id,
+                "name": request.name,
+                "dataType": request.data_type,
+                "singleSelectOptions": _single_select_option_inputs(request.single_select_options)
+                if request.data_type == "SINGLE_SELECT"
+                else None,
+            },
+        )
+        return _required_project_field_ref(data["createProjectV2Field"]["projectV2Field"])
+
+    def update_project_single_select_field_options(
+        self,
+        field: ProjectFieldRef,
+        option_names: tuple[str, ...],
+    ) -> ProjectFieldRef:
+        option_inputs: list[dict[str, object]] = []
+        existing_by_name = {option.name: option for option in field.options}
+        for option_name in option_names:
+            existing = existing_by_name.get(option_name)
+            option_input = _single_select_option_input(option_name)
+            if existing is not None:
+                if existing.id is not None:
+                    option_input["id"] = existing.id
+                option_input["color"] = existing.color
+                option_input["description"] = existing.description
+            option_inputs.append(option_input)
+
+        data = self._graphql(
+            """
+            mutation(
+              $fieldId: ID!
+              $singleSelectOptions: [ProjectV2SingleSelectFieldOptionInput!]
+            ) {
+              updateProjectV2Field(input: {
+                fieldId: $fieldId
+                singleSelectOptions: $singleSelectOptions
+              }) {
+                projectV2Field {
+                  __typename
+                  ... on ProjectV2SingleSelectField {
+                    id
+                    name
+                    dataType
+                    options {
+                      id
+                      name
+                      color
+                      description
+                    }
+                  }
+                }
+              }
+            }
+            """,
+            {"fieldId": field.id, "singleSelectOptions": option_inputs},
+        )
+        return _required_project_field_ref(data["updateProjectV2Field"]["projectV2Field"])
+
+    def update_project_item_field_value(
+        self,
+        *,
+        item_id: str,
+        field_id: str,
+        value: ProjectFieldValue,
+    ) -> None:
+        self._graphql(
+            """
+            mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: ProjectV2FieldValue!) {
+              updateProjectV2ItemFieldValue(input: {
+                projectId: $projectId
+                itemId: $itemId
+                fieldId: $fieldId
+                value: $value
+              }) {
+                projectV2Item {
+                  id
+                }
+              }
+            }
+            """,
+            {
+                "projectId": self._config.project.id,
+                "itemId": item_id,
+                "fieldId": field_id,
+                "value": value.to_graphql_value(),
+            },
+        )
+
     def _existing_project_item(
         self,
         content_id: str,
@@ -334,7 +614,7 @@ class GitHubProjectsProvider:
     ) -> ProjectItemRef | None:
         if "Content already exists in this project" not in str(error):
             return None
-        for item in self.list_project_items(first=100):
+        for item in self.list_project_items(first=None):
             if item.content_id == content_id:
                 return item
         return None
@@ -631,6 +911,36 @@ def _has_blackcell_pull_request_marker(body: str, issue_key: str) -> bool:
     return PR_ISSUE_KEY_MARKER_PREFIX + issue_key + " -->" in body
 
 
+def _project_field_ref(data: dict[str, Any]) -> ProjectFieldRef | None:
+    type_name = data.get("__typename")
+    if type_name not in {"ProjectV2Field", "ProjectV2SingleSelectField"}:
+        field_name = data.get("name")
+        if field_name in BLACKCELL_REQUIRED_PROJECT_FIELD_NAMES:
+            raise ValueError(f"GitHub Project field {field_name} has unsupported type {type_name}")
+        return None
+    return ProjectFieldRef(
+        id=data["id"],
+        name=data["name"],
+        data_type=data["dataType"],
+        options=tuple(
+            ProjectFieldOptionRef(
+                id=option.get("id"),
+                name=option["name"],
+                color=option.get("color") or _option_color(option["name"]),
+                description=option.get("description") or "",
+            )
+            for option in data.get("options") or []
+        ),
+    )
+
+
+def _required_project_field_ref(data: dict[str, Any]) -> ProjectFieldRef:
+    field = _project_field_ref(data)
+    if field is None:
+        raise ValueError(f"GitHub returned unsupported Project field type {data.get('__typename')}")
+    return field
+
+
 def _project_item_ref(project: ProjectRef, data: dict[str, Any]) -> ProjectItemRef:
     content = data.get("content") or {}
     return ProjectItemRef(
@@ -642,4 +952,72 @@ def _project_item_ref(project: ProjectRef, data: dict[str, Any]) -> ProjectItemR
         content_title=content.get("title"),
         content_url=content.get("url"),
         content_type=content.get("__typename"),
+        field_values=tuple(
+            field_value
+            for value in (data.get("fieldValues") or {}).get("nodes", [])
+            if (field_value := _project_item_field_value_ref(value)) is not None
+        ),
     )
+
+
+def _project_item_field_value_ref(data: dict[str, Any]) -> ProjectItemFieldValueRef | None:
+    field = data.get("field") or {}
+    field_id = field.get("id")
+    field_name = field.get("name")
+    if field_id is None or field_name is None:
+        return None
+
+    type_name = data.get("__typename")
+    if type_name == "ProjectV2ItemFieldTextValue":
+        return ProjectItemFieldValueRef(
+            field_id=field_id,
+            field_name=field_name,
+            type="text",
+            text=data.get("text"),
+        )
+    if type_name == "ProjectV2ItemFieldNumberValue":
+        return ProjectItemFieldValueRef(
+            field_id=field_id,
+            field_name=field_name,
+            type="number",
+            number=data.get("number"),
+        )
+    if type_name == "ProjectV2ItemFieldSingleSelectValue":
+        return ProjectItemFieldValueRef(
+            field_id=field_id,
+            field_name=field_name,
+            type="single_select",
+            option_id=data.get("optionId"),
+            option_name=data.get("name"),
+        )
+    return None
+
+
+def _single_select_option_inputs(option_names: tuple[str, ...]) -> list[dict[str, object]]:
+    return [_single_select_option_input(option_name) for option_name in option_names]
+
+
+def _single_select_option_input(option_name: str) -> dict[str, object]:
+    return {
+        "name": option_name,
+        "color": _option_color(option_name),
+        "description": "",
+    }
+
+
+def _option_color(option_name: str) -> str:
+    return {
+        "Backlog": "GRAY",
+        "Todo": "BLUE",
+        "In Progress": "YELLOW",
+        "Review Required": "PURPLE",
+        "Done": "GREEN",
+        "P0": "RED",
+        "P1": "ORANGE",
+        "P2": "YELLOW",
+        "P3": "GREEN",
+        "feature": "BLUE",
+        "bug": "RED",
+        "refactor": "PURPLE",
+        "chore": "GRAY",
+    }.get(option_name, "GRAY")

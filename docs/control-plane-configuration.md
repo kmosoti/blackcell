@@ -211,8 +211,19 @@ flowchart LR
 
 `blackcell control-plane sync` is local-to-GitHub and dry-run by default.
 `--apply` creates or updates GitHub issues and ensures each issue is attached to
-the configured GitHub Project. Project field values such as Status, Priority,
-Complexity, and Type are intentionally deferred.
+the configured GitHub Project. It also makes the Project representative of the
+planning contract by ensuring these fields and item values:
+
+| Field | Type | Source |
+| --- | --- | --- |
+| `Status` | Single select | `issues[].status` |
+| `Priority` | Single select | `issues[].priority` |
+| `Complexity` | Number | `issues[].complexity` |
+| `Type` | Single select | `issues[].type` |
+
+When the whole contract is synced, unmanaged GitHub issue items in the Project
+are archived so the Project rows match the local contract. Targeted
+`--issue-key` sync does not archive unrelated Project items.
 
 ```mermaid
 sequenceDiagram
@@ -235,6 +246,11 @@ sequenceDiagram
         CLI->>GH: updateIssue
     end
     CLI->>GH: attach issue to GitHub Project when absent
+    CLI->>GH: ensure Project fields and options
+    CLI->>GH: update item Status/Priority/Complexity/Type
+    opt whole-contract sync
+        CLI->>GH: archive unmanaged issue items
+    end
     CLI->>Cache: store node IDs and digests on apply
 ```
 
@@ -255,7 +271,9 @@ dry-run by default unless `--apply` is passed.
 
 The workflow is intentionally one issue to one pull request. The PR title is the
 contract issue title. The body is rendered from the local contract and includes
-hidden BlackCell markers for rediscovery.
+hidden BlackCell markers for rediscovery. Managed PR Project items mirror the
+same `Status`, `Priority`, `Complexity`, and `Type` values as their issue
+contract so the Project remains scannable from either row.
 
 ```mermaid
 stateDiagram
@@ -312,9 +330,11 @@ sequenceDiagram
         alt no PR and sync --apply
             CLI->>GH: createPullRequest(draft: true)
             CLI->>GH: attach PR to GitHub Project
+            CLI->>GH: sync PR item Status/Priority/Complexity/Type
             CLI->>Cache: store PR node ID and digest
         else PR differs from contract and --apply
             CLI->>GH: updatePullRequest
+            CLI->>GH: sync PR item Status/Priority/Complexity/Type
             CLI->>Cache: update rendered digest
         end
         opt ready command

@@ -3,8 +3,14 @@ from blackcell.control_plane.rendering import (
     has_blackcell_issue_marker,
     has_blackcell_pull_request_marker,
 )
-from blackcell.models import IssueRef, ProjectItemRef, PullRequestRef
-from blackcell.providers import CreateIssueRequest, CreatePullRequestRequest, ProviderRegistry
+from blackcell.models import IssueRef, ProjectFieldRef, ProjectItemRef, PullRequestRef
+from blackcell.providers import (
+    CreateIssueRequest,
+    CreateProjectFieldRequest,
+    CreatePullRequestRequest,
+    ProjectFieldValue,
+    ProviderRegistry,
+)
 
 
 class MemoryProvider:
@@ -135,7 +141,7 @@ class MemoryProvider:
             body=pull_request.body,
         )
 
-    def list_project_items(self, *, first: int = 20) -> list[ProjectItemRef]:
+    def list_project_items(self, *, first: int | None = 20) -> list[ProjectItemRef]:
         return []
 
     def add_project_item_by_id(self, content_id: str) -> ProjectItemRef:
@@ -146,6 +152,35 @@ class MemoryProvider:
             project=self.config.project,
             content_id=content_id,
         )
+
+    def archive_project_item(self, item_id: str) -> None:
+        return None
+
+    def list_project_fields(self, *, first: int = 50) -> list[ProjectFieldRef]:
+        return []
+
+    def create_project_field(self, request: CreateProjectFieldRequest) -> ProjectFieldRef:
+        return ProjectFieldRef(
+            id="FIELD_memory",
+            name=request.name,
+            data_type=request.data_type,
+        )
+
+    def update_project_single_select_field_options(
+        self,
+        field: ProjectFieldRef,
+        option_names: tuple[str, ...],
+    ) -> ProjectFieldRef:
+        return field
+
+    def update_project_item_field_value(
+        self,
+        *,
+        item_id: str,
+        field_id: str,
+        value: ProjectFieldValue,
+    ) -> None:
+        return None
 
     def _pull_request(self) -> PullRequestRef:
         return PullRequestRef(

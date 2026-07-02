@@ -75,6 +75,19 @@
       "clientMutationId",
       "pullRequestId"
     ],
+    "ProjectV2FieldValue": [
+      "date",
+      "iterationId",
+      "number",
+      "singleSelectOptionId",
+      "text"
+    ],
+    "ProjectV2SingleSelectFieldOptionInput": [
+      "color",
+      "description",
+      "id",
+      "name"
+    ],
     "UpdateIssueInput": [
       "assigneeIds",
       "body",
@@ -93,6 +106,13 @@
       "itemId",
       "projectId",
       "value"
+    ],
+    "UpdateProjectV2FieldInput": [
+      "clientMutationId",
+      "fieldId",
+      "iterationConfiguration",
+      "name",
+      "singleSelectOptions"
     ],
     "UpdatePullRequestInput": [
       "baseRefName",
@@ -115,6 +135,7 @@
     "markPullRequestReadyForReview",
     "unarchiveProjectV2Item",
     "updateIssue",
+    "updateProjectV2Field",
     "updateProjectV2ItemFieldValue",
     "updatePullRequest"
   ],
@@ -141,9 +162,29 @@
     "ProjectV2Item": [
       "content",
       "fieldValueByName",
+      "fieldValues",
       "id",
       "isArchived",
       "type"
+    ],
+    "ProjectV2ItemFieldNumberValue": [
+      "field",
+      "number"
+    ],
+    "ProjectV2ItemFieldSingleSelectValue": [
+      "field",
+      "name",
+      "optionId"
+    ],
+    "ProjectV2ItemFieldTextValue": [
+      "field",
+      "text"
+    ],
+    "ProjectV2SingleSelectField": [
+      "dataType",
+      "id",
+      "name",
+      "options"
     ],
     "ProjectV2Workflow": [
       "createdAt",

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Protocol
 
-from blackcell.models import IssueRef, ProjectItemRef, PullRequestRef
+from blackcell.models import IssueRef, ProjectFieldRef, ProjectItemRef, PullRequestRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +17,29 @@ class CreatePullRequestRequest:
     base_ref_name: str
     head_ref_name: str
     draft: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class CreateProjectFieldRequest:
+    name: str
+    data_type: str
+    single_select_options: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectFieldValue:
+    text: str | None = None
+    number: float | None = None
+    single_select_option_id: str | None = None
+
+    def to_graphql_value(self) -> dict[str, object]:
+        if self.text is not None:
+            return {"text": self.text}
+        if self.number is not None:
+            return {"number": self.number}
+        if self.single_select_option_id is not None:
+            return {"singleSelectOptionId": self.single_select_option_id}
+        raise ValueError("project field value must contain one concrete value")
 
 
 class ProjectProvider(Protocol):
@@ -43,10 +66,35 @@ class ProjectProvider(Protocol):
     def update_issue(self, *, issue_id: str, title: str, body: str) -> IssueRef:
         raise NotImplementedError
 
-    def list_project_items(self, *, first: int = 20) -> list[ProjectItemRef]:
+    def list_project_items(self, *, first: int | None = 20) -> list[ProjectItemRef]:
         raise NotImplementedError
 
     def add_project_item_by_id(self, content_id: str) -> ProjectItemRef:
+        raise NotImplementedError
+
+    def archive_project_item(self, item_id: str) -> None:
+        raise NotImplementedError
+
+    def list_project_fields(self, *, first: int = 50) -> list[ProjectFieldRef]:
+        raise NotImplementedError
+
+    def create_project_field(self, request: CreateProjectFieldRequest) -> ProjectFieldRef:
+        raise NotImplementedError
+
+    def update_project_single_select_field_options(
+        self,
+        field: ProjectFieldRef,
+        option_names: tuple[str, ...],
+    ) -> ProjectFieldRef:
+        raise NotImplementedError
+
+    def update_project_item_field_value(
+        self,
+        *,
+        item_id: str,
+        field_id: str,
+        value: ProjectFieldValue,
+    ) -> None:
         raise NotImplementedError
 
     def read_pull_request_by_id(self, pull_request_id: str) -> PullRequestRef | None:

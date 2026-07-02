@@ -2,9 +2,16 @@ import json
 from collections.abc import Callable
 
 import httpx
+import pytest
 
 from blackcell.config import BlackcellConfig, ProjectRef, RepositoryRef
-from blackcell.providers import CreateIssueRequest, CreatePullRequestRequest
+from blackcell.models import ProjectFieldOptionRef, ProjectFieldRef
+from blackcell.providers import (
+    CreateIssueRequest,
+    CreateProjectFieldRequest,
+    CreatePullRequestRequest,
+    ProjectFieldValue,
+)
 from blackcell.providers.github import GitHubProjectsProvider
 
 
@@ -162,6 +169,272 @@ def test_update_issue_posts_graphql_and_returns_issue() -> None:
     }
 
 
+def test_list_project_fields_maps_single_select_options() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "node": {
+                        "fields": {
+                            "nodes": [
+                                {
+                                    "__typename": "ProjectV2SingleSelectField",
+                                    "id": "FIELD_Status",
+                                    "name": "Status",
+                                    "dataType": "SINGLE_SELECT",
+                                    "options": [
+                                        {
+                                            "id": "status_todo",
+                                            "name": "Todo",
+                                            "color": "BLUE",
+                                            "description": "",
+                                        }
+                                    ],
+                                },
+                                {
+                                    "__typename": "ProjectV2Field",
+                                    "id": "FIELD_Complexity",
+                                    "name": "Complexity",
+                                    "dataType": "NUMBER",
+                                },
+                            ],
+                            "pageInfo": {
+                                "hasNextPage": False,
+                                "endCursor": None,
+                            },
+                        }
+                    }
+                }
+            },
+        )
+
+    provider = GitHubProjectsProvider(_config(), token="token", client=_client(handler))
+
+    fields = provider.list_project_fields()
+
+    assert [field.name for field in fields] == ["Status", "Complexity"]
+    assert fields[0].options[0].id == "status_todo"
+
+
+def test_list_project_fields_ignores_unsupported_iteration_field() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "node": {
+                        "fields": {
+                            "nodes": [
+                                {
+                                    "__typename": "ProjectV2IterationField",
+                                    "id": "FIELD_Sprint",
+                                    "name": "Sprint",
+                                    "dataType": "ITERATION",
+                                },
+                                {
+                                    "__typename": "ProjectV2SingleSelectField",
+                                    "id": "FIELD_Status",
+                                    "name": "Status",
+                                    "dataType": "SINGLE_SELECT",
+                                    "options": [
+                                        {
+                                            "id": "status_todo",
+                                            "name": "Todo",
+                                            "color": "BLUE",
+                                            "description": "",
+                                        }
+                                    ],
+                                },
+                            ],
+                            "pageInfo": {
+                                "hasNextPage": False,
+                                "endCursor": None,
+                            },
+                        }
+                    }
+                }
+            },
+        )
+
+    provider = GitHubProjectsProvider(_config(), token="token", client=_client(handler))
+
+    fields = provider.list_project_fields()
+
+    assert [field.name for field in fields] == ["Status"]
+
+
+def test_list_project_fields_rejects_unsupported_required_field_name() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "node": {
+                        "fields": {
+                            "nodes": [
+                                {
+                                    "__typename": "ProjectV2IterationField",
+                                    "id": "FIELD_Status",
+                                    "name": "Status",
+                                    "dataType": "ITERATION",
+                                }
+                            ],
+                            "pageInfo": {
+                                "hasNextPage": False,
+                                "endCursor": None,
+                            },
+                        }
+                    }
+                }
+            },
+        )
+
+    provider = GitHubProjectsProvider(_config(), token="token", client=_client(handler))
+
+    with pytest.raises(ValueError, match=r"Status.*ProjectV2IterationField"):
+        provider.list_project_fields()
+
+
+def test_create_project_field_posts_graphql_and_returns_field() -> None:
+    requests: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "createProjectV2Field": {
+                        "projectV2Field": {
+                            "__typename": "ProjectV2SingleSelectField",
+                            "id": "FIELD_Priority",
+                            "name": "Priority",
+                            "dataType": "SINGLE_SELECT",
+                            "options": [
+                                {
+                                    "id": "priority_p0",
+                                    "name": "P0",
+                                    "color": "RED",
+                                    "description": "",
+                                }
+                            ],
+                        }
+                    }
+                }
+            },
+        )
+
+    provider = GitHubProjectsProvider(_config(), token="token", client=_client(handler))
+
+    field = provider.create_project_field(
+        CreateProjectFieldRequest(
+            name="Priority",
+            data_type="SINGLE_SELECT",
+            single_select_options=("P0",),
+        )
+    )
+
+    assert field.name == "Priority"
+    assert requests[0]["variables"] == {
+        "projectId": "PVT_123",
+        "name": "Priority",
+        "dataType": "SINGLE_SELECT",
+        "singleSelectOptions": [{"name": "P0", "color": "RED", "description": ""}],
+    }
+
+
+def test_update_project_field_options_preserves_existing_option_ids() -> None:
+    requests: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "updateProjectV2Field": {
+                        "projectV2Field": {
+                            "__typename": "ProjectV2SingleSelectField",
+                            "id": "FIELD_Status",
+                            "name": "Status",
+                            "dataType": "SINGLE_SELECT",
+                            "options": [
+                                {
+                                    "id": "status_todo",
+                                    "name": "Todo",
+                                    "color": "BLUE",
+                                    "description": "",
+                                },
+                                {
+                                    "id": "status_review",
+                                    "name": "Review Required",
+                                    "color": "PURPLE",
+                                    "description": "",
+                                },
+                            ],
+                        }
+                    }
+                }
+            },
+        )
+
+    provider = GitHubProjectsProvider(_config(), token="token", client=_client(handler))
+
+    field = provider.update_project_single_select_field_options(
+        ProjectFieldRef(
+            id="FIELD_Status",
+            name="Status",
+            data_type="SINGLE_SELECT",
+            options=(ProjectFieldOptionRef(id="status_todo", name="Todo", color="BLUE"),),
+        ),
+        ("Todo", "Review Required"),
+    )
+
+    assert [option.name for option in field.options] == ["Todo", "Review Required"]
+    assert requests[0]["variables"] == {
+        "fieldId": "FIELD_Status",
+        "singleSelectOptions": [
+            {"name": "Todo", "color": "BLUE", "description": "", "id": "status_todo"},
+            {"name": "Review Required", "color": "PURPLE", "description": ""},
+        ],
+    }
+
+
+def test_update_project_item_field_value_posts_graphql() -> None:
+    requests: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "updateProjectV2ItemFieldValue": {
+                        "projectV2Item": {
+                            "id": "PVTI_123",
+                        }
+                    }
+                }
+            },
+        )
+
+    provider = GitHubProjectsProvider(_config(), token="token", client=_client(handler))
+
+    provider.update_project_item_field_value(
+        item_id="PVTI_123",
+        field_id="FIELD_Status",
+        value=ProjectFieldValue(single_select_option_id="status_done"),
+    )
+
+    assert requests[0]["variables"] == {
+        "projectId": "PVT_123",
+        "itemId": "PVTI_123",
+        "fieldId": "FIELD_Status",
+        "value": {"singleSelectOptionId": "status_done"},
+    }
+
+
 def test_add_project_item_by_id_posts_graphql_and_returns_project_item() -> None:
     requests: list[dict[str, object]] = []
 
@@ -263,6 +536,34 @@ def test_add_project_item_by_id_adopts_existing_duplicate_item() -> None:
     assert item.id == "PVTI_existing"
     assert item.content_id == "I_123"
     assert len(requests) == 2
+
+
+def test_archive_project_item_posts_graphql() -> None:
+    requests: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "archiveProjectV2Item": {
+                        "item": {
+                            "id": "PVTI_123",
+                        }
+                    }
+                }
+            },
+        )
+
+    provider = GitHubProjectsProvider(_config(), token="token", client=_client(handler))
+
+    provider.archive_project_item("PVTI_123")
+
+    query = requests[0]["query"]
+    assert isinstance(query, str)
+    assert "archiveProjectV2Item" in query
+    assert requests[0]["variables"] == {"projectId": "PVT_123", "itemId": "PVTI_123"}
 
 
 def test_create_pull_request_posts_graphql_and_returns_pull_request() -> None:
