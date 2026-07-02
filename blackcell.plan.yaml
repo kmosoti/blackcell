@@ -182,7 +182,7 @@ issues:
   - key: BCP-0006
     title: Add Vanguard CLI scope
     type: feature
-    status: In Progress
+    status: Review Required
     priority: P0
     complexity: 5
     epic: EPIC-CONTROL-PLANE
@@ -220,6 +220,42 @@ issues:
       - qa plan emits deterministic command records without executing them.
       - templates render emits deterministic evidence, QA, and read-only review templates.
       - Reviewer verification rejects fix-mode, snapshot-update, commit, push, merge, and remote-mutating commands.
+
+  - key: BCP-0007
+    title: Harden Vanguard publishing workflow ergonomics
+    type: bug
+    status: Todo
+    priority: P1
+    complexity: 3
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0006
+    areas_of_responsibility:
+      - README.md
+      - docs/control-plane-configuration.md
+      - docs/vanguard.md
+      - src/blackcell/cli/app.py
+      - src/blackcell/control_plane/pr.py
+      - tests/unit/test_control_plane_cli.py
+    scope:
+      - Smooth the token, working-directory, and issue-sync prerequisites for the Vanguard PR workflow.
+      - Make the operator path clearer when control-plane PR sync needs a materialized GitHub issue first.
+      - Preserve the non-mutating Vanguard command boundary from BCP-0006.
+    context:
+      - Publishing BCP-0006 exposed setup friction around GH_TOKEN visibility in non-interactive shells.
+      - Running uv run blackcell outside the repository can fail before BlackCell can emit a helpful repo-root error.
+      - control-plane pr status correctly reports issue_not_synced, but the next operator step should be easier to follow.
+      - PRs created outside control-plane can be adopted when BlackCell markers are present.
+    change_spec:
+      - Document permanent WSL token setup and repo-root invocation patterns.
+      - Improve CLI/operator guidance for issue_not_synced and PR adoption prerequisites where practical.
+      - Add regression coverage for the clarified workflow behavior.
+    acceptance_criteria:
+      - Operators can follow documented steps from fresh WSL shell to control-plane PR sync.
+      - issue_not_synced guidance points to the targeted control-plane sync command.
+      - Vanguard remains read-only and does not gain qa run, remote mutation, or agent-spawning behavior.
+      - Tests cover any changed guidance or CLI output.
 
 native_automation:
   - key: native-validate-contract
