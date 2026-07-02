@@ -239,7 +239,7 @@ def poll_device_authorization(
 
         access_token = _string(payload, "access_token")
         token_type = _string(payload, "token_type", default="bearer")
-        session_scopes = _scopes_from_payload(payload) or scopes
+        session_scopes = _scopes_from_payload(payload)
         created_at = now()
         expires_in = payload.get("expires_in")
         expires_at = None

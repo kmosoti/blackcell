@@ -132,6 +132,36 @@ def test_device_authorization_polls_until_token() -> None:
     assert sleeps == [5, 5]
 
 
+def test_device_authorization_preserves_empty_github_app_scopes() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "access_token": "token",
+                "token_type": "bearer",
+                "scope": "",
+                "expires_in": 8 * 60 * 60,
+            },
+        )
+
+    session = poll_device_authorization(
+        client_id="client",
+        device_code=DeviceCode(
+            device_code="device",
+            user_code="ABCD-EFGH",
+            verification_uri="https://github.com/login/device",
+            expires_in=900,
+            interval=5,
+        ),
+        scopes=("repo", "project", "read:org"),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        sleep=lambda _: None,
+        now=lambda: datetime(2026, 7, 2, tzinfo=UTC),
+    )
+
+    assert session.scopes == ()
+
+
 def test_github_provider_uses_blackcell_auth_cache(
     tmp_path: Path,
     monkeypatch,
