@@ -257,6 +257,48 @@ issues:
       - Vanguard remains read-only and does not gain qa run, remote mutation, or agent-spawning behavior.
       - Tests cover any changed guidance or CLI output.
 
+  - key: BCP-0008
+    title: Render Codex CLI agent workflow artifacts
+    type: feature
+    status: Review Required
+    priority: P0
+    complexity: 5
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0007
+    areas_of_responsibility:
+      - blackcell.plan.yaml
+      - docs/control-plane-configuration.md
+      - docs/vanguard.md
+      - src/blackcell/cli/app.py
+      - src/blackcell/control_plane/agent_workflow.py
+      - src/blackcell/control_plane/agent_rendering.py
+      - src/blackcell/control_plane/codex_cli.py
+      - tests/unit/test_agent_workflow.py
+      - tests/unit/test_agent_workflow_cli.py
+    scope:
+      - Render repo-authored agent_workflow metadata into managed Codex CLI project artifacts.
+      - Add dry-run diff, install, apply install, and drift-check commands for target codex-cli.
+      - Preserve unmanaged Markdown outside BlackCell managed sections.
+      - Treat Codex TOML files as whole-file managed and conflict on unmanaged existing TOML.
+    context:
+      - Control-plane owns the projection from blackcell.plan.yaml to local operational artifacts.
+      - The implementation must not spawn Codex, call Codex APIs, or require Codex to be installed.
+      - Rendered Codex agents are read-only and limited to evidence drafting or quality review.
+      - Vanguard may consume workflow context but does not own or install Codex artifacts.
+    change_spec:
+      - Add agent workflow validation for rendered Codex CLI constraints and prohibited guidance.
+      - Add deterministic TOML and Markdown artifact rendering with BlackCell markers and SHA-256 digests.
+      - Add Codex CLI artifact comparison, dry-run install, apply install, and drift detection.
+      - Document ownership, marker policy, conflict behavior, and drift workflow.
+    acceptance_criteria:
+      - agent-workflow commands require --target codex-cli for file projection.
+      - Dry-run install reports create, update, noop, or conflict actions without writing.
+      - Apply install writes only non-conflicting managed artifacts.
+      - check-drift exits non-zero when any managed artifact differs, is missing, or conflicts.
+      - Tests cover rendering, idempotence, conflict handling, Markdown preservation, validation, and CLI behavior.
+
 native_automation:
   - key: native-validate-contract
     name: Validate contract before project sync
@@ -300,3 +342,25 @@ agent_workflow:
         - tests/unit/test_control_plane_cli.py
       change_spec:
         - Own fixtures and validation scenarios.
+  codex_cli:
+    max_threads: 6
+    max_depth: 1
+    agents:
+      - key: spark-evidence-drafter
+        name: spark-evidence-drafter
+        description: Drafts evidence summaries from repository context without approving behavior.
+        developer_instructions: |
+          You are the BlackCell Spark evidence drafter for this repository.
+          Operate in read-only mode. Inspect repository-authored planning context and summarize evidence only.
+          Do not approve behavior, draft fixes, edit files, run mutating commands, or request remote state changes.
+          Return concise notes that separate observed facts from open questions.
+        sandbox_mode: read-only
+      - key: quality-reviewer
+        name: quality-reviewer
+        description: Reviews repository changes for contract, test, and documentation risks.
+        developer_instructions: |
+          You are the BlackCell quality reviewer for repository changes.
+          Operate in read-only review mode. Inspect diffs, tests, docs, and contract context.
+          Report defects, missing coverage, and contract risks. Do not enter fix mode, edit files, commit changes, push branches, merge pull requests, close issues, or run remote-mutating workflows.
+          When suggesting verification, use non-mutating check commands only.
+        sandbox_mode: read-only

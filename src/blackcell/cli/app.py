@@ -27,6 +27,7 @@ from blackcell.control_plane import (
     write_github_capabilities,
 )
 from blackcell.control_plane.capabilities import capability_summary
+from blackcell.control_plane.codex_cli import AgentWorkflowProjectionResult
 from blackcell.control_plane.models import AgentIssueContext, ProjectShape, ValidationResult
 from blackcell.control_plane.pr import PullRequestCommand, PullRequestWorkflowResult
 from blackcell.control_plane.sync import SyncResult
@@ -49,6 +50,7 @@ issue_app = typer.Typer(no_args_is_help=True)
 control_plane_app = typer.Typer(no_args_is_help=True)
 capabilities_app = typer.Typer(no_args_is_help=True)
 pull_request_app = typer.Typer(no_args_is_help=True)
+agent_workflow_app = typer.Typer(no_args_is_help=True)
 vanguard_app = typer.Typer(no_args_is_help=True)
 vanguard_changespec_app = typer.Typer(no_args_is_help=True)
 vanguard_qa_app = typer.Typer(no_args_is_help=True)
@@ -61,6 +63,7 @@ app.add_typer(issue_app, name="issue")
 app.add_typer(control_plane_app, name="control-plane")
 control_plane_app.add_typer(capabilities_app, name="capabilities")
 control_plane_app.add_typer(pull_request_app, name="pr")
+control_plane_app.add_typer(agent_workflow_app, name="agent-workflow")
 app.add_typer(vanguard_app, name="vanguard")
 vanguard_app.add_typer(vanguard_changespec_app, name="changespec")
 vanguard_app.add_typer(vanguard_qa_app, name="qa")
@@ -124,6 +127,26 @@ def configure_capabilities_cli(
     ] = None,
 ) -> None:
     """GitHub GraphQL capability cache commands."""
+    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
+
+
+@agent_workflow_app.callback()
+def configure_agent_workflow_cli(
+    context: typer.Context,
+    rich: Annotated[
+        bool,
+        typer.Option("--rich", help="Render human-oriented Rich output."),
+    ] = False,
+    jsonl: Annotated[
+        bool,
+        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
+    ] = False,
+    output_format: Annotated[
+        str | None,
+        typer.Option("--format", help="Output format: json, jsonl, or rich."),
+    ] = None,
+) -> None:
+    """Agent workflow projection commands."""
     _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
 
 
@@ -392,6 +415,84 @@ def sync_control_plane(
     _output(context).emit(result, rich=_sync_table(result))
 
 
+@agent_workflow_app.command("validate")
+def validate_agent_workflow_command(context: typer.Context) -> None:
+    """Validate the repo-authored agent workflow and rendered Codex constraints."""
+    control_plane = LocalControlPlane()
+    try:
+        result = control_plane.validate_agent_workflow()
+    except (ContractError, ConfigError, ValueError) as error:
+        _fail(context, str(error))
+
+    _output(context).emit(result, rich=_validation_table("Agent Workflow Validation", result))
+    if not result.valid:
+        raise typer.Exit(1)
+
+
+@agent_workflow_app.command("diff")
+def diff_agent_workflow(
+    context: typer.Context,
+    target: Annotated[
+        str,
+        typer.Option("--target", help="Projection target. Supported: codex-cli."),
+    ],
+) -> None:
+    """Compare rendered agent workflow artifacts to the working tree."""
+    control_plane = LocalControlPlane()
+    try:
+        result = control_plane.agent_workflow_diff(target)
+    except (ContractError, ConfigError, OSError, ValueError) as error:
+        _fail(context, str(error))
+
+    _output(context).emit(result, rich=_agent_workflow_projection_table(result))
+    if result.conflicts:
+        raise typer.Exit(1)
+
+
+@agent_workflow_app.command("install")
+def install_agent_workflow(
+    context: typer.Context,
+    target: Annotated[
+        str,
+        typer.Option("--target", help="Projection target. Supported: codex-cli."),
+    ],
+    apply_changes: Annotated[
+        bool,
+        typer.Option("--apply", help="Write non-conflicting managed artifacts."),
+    ] = False,
+) -> None:
+    """Install rendered agent workflow artifacts. Defaults to dry run."""
+    control_plane = LocalControlPlane()
+    try:
+        result = control_plane.agent_workflow_install(target, apply_changes=apply_changes)
+    except (ContractError, ConfigError, OSError, ValueError) as error:
+        _fail(context, str(error))
+
+    _output(context).emit(result, rich=_agent_workflow_projection_table(result))
+    if result.conflicts:
+        raise typer.Exit(1)
+
+
+@agent_workflow_app.command("check-drift")
+def check_agent_workflow_drift(
+    context: typer.Context,
+    target: Annotated[
+        str,
+        typer.Option("--target", help="Projection target. Supported: codex-cli."),
+    ],
+) -> None:
+    """Fail when managed agent workflow artifacts drift from rendered content."""
+    control_plane = LocalControlPlane()
+    try:
+        result = control_plane.agent_workflow_check_drift(target)
+    except (ContractError, ConfigError, OSError, ValueError) as error:
+        _fail(context, str(error))
+
+    _output(context).emit(result, rich=_agent_workflow_projection_table(result))
+    if result.drift:
+        raise typer.Exit(1)
+
+
 @pull_request_app.command("status")
 def pull_request_status(
     context: typer.Context,
@@ -644,6 +745,27 @@ def _sync_table(result: SyncResult) -> Table:
             str(action.applied),
             action.message,
             action.issue_url or "",
+        )
+    return table
+
+
+def _agent_workflow_projection_table(result: AgentWorkflowProjectionResult) -> Table:
+    title = f"Agent Workflow {result.operation}"
+    if result.dry_run:
+        title += " (dry run)"
+    table = Table(title=title)
+    table.add_column("Action")
+    table.add_column("Path")
+    table.add_column("Applied")
+    table.add_column("Digest")
+    table.add_column("Message")
+    for action in result.actions:
+        table.add_row(
+            action.action,
+            action.path,
+            str(action.applied),
+            action.digest,
+            action.message,
         )
     return table
 

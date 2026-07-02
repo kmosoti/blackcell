@@ -2,7 +2,14 @@ from pathlib import Path
 from typing import Protocol
 
 from blackcell.config import load_config
+from blackcell.control_plane.agent_workflow import validate_agent_workflow
 from blackcell.control_plane.capabilities import validate_github_capabilities
+from blackcell.control_plane.codex_cli import (
+    AgentWorkflowProjectionResult,
+    check_codex_cli_agent_workflow_drift,
+    diff_codex_cli_agent_workflow,
+    install_codex_cli_agent_workflow,
+)
 from blackcell.control_plane.loader import load_contract
 from blackcell.control_plane.models import (
     AgentIssueContext,
@@ -31,6 +38,9 @@ class ControlPlane(Protocol):
         raise NotImplementedError
 
     def validate_github_capabilities(self) -> ValidationResult:
+        raise NotImplementedError
+
+    def validate_agent_workflow(self) -> ValidationResult:
         raise NotImplementedError
 
     def render_agent_context(self, issue_key: str) -> AgentIssueContext:
@@ -65,6 +75,20 @@ class ControlPlane(Protocol):
     def reconcile(self) -> None:
         raise NotImplementedError
 
+    def agent_workflow_diff(self, target: str) -> AgentWorkflowProjectionResult:
+        raise NotImplementedError
+
+    def agent_workflow_install(
+        self,
+        target: str,
+        *,
+        apply_changes: bool = False,
+    ) -> AgentWorkflowProjectionResult:
+        raise NotImplementedError
+
+    def agent_workflow_check_drift(self, target: str) -> AgentWorkflowProjectionResult:
+        raise NotImplementedError
+
     def pull_request_workflow(
         self,
         *,
@@ -94,6 +118,19 @@ class LocalControlPlane:
 
     def validate_github_capabilities(self) -> ValidationResult:
         return validate_github_capabilities(self._start, path=self._capability_manifest_path)
+
+    def validate_agent_workflow(self) -> ValidationResult:
+        contract = self.load_contract()
+        contract_validation = validate_contract(contract)
+        workflow_validation = validate_agent_workflow(contract)
+        return ValidationResult.from_messages(
+            (
+                *contract_validation.errors,
+                *contract_validation.warnings,
+                *workflow_validation.errors,
+                *workflow_validation.warnings,
+            )
+        )
 
     def render_agent_context(self, issue_key: str) -> AgentIssueContext:
         contract = self.load_contract()
@@ -234,6 +271,28 @@ class LocalControlPlane:
     def reconcile(self) -> None:
         raise NotImplementedError("bidirectional reconcile is reserved for a later slice")
 
+    def agent_workflow_diff(self, target: str) -> AgentWorkflowProjectionResult:
+        contract = self._load_valid_agent_workflow_contract()
+        return diff_codex_cli_agent_workflow(contract, start=self._start, target=target)
+
+    def agent_workflow_install(
+        self,
+        target: str,
+        *,
+        apply_changes: bool = False,
+    ) -> AgentWorkflowProjectionResult:
+        contract = self._load_valid_agent_workflow_contract()
+        return install_codex_cli_agent_workflow(
+            contract,
+            start=self._start,
+            target=target,
+            apply_changes=apply_changes,
+        )
+
+    def agent_workflow_check_drift(self, target: str) -> AgentWorkflowProjectionResult:
+        contract = self._load_valid_agent_workflow_contract()
+        return check_codex_cli_agent_workflow_drift(contract, start=self._start, target=target)
+
     def pull_request_workflow(
         self,
         *,
@@ -270,3 +329,20 @@ class LocalControlPlane:
             start=self._start,
             cache_path=cache_path,
         )
+
+    def _load_valid_agent_workflow_contract(self) -> PlanContract:
+        contract = self.load_contract()
+        contract_validation = validate_contract(contract)
+        workflow_validation = validate_agent_workflow(contract)
+        validation = ValidationResult.from_messages(
+            (
+                *contract_validation.errors,
+                *contract_validation.warnings,
+                *workflow_validation.errors,
+                *workflow_validation.warnings,
+            )
+        )
+        if not validation.valid:
+            codes = ", ".join(error.code for error in validation.errors)
+            raise ValueError(f"agent workflow is invalid: {codes}")
+        return contract

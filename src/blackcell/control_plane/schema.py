@@ -160,6 +160,37 @@ def _agent_workflow_schema() -> dict[str, object]:
                     },
                 },
             },
+            "codex_cli": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "max_threads": {"type": "integer", "minimum": 1},
+                    "max_depth": {"type": "integer", "minimum": 0, "maximum": 1},
+                    "agents": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": [
+                                "key",
+                                "name",
+                                "description",
+                                "developer_instructions",
+                            ],
+                            "additionalProperties": False,
+                            "properties": {
+                                "key": {"type": "string", "minLength": 1},
+                                "name": {"type": "string", "minLength": 1},
+                                "description": {"type": "string", "minLength": 1},
+                                "developer_instructions": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                },
+                                "sandbox_mode": {"type": "string", "minLength": 1},
+                            },
+                        },
+                    },
+                },
+            },
         },
     }
 

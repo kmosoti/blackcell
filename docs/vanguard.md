@@ -10,10 +10,11 @@ uv run blackcell vanguard templates render
 ```
 
 The control-plane remains the owner of project state, GitHub issue projection,
-GitHub ProjectV2 fields, pull request workflow state, and remote mutations.
-Vanguard consumes control-plane issue context and owns only issue-bound
-ChangeSpec drafting, validation, deterministic QA planning, and review
-templates.
+GitHub ProjectV2 fields, pull request workflow state, Codex CLI agent workflow
+artifacts, and remote mutations. Vanguard may consume control-plane workflow
+context, but it does not own or install `.codex` artifacts, `AGENTS.md`, or
+managed agent review documentation. Vanguard owns only issue-bound ChangeSpec
+drafting, validation, deterministic QA planning, and review templates.
 
 Candidate invariants are evidence. They are not approved behavior, and Vanguard
 does not infer `behavior_contract` entries from them. Evidence gathering and
@@ -58,7 +59,8 @@ stateDiagram-v2
 ## Invariants
 
 - Control-plane commands are still responsible for GitHub sync, ProjectV2 field
-  projection, PR workflow transitions, and any future remote state changes.
+  projection, PR workflow transitions, Codex CLI artifact installation, and any
+  future remote state changes.
 - Vanguard commands are read-only and deterministic.
 - `qa plan` emits command records only; it does not run formatters, linters,
   tests, Git, GitHub CLI, or BlackCell mutating commands.

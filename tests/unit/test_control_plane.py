@@ -1,5 +1,6 @@
 from dataclasses import replace
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -8,6 +9,7 @@ from blackcell.control_plane import (
     IssueStatus,
     LocalControlPlane,
     load_contract,
+    plan_contract_schema,
     validate_contract,
     validate_status_transition,
 )
@@ -54,6 +56,24 @@ def test_contract_load_rejects_invalid_enum(tmp_path: Path) -> None:
 
     with pytest.raises(ContractError, match="status must be one of"):
         load_contract(tmp_path)
+
+
+def test_schema_includes_codex_cli_agent_projection_config() -> None:
+    schema = plan_contract_schema()
+
+    properties = cast(dict[str, Any], schema["properties"])
+    agent_workflow = cast(dict[str, Any], properties["agent_workflow"])
+    agent_workflow_properties = cast(dict[str, Any], agent_workflow["properties"])
+    codex_cli = cast(dict[str, Any], agent_workflow_properties["codex_cli"])
+    codex_cli_properties = cast(dict[str, Any], codex_cli["properties"])
+    agents = cast(dict[str, Any], codex_cli_properties["agents"])
+    agent = cast(dict[str, Any], agents["items"])
+    agent_properties = cast(dict[str, Any], agent["properties"])
+
+    assert cast(dict[str, Any], codex_cli_properties["max_threads"])["minimum"] == 1
+    assert cast(dict[str, Any], codex_cli_properties["max_depth"])["maximum"] == 1
+    assert "developer_instructions" in agent["required"]
+    assert cast(dict[str, Any], agent_properties["sandbox_mode"])["type"] == "string"
 
 
 def test_validate_contract_reports_missing_dependency(tmp_path: Path) -> None:

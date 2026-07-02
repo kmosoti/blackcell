@@ -53,6 +53,36 @@ def validate_contract(contract: PlanContract) -> ValidationResult:
             (worker.key for worker in contract.agent_workflow.workers),
             messages,
         )
+        if contract.agent_workflow.codex_cli:
+            _validate_unique(
+                "agent_workflow.codex_cli.agents",
+                (agent.key for agent in contract.agent_workflow.codex_cli.agents),
+                messages,
+            )
+            if contract.agent_workflow.codex_cli.max_threads < 1:
+                messages.append(
+                    _error(
+                        "invalid_codex_max_threads",
+                        "agent_workflow.codex_cli.max_threads must be at least 1",
+                        "$.agent_workflow.codex_cli.max_threads",
+                    )
+                )
+            if contract.agent_workflow.codex_cli.max_depth > 1:
+                messages.append(
+                    _error(
+                        "invalid_codex_max_depth",
+                        "agent_workflow.codex_cli.max_depth must not be greater than 1",
+                        "$.agent_workflow.codex_cli.max_depth",
+                    )
+                )
+            if contract.agent_workflow.codex_cli.max_depth < 0:
+                messages.append(
+                    _error(
+                        "invalid_codex_max_depth",
+                        "agent_workflow.codex_cli.max_depth must not be negative",
+                        "$.agent_workflow.codex_cli.max_depth",
+                    )
+                )
 
     for roadmap_index, roadmap in enumerate(contract.roadmaps):
         for epic_key in roadmap.epics:

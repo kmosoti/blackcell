@@ -130,5 +130,6 @@ uv run blackcell control-plane capabilities refresh
 uv run ruff format .
 uv run ruff check .
 uv run pytest
+uv run mutmut run
 uv run ty check
 ```

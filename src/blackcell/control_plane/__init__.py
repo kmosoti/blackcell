@@ -1,3 +1,4 @@
+from blackcell.control_plane.agent_workflow import validate_agent_workflow
 from blackcell.control_plane.cache import (
     CONTROL_PLANE_CACHE_PATH,
     ControlPlaneSyncCache,
@@ -14,6 +15,14 @@ from blackcell.control_plane.capabilities import (
     validate_github_capabilities,
     write_github_capabilities,
 )
+from blackcell.control_plane.codex_cli import (
+    AgentWorkflowArtifactAction,
+    AgentWorkflowArtifactSummary,
+    AgentWorkflowProjectionResult,
+    check_codex_cli_agent_workflow_drift,
+    diff_codex_cli_agent_workflow,
+    install_codex_cli_agent_workflow,
+)
 from blackcell.control_plane.facade import ControlPlane, LocalControlPlane
 from blackcell.control_plane.loader import (
     CONTRACT_FILENAME,
@@ -25,6 +34,8 @@ from blackcell.control_plane.models import (
     AgentIssueContext,
     AgentWorker,
     AgentWorkflow,
+    CodexCliAgent,
+    CodexCliWorkflow,
     Complexity,
     GlobalPolicy,
     IssuePlan,
@@ -77,7 +88,12 @@ __all__ = [
     "AgentIssueContext",
     "AgentWorker",
     "AgentWorkflow",
+    "AgentWorkflowArtifactAction",
+    "AgentWorkflowArtifactSummary",
+    "AgentWorkflowProjectionResult",
     "CapabilityRequirement",
+    "CodexCliAgent",
+    "CodexCliWorkflow",
     "Complexity",
     "ContractError",
     "ControlPlane",
@@ -108,11 +124,14 @@ __all__ = [
     "SyncResult",
     "ValidationMessage",
     "ValidationResult",
+    "check_codex_cli_agent_workflow_drift",
+    "diff_codex_cli_agent_workflow",
     "extract_contract_digest",
     "extract_prior_remote_body",
     "find_contract_path",
     "has_blackcell_issue_marker",
     "has_blackcell_pull_request_marker",
+    "install_codex_cli_agent_workflow",
     "issue_body_digest",
     "issue_contract_digest",
     "load_contract",
@@ -123,6 +142,7 @@ __all__ = [
     "render_issue_body",
     "render_pull_request_body",
     "run_pull_request_workflow",
+    "validate_agent_workflow",
     "validate_contract",
     "validate_github_capabilities",
     "validate_status_transition",

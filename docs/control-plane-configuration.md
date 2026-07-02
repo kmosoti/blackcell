@@ -110,6 +110,19 @@ classDiagram
     class AgentWorkflow {
       +str model
       +tuple~AgentWorker~ workers
+      +CodexCliWorkflow? codex_cli
+    }
+    class CodexCliWorkflow {
+      +int max_threads
+      +int max_depth
+      +tuple~CodexCliAgent~ agents
+    }
+    class CodexCliAgent {
+      +str key
+      +str name
+      +str description
+      +str developer_instructions
+      +str sandbox_mode
     }
 
     ProjectPlan "1" --> "*" Roadmap
@@ -119,6 +132,8 @@ classDiagram
     Milestone "1" --> "*" IssuePlan
     ProjectPlan "1" --> "*" NativeAutomation
     ProjectPlan "1" --> "0..1" AgentWorkflow
+    AgentWorkflow "1" --> "0..1" CodexCliWorkflow
+    CodexCliWorkflow "1" --> "*" CodexCliAgent
 ```
 
 ## Issue Kinds
@@ -253,6 +268,86 @@ sequenceDiagram
     end
     CLI->>Cache: store node IDs and digests on apply
 ```
+
+## Agent Workflow Projection
+
+`agent_workflow` is repo-authored planning metadata. The control-plane owns the
+local projection of that metadata into Codex CLI project artifacts. Vanguard may
+consume the workflow context for ChangeSpecs and QA planning, but it does not
+install or own Codex CLI files.
+
+The optional `agent_workflow.codex_cli` block is the schema-backed source for
+the generated Codex CLI files:
+
+```yaml
+agent_workflow:
+  model: gpt-5.3-codex-spark
+  codex_cli:
+    max_threads: 6
+    max_depth: 1
+    agents:
+      - key: spark-evidence-drafter
+        name: spark-evidence-drafter
+        description: Drafts evidence summaries from repository context without approving behavior.
+        developer_instructions: |
+          You are the BlackCell Spark evidence drafter for this repository.
+          Operate in read-only mode.
+        sandbox_mode: read-only
+```
+
+The BCP-0008 projection target is explicit:
+
+```bash
+uv run blackcell control-plane agent-workflow validate
+uv run blackcell control-plane agent-workflow diff --target codex-cli
+uv run blackcell control-plane agent-workflow install --target codex-cli
+uv run blackcell control-plane agent-workflow install --target codex-cli --apply
+uv run blackcell control-plane agent-workflow check-drift --target codex-cli
+```
+
+`validate` requires `agent_workflow` to exist and checks the rendered Codex CLI
+constraints before file operations run. The projection does not spawn Codex,
+call Codex APIs, or check whether Codex is installed.
+
+Rendered paths:
+
+| Path | Ownership |
+| --- | --- |
+| `.codex/config.toml` | Whole-file managed TOML. |
+| `.codex/agents/spark-evidence-drafter.toml` | Whole-file managed TOML for evidence-only read-only work. |
+| `.codex/agents/quality-reviewer.toml` | Whole-file managed TOML for review-only read-only work. |
+| `AGENTS.md` | Managed Markdown section; unmanaged prose is preserved. |
+| `docs/agent/code_review.md` | Managed Markdown section; unmanaged prose is preserved. |
+
+TOML artifacts start with:
+
+```toml
+# BlackCell managed: codex-cli agent workflow
+# blackcell:digest sha256:<digest>
+```
+
+The TOML digest is computed from the rendered TOML body excluding the marker and
+digest lines. Existing TOML files without BlackCell markers are reported as
+`conflict` and are never overwritten by `install --apply`.
+
+Markdown artifacts use a managed section:
+
+```markdown
+<!-- blackcell:agent-workflow:start digest=sha256:<digest> -->
+...
+<!-- blackcell:agent-workflow:end -->
+```
+
+The Markdown digest is computed from the managed section body. Existing content
+outside the managed section is preserved. If a Markdown file has no managed
+section, `install --apply` appends one. Malformed managed markers are reported as
+`conflict`.
+
+`diff` and dry-run `install` report per-path `create`, `update`, `noop`, or
+`conflict` actions without writing. `install --apply` writes only non-conflicting
+`create` and `update` actions. `check-drift` exits non-zero when any rendered
+artifact is missing, differs from the working tree, or conflicts with unmanaged
+content.
 
 ## Pull Request Workflow
 
