@@ -224,7 +224,7 @@ issues:
   - key: BCP-0007
     title: Harden Vanguard publishing workflow ergonomics
     type: bug
-    status: Review Required
+    status: Done
     priority: P1
     complexity: 3
     epic: EPIC-CONTROL-PLANE
