@@ -33,6 +33,13 @@ from blackcell.control_plane.sync import SyncResult
 from blackcell.models import IssueRef, ProjectItemRef
 from blackcell.providers import CreateIssueRequest, ProjectProvider, default_registry
 from blackcell.providers.github import GitHubApiError
+from blackcell.vanguard import (
+    draft_changespec_from_agent_context,
+    plan_qa,
+    read_changespec_file,
+    render_templates,
+    validate_changespec_file,
+)
 
 app = typer.Typer(no_args_is_help=True)
 config_app = typer.Typer(no_args_is_help=True)
@@ -42,6 +49,10 @@ issue_app = typer.Typer(no_args_is_help=True)
 control_plane_app = typer.Typer(no_args_is_help=True)
 capabilities_app = typer.Typer(no_args_is_help=True)
 pull_request_app = typer.Typer(no_args_is_help=True)
+vanguard_app = typer.Typer(no_args_is_help=True)
+vanguard_changespec_app = typer.Typer(no_args_is_help=True)
+vanguard_qa_app = typer.Typer(no_args_is_help=True)
+vanguard_templates_app = typer.Typer(no_args_is_help=True)
 
 app.add_typer(config_app, name="config")
 app.add_typer(provider_app, name="providers")
@@ -50,6 +61,10 @@ app.add_typer(issue_app, name="issue")
 app.add_typer(control_plane_app, name="control-plane")
 control_plane_app.add_typer(capabilities_app, name="capabilities")
 control_plane_app.add_typer(pull_request_app, name="pr")
+app.add_typer(vanguard_app, name="vanguard")
+vanguard_app.add_typer(vanguard_changespec_app, name="changespec")
+vanguard_app.add_typer(vanguard_qa_app, name="qa")
+vanguard_app.add_typer(vanguard_templates_app, name="templates")
 
 
 @app.callback()
@@ -109,6 +124,86 @@ def configure_capabilities_cli(
     ] = None,
 ) -> None:
     """GitHub GraphQL capability cache commands."""
+    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
+
+
+@vanguard_app.callback()
+def configure_vanguard_cli(
+    context: typer.Context,
+    rich: Annotated[
+        bool,
+        typer.Option("--rich", help="Render human-oriented Rich output."),
+    ] = False,
+    jsonl: Annotated[
+        bool,
+        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
+    ] = False,
+    output_format: Annotated[
+        str | None,
+        typer.Option("--format", help="Output format: json, jsonl, or rich."),
+    ] = None,
+) -> None:
+    """Vanguard spec-first QA workflow commands."""
+    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
+
+
+@vanguard_changespec_app.callback()
+def configure_vanguard_changespec_cli(
+    context: typer.Context,
+    rich: Annotated[
+        bool,
+        typer.Option("--rich", help="Render human-oriented Rich output."),
+    ] = False,
+    jsonl: Annotated[
+        bool,
+        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
+    ] = False,
+    output_format: Annotated[
+        str | None,
+        typer.Option("--format", help="Output format: json, jsonl, or rich."),
+    ] = None,
+) -> None:
+    """Vanguard ChangeSpec commands."""
+    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
+
+
+@vanguard_qa_app.callback()
+def configure_vanguard_qa_cli(
+    context: typer.Context,
+    rich: Annotated[
+        bool,
+        typer.Option("--rich", help="Render human-oriented Rich output."),
+    ] = False,
+    jsonl: Annotated[
+        bool,
+        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
+    ] = False,
+    output_format: Annotated[
+        str | None,
+        typer.Option("--format", help="Output format: json, jsonl, or rich."),
+    ] = None,
+) -> None:
+    """Vanguard QA planning commands."""
+    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
+
+
+@vanguard_templates_app.callback()
+def configure_vanguard_templates_cli(
+    context: typer.Context,
+    rich: Annotated[
+        bool,
+        typer.Option("--rich", help="Render human-oriented Rich output."),
+    ] = False,
+    jsonl: Annotated[
+        bool,
+        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
+    ] = False,
+    output_format: Annotated[
+        str | None,
+        typer.Option("--format", help="Output format: json, jsonl, or rich."),
+    ] = None,
+) -> None:
+    """Vanguard template commands."""
     _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
 
 
@@ -415,6 +510,68 @@ def check_capabilities(
     _output(context).emit(result, rich=_validation_table("GitHub GraphQL Capabilities", result))
     if not result.valid:
         raise typer.Exit(1)
+
+
+@vanguard_changespec_app.command("init")
+def init_vanguard_changespec(
+    context: typer.Context,
+    issue_key: Annotated[
+        str,
+        typer.Option("--issue-key", help="Planning contract issue key."),
+    ],
+) -> None:
+    """Render a draft Vanguard ChangeSpec for a control-plane issue."""
+    control_plane = LocalControlPlane()
+    try:
+        agent_context = control_plane.render_agent_context(issue_key)
+    except (ContractError, ConfigError, ValueError) as error:
+        _fail(context, str(error))
+
+    _output(context).emit(draft_changespec_from_agent_context(agent_context))
+
+
+@vanguard_changespec_app.command("validate")
+def validate_vanguard_changespec(
+    context: typer.Context,
+    path: Annotated[Path, typer.Argument(help="ChangeSpec JSON path.")],
+) -> None:
+    """Validate a Vanguard ChangeSpec JSON file."""
+    try:
+        result = validate_changespec_file(path)
+    except OSError as error:
+        _fail(context, str(error))
+
+    _output(context).emit(result, rich=_validation_table("Vanguard ChangeSpec", result))
+    if not result.valid:
+        raise typer.Exit(1)
+
+
+@vanguard_qa_app.command("plan")
+def plan_vanguard_qa(
+    context: typer.Context,
+    path: Annotated[Path, typer.Argument(help="ChangeSpec JSON path.")],
+) -> None:
+    """Render deterministic, non-mutating QA command records."""
+    try:
+        spec, validation = read_changespec_file(path)
+    except OSError as error:
+        _fail(context, str(error))
+    if not validation.valid or spec is None:
+        _output(context).emit(validation, rich=_validation_table("Vanguard ChangeSpec", validation))
+        raise typer.Exit(1)
+
+    try:
+        qa_plan = plan_qa(spec)
+    except ValueError as error:
+        _fail(context, str(error))
+
+    _output(context).emit(qa_plan)
+
+
+@vanguard_templates_app.command("render")
+def render_vanguard_templates(context: typer.Context) -> None:
+    """Render deterministic Vanguard workflow templates."""
+    _output(context).emit_collection("templates", render_templates())
 
 
 def _validation_table(title: str, result: ValidationResult) -> Table:

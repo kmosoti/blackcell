@@ -92,6 +92,8 @@ status is `Review Required` and configured checks pass.
 
 Project and issue configuration details live in
 [`docs/control-plane-configuration.md`](docs/control-plane-configuration.md).
+The Vanguard spec-first QA workflow is documented in
+[`docs/vanguard.md`](docs/vanguard.md).
 
 The cached GitHub capability manifest lives under `generated/cache/` and can be
 refreshed from GitHub's public GraphQL schema docs:
