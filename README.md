@@ -60,6 +60,28 @@ uv run blackcell project items
 uv run blackcell --rich project items
 ```
 
+If you use GitHub CLI in WSL, authenticate `gh` and export the token for
+BlackCell from your shell startup file:
+
+```bash
+gh auth refresh -h github.com -s repo -s project -s read:org
+
+cat >> ~/.zshrc <<'EOF'
+
+# GitHub token for BlackCell
+if command -v gh >/dev/null 2>&1; then
+  export GH_TOKEN="${GH_TOKEN:-$(gh auth token --hostname github.com 2>/dev/null || true)}"
+fi
+EOF
+```
+
+`uv run blackcell ...` assumes the current directory is the repository root. To
+run BlackCell from another directory, pass the project explicitly:
+
+```bash
+uv --directory ~/src/blackcell run blackcell control-plane validate
+```
+
 ## Control Plane
 
 `blackcell.plan.yaml` is the durable, repo-authored planning contract. It is

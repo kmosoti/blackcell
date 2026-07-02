@@ -20,6 +20,15 @@ does not infer `behavior_contract` entries from them. Evidence gathering and
 review guidance are read-only. QA planning renders commands; it does not execute
 them.
 
+Publishing remains a control-plane responsibility. After Vanguard produces a
+valid ChangeSpec and QA plan, use `blackcell control-plane sync` and
+`blackcell control-plane pr` from the repository root to materialize GitHub
+issues and pull requests. From outside the repository, use `uv --directory`:
+
+```bash
+uv --directory ~/src/blackcell run blackcell control-plane pr status --issue-key BCP-0006
+```
+
 ## Boundary
 
 ```mermaid

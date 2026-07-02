@@ -275,6 +275,32 @@ hidden BlackCell markers for rediscovery. Managed PR Project items mirror the
 same `Status`, `Priority`, `Complexity`, and `Type` values as their issue
 contract so the Project remains scannable from either row.
 
+Run these commands from the repository root. From another working directory,
+use `uv --directory` so `uv` can find the BlackCell project:
+
+```bash
+uv --directory ~/src/blackcell run blackcell control-plane pr status --issue-key BCP-0001
+```
+
+For a fresh WSL shell that already has GitHub CLI authenticated, export `GH_TOKEN`
+for BlackCell before running `--apply` commands:
+
+```bash
+export GH_TOKEN="${GH_TOKEN:-$(gh auth token --hostname github.com 2>/dev/null || true)}"
+```
+
+When `pr status` reports `issue_not_synced`, materialize the GitHub issue first
+and then rerun PR sync:
+
+```bash
+uv run blackcell control-plane sync --issue-key BCP-0001 --apply
+uv run blackcell control-plane pr sync --issue-key BCP-0001 --apply
+```
+
+If a pull request was opened outside BlackCell, `pr sync` can still adopt it when
+the PR body contains the `blackcell:pr-issue-key` marker or the head branch
+matches the local branch.
+
 ```mermaid
 stateDiagram
     [*] --> NeedsChanges: dirty worktree or detached HEAD

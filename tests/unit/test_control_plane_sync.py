@@ -678,6 +678,34 @@ def test_pull_request_workflow_requires_pushed_branch(tmp_path: Path) -> None:
     assert result.actions == ()
 
 
+def test_pull_request_workflow_issue_not_synced_reports_targeted_commands(
+    tmp_path: Path,
+) -> None:
+    _write_contract(tmp_path, _contract_yaml())
+    contract = load_contract(tmp_path)
+    provider = MemorySyncProvider(_config())
+
+    result = run_pull_request_workflow(
+        contract=contract,
+        config=_config(),
+        provider=provider,
+        start=tmp_path,
+        cache_path=tmp_path / "control_plane.sqlite3",
+        issue_key="BCP-0001",
+        command=PullRequestCommand.SYNC,
+        git_state=_git_state(),
+    )
+
+    assert result.state is PullRequestWorkflowState.READY_BLOCKED
+    assert result.blockers == ("issue_not_synced",)
+    assert result.next_commands == (
+        "uv run blackcell control-plane sync --issue-key BCP-0001 --apply",
+        "uv run blackcell control-plane pr sync --issue-key BCP-0001 --apply",
+    )
+    assert result.actions == ()
+    assert provider.created_pull_request_requests == []
+
+
 def test_pull_request_workflow_dry_run_create_has_no_mutations_or_cache(
     tmp_path: Path,
 ) -> None:
@@ -699,6 +727,9 @@ def test_pull_request_workflow_dry_run_create_has_no_mutations_or_cache(
     )
 
     assert result.state is PullRequestWorkflowState.NEEDS_DRAFT_PR
+    assert result.next_commands == (
+        "uv run blackcell control-plane pr sync --issue-key BCP-0001 --apply",
+    )
     assert [action.type.value for action in result.actions] == ["create_pull_request"]
     assert result.actions[0].applied is False
     assert provider.created_pull_request_requests == []
