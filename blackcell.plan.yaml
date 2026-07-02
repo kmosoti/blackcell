@@ -179,6 +179,48 @@ issues:
       - Missing single-select options are added without replacing existing option IDs.
       - Targeted issue sync does not archive unrelated Project items.
 
+  - key: BCP-0006
+    title: Add Vanguard CLI scope
+    type: feature
+    status: In Progress
+    priority: P0
+    complexity: 5
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0005
+    areas_of_responsibility:
+      - blackcell.plan.yaml
+      - README.md
+      - docs/vanguard.md
+      - src/blackcell/cli/app.py
+      - src/blackcell/vanguard/
+      - tests/unit/test_vanguard.py
+      - tests/unit/test_vanguard_cli.py
+    scope:
+      - Add blackcell vanguard commands inside the existing BlackCell CLI.
+      - Emit and validate issue-bound ChangeSpecs without writing files.
+      - Render deterministic, non-mutating QA command records and workflow templates.
+    context:
+      - Control-plane owns project state and GitHub projection.
+      - Vanguard owns issue-bound ChangeSpec and QA scaffolding inside the same CLI.
+      - Candidate invariants are evidence, not approved behavior.
+      - Evidence gathering and review guidance must remain read-only.
+      - QA planning is deterministic and non-mutating.
+      - Vanguard must not be split into a blackcell-vanguard package or plugin.
+    change_spec:
+      - Add frozen, slot-backed Vanguard ChangeSpec, VerificationPlan, and ExecutorScope models.
+      - Add blackcell vanguard changespec init and validate commands.
+      - Add blackcell vanguard qa plan and templates render commands.
+      - Document control-plane to Vanguard boundaries and ChangeSpec lifecycle diagrams.
+    acceptance_criteria:
+      - Vanguard commands emit machine-readable JSON by default.
+      - changespec init consumes LocalControlPlane.render_agent_context and does not write files.
+      - changespec validate reports typed validation messages for invalid ChangeSpecs.
+      - qa plan emits deterministic command records without executing them.
+      - templates render emits deterministic evidence, QA, and read-only review templates.
+      - Reviewer verification rejects fix-mode, snapshot-update, commit, push, merge, and remote-mutating commands.
+
 native_automation:
   - key: native-validate-contract
     name: Validate contract before project sync
