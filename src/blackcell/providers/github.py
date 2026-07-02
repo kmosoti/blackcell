@@ -22,6 +22,7 @@ from blackcell.providers.base import (
 GITHUB_GRAPHQL_URL = "https://api.github.com/graphql"
 ISSUE_KEY_MARKER_PREFIX = "<!-- blackcell:issue-key "
 PR_ISSUE_KEY_MARKER_PREFIX = "<!-- blackcell:pr-issue-key "
+BLACKCELL_REQUIRED_PROJECT_FIELD_NAMES = frozenset({"Status", "Priority", "Complexity", "Type"})
 
 
 class GitHubApiError(RuntimeError):
@@ -226,13 +227,13 @@ class GitHubProjectsProvider:
         )
         return _issue_ref(data["updateIssue"]["issue"])
 
-    def list_project_items(self, *, first: int = 20) -> list[ProjectItemRef]:
+    def list_project_items(self, *, first: int | None = 20) -> list[ProjectItemRef]:
         items: list[ProjectItemRef] = []
         cursor: str | None = None
         remaining = first
 
-        while remaining > 0:
-            page_size = min(remaining, 100)
+        while remaining is None or remaining > 0:
+            page_size = 100 if remaining is None else min(remaining, 100)
             data = self._graphql(
                 """
                 query($projectId: ID!, $first: Int!, $after: String) {
@@ -320,7 +321,8 @@ class GitHubProjectsProvider:
             connection = project["items"]
             nodes = connection.get("nodes") or []
             items.extend(_project_item_ref(project_ref, item) for item in nodes)
-            remaining -= len(nodes)
+            if remaining is not None:
+                remaining -= len(nodes)
 
             page_info = connection.get("pageInfo") or {}
             cursor = page_info.get("endCursor")
@@ -437,15 +439,12 @@ class GitHubProjectsProvider:
                       fields(first: $first, after: $after) {
                         nodes {
                           __typename
-                          ... on ProjectV2Field {
+                          ... on ProjectV2FieldCommon {
                             id
                             name
                             dataType
                           }
                           ... on ProjectV2SingleSelectField {
-                            id
-                            name
-                            dataType
                             options {
                               id
                               name
@@ -467,7 +466,12 @@ class GitHubProjectsProvider:
             )
             connection = data["node"]["fields"]
             nodes = connection.get("nodes") or []
-            fields.extend(_project_field_ref(field) for field in nodes if field)
+            for field in nodes:
+                if not field:
+                    continue
+                field_ref = _project_field_ref(field)
+                if field_ref is not None:
+                    fields.append(field_ref)
             remaining -= len(nodes)
 
             page_info = connection.get("pageInfo") or {}
@@ -523,7 +527,7 @@ class GitHubProjectsProvider:
                 else None,
             },
         )
-        return _project_field_ref(data["createProjectV2Field"]["projectV2Field"])
+        return _required_project_field_ref(data["createProjectV2Field"]["projectV2Field"])
 
     def update_project_single_select_field_options(
         self,
@@ -571,7 +575,7 @@ class GitHubProjectsProvider:
             """,
             {"fieldId": field.id, "singleSelectOptions": option_inputs},
         )
-        return _project_field_ref(data["updateProjectV2Field"]["projectV2Field"])
+        return _required_project_field_ref(data["updateProjectV2Field"]["projectV2Field"])
 
     def update_project_item_field_value(
         self,
@@ -610,7 +614,7 @@ class GitHubProjectsProvider:
     ) -> ProjectItemRef | None:
         if "Content already exists in this project" not in str(error):
             return None
-        for item in self.list_project_items(first=100):
+        for item in self.list_project_items(first=None):
             if item.content_id == content_id:
                 return item
         return None
@@ -907,7 +911,13 @@ def _has_blackcell_pull_request_marker(body: str, issue_key: str) -> bool:
     return PR_ISSUE_KEY_MARKER_PREFIX + issue_key + " -->" in body
 
 
-def _project_field_ref(data: dict[str, Any]) -> ProjectFieldRef:
+def _project_field_ref(data: dict[str, Any]) -> ProjectFieldRef | None:
+    type_name = data.get("__typename")
+    if type_name not in {"ProjectV2Field", "ProjectV2SingleSelectField"}:
+        field_name = data.get("name")
+        if field_name in BLACKCELL_REQUIRED_PROJECT_FIELD_NAMES:
+            raise ValueError(f"GitHub Project field {field_name} has unsupported type {type_name}")
+        return None
     return ProjectFieldRef(
         id=data["id"],
         name=data["name"],
@@ -922,6 +932,13 @@ def _project_field_ref(data: dict[str, Any]) -> ProjectFieldRef:
             for option in data.get("options") or []
         ),
     )
+
+
+def _required_project_field_ref(data: dict[str, Any]) -> ProjectFieldRef:
+    field = _project_field_ref(data)
+    if field is None:
+        raise ValueError(f"GitHub returned unsupported Project field type {data.get('__typename')}")
+    return field
 
 
 def _project_item_ref(project: ProjectRef, data: dict[str, Any]) -> ProjectItemRef:

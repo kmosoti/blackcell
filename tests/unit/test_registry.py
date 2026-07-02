@@ -141,7 +141,7 @@ class MemoryProvider:
             body=pull_request.body,
         )
 
-    def list_project_items(self, *, first: int = 20) -> list[ProjectItemRef]:
+    def list_project_items(self, *, first: int | None = 20) -> list[ProjectItemRef]:
         return []
 
     def add_project_item_by_id(self, content_id: str) -> ProjectItemRef:

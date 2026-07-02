@@ -266,7 +266,7 @@ def test_sync_apply_sets_project_fields_then_noops(tmp_path: Path) -> None:
     assert len(provider.updated_project_item_field_values) == 4
 
 
-def test_sync_updates_missing_status_options(tmp_path: Path) -> None:
+def test_sync_updates_missing_status_options_preserves_custom_options(tmp_path: Path) -> None:
     _write_contract(tmp_path, _contract_yaml(status="Review Required"))
     contract = load_contract(tmp_path)
     config = _config()
@@ -278,6 +278,7 @@ def test_sync_updates_missing_status_options(tmp_path: Path) -> None:
                 name="Status",
                 data_type="SINGLE_SELECT",
                 options=(
+                    ProjectFieldOptionRef(id="status_blocked", name="Blocked"),
                     ProjectFieldOptionRef(id="status_todo", name="Todo"),
                     ProjectFieldOptionRef(id="status_done", name="Done"),
                 ),
@@ -320,7 +321,10 @@ def test_sync_updates_missing_status_options(tmp_path: Path) -> None:
 
     assert "update_project_field" in [action.type.value for action in result.actions]
     assert provider.updated_project_field_options == [
-        ("FIELD_Status", ("Backlog", "Todo", "In Progress", "Review Required", "Done"))
+        (
+            "FIELD_Status",
+            ("Blocked", "Todo", "Done", "Backlog", "In Progress", "Review Required"),
+        )
     ]
 
 
@@ -351,6 +355,52 @@ def test_sync_full_contract_archives_unmanaged_issue_project_items(tmp_path: Pat
 
     assert "archive_project_item" in [action.type.value for action in result.actions]
     assert provider.archived_project_item_ids == ["PVTI_unmanaged"]
+
+
+def test_sync_full_contract_archives_unmanaged_issue_items_beyond_first_page(
+    tmp_path: Path,
+) -> None:
+    _write_contract(tmp_path, _contract_yaml())
+    contract = load_contract(tmp_path)
+    config = _config()
+    project_items = [
+        ProjectItemRef(
+            id=f"PVTI_pr_{index}",
+            type="PULL_REQUEST",
+            is_archived=False,
+            project=config.project,
+            content_id=f"PR_{index}",
+            content_title=f"PR {index}",
+            content_url=f"https://example.test/pull/{index}",
+            content_type="PullRequest",
+        )
+        for index in range(100)
+    ]
+    project_items.append(
+        ProjectItemRef(
+            id="PVTI_unmanaged_late",
+            type="ISSUE",
+            is_archived=False,
+            project=config.project,
+            content_id="I_unmanaged_late",
+            content_title="Late obsolete issue",
+            content_url="https://example.test/issues/199",
+            content_type="Issue",
+        )
+    )
+    provider = MemorySyncProvider(config, project_items=project_items)
+
+    result = sync_issues(
+        contract=contract,
+        config=config,
+        provider=provider,
+        start=tmp_path,
+        cache_path=tmp_path / "control_plane.sqlite3",
+        apply_changes=True,
+    )
+
+    assert "archive_project_item" in [action.type.value for action in result.actions]
+    assert "PVTI_unmanaged_late" in provider.archived_project_item_ids
 
 
 def test_sync_issue_key_does_not_archive_unmanaged_project_items(tmp_path: Path) -> None:
@@ -653,6 +703,70 @@ def test_pull_request_workflow_dry_run_create_has_no_mutations_or_cache(
     assert result.actions[0].applied is False
     assert provider.created_pull_request_requests == []
     assert not cache_path.exists()
+
+
+def test_pull_request_workflow_apply_create_preflights_project_fields(
+    tmp_path: Path,
+) -> None:
+    _write_contract(tmp_path, _contract_yaml())
+    contract = load_contract(tmp_path)
+    config = _config()
+    provider = MemorySyncProvider(config, issues=[_remote_issue(config)])
+
+    with pytest.raises(ValueError, match="missing required contract fields"):
+        run_pull_request_workflow(
+            contract=contract,
+            config=config,
+            provider=provider,
+            start=tmp_path,
+            cache_path=tmp_path / "control_plane.sqlite3",
+            issue_key="BCP-0001",
+            command=PullRequestCommand.SYNC,
+            apply_changes=True,
+            git_state=_git_state(),
+        )
+
+    assert provider.created_pull_request_requests == []
+    assert provider.attached_content_ids == []
+
+
+def test_pull_request_workflow_apply_create_preflights_project_field_options(
+    tmp_path: Path,
+) -> None:
+    _write_contract(tmp_path, _contract_yaml())
+    contract = load_contract(tmp_path)
+    config = _config()
+    fields = _project_fields()
+    fields[0] = ProjectFieldRef(
+        id="FIELD_Status",
+        name="Status",
+        data_type="SINGLE_SELECT",
+        options=(
+            ProjectFieldOptionRef(id="status_backlog", name="Backlog"),
+            ProjectFieldOptionRef(id="status_done", name="Done"),
+        ),
+    )
+    provider = MemorySyncProvider(
+        config,
+        issues=[_remote_issue(config)],
+        fields=fields,
+    )
+
+    with pytest.raises(ValueError, match="missing option Todo"):
+        run_pull_request_workflow(
+            contract=contract,
+            config=config,
+            provider=provider,
+            start=tmp_path,
+            cache_path=tmp_path / "control_plane.sqlite3",
+            issue_key="BCP-0001",
+            command=PullRequestCommand.SYNC,
+            apply_changes=True,
+            git_state=_git_state(),
+        )
+
+    assert provider.created_pull_request_requests == []
+    assert provider.attached_content_ids == []
 
 
 def test_pull_request_workflow_apply_create_then_noop_uses_cache(tmp_path: Path) -> None:
@@ -1012,8 +1126,9 @@ class MemorySyncProvider:
         self.pull_requests[pull_request_id] = updated
         return updated
 
-    def list_project_items(self, *, first: int = 20) -> list[ProjectItemRef]:
-        return [self._with_field_values(item) for item in self.project_items[:first]]
+    def list_project_items(self, *, first: int | None = 20) -> list[ProjectItemRef]:
+        items = self.project_items if first is None else self.project_items[:first]
+        return [self._with_field_values(item) for item in items]
 
     def add_project_item_by_id(self, content_id: str) -> ProjectItemRef:
         self.attached_content_ids.append(content_id)

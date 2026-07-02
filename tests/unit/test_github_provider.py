@@ -2,6 +2,7 @@ import json
 from collections.abc import Callable
 
 import httpx
+import pytest
 
 from blackcell.config import BlackcellConfig, ProjectRef, RepositoryRef
 from blackcell.models import ProjectFieldOptionRef, ProjectFieldRef
@@ -214,6 +215,85 @@ def test_list_project_fields_maps_single_select_options() -> None:
 
     assert [field.name for field in fields] == ["Status", "Complexity"]
     assert fields[0].options[0].id == "status_todo"
+
+
+def test_list_project_fields_ignores_unsupported_iteration_field() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "node": {
+                        "fields": {
+                            "nodes": [
+                                {
+                                    "__typename": "ProjectV2IterationField",
+                                    "id": "FIELD_Sprint",
+                                    "name": "Sprint",
+                                    "dataType": "ITERATION",
+                                },
+                                {
+                                    "__typename": "ProjectV2SingleSelectField",
+                                    "id": "FIELD_Status",
+                                    "name": "Status",
+                                    "dataType": "SINGLE_SELECT",
+                                    "options": [
+                                        {
+                                            "id": "status_todo",
+                                            "name": "Todo",
+                                            "color": "BLUE",
+                                            "description": "",
+                                        }
+                                    ],
+                                },
+                            ],
+                            "pageInfo": {
+                                "hasNextPage": False,
+                                "endCursor": None,
+                            },
+                        }
+                    }
+                }
+            },
+        )
+
+    provider = GitHubProjectsProvider(_config(), token="token", client=_client(handler))
+
+    fields = provider.list_project_fields()
+
+    assert [field.name for field in fields] == ["Status"]
+
+
+def test_list_project_fields_rejects_unsupported_required_field_name() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "node": {
+                        "fields": {
+                            "nodes": [
+                                {
+                                    "__typename": "ProjectV2IterationField",
+                                    "id": "FIELD_Status",
+                                    "name": "Status",
+                                    "dataType": "ITERATION",
+                                }
+                            ],
+                            "pageInfo": {
+                                "hasNextPage": False,
+                                "endCursor": None,
+                            },
+                        }
+                    }
+                }
+            },
+        )
+
+    provider = GitHubProjectsProvider(_config(), token="token", client=_client(handler))
+
+    with pytest.raises(ValueError, match=r"Status.*ProjectV2IterationField"):
+        provider.list_project_fields()
 
 
 def test_create_project_field_posts_graphql_and_returns_field() -> None:

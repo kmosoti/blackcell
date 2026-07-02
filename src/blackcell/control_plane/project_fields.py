@@ -1,6 +1,6 @@
 from blackcell.control_plane.models import IssuePlan
 from blackcell.models import ProjectFieldRef, ProjectItemFieldValueRef, ProjectItemRef
-from blackcell.providers import ProjectFieldValue
+from blackcell.providers.base import ProjectFieldValue
 
 
 def project_field_specs() -> tuple[tuple[str, str, tuple[str, ...]], ...]:

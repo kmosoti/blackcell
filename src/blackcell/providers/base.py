@@ -66,7 +66,7 @@ class ProjectProvider(Protocol):
     def update_issue(self, *, issue_id: str, title: str, body: str) -> IssueRef:
         raise NotImplementedError
 
-    def list_project_items(self, *, first: int = 20) -> list[ProjectItemRef]:
+    def list_project_items(self, *, first: int | None = 20) -> list[ProjectItemRef]:
         raise NotImplementedError
 
     def add_project_item_by_id(self, content_id: str) -> ProjectItemRef:

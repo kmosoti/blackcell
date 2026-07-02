@@ -386,6 +386,7 @@ def _sync_project_representation(
             )
         )
     if archive_unmanaged:
+        project_items = provider.list_project_items(first=None)
         managed_issue_ids = {
             outcome.remote_issue.id for outcome in outcomes if outcome.remote_issue is not None
         }
@@ -442,9 +443,11 @@ def _ensure_project_fields(
                 f"GitHub Project field {field_name} is {field.data_type}, expected {data_type}"
             )
         if data_type == "SINGLE_SELECT":
-            existing_options = {option.name for option in field.options}
+            existing_option_names = tuple(option.name for option in field.options)
+            existing_options = set(existing_option_names)
             missing_options = tuple(option for option in options if option not in existing_options)
             if missing_options:
+                updated_options = (*existing_option_names, *missing_options)
                 actions.append(
                     SyncAction(
                         type=SyncActionType.UPDATE_PROJECT_FIELD,
@@ -460,7 +463,10 @@ def _ensure_project_fields(
                     )
                 )
                 if apply_changes:
-                    field = provider.update_project_single_select_field_options(field, options)
+                    field = provider.update_project_single_select_field_options(
+                        field,
+                        updated_options,
+                    )
                     ensured_fields = [
                         field if existing.id == field.id else existing
                         for existing in ensured_fields

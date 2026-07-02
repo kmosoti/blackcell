@@ -183,6 +183,7 @@ def run_pull_request_workflow(
 
         actions: list[PullRequestAction] = []
         project_item = item_by_content_id.get(pull_request.id)
+        field_by_name: dict[str, ProjectFieldRef] | None = None
         pull_request = _sync_existing_pull_request(
             provider=provider,
             issue=issue,
@@ -194,6 +195,10 @@ def run_pull_request_workflow(
         )
         project_item_was_missing = project_item is None
         if project_item_was_missing and apply_changes:
+            field_by_name = _preflight_pull_request_project_item_fields(
+                provider=provider,
+                issue=issue,
+            )
             project_item = provider.add_project_item_by_id(pull_request.id)
         if project_item is None:
             actions.append(
@@ -224,6 +229,7 @@ def run_pull_request_workflow(
                 project_item=project_item,
                 actions=actions,
                 apply_changes=apply_changes,
+                field_by_name=field_by_name,
             )
 
         checks: tuple[CheckResult, ...] = ()
@@ -355,6 +361,10 @@ def _handle_missing_pull_request(
             pull_request=None,
         )
 
+    field_by_name = _preflight_pull_request_project_item_fields(
+        provider=provider,
+        issue=issue,
+    )
     pull_request = provider.create_pull_request(
         CreatePullRequestRequest(
             title=rendered.title,
@@ -389,6 +399,7 @@ def _handle_missing_pull_request(
         project_item=project_item,
         actions=actions,
         apply_changes=True,
+        field_by_name=field_by_name,
     )
     _write_cache(
         cache=cache,
@@ -452,17 +463,15 @@ def _sync_pull_request_project_item_fields(
     project_item: ProjectItemRef,
     actions: list[PullRequestAction],
     apply_changes: bool,
+    field_by_name: dict[str, ProjectFieldRef] | None = None,
 ) -> None:
-    fields = provider.list_project_fields(first=50)
-    if missing_required_fields(fields):
-        raise ValueError(
-            "GitHub Project is missing required contract fields; "
-            f"run blackcell control-plane sync --issue-key {issue.key} --apply"
+    if field_by_name is None:
+        field_by_name = _preflight_pull_request_project_item_fields(
+            provider=provider,
+            issue=issue,
         )
-    field_by_name = {field.name: field for field in fields}
     for field_name, desired_value in desired_project_field_values(issue):
         field = field_by_name[field_name]
-        value = project_field_value(field, desired_value)
         current = current_field_value(project_item, field.id)
         if field_value_matches(current, desired_value):
             continue
@@ -470,7 +479,7 @@ def _sync_pull_request_project_item_fields(
             provider.update_project_item_field_value(
                 item_id=project_item.id,
                 field_id=field.id,
-                value=value,
+                value=project_field_value(field, desired_value),
             )
         actions.append(
             _project_field_action(
@@ -482,6 +491,24 @@ def _sync_pull_request_project_item_fields(
                 applied=apply_changes,
             )
         )
+
+
+def _preflight_pull_request_project_item_fields(
+    *,
+    provider: ProjectProvider,
+    issue: IssuePlan,
+) -> dict[str, ProjectFieldRef]:
+    fields = provider.list_project_fields(first=50)
+    if missing_required_fields(fields):
+        raise ValueError(
+            "GitHub Project is missing required contract fields; "
+            f"run blackcell control-plane sync --issue-key {issue.key} --apply"
+        )
+    field_by_name = {field.name: field for field in fields}
+    for field_name, desired_value in desired_project_field_values(issue):
+        field = field_by_name[field_name]
+        project_field_value(field, desired_value)
+    return field_by_name
 
 
 def _discover_issue(
