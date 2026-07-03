@@ -242,9 +242,9 @@ def test_agent_workflow_renders_configured_codex_cli_fields(tmp_path: Path) -> N
     LocalControlPlane(start=tmp_path).agent_workflow_install("codex-cli", apply_changes=True)
 
     config = (tmp_path / ".codex" / "config.toml").read_text(encoding="utf-8")
-    evidence = (
-        tmp_path / ".codex" / "agents" / "spark-evidence-drafter.toml"
-    ).read_text(encoding="utf-8")
+    evidence = (tmp_path / ".codex" / "agents" / "spark-evidence-drafter.toml").read_text(
+        encoding="utf-8"
+    )
     agents_markdown = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
     assert "max_threads = 6" in config
     assert "max_depth = 1" in config

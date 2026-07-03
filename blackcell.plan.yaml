@@ -18,8 +18,9 @@ global:
 pr_policy:
   require_issue_link: true
   required_checks:
-    - pytest
+    - ruff-format
     - ruff
+    - pytest
   merge_strategy: squash
 
 roadmaps:
