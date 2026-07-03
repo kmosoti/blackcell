@@ -295,6 +295,10 @@ agent_workflow:
         sandbox_mode: read-only
 ```
 
+`codex_cli.agents[].key` is also the generated TOML filename segment, so it
+must use only ASCII letters, digits, hyphens, or underscores and start with a
+letter or digit.
+
 The BCP-0008 projection target is explicit:
 
 ```bash

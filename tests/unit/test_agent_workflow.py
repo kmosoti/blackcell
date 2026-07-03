@@ -2,7 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from blackcell.control_plane import LocalControlPlane, load_contract, validate_agent_workflow
+from blackcell.control_plane import (
+    ContractError,
+    LocalControlPlane,
+    load_contract,
+    validate_agent_workflow,
+)
 from blackcell.control_plane.agent_rendering import (
     MARKDOWN_START_PREFIX,
     RenderedCodexAgent,
@@ -221,6 +226,18 @@ def test_agent_workflow_unsupported_target_is_rejected(tmp_path: Path) -> None:
         LocalControlPlane(start=tmp_path).agent_workflow_install("other-target")
 
 
+def test_agent_workflow_rejects_codex_agent_key_path_traversal(tmp_path: Path) -> None:
+    _write_contract(tmp_path, key="../../../owned")
+
+    with pytest.raises(ContractError, match="codex_cli\\.agents\\[0\\]\\.key"):
+        LocalControlPlane(start=tmp_path).agent_workflow_install(
+            "codex-cli",
+            apply_changes=True,
+        )
+
+    assert not (tmp_path / ".codex").exists()
+
+
 def test_agent_workflow_installed_agent_toml_contains_required_codex_fields(
     tmp_path: Path,
 ) -> None:
@@ -367,13 +384,13 @@ def _artifact_paths() -> tuple[str, ...]:
     )
 
 
-def _write_contract(path: Path) -> None:
+def _write_contract(path: Path, *, key: str = "spark-evidence-drafter") -> None:
     (path / ".git").mkdir()
-    (path / "blackcell.plan.yaml").write_text(_contract_yaml(), encoding="utf-8")
+    (path / "blackcell.plan.yaml").write_text(_contract_yaml(key=key), encoding="utf-8")
 
 
-def _contract_yaml() -> str:
-    return """
+def _contract_yaml(*, key: str = "spark-evidence-drafter") -> str:
+    return f"""
 version: 1
 project:
   key: BCP
@@ -398,7 +415,7 @@ agent_workflow:
     max_threads: 6
     max_depth: 1
     agents:
-      - key: spark-evidence-drafter
+      - key: {key}
         name: spark-evidence-drafter
         description: Drafts evidence summaries from repository context without approving behavior.
         developer_instructions: |

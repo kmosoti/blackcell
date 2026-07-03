@@ -73,6 +73,9 @@ def test_schema_includes_codex_cli_agent_projection_config() -> None:
     assert cast(dict[str, Any], codex_cli_properties["max_threads"])["minimum"] == 1
     assert cast(dict[str, Any], codex_cli_properties["max_depth"])["maximum"] == 1
     assert "developer_instructions" in agent["required"]
+    assert cast(dict[str, Any], agent_properties["key"])["pattern"] == (
+        r"^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    )
     assert cast(dict[str, Any], agent_properties["sandbox_mode"])["type"] == "string"
 
 

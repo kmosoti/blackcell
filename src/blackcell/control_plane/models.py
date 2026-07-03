@@ -1,3 +1,4 @@
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
@@ -37,6 +38,10 @@ class Complexity(IntEnum):
 class ValidationLevel(StrEnum):
     ERROR = "error"
     WARNING = "warning"
+
+
+CODEX_AGENT_KEY_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]*$"
+_CODEX_AGENT_KEY_RE = re.compile(CODEX_AGENT_KEY_PATTERN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -458,7 +463,7 @@ def _codex_cli_agent(data: Any, path: str) -> CodexCliAgent:
         path,
     )
     return CodexCliAgent(
-        key=_string(mapping, "key", path),
+        key=_codex_agent_key(mapping, "key", path),
         name=_string(mapping, "name", path),
         description=_string(mapping, "description", path),
         developer_instructions=_string(mapping, "developer_instructions", path),
@@ -507,6 +512,16 @@ def _issue(data: Any, path: str) -> IssuePlan:
         acceptance_criteria=_strings(mapping, "acceptance_criteria", path, default=()),
         definition_of_ready=_strings(mapping, "definition_of_ready", path, default=()),
         definition_of_done=_strings(mapping, "definition_of_done", path, default=()),
+    )
+
+
+def _codex_agent_key(data: Mapping[str, Any], key: str, path: str) -> str:
+    value = _string(data, key, path)
+    if _CODEX_AGENT_KEY_RE.fullmatch(value):
+        return value
+    raise ValueError(
+        f"{path}.{key} must start with an ASCII letter or digit and contain only "
+        "ASCII letters, digits, hyphens, or underscores"
     )
 
 
