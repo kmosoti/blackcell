@@ -300,41 +300,111 @@ issues:
       - Tests cover rendering, idempotence, conflict handling, Markdown preservation, validation, and CLI behavior.
 
   - key: BCP-0009
-    title: Add BlackCell GitHub auth cache
+    title: Add GitHub App installation-token auth
     type: feature
-    status: In Progress
-    priority: P1
-    complexity: 5
+    status: Todo
+    priority: P0
+    complexity: 8
     epic: EPIC-CONTROL-PLANE
     milestone: MS-CP-1
     areas_of_responsibility:
+      - pyproject.toml
       - README.md
       - docs/control-plane-configuration.md
-      - src/blackcell/auth.py
+      - src/blackcell/github_app/
       - src/blackcell/cli/app.py
       - src/blackcell/providers/github.py
-      - tests/unit/test_auth.py
+      - tests/unit/test_github_app.py
       - tests/unit/test_cli_output.py
     scope:
-      - Add a BlackCell-owned GitHub device-flow login command.
-      - Cache sanitized session metadata and tokens outside the repository.
-      - Let GitHub provider calls fall back to the BlackCell auth cache after environment tokens.
-      - Support browser and terminal QR prompt preferences for device-flow login.
+      - Add pyjwt[crypto] and pydantic-settings as the minimal GitHub App auth dependencies.
+      - Load GitHub App settings from BLACKCELL_GITHUB_* environment variables.
+      - Generate GitHub App JWTs from the app private key.
+      - Discover or accept the installation ID for the configured repository.
+      - Exchange app JWTs for short-lived installation access tokens.
+      - Cache installation token metadata until near expiry without printing token material.
+      - Add github-app CLI commands for JWT, installations, installation-token, and auth-check.
     context:
-      - Agent shells may not inherit GH_TOKEN from the operator's interactive shell.
-      - GitHub OAuth app registration requires homepage and callback URLs even when Device Flow is used.
+      - BlackCell control-plane sync acts as the installed app, not as an OAuth device-flow user.
+      - Installation tokens expire after one hour and must be regenerated from a signed app JWT.
+      - The app private key is operator-owned secret material and must stay outside the repository.
       - Token values must not be printed in CLI output.
+      - GH_TOKEN and GITHUB_TOKEN remain the local development fallback until app auth is wired into the provider.
     change_spec:
-      - Add auth status, login, and logout commands.
-      - Add device-flow polling and owner-only cache writes.
-      - Add --browser and --qr login prompt helpers.
-      - Document OAuth app registration and auth precedence.
+      - Add blackcell.github_app settings and installation-token modules.
+      - Use httpx for GitHub REST and GraphQL calls; do not add a GitHub SDK.
+      - Add owner-only cache writes for installation-token metadata.
+      - Add JSON-first CLI commands for inspection and auth preflight.
+      - Document required app ID, private key, installation ID, and permission setup.
     acceptance_criteria:
-      - Auth commands emit JSON-first sanitized status.
-      - Missing remote token errors point operators to blackcell auth login.
-      - Cached tokens are ignored after expiration.
-      - Browser and QR prompt helpers keep sanitized JSON output machine-readable.
-      - Tests cover cache behavior, CLI output, provider fallback, and device-flow polling.
+      - Auth commands emit JSON-first sanitized status and never print bearer tokens.
+      - auth-check validates repository lookup and configured Project V2 node access.
+      - Installation tokens are regenerated before expiry.
+      - Private key path/value handling is covered without committing secret material.
+      - Tests cover JWT claim construction, installation-token exchange, cache expiry, and CLI output.
+
+  - key: BCP-0010
+    title: Wire GitHub provider auth strategies
+    type: feature
+    status: Backlog
+    priority: P0
+    complexity: 5
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0009
+    areas_of_responsibility:
+      - src/blackcell/providers/github.py
+      - src/blackcell/github_app/
+      - tests/unit/test_github_provider.py
+      - tests/unit/test_github_app.py
+      - docs/control-plane-configuration.md
+    scope:
+      - Add a small GitHub auth provider protocol that returns bearer-token headers.
+      - Keep GH_TOKEN and GITHUB_TOKEN as explicit local/dev auth providers.
+      - Add a GitHub App auth provider that supplies cached installation tokens.
+      - Keep Projects, Issues, PRs, and GraphQL behavior inside the existing provider.
+    context:
+      - GitHub App auth is a credential adapter, not a replacement control-plane provider.
+      - Existing BlackCell provider tests should remain focused on GitHub behavior, not SDK behavior.
+    change_spec:
+      - Introduce TokenEnvAuthProvider and GitHubAppAuthProvider.
+      - Let GitHubProjectsProvider depend on an auth header source instead of reading every token source directly.
+      - Preserve current env-token precedence unless BLACKCELL_GITHUB_AUTH_MODE=app is selected.
+    acceptance_criteria:
+      - Existing provider tests pass with env-token auth.
+      - New tests cover app-token auth without hitting GitHub.
+      - Missing-token errors tell operators which auth modes are configured and what is missing.
+
+  - key: BCP-0011
+    title: Plan optional GitHub App webhook verification
+    type: feature
+    status: Backlog
+    priority: P2
+    complexity: 3
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0009
+    areas_of_responsibility:
+      - src/blackcell/github_app/
+      - tests/unit/test_github_app.py
+      - docs/control-plane-configuration.md
+    scope:
+      - Add stdlib HMAC verification for X-Hub-Signature-256.
+      - Parse GitHub App webhook headers and installation routing metadata.
+      - Keep any always-on web server dependency optional and out of the core CLI path.
+    context:
+      - BlackCell is currently a local CLI control-plane that syncs outward.
+      - Webhook support changes the operating model and should remain optional.
+    change_spec:
+      - Add webhook signature helpers using hmac.compare_digest.
+      - Add delivery dedupe planning against SQLite cache state.
+      - Document optional github-app-web extra only when a server slice is accepted.
+    acceptance_criteria:
+      - Signature verification rejects missing, malformed, and mismatched signatures.
+      - Valid signatures pass using the configured webhook secret.
+      - No FastAPI, Uvicorn, queue, or Redis dependency is added to the core package.
 
 native_automation:
   - key: native-validate-contract

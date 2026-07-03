@@ -384,21 +384,8 @@ for BlackCell before running `--apply` commands:
 export GH_TOKEN="${GH_TOKEN:-$(gh auth token --hostname github.com 2>/dev/null || true)}"
 ```
 
-Alternatively, use BlackCell's auth cache for shells that do not inherit
-`GH_TOKEN`:
-
-```bash
-uv run blackcell auth login --client-id <github-oauth-client-id> --browser --qr
-uv run blackcell auth status
-```
-
-The GitHub OAuth app registration requires an application name, homepage URL,
-authorization callback URL, and Device Flow enabled. Use public-safe URLs; the
-device flow does not require BlackCell to run a callback server. The `--browser`
-and `--qr` flags only control how BlackCell presents the login prompt; the device
-URL and user code are always printed. Cached sessions are written outside the
-repository under the user config directory with owner-only file permissions.
-Environment variables still take precedence over the cache.
+GitHub App installation-token support is tracked as a later control-plane slice.
+Until that lands, live GitHub commands require `GITHUB_TOKEN` or `GH_TOKEN`.
 
 When `pr status` reports `issue_not_synced`, materialize the GitHub issue first
 and then rerun PR sync:

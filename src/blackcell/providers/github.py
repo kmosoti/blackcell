@@ -3,7 +3,6 @@ from typing import Any
 
 import httpx
 
-from blackcell.auth import load_valid_access_token
 from blackcell.config.models import BlackcellConfig, ProjectRef, RepositoryRef
 from blackcell.models import (
     IssueRef,
@@ -41,12 +40,7 @@ class GitHubProjectsProvider:
         client: httpx.Client | None = None,
     ) -> None:
         self._config = config
-        self._token = (
-            token
-            or os.getenv("GITHUB_TOKEN")
-            or os.getenv("GH_TOKEN")
-            or load_valid_access_token()
-        )
+        self._token = token or os.getenv("GITHUB_TOKEN") or os.getenv("GH_TOKEN")
         self._client = client or httpx.Client(timeout=20)
 
     def create_issue(self, request: CreateIssueRequest) -> IssueRef:
@@ -857,10 +851,7 @@ class GitHubProjectsProvider:
 
     def _graphql(self, query: str, variables: dict[str, object]) -> dict[str, Any]:
         if not self._token:
-            raise GitHubApiError(
-                "GITHUB_TOKEN, GH_TOKEN, or `blackcell auth login` is required "
-                "for GitHub API calls"
-            )
+            raise GitHubApiError("GITHUB_TOKEN or GH_TOKEN is required for GitHub API calls")
 
         response = self._client.post(
             GITHUB_GRAPHQL_URL,

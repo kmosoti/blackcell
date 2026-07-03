@@ -75,21 +75,6 @@ fi
 EOF
 ```
 
-BlackCell can also own a cached GitHub auth session so agent and non-interactive
-shells do not need to inherit `GH_TOKEN`:
-
-```bash
-uv run blackcell auth login --client-id <github-oauth-client-id> --browser --qr
-uv run blackcell auth status
-uv run blackcell control-plane pr status --issue-key BCP-0008
-```
-
-Register the GitHub OAuth app with a public-safe homepage URL and callback URL,
-then enable Device Flow. BlackCell uses the device code flow, so the callback URL
-is registration metadata and no local callback server is required. The `--browser`
-and `--qr` flags are prompt preferences; BlackCell still prints the device URL
-and user code.
-
 `uv run blackcell ...` assumes the current directory is the repository root. To
 run BlackCell from another directory, pass the project explicitly:
 
