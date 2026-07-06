@@ -256,9 +256,18 @@ def _insert_json(
     key: str,
     value: object,
 ) -> None:
+    payload_json = json.dumps(_jsonable(value), sort_keys=True)
+    existing = connection.execute(
+        f"select payload_json from {table} where {key_column} = ?",
+        (key,),
+    ).fetchone()
+    if existing is not None:
+        if existing[0] != payload_json:
+            raise ValueError(f"latent ledger conflict for {table}.{key_column}={key}")
+        return
     connection.execute(
-        f"insert or replace into {table}({key_column}, payload_json) values (?, ?)",
-        (key, json.dumps(_jsonable(value), sort_keys=True)),
+        f"insert into {table}({key_column}, payload_json) values (?, ?)",
+        (key, payload_json),
     )
 
 
