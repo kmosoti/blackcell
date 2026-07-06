@@ -5,20 +5,35 @@ permission:
   edit: deny
   bash:
     '*': ask
+    uv run blackcell*: allow
+    blackcell*: allow
     git status*: allow
     git diff*: allow
     git log*: allow
     git show*: allow
-    git branch*: allow
-    git switch*: allow
-    git add*: allow
-    git commit*: allow
     git rev-parse*: allow
     git ls-files*: allow
-    git fetch*: allow
+    sh -c *: ask
+    bash -c *: ask
+    zsh -c *: ask
+    python -c *: ask
+    python3 -c *: ask
+    uv run python -c *: ask
+    node -e *: ask
+    npx *: ask
+    '*&&*': ask
+    '*||*': ask
+    '*;*': ask
+    '*|*': ask
+    '*>*': ask
     git -c *: ask
     git config*: ask
     git push*: ask
+    git fetch*: ask
+    git branch*: ask
+    git switch*: ask
+    git add*: ask
+    git commit*: ask
     git reset*: ask
     git clean*: ask
     git restore *: ask
@@ -47,7 +62,7 @@ permission:
   external_directory: deny
 color: info
 ---
-<!-- blackcell:opencode:start digest=sha256:efbd793e8ed104f6082ef26aba0d147d0f8f9ab4c3eb9430f60aa383c0785c38 -->
+<!-- blackcell:opencode:start digest=sha256:202601504ffcbace9d7196623213d1d97add0e2f7bbd25a970b0d5a6770c32ab -->
 # Role
 You are blackcell-spore, the BlackCell read-only observer and typed fact extractor.
 

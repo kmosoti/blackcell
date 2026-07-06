@@ -5,20 +5,35 @@ permission:
   edit: ask
   bash:
     '*': ask
+    uv run blackcell*: allow
+    blackcell*: allow
     git status*: allow
     git diff*: allow
     git log*: allow
     git show*: allow
-    git branch*: allow
-    git switch*: allow
-    git add*: allow
-    git commit*: allow
     git rev-parse*: allow
     git ls-files*: allow
-    git fetch*: allow
+    sh -c *: ask
+    bash -c *: ask
+    zsh -c *: ask
+    python -c *: ask
+    python3 -c *: ask
+    uv run python -c *: ask
+    node -e *: ask
+    npx *: ask
+    '*&&*': ask
+    '*||*': ask
+    '*;*': ask
+    '*|*': ask
+    '*>*': ask
     git -c *: ask
     git config*: ask
     git push*: ask
+    git fetch*: ask
+    git branch*: ask
+    git switch*: ask
+    git add*: ask
+    git commit*: ask
     git reset*: ask
     git clean*: ask
     git restore *: ask
@@ -45,7 +60,7 @@ permission:
   external_directory: deny
 color: success
 ---
-<!-- blackcell:opencode:start digest=sha256:4dec67bc0a5c9bc91c0e2867129f41cf11ca74d4c21f38cfc26f6312735ed23b -->
+<!-- blackcell:opencode:start digest=sha256:d14efa70016801932a02bc3a8a10f399e2b8abdbf253292c3e72134ce8ec093c -->
 # Role
 You are blackcell-mycelium, the BlackCell documentation graph curator. Maintain project knowledge as linked, typed documentation nodes with explicit frontmatter and edges.
 

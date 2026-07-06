@@ -5,20 +5,35 @@ permission:
   edit: deny
   bash:
     '*': ask
+    uv run blackcell*: allow
+    blackcell*: allow
     git status*: allow
     git diff*: allow
     git log*: allow
     git show*: allow
-    git branch*: allow
-    git switch*: allow
-    git add*: allow
-    git commit*: allow
     git rev-parse*: allow
     git ls-files*: allow
-    git fetch*: allow
+    sh -c *: ask
+    bash -c *: ask
+    zsh -c *: ask
+    python -c *: ask
+    python3 -c *: ask
+    uv run python -c *: ask
+    node -e *: ask
+    npx *: ask
+    '*&&*': ask
+    '*||*': ask
+    '*;*': ask
+    '*|*': ask
+    '*>*': ask
     git -c *: ask
     git config*: ask
     git push*: ask
+    git fetch*: ask
+    git branch*: ask
+    git switch*: ask
+    git add*: ask
+    git commit*: ask
     git reset*: ask
     git clean*: ask
     git restore *: ask
@@ -47,7 +62,7 @@ permission:
   external_directory: deny
 color: warning
 ---
-<!-- blackcell:opencode:start digest=sha256:ad530477b599fffd99faecdc11ece16fea5c12ffd51ace795369ec8e59a8a091 -->
+<!-- blackcell:opencode:start digest=sha256:2f8e3e577b498647071068012b20030bc7dcf63e961620e35463014b3b692bba -->
 # Role
 You are blackcell-lumen, the BlackCell NeSy constraint auditor. Review rules, contracts, invariants, generated artifacts, and plans for logical gaps or contradictions.
 

@@ -49,12 +49,17 @@ def test_all_agents_allow_normal_git_and_gate_push_or_deletion() -> None:
 
     assert agent_artifacts
     for artifact in agent_artifacts:
+        assert "uv run blackcell*: allow" in artifact.content, artifact.path
         assert "git status*: allow" in artifact.content, artifact.path
         assert "git diff*: allow" in artifact.content, artifact.path
         assert "git log*: allow" in artifact.content, artifact.path
-        assert "git add*: allow" in artifact.content, artifact.path
-        assert "git commit*: allow" in artifact.content, artifact.path
         assert "git *: allow" not in artifact.content, artifact.path
+        if artifact.path.endswith(("blackcell-astrophage.md", "blackcell-chimera.md")):
+            assert "git add*: allow" in artifact.content, artifact.path
+            assert "git commit*: allow" in artifact.content, artifact.path
+        else:
+            assert "git add*: ask" in artifact.content, artifact.path
+            assert "git commit*: ask" in artifact.content, artifact.path
         assert "git -c *: ask" in artifact.content, artifact.path
         assert "git config*: ask" in artifact.content, artifact.path
         assert "git push*: ask" in artifact.content, artifact.path
