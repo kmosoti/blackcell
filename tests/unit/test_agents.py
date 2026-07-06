@@ -41,6 +41,44 @@ def test_astrophage_permissions_allow_safe_work_and_gate_dangerous_actions() -> 
     assert "rm *: ask" in astrophage.content
     assert "blackcell-*: allow" in astrophage.content
     assert "external_directory: deny" in astrophage.content
+    assert "up to five concurrent blackcell-chimera worker packets" in astrophage.content
+    assert "multiple runs/waves" in astrophage.content
+
+
+def test_chimera_has_full_normal_work_access_with_gates() -> None:
+    artifacts = render_opencode_artifacts(scope=ConfigScope.PROJECT)
+    by_path = {artifact.path: artifact for artifact in artifacts}
+    chimera = by_path[".opencode/agents/blackcell-chimera.md"]
+
+    assert "edit: allow" in chimera.content
+    assert "'*': allow" in chimera.content
+    assert "git push*: ask" in chimera.content
+    assert "rm *: ask" in chimera.content
+    assert "external_directory: deny" in chimera.content
+
+
+def test_all_agents_allow_normal_git_and_gate_push_or_deletion() -> None:
+    artifacts = render_opencode_artifacts(scope=ConfigScope.PROJECT)
+    agent_artifacts = [artifact for artifact in artifacts if "/agents/" in artifact.path]
+
+    assert agent_artifacts
+    for artifact in agent_artifacts:
+        assert "uv run blackcell*: allow" in artifact.content, artifact.path
+        assert "git status*: allow" in artifact.content, artifact.path
+        assert "git diff*: allow" in artifact.content, artifact.path
+        assert "git log*: allow" in artifact.content, artifact.path
+        assert "git *: allow" not in artifact.content, artifact.path
+        if artifact.path.endswith(("blackcell-astrophage.md", "blackcell-chimera.md")):
+            assert "git add*: allow" in artifact.content, artifact.path
+            assert "git commit*: allow" in artifact.content, artifact.path
+        else:
+            assert "git add*: ask" in artifact.content, artifact.path
+            assert "git commit*: ask" in artifact.content, artifact.path
+        assert "git -c *: ask" in artifact.content, artifact.path
+        assert "git config*: ask" in artifact.content, artifact.path
+        assert "git push*: ask" in artifact.content, artifact.path
+        assert "git rm*: ask" in artifact.content, artifact.path
+        assert "rm *: ask" in artifact.content, artifact.path
 
 
 def test_agent_prompts_keep_world_model_protocol_sections() -> None:

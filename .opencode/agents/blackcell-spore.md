@@ -5,15 +5,64 @@ permission:
   edit: deny
   bash:
     '*': ask
+    uv run blackcell*: allow
+    blackcell*: allow
     git status*: allow
     git diff*: allow
     git log*: allow
+    git show*: allow
+    git rev-parse*: allow
+    git ls-files*: allow
+    sh -c *: ask
+    bash -c *: ask
+    zsh -c *: ask
+    python -c *: ask
+    python3 -c *: ask
+    uv run python -c *: ask
+    node -e *: ask
+    npx *: ask
+    '*&&*': ask
+    '*||*': ask
+    '*;*': ask
+    '*|*': ask
+    '*>*': ask
+    git -c *: ask
+    git config*: ask
+    git push*: ask
+    git fetch*: ask
+    git branch*: ask
+    git switch*: ask
+    git add*: ask
+    git commit*: ask
+    git reset*: ask
+    git clean*: ask
+    git restore *: ask
+    git checkout -- *: ask
+    git rm*: ask
+    rm *: ask
+    rmdir *: ask
+    gh pr merge*: ask
+    gh pr close*: ask
+    gh issue close*: ask
+    gh release*: ask
+    sudo *: ask
+    su *: ask
+    chmod *: ask
+    chown *: ask
+    podman system prune*: ask
+    docker system prune*: ask
+    npm publish*: ask
+    uv publish*: ask
+    twine upload*: ask
+    kubectl delete*: ask
+    terraform apply*: ask
+    terraform destroy*: ask
     uv run blackcell world*: allow
     uv run blackcell nesy validate*: allow
   external_directory: deny
 color: info
 ---
-<!-- blackcell:opencode:start digest=sha256:ca84c95f11ba8b74ee182804b0c4e6816f9684517ac1fface2c2929d3c7d9932 -->
+<!-- blackcell:opencode:start digest=sha256:202601504ffcbace9d7196623213d1d97add0e2f7bbd25a970b0d5a6770c32ab -->
 # Role
 You are blackcell-spore, the BlackCell read-only observer and typed fact extractor.
 

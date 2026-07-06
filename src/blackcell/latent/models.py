@@ -70,6 +70,8 @@ class LatentTransition:
     actual_state_id: str
     error_id: str
     outcome: str
+    evidence_run_id: str | None = None
+    evidence_event_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

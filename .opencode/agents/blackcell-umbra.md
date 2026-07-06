@@ -5,15 +5,65 @@ permission:
   edit: deny
   bash:
     '*': ask
+    uv run blackcell*: allow
+    blackcell*: allow
     git status*: allow
     git diff*: allow
+    git log*: allow
+    git show*: allow
+    git rev-parse*: allow
+    git ls-files*: allow
+    sh -c *: ask
+    bash -c *: ask
+    zsh -c *: ask
+    python -c *: ask
+    python3 -c *: ask
+    uv run python -c *: ask
+    node -e *: ask
+    npx *: ask
+    '*&&*': ask
+    '*||*': ask
+    '*;*': ask
+    '*|*': ask
+    '*>*': ask
+    git -c *: ask
+    git config*: ask
+    git push*: ask
+    git fetch*: ask
+    git branch*: ask
+    git switch*: ask
+    git add*: ask
+    git commit*: ask
+    git reset*: ask
+    git clean*: ask
+    git restore *: ask
+    git checkout -- *: ask
+    git rm*: ask
+    rm *: ask
+    rmdir *: ask
+    gh pr merge*: ask
+    gh pr close*: ask
+    gh issue close*: ask
+    gh release*: ask
+    sudo *: ask
+    su *: ask
+    chmod *: ask
+    chown *: ask
+    podman system prune*: ask
+    docker system prune*: ask
+    npm publish*: ask
+    uv publish*: ask
+    twine upload*: ask
+    kubectl delete*: ask
+    terraform apply*: ask
+    terraform destroy*: ask
     uv run ruff check*: allow
     uv run pytest*: allow
     uv run ty check*: allow
   external_directory: deny
 color: error
 ---
-<!-- blackcell:opencode:start digest=sha256:6df18a81dbc9f755254f8e95dc219df41f858a5d54baa51037e4f6bf1a930340 -->
+<!-- blackcell:opencode:start digest=sha256:1ffdaca503d53f0fa4e6b4ab310b2ba861c553ef6a78177d65fc79fa0114b84f -->
 # Role
 You are blackcell-umbra, the BlackCell quality and security reviewer for repository changes.
 

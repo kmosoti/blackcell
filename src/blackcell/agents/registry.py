@@ -4,6 +4,110 @@ from typing import Any
 
 from blackcell.agents.models import AgentCommand, AgentDefinition, AgentSummary
 
+SHELL_ESCAPE_GATES = {
+    "sh -c *": "ask",
+    "bash -c *": "ask",
+    "zsh -c *": "ask",
+    "python -c *": "ask",
+    "python3 -c *": "ask",
+    "uv run python -c *": "ask",
+    "node -e *": "ask",
+    "npx *": "ask",
+    "*&&*": "ask",
+    "*||*": "ask",
+    "*;*": "ask",
+    "*|*": "ask",
+    "*>*": "ask",
+}
+
+GIT_READ_ONLY_BASH_PERMISSION = {
+    "*": "ask",
+    "uv run blackcell*": "allow",
+    "blackcell*": "allow",
+    "git status*": "allow",
+    "git diff*": "allow",
+    "git log*": "allow",
+    "git show*": "allow",
+    "git rev-parse*": "allow",
+    "git ls-files*": "allow",
+    **SHELL_ESCAPE_GATES,
+    "git -c *": "ask",
+    "git config*": "ask",
+    "git push*": "ask",
+    "git fetch*": "ask",
+    "git branch*": "ask",
+    "git switch*": "ask",
+    "git add*": "ask",
+    "git commit*": "ask",
+    "git reset*": "ask",
+    "git clean*": "ask",
+    "git restore *": "ask",
+    "git checkout -- *": "ask",
+    "git rm*": "ask",
+    "rm *": "ask",
+    "rmdir *": "ask",
+    "gh pr merge*": "ask",
+    "gh pr close*": "ask",
+    "gh issue close*": "ask",
+    "gh release*": "ask",
+    "sudo *": "ask",
+    "su *": "ask",
+    "chmod *": "ask",
+    "chown *": "ask",
+    "podman system prune*": "ask",
+    "docker system prune*": "ask",
+    "npm publish*": "ask",
+    "uv publish*": "ask",
+    "twine upload*": "ask",
+    "kubectl delete*": "ask",
+    "terraform apply*": "ask",
+    "terraform destroy*": "ask",
+}
+
+GIT_WRITE_BASH_PERMISSION = {
+    "*": "allow",
+    "uv run blackcell*": "allow",
+    "blackcell*": "allow",
+    "git status*": "allow",
+    "git diff*": "allow",
+    "git log*": "allow",
+    "git show*": "allow",
+    "git branch*": "allow",
+    "git switch*": "allow",
+    "git add*": "allow",
+    "git commit*": "allow",
+    "git rev-parse*": "allow",
+    "git ls-files*": "allow",
+    "git fetch*": "allow",
+    **SHELL_ESCAPE_GATES,
+    "git -c *": "ask",
+    "git config*": "ask",
+    "git push*": "ask",
+    "git reset*": "ask",
+    "git clean*": "ask",
+    "git restore *": "ask",
+    "git checkout -- *": "ask",
+    "git rm*": "ask",
+    "rm *": "ask",
+    "rmdir *": "ask",
+    "gh pr merge*": "ask",
+    "gh pr close*": "ask",
+    "gh issue close*": "ask",
+    "gh release*": "ask",
+    "sudo *": "ask",
+    "su *": "ask",
+    "chmod *": "ask",
+    "chown *": "ask",
+    "podman system prune*": "ask",
+    "docker system prune*": "ask",
+    "npm publish*": "ask",
+    "uv publish*": "ask",
+    "twine upload*": "ask",
+    "kubectl delete*": "ask",
+    "terraform apply*": "ask",
+    "terraform destroy*": "ask",
+}
+
 ASTROPHAGE_PROMPT = """# Role
 You are blackcell-astrophage, the BlackCell primary orchestrator and world-model planner. Build small, reversible work packets from repository evidence, typed world facts, NeSy constraints, runtime capability reports, and user intent.
 
@@ -22,7 +126,7 @@ Use a latent-state loop inspired by JEPA-style feature prediction: observe conte
 2. Phase 1 — observe: use direct evidence first; delegate to blackcell-spore when facts are missing.
 3. Phase 2 — constrain: identify hard rules, soft preferences, contradictions, and missing invariants; delegate to blackcell-lumen for nontrivial logic risk.
 4. Phase 3 — plan: produce atomic work packets; use DAG/wave structure only when dependencies or parallelism matter.
-5. Phase 4 — route: delegate docs graph work to blackcell-mycelium, review to blackcell-umbra, and explicit write work to blackcell-chimera.
+5. Phase 4 — route: use blackcell-chimera as the worker/engineering agent for scoped implementation packets. When work is independent and divisible, plan up to five concurrent blackcell-chimera worker packets, and schedule additional Chimera waves/runs when later independent work remains. Use blackcell-spore, blackcell-lumen, blackcell-mycelium, and blackcell-umbra as prep, refinement, constraint, documentation, and review loops when they improve the packet. Do not force every specialist into every wave.
 6. Phase 5 — verify: attach exact checks, drift checks, and stop conditions.
 
 # Evidence Rules
@@ -34,11 +138,12 @@ Use a latent-state loop inspired by JEPA-style feature prediction: observe conte
 # Constraint Rules
 - Preserve user-local auth and avoid credentials in repo/container state.
 - Default to dry-run behavior unless the user explicitly asks to apply changes.
+- When the user asks for delivery in commits, use logically separated commits without extra confirmation; still ask before push, PR creation, deletion, or destructive operations.
 - Keep OpenCode first-class without making runtime identity the product.
 - Avoid destructive git, remote mutation, broad rewrites, and unmanaged generated edits without approval.
 
 # Handoff Protocol
-Pass the smallest useful context to subagents: objective, evidence paths, constraints, expected output, and verification. Do not ask write-capable agents to rediscover already-grounded facts unless evidence is stale or missing.
+Pass the smallest useful context to subagents: objective, evidence paths, constraints, expected output, and verification. Route implementation to blackcell-chimera; use up to five concurrent Chimera workers only for independent work packets with clear ownership boundaries, and repeat this in multiple runs/waves when the DAG has more independent work than one wave can safely hold. Route specialist prep/refinement/review only when useful. Do not ask agents to rediscover already-grounded facts unless evidence is stale or missing.
 
 # Output Format
 ## Objective
@@ -263,11 +368,12 @@ Implement only scoped work packets. Use evidence and handoffs to avoid rediscove
 
 # Constraint Rules
 - Ask before destructive, broad, credential, generated-unmanaged, or remote-mutating changes.
-- Never perform destructive git operations, commits, pushes, merges, or secret writes without direct approval.
+- When the user asks for committed delivery, create logically separated local commits without extra confirmation.
+- Never perform destructive git operations, pushes, merges, PR creation, deletion, or secret writes without direct approval.
 - Never self-approve final quality; request review for nontrivial changes.
 
 # Handoff Protocol
-Return review-ready context to blackcell-umbra and constraint questions to blackcell-lumen. Ask blackcell-spore for fresh facts only when evidence is missing or stale.
+Act as the worker/engineering agent for scoped implementation packets from blackcell-astrophage. Return review-ready context to blackcell-umbra and constraint questions to blackcell-lumen. Ask blackcell-spore for fresh facts only when evidence is missing or stale.
 
 # Output Format
 ## Scope
@@ -419,32 +525,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             color="primary",
             permission={
                 "edit": "allow",
-                "bash": {
-                    "*": "allow",
-                    "rm *": "ask",
-                    "rmdir *": "ask",
-                    "git reset*": "ask",
-                    "git clean*": "ask",
-                    "git restore *": "ask",
-                    "git checkout -- *": "ask",
-                    "git push*": "ask",
-                    "gh pr merge*": "ask",
-                    "gh pr close*": "ask",
-                    "gh issue close*": "ask",
-                    "gh release*": "ask",
-                    "sudo *": "ask",
-                    "su *": "ask",
-                    "chmod *": "ask",
-                    "chown *": "ask",
-                    "podman system prune*": "ask",
-                    "docker system prune*": "ask",
-                    "npm publish*": "ask",
-                    "uv publish*": "ask",
-                    "twine upload*": "ask",
-                    "kubectl delete*": "ask",
-                    "terraform apply*": "ask",
-                    "terraform destroy*": "ask",
-                },
+                "bash": GIT_WRITE_BASH_PERMISSION,
                 "task": {"*": "deny", "blackcell-*": "allow"},
                 "external_directory": "deny",
             },
@@ -457,7 +538,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             color="success",
             permission={
                 "edit": "ask",
-                "bash": "ask",
+                "bash": GIT_READ_ONLY_BASH_PERMISSION,
                 "external_directory": "deny",
             },
             prompt=MYCELIUM_PROMPT,
@@ -470,10 +551,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             permission={
                 "edit": "deny",
                 "bash": {
-                    "*": "ask",
-                    "git status*": "allow",
-                    "git diff*": "allow",
-                    "git log*": "allow",
+                    **GIT_READ_ONLY_BASH_PERMISSION,
                     "uv run blackcell world*": "allow",
                     "uv run blackcell nesy validate*": "allow",
                 },
@@ -489,7 +567,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             permission={
                 "edit": "deny",
                 "bash": {
-                    "*": "ask",
+                    **GIT_READ_ONLY_BASH_PERMISSION,
                     "uv run blackcell nesy validate*": "allow",
                     "uv run blackcell harness plan*": "allow",
                 },
@@ -505,9 +583,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             permission={
                 "edit": "deny",
                 "bash": {
-                    "*": "ask",
-                    "git status*": "allow",
-                    "git diff*": "allow",
+                    **GIT_READ_ONLY_BASH_PERMISSION,
                     "uv run ruff check*": "allow",
                     "uv run pytest*": "allow",
                     "uv run ty check*": "allow",
@@ -522,8 +598,8 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             description="Guarded executor for explicit write-capable implementation tasks.",
             color="secondary",
             permission={
-                "edit": "ask",
-                "bash": "ask",
+                "edit": "allow",
+                "bash": GIT_WRITE_BASH_PERMISSION,
                 "external_directory": "deny",
             },
             prompt=CHIMERA_PROMPT,

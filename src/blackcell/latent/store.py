@@ -256,10 +256,72 @@ def _insert_json(
     key: str,
     value: object,
 ) -> None:
+    payload_json = json.dumps(_jsonable(value), sort_keys=True)
+    existing = connection.execute(
+        f"select payload_json from {table} where {key_column} = ?",
+        (key,),
+    ).fetchone()
+    if existing is not None:
+        existing_payload = _str_payload(existing[0])
+        if existing_payload == payload_json:
+            return
+        if table == "latent_transitions" and _merge_transition_evidence(
+            connection,
+            table=table,
+            key_column=key_column,
+            key=key,
+            existing_payload=existing_payload,
+            payload_json=payload_json,
+        ):
+            return
+        if existing_payload != payload_json:
+            raise ValueError(f"latent ledger conflict for {table}.{key_column}={key}")
     connection.execute(
-        f"insert or replace into {table}({key_column}, payload_json) values (?, ?)",
-        (key, json.dumps(_jsonable(value), sort_keys=True)),
+        f"insert into {table}({key_column}, payload_json) values (?, ?)",
+        (key, payload_json),
     )
+
+
+def _merge_transition_evidence(
+    connection: sqlite3.Connection,
+    *,
+    table: str,
+    key_column: str,
+    key: str,
+    existing_payload: str,
+    payload_json: str,
+) -> bool:
+    existing = _loads_object(existing_payload)
+    incoming = _loads_object(payload_json)
+    if _without_transition_evidence(existing) != _without_transition_evidence(incoming):
+        return False
+    existing_has_evidence = _has_transition_evidence(existing)
+    incoming_has_evidence = _has_transition_evidence(incoming)
+    if not existing_has_evidence and incoming_has_evidence:
+        connection.execute(
+            f"update {table} set payload_json = ? where {key_column} = ?",
+            (payload_json, key),
+        )
+        return True
+    return existing_has_evidence and not incoming_has_evidence
+
+
+def _without_transition_evidence(data: dict[str, object]) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in data.items()
+        if key not in {"evidence_run_id", "evidence_event_ids"}
+    }
+
+
+def _has_transition_evidence(data: dict[str, object]) -> bool:
+    return data.get("evidence_run_id") is not None or bool(data.get("evidence_event_ids"))
+
+
+def _str_payload(value: object) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"latent payload must be a string, got {value!r}")
+    return value
 
 
 def _count(connection: sqlite3.Connection, table: str) -> int:
@@ -280,6 +342,8 @@ def _transition_from_json(payload: str) -> LatentTransition:
         actual_state_id=_required_str(data, "actual_state_id"),
         error_id=_required_str(data, "error_id"),
         outcome=_required_str(data, "outcome"),
+        evidence_run_id=_optional_str(data, "evidence_run_id"),
+        evidence_event_ids=_optional_str_tuple(data, "evidence_event_ids"),
     )
 
 
@@ -288,6 +352,27 @@ def _required_str(data: dict[str, object], key: str) -> str:
     if not isinstance(value, str):
         raise TypeError(f"latent transition field {key!r} must be a string")
     return value
+
+
+def _optional_str(data: dict[str, object], key: str) -> str | None:
+    value = data.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError(f"latent transition field {key!r} must be a string")
+    return value
+
+
+def _optional_str_tuple(data: dict[str, object], key: str) -> tuple[str, ...]:
+    value = data.get(key)
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise TypeError(f"latent transition field {key!r} must be a list")
+    result = tuple(str(item) for item in value if isinstance(item, str))
+    if len(result) != len(value):
+        raise TypeError(f"latent transition field {key!r} must contain only strings")
+    return result
 
 
 def _required_number(data: dict[str, object], key: str) -> float:

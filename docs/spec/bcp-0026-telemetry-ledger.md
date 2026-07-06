@@ -8,16 +8,18 @@ edges:
     - spec/jepa-latent-prediction
 ---
 
-# BCP-0026: Telemetry and Ledger Foundation
+# BCP-0026: Local Run/Event Ledger Foundation
 
-Goal: introduce durable run/event storage that can become the source of truth for
-latent transition samples.
+Goal: introduce deterministic local run/event storage that can become the source
+of truth for harness provenance and later latent transition samples. In this
+document, "telemetry" means local evidence capture only; it does not imply remote
+export.
 
 ## Scope
 
 - run identifiers and event records;
 - check outcomes and verification evidence;
-- deterministic, idempotent local records for V0 latent samples;
+- deterministic, idempotent local records for generic runs and events;
 - enough provenance for latent prediction errors to point back to evidence.
 
 ## Non-Goals
@@ -25,9 +27,14 @@ latent transition samples.
 - neural training;
 - external vector or graph services;
 - remote telemetry export by default.
+- server, WAL, mmap, or streaming event infrastructure.
 
 ## Acceptance
 
 - BlackCell can record a local run and its events.
-- Later latent transitions can cite run/event evidence.
+- BlackCell can initialize and inspect a local SQLite ledger with `ledger init`,
+  `ledger runs`, and `ledger events`.
+- BlackCell can record dry-run harness traces with `harness run --ledger-db`.
+- Latent transitions recorded from `harness run --latent-db ... --ledger-db ...`
+  cite the generic ledger run and event IDs that produced their evidence.
 - Existing `world`, `nesy`, and `harness` checks still pass.
