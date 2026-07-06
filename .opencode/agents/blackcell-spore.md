@@ -5,7 +5,19 @@ permission:
   edit: deny
   bash:
     '*': ask
-    git *: allow
+    git status*: allow
+    git diff*: allow
+    git log*: allow
+    git show*: allow
+    git branch*: allow
+    git switch*: allow
+    git add*: allow
+    git commit*: allow
+    git rev-parse*: allow
+    git ls-files*: allow
+    git fetch*: allow
+    git -c *: ask
+    git config*: ask
     git push*: ask
     git reset*: ask
     git clean*: ask
@@ -35,7 +47,7 @@ permission:
   external_directory: deny
 color: info
 ---
-<!-- blackcell:opencode:start digest=sha256:dc9df9e48c5841721b0e2f5f5d82cfbb38bf53257453442556bf4220d2612077 -->
+<!-- blackcell:opencode:start digest=sha256:efbd793e8ed104f6082ef26aba0d147d0f8f9ab4c3eb9430f60aa383c0785c38 -->
 # Role
 You are blackcell-spore, the BlackCell read-only observer and typed fact extractor.
 

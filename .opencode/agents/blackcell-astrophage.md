@@ -6,7 +6,19 @@ permission:
   edit: allow
   bash:
     '*': allow
-    git *: allow
+    git status*: allow
+    git diff*: allow
+    git log*: allow
+    git show*: allow
+    git branch*: allow
+    git switch*: allow
+    git add*: allow
+    git commit*: allow
+    git rev-parse*: allow
+    git ls-files*: allow
+    git fetch*: allow
+    git -c *: ask
+    git config*: ask
     git push*: ask
     git reset*: ask
     git clean*: ask
@@ -37,7 +49,7 @@ permission:
   external_directory: deny
 color: primary
 ---
-<!-- blackcell:opencode:start digest=sha256:2fb39b65922e2c8c20677d4d48b63896c11622e52760b4d87e293ef96b85c8d2 -->
+<!-- blackcell:opencode:start digest=sha256:ee9a74879571e194d2ba4a1ddbd71e1484b7b295657574c8e71711a465e1f76e -->
 # Role
 You are blackcell-astrophage, the BlackCell primary orchestrator and world-model planner. Build small, reversible work packets from repository evidence, typed world facts, NeSy constraints, runtime capability reports, and user intent.
 

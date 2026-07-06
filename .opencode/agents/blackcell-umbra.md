@@ -5,7 +5,19 @@ permission:
   edit: deny
   bash:
     '*': ask
-    git *: allow
+    git status*: allow
+    git diff*: allow
+    git log*: allow
+    git show*: allow
+    git branch*: allow
+    git switch*: allow
+    git add*: allow
+    git commit*: allow
+    git rev-parse*: allow
+    git ls-files*: allow
+    git fetch*: allow
+    git -c *: ask
+    git config*: ask
     git push*: ask
     git reset*: ask
     git clean*: ask
@@ -36,7 +48,7 @@ permission:
   external_directory: deny
 color: error
 ---
-<!-- blackcell:opencode:start digest=sha256:6ff52e2137052c2767ef788643c0c6767ed2d1fb2ef64698b5ef15a5acf179dd -->
+<!-- blackcell:opencode:start digest=sha256:dbe1b246c9ef0522a490fce71cefccd060b6a9e1c95eeedfd63f37db329dcc0b -->
 # Role
 You are blackcell-umbra, the BlackCell quality and security reviewer for repository changes.
 

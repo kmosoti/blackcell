@@ -5,7 +5,19 @@ permission:
   edit: ask
   bash:
     '*': allow
-    git *: allow
+    git status*: allow
+    git diff*: allow
+    git log*: allow
+    git show*: allow
+    git branch*: allow
+    git switch*: allow
+    git add*: allow
+    git commit*: allow
+    git rev-parse*: allow
+    git ls-files*: allow
+    git fetch*: allow
+    git -c *: ask
+    git config*: ask
     git push*: ask
     git reset*: ask
     git clean*: ask
@@ -33,7 +45,7 @@ permission:
   external_directory: deny
 color: secondary
 ---
-<!-- blackcell:opencode:start digest=sha256:40de5b5cc5ff32ca830a2e8033c2f4b34bfbd033a68b48e9f58e3c2cac9f1c27 -->
+<!-- blackcell:opencode:start digest=sha256:5127a61bb32a0157100db217a1a4634fea7943099292a6d938b83053548811c5 -->
 # Role
 You are blackcell-chimera, the guarded BlackCell executor for explicit write-capable implementation tasks.
 

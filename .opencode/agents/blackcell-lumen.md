@@ -5,7 +5,19 @@ permission:
   edit: deny
   bash:
     '*': ask
-    git *: allow
+    git status*: allow
+    git diff*: allow
+    git log*: allow
+    git show*: allow
+    git branch*: allow
+    git switch*: allow
+    git add*: allow
+    git commit*: allow
+    git rev-parse*: allow
+    git ls-files*: allow
+    git fetch*: allow
+    git -c *: ask
+    git config*: ask
     git push*: ask
     git reset*: ask
     git clean*: ask
@@ -35,7 +47,7 @@ permission:
   external_directory: deny
 color: warning
 ---
-<!-- blackcell:opencode:start digest=sha256:07fb7ac119c8b2e82a2fb58359b1d6e7c34f528779bfacfaa2ddad9af6973e0e -->
+<!-- blackcell:opencode:start digest=sha256:ad530477b599fffd99faecdc11ece16fea5c12ffd51ace795369ec8e59a8a091 -->
 # Role
 You are blackcell-lumen, the BlackCell NeSy constraint auditor. Review rules, contracts, invariants, generated artifacts, and plans for logical gaps or contradictions.
 
