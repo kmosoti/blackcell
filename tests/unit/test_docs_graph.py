@@ -3,7 +3,6 @@ from pathlib import Path
 import yaml
 
 DOCS_ROOT = Path("docs")
-MANAGED_EXCEPTIONS = {Path("docs/agent/code_review.md")}
 
 
 def test_docs_graph_entrypoints_exist() -> None:
@@ -15,17 +14,16 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/concepts/nesy.md",
         "docs/concepts/harness.md",
         "docs/concepts/custom-agents.md",
+        "docs/concepts/agent-operating-model.md",
         "docs/targets/opencode.md",
         "docs/targets/containers.md",
-        "docs/legacy/control-plane.md",
-        "docs/legacy/vanguard.md",
     }
 
     assert all(Path(path).exists() for path in expected)
 
 
 def test_docs_graph_nodes_have_frontmatter() -> None:
-    docs = [path for path in DOCS_ROOT.rglob("*.md") if path not in MANAGED_EXCEPTIONS]
+    docs = list(DOCS_ROOT.rglob("*.md"))
 
     assert docs
     for path in docs:

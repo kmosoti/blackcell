@@ -32,6 +32,17 @@ The software analogy is:
 - Logic Tensor Networks: differentiable first-order constraints
 - NeurASP: symbolic constraints over neural distributions with ASP
 
+## Agent Customization References
+
+- awesome-copilot `gem-orchestrator`: phase-based orchestration, complexity
+  classification, delegation, and failure handling.
+- awesome-copilot `gem-planner`: DAG plans, wave scheduling, context envelopes,
+  and anti-overplanning rules.
+- awesome-copilot `quality-playbook`: phase-separated review, checkpoints, and
+  iteration strategies.
+- awesome-copilot `custom-agent-foundry`: role, boundaries, tool posture,
+  handoffs, output formats, and examples as first-class agent design elements.
+
 ## Why The First Slice Is Lightweight
 
 The first branch focuses on representation and interfaces:

@@ -8,8 +8,8 @@ edges:
     - concepts/harness
     - concepts/runtime-adapters
     - concepts/custom-agents
+    - concepts/agent-operating-model
     - targets/opencode
-    - targets/codex-cli
     - targets/containers
 ---
 
@@ -25,8 +25,8 @@ graph TD
     Runtime --> Trace[Run Traces]
     Trace --> World
     Harness --> Agents[Custom Agents]
+    Agents --> AgentModel[Agent Operating Model]
     Agents --> OpenCode[OpenCode Target]
-    Agents --> Codex[Codex CLI Target]
     Runtime --> Container[Container Runtime]
 ```
 
@@ -36,4 +36,3 @@ graph TD
 - `concepts`: stable project ideas and internal seams
 - `targets`: generated or runtime-specific integration surfaces
 - `research`: reference notes that inform future design
-- `legacy`: preserved surfaces from the earlier GitHub control-plane direction
