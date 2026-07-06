@@ -114,17 +114,18 @@ def run_harness(
     )
     evidence_run_id: str | None = None
     evidence_event_ids: tuple[str, ...] = ()
+    ledger_path: str | None = None
+    ledger_run_id: str | None = None
     if ledger_db is not None:
-        evidence_run_id = _ledger_run_id(
+        ledger_path, ledger_run_id, evidence_event_ids = _record_ledger_trace(
             plan=plan,
             runtime=runtime,
             status="simulated",
-            event_count=len(events),
+            events=events,
             has_latent=True,
+            ledger_db=ledger_db,
         )
-        evidence_event_ids = tuple(
-            event.event_id for event in _ledger_events(evidence_run_id, events)
-        )
+        evidence_run_id = ledger_run_id
         latent_simulation = replace(
             latent_simulation,
             transition=replace(
@@ -161,16 +162,14 @@ def run_harness(
             )
             for action in stats.action_stats
         )
-    return _attach_ledger(
-        RunTrace(
-            runtime=runtime,
-            status="simulated",
-            events=events,
-            latent=latent_summary,
-            latent_stats=latent_stats,
-        ),
-        plan=plan,
-        ledger_db=ledger_db,
+    return RunTrace(
+        runtime=runtime,
+        status="simulated",
+        events=events,
+        latent=latent_summary,
+        latent_stats=latent_stats,
+        ledger_path=ledger_path,
+        ledger_run_id=ledger_run_id,
     )
 
 
@@ -182,29 +181,13 @@ def _attach_ledger(
 ) -> RunTrace:
     if ledger_db is None:
         return trace
-    payload = _ledger_payload(
-        plan=plan,
-        runtime=trace.runtime,
-        event_count=len(trace.events),
-        has_latent=trace.latent is not None,
-    )
-    created_at = "deterministic:harness-dry-run:v1"
-    run_id = _ledger_run_id(
+    ledger_path, ledger_run_id, _event_ids = _record_ledger_trace(
         plan=plan,
         runtime=trace.runtime,
         status=trace.status,
-        event_count=len(trace.events),
+        events=trace.events,
         has_latent=trace.latent is not None,
-    )
-    events = _ledger_events(run_id, trace.events)
-    result = record_run(
-        path=ledger_db,
-        run_id=run_id,
-        kind="harness-run",
-        status=trace.status,
-        created_at=created_at,
-        payload=payload,
-        events=events,
+        ledger_db=ledger_db,
     )
     return RunTrace(
         runtime=trace.runtime,
@@ -212,9 +195,45 @@ def _attach_ledger(
         events=trace.events,
         latent=trace.latent,
         latent_stats=trace.latent_stats,
-        ledger_path=str(result.path),
-        ledger_run_id=result.run_id,
+        ledger_path=ledger_path,
+        ledger_run_id=ledger_run_id,
     )
+
+
+def _record_ledger_trace(
+    *,
+    plan: HarnessPlan,
+    runtime: str,
+    status: str,
+    events: tuple[TraceEvent, ...],
+    has_latent: bool,
+    ledger_db: Path,
+) -> tuple[str, str, tuple[str, ...]]:
+    payload = _ledger_payload(
+        plan=plan,
+        runtime=runtime,
+        event_count=len(events),
+        has_latent=has_latent,
+    )
+    created_at = "deterministic:harness-dry-run:v1"
+    run_id = _ledger_run_id(
+        plan=plan,
+        runtime=runtime,
+        status=status,
+        event_count=len(events),
+        has_latent=has_latent,
+    )
+    ledger_events = _ledger_events(run_id, events)
+    result = record_run(
+        path=ledger_db,
+        run_id=run_id,
+        kind="harness-run",
+        status=status,
+        created_at=created_at,
+        payload=payload,
+        events=ledger_events,
+    )
+    return str(result.path), result.run_id, tuple(event.event_id for event in ledger_events)
 
 
 def _ledger_payload(
