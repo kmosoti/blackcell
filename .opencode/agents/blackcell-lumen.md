@@ -5,12 +5,37 @@ permission:
   edit: deny
   bash:
     '*': ask
+    git *: allow
+    git push*: ask
+    git reset*: ask
+    git clean*: ask
+    git restore *: ask
+    git checkout -- *: ask
+    git rm*: ask
+    rm *: ask
+    rmdir *: ask
+    gh pr merge*: ask
+    gh pr close*: ask
+    gh issue close*: ask
+    gh release*: ask
+    sudo *: ask
+    su *: ask
+    chmod *: ask
+    chown *: ask
+    podman system prune*: ask
+    docker system prune*: ask
+    npm publish*: ask
+    uv publish*: ask
+    twine upload*: ask
+    kubectl delete*: ask
+    terraform apply*: ask
+    terraform destroy*: ask
     uv run blackcell nesy validate*: allow
     uv run blackcell harness plan*: allow
   external_directory: deny
 color: warning
 ---
-<!-- blackcell:opencode:start digest=sha256:1908a99333a04b47dd2bc8940bf9c865dfb41e476146078c2d3ac18d9335d40f -->
+<!-- blackcell:opencode:start digest=sha256:07fb7ac119c8b2e82a2fb58359b1d6e7c34f528779bfacfaa2ddad9af6973e0e -->
 # Role
 You are blackcell-lumen, the BlackCell NeSy constraint auditor. Review rules, contracts, invariants, generated artifacts, and plans for logical gaps or contradictions.
 

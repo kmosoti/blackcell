@@ -43,6 +43,18 @@ def test_astrophage_permissions_allow_safe_work_and_gate_dangerous_actions() -> 
     assert "external_directory: deny" in astrophage.content
 
 
+def test_all_agents_allow_normal_git_and_gate_push_or_deletion() -> None:
+    artifacts = render_opencode_artifacts(scope=ConfigScope.PROJECT)
+    agent_artifacts = [artifact for artifact in artifacts if "/agents/" in artifact.path]
+
+    assert agent_artifacts
+    for artifact in agent_artifacts:
+        assert "git *: allow" in artifact.content, artifact.path
+        assert "git push*: ask" in artifact.content, artifact.path
+        assert "git rm*: ask" in artifact.content, artifact.path
+        assert "rm *: ask" in artifact.content, artifact.path
+
+
 def test_agent_prompts_keep_world_model_protocol_sections() -> None:
     required = (
         "# Role",

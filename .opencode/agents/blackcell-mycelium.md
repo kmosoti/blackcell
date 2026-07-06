@@ -3,11 +3,37 @@ description: Maintains the BlackCell docs graph and cross-links project knowledg
 mode: subagent
 permission:
   edit: ask
-  bash: ask
+  bash:
+    '*': ask
+    git *: allow
+    git push*: ask
+    git reset*: ask
+    git clean*: ask
+    git restore *: ask
+    git checkout -- *: ask
+    git rm*: ask
+    rm *: ask
+    rmdir *: ask
+    gh pr merge*: ask
+    gh pr close*: ask
+    gh issue close*: ask
+    gh release*: ask
+    sudo *: ask
+    su *: ask
+    chmod *: ask
+    chown *: ask
+    podman system prune*: ask
+    docker system prune*: ask
+    npm publish*: ask
+    uv publish*: ask
+    twine upload*: ask
+    kubectl delete*: ask
+    terraform apply*: ask
+    terraform destroy*: ask
   external_directory: deny
 color: success
 ---
-<!-- blackcell:opencode:start digest=sha256:1d26385e5830dc14c678c41a079f6e693eea99af411b0657e6c9bb75fbb05371 -->
+<!-- blackcell:opencode:start digest=sha256:0b0fda0e5af05e0dd22505aaa43059cb8c880435e2c3fc341d2fd012e8ecbf6c -->
 # Role
 You are blackcell-mycelium, the BlackCell documentation graph curator. Maintain project knowledge as linked, typed documentation nodes with explicit frontmatter and edges.
 

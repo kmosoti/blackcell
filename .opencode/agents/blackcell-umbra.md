@@ -5,15 +5,38 @@ permission:
   edit: deny
   bash:
     '*': ask
-    git status*: allow
-    git diff*: allow
+    git *: allow
+    git push*: ask
+    git reset*: ask
+    git clean*: ask
+    git restore *: ask
+    git checkout -- *: ask
+    git rm*: ask
+    rm *: ask
+    rmdir *: ask
+    gh pr merge*: ask
+    gh pr close*: ask
+    gh issue close*: ask
+    gh release*: ask
+    sudo *: ask
+    su *: ask
+    chmod *: ask
+    chown *: ask
+    podman system prune*: ask
+    docker system prune*: ask
+    npm publish*: ask
+    uv publish*: ask
+    twine upload*: ask
+    kubectl delete*: ask
+    terraform apply*: ask
+    terraform destroy*: ask
     uv run ruff check*: allow
     uv run pytest*: allow
     uv run ty check*: allow
   external_directory: deny
 color: error
 ---
-<!-- blackcell:opencode:start digest=sha256:6df18a81dbc9f755254f8e95dc219df41f858a5d54baa51037e4f6bf1a930340 -->
+<!-- blackcell:opencode:start digest=sha256:6ff52e2137052c2767ef788643c0c6767ed2d1fb2ef64698b5ef15a5acf179dd -->
 # Role
 You are blackcell-umbra, the BlackCell quality and security reviewer for repository changes.
 

@@ -4,6 +4,40 @@ from typing import Any
 
 from blackcell.agents.models import AgentCommand, AgentDefinition, AgentSummary
 
+GIT_AWARE_BASH_PERMISSION = {
+    "*": "ask",
+    "git *": "allow",
+    "git push*": "ask",
+    "git reset*": "ask",
+    "git clean*": "ask",
+    "git restore *": "ask",
+    "git checkout -- *": "ask",
+    "git rm*": "ask",
+    "rm *": "ask",
+    "rmdir *": "ask",
+    "gh pr merge*": "ask",
+    "gh pr close*": "ask",
+    "gh issue close*": "ask",
+    "gh release*": "ask",
+    "sudo *": "ask",
+    "su *": "ask",
+    "chmod *": "ask",
+    "chown *": "ask",
+    "podman system prune*": "ask",
+    "docker system prune*": "ask",
+    "npm publish*": "ask",
+    "uv publish*": "ask",
+    "twine upload*": "ask",
+    "kubectl delete*": "ask",
+    "terraform apply*": "ask",
+    "terraform destroy*": "ask",
+}
+
+DEFAULT_BASH_PERMISSION = {
+    **GIT_AWARE_BASH_PERMISSION,
+    "*": "allow",
+}
+
 ASTROPHAGE_PROMPT = """# Role
 You are blackcell-astrophage, the BlackCell primary orchestrator and world-model planner. Build small, reversible work packets from repository evidence, typed world facts, NeSy constraints, runtime capability reports, and user intent.
 
@@ -34,6 +68,7 @@ Use a latent-state loop inspired by JEPA-style feature prediction: observe conte
 # Constraint Rules
 - Preserve user-local auth and avoid credentials in repo/container state.
 - Default to dry-run behavior unless the user explicitly asks to apply changes.
+- When the user asks for delivery in commits, use logically separated commits without extra confirmation; still ask before push, PR creation, deletion, or destructive operations.
 - Keep OpenCode first-class without making runtime identity the product.
 - Avoid destructive git, remote mutation, broad rewrites, and unmanaged generated edits without approval.
 
@@ -263,7 +298,8 @@ Implement only scoped work packets. Use evidence and handoffs to avoid rediscove
 
 # Constraint Rules
 - Ask before destructive, broad, credential, generated-unmanaged, or remote-mutating changes.
-- Never perform destructive git operations, commits, pushes, merges, or secret writes without direct approval.
+- When the user asks for committed delivery, create logically separated local commits without extra confirmation.
+- Never perform destructive git operations, pushes, merges, PR creation, deletion, or secret writes without direct approval.
 - Never self-approve final quality; request review for nontrivial changes.
 
 # Handoff Protocol
@@ -419,32 +455,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             color="primary",
             permission={
                 "edit": "allow",
-                "bash": {
-                    "*": "allow",
-                    "rm *": "ask",
-                    "rmdir *": "ask",
-                    "git reset*": "ask",
-                    "git clean*": "ask",
-                    "git restore *": "ask",
-                    "git checkout -- *": "ask",
-                    "git push*": "ask",
-                    "gh pr merge*": "ask",
-                    "gh pr close*": "ask",
-                    "gh issue close*": "ask",
-                    "gh release*": "ask",
-                    "sudo *": "ask",
-                    "su *": "ask",
-                    "chmod *": "ask",
-                    "chown *": "ask",
-                    "podman system prune*": "ask",
-                    "docker system prune*": "ask",
-                    "npm publish*": "ask",
-                    "uv publish*": "ask",
-                    "twine upload*": "ask",
-                    "kubectl delete*": "ask",
-                    "terraform apply*": "ask",
-                    "terraform destroy*": "ask",
-                },
+                "bash": DEFAULT_BASH_PERMISSION,
                 "task": {"*": "deny", "blackcell-*": "allow"},
                 "external_directory": "deny",
             },
@@ -457,7 +468,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             color="success",
             permission={
                 "edit": "ask",
-                "bash": "ask",
+                "bash": GIT_AWARE_BASH_PERMISSION,
                 "external_directory": "deny",
             },
             prompt=MYCELIUM_PROMPT,
@@ -470,10 +481,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             permission={
                 "edit": "deny",
                 "bash": {
-                    "*": "ask",
-                    "git status*": "allow",
-                    "git diff*": "allow",
-                    "git log*": "allow",
+                    **GIT_AWARE_BASH_PERMISSION,
                     "uv run blackcell world*": "allow",
                     "uv run blackcell nesy validate*": "allow",
                 },
@@ -489,7 +497,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             permission={
                 "edit": "deny",
                 "bash": {
-                    "*": "ask",
+                    **GIT_AWARE_BASH_PERMISSION,
                     "uv run blackcell nesy validate*": "allow",
                     "uv run blackcell harness plan*": "allow",
                 },
@@ -505,9 +513,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             permission={
                 "edit": "deny",
                 "bash": {
-                    "*": "ask",
-                    "git status*": "allow",
-                    "git diff*": "allow",
+                    **GIT_AWARE_BASH_PERMISSION,
                     "uv run ruff check*": "allow",
                     "uv run pytest*": "allow",
                     "uv run ty check*": "allow",
@@ -523,7 +529,7 @@ def blackcell_agents() -> tuple[AgentDefinition, ...]:
             color="secondary",
             permission={
                 "edit": "ask",
-                "bash": "ask",
+                "bash": DEFAULT_BASH_PERMISSION,
                 "external_directory": "deny",
             },
             prompt=CHIMERA_PROMPT,
