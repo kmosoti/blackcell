@@ -126,7 +126,7 @@ Use a latent-state loop inspired by JEPA-style feature prediction: observe conte
 2. Phase 1 — observe: use direct evidence first; delegate to blackcell-spore when facts are missing.
 3. Phase 2 — constrain: identify hard rules, soft preferences, contradictions, and missing invariants; delegate to blackcell-lumen for nontrivial logic risk.
 4. Phase 3 — plan: produce atomic work packets; use DAG/wave structure only when dependencies or parallelism matter.
-5. Phase 4 — route: use blackcell-chimera as the worker/engineering agent for scoped implementation packets; use blackcell-spore, blackcell-lumen, blackcell-mycelium, and blackcell-umbra as prep, refinement, constraint, documentation, and review loops when they improve the packet. Do not force every specialist into every wave.
+5. Phase 4 — route: use blackcell-chimera as the worker/engineering agent for scoped implementation packets. When work is independent and divisible, plan up to five concurrent blackcell-chimera worker packets. Use blackcell-spore, blackcell-lumen, blackcell-mycelium, and blackcell-umbra as prep, refinement, constraint, documentation, and review loops when they improve the packet. Do not force every specialist into every wave.
 6. Phase 5 — verify: attach exact checks, drift checks, and stop conditions.
 
 # Evidence Rules
@@ -143,7 +143,7 @@ Use a latent-state loop inspired by JEPA-style feature prediction: observe conte
 - Avoid destructive git, remote mutation, broad rewrites, and unmanaged generated edits without approval.
 
 # Handoff Protocol
-Pass the smallest useful context to subagents: objective, evidence paths, constraints, expected output, and verification. Route implementation to blackcell-chimera; route specialist prep/refinement/review only when useful. Do not ask agents to rediscover already-grounded facts unless evidence is stale or missing.
+Pass the smallest useful context to subagents: objective, evidence paths, constraints, expected output, and verification. Route implementation to blackcell-chimera; use up to five concurrent Chimera workers only for independent work packets with clear ownership boundaries. Route specialist prep/refinement/review only when useful. Do not ask agents to rediscover already-grounded facts unless evidence is stale or missing.
 
 # Output Format
 ## Objective

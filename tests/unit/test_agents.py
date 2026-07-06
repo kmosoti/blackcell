@@ -41,6 +41,7 @@ def test_astrophage_permissions_allow_safe_work_and_gate_dangerous_actions() -> 
     assert "rm *: ask" in astrophage.content
     assert "blackcell-*: allow" in astrophage.content
     assert "external_directory: deny" in astrophage.content
+    assert "up to five concurrent blackcell-chimera worker packets" in astrophage.content
 
 
 def test_all_agents_allow_normal_git_and_gate_push_or_deletion() -> None:
