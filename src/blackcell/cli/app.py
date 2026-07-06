@@ -1,14 +1,30 @@
 import os
 import re
 import subprocess
-from collections.abc import Sequence
+import sys
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Annotated, Never
+from typing import Annotated, Any, Literal, Never
 
 import httpx
-import typer
+from cyclopts import App, Parameter
+from cyclopts.exceptions import CycloptsError
+from rich.console import Console
 from rich.table import Table
 
+from blackcell.agents import (
+    OPENCODE_TARGET,
+    AgentDoctorReport,
+    AgentProjectionResult,
+    AgentSummary,
+    ConfigScope,
+    RenderedAgentArtifact,
+    check_opencode_agent_pack_drift,
+    doctor_opencode_agent_pack,
+    install_opencode_agent_pack,
+    list_agent_summaries,
+    render_opencode_artifacts,
+)
 from blackcell.cli.output import OutputRenderer
 from blackcell.config import (
     BlackcellConfig,
@@ -31,9 +47,13 @@ from blackcell.control_plane.codex_cli import AgentWorkflowProjectionResult
 from blackcell.control_plane.models import AgentIssueContext, ProjectShape, ValidationResult
 from blackcell.control_plane.pr import PullRequestCommand, PullRequestWorkflowResult
 from blackcell.control_plane.sync import SyncResult
+from blackcell.harness import HarnessPlan, RunTrace, plan_harness, run_harness
 from blackcell.models import IssueRef, ProjectItemRef
+from blackcell.nesy import ValidationResult as RuleValidationResult
+from blackcell.nesy import build_default_rules, validate_ruleset
 from blackcell.providers import CreateIssueRequest, ProjectProvider, default_registry
 from blackcell.providers.github import GitHubApiError
+from blackcell.runtime import DoctorReport, RuntimeAdapter, doctor_report, list_runtime_adapters
 from blackcell.vanguard import (
     draft_changespec_from_agent_context,
     plan_qa,
@@ -41,229 +61,278 @@ from blackcell.vanguard import (
     render_templates,
     validate_changespec_file,
 )
-
-app = typer.Typer(no_args_is_help=True)
-config_app = typer.Typer(no_args_is_help=True)
-provider_app = typer.Typer(no_args_is_help=True)
-project_app = typer.Typer(no_args_is_help=True)
-issue_app = typer.Typer(no_args_is_help=True)
-control_plane_app = typer.Typer(no_args_is_help=True)
-capabilities_app = typer.Typer(no_args_is_help=True)
-pull_request_app = typer.Typer(no_args_is_help=True)
-agent_workflow_app = typer.Typer(no_args_is_help=True)
-vanguard_app = typer.Typer(no_args_is_help=True)
-vanguard_changespec_app = typer.Typer(no_args_is_help=True)
-vanguard_qa_app = typer.Typer(no_args_is_help=True)
-vanguard_templates_app = typer.Typer(no_args_is_help=True)
-
-app.add_typer(config_app, name="config")
-app.add_typer(provider_app, name="providers")
-app.add_typer(project_app, name="project")
-app.add_typer(issue_app, name="issue")
-app.add_typer(control_plane_app, name="control-plane")
-control_plane_app.add_typer(capabilities_app, name="capabilities")
-control_plane_app.add_typer(pull_request_app, name="pr")
-control_plane_app.add_typer(agent_workflow_app, name="agent-workflow")
-app.add_typer(vanguard_app, name="vanguard")
-vanguard_app.add_typer(vanguard_changespec_app, name="changespec")
-vanguard_app.add_typer(vanguard_qa_app, name="qa")
-vanguard_app.add_typer(vanguard_templates_app, name="templates")
+from blackcell.world import Fact, WorldSnapshot, observe_repo
 
 
-@app.callback()
-def configure_cli(
-    context: typer.Context,
-    rich: Annotated[
-        bool,
-        typer.Option("--rich", help="Render human-oriented Rich output."),
-    ] = False,
-    jsonl: Annotated[
-        bool,
-        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
-    ] = False,
-    output_format: Annotated[
-        str | None,
-        typer.Option("--format", help="Output format: json, jsonl, or rich."),
-    ] = None,
+class BlackCellCli(App):
+    def __call__(
+        self,
+        tokens: None | str | Iterable[str] = None,
+        *,
+        console: Console | None = None,
+        error_console: Console | None = None,
+        print_error: bool | None = None,
+        exit_on_error: bool | None = None,
+        help_on_error: bool | None = None,
+        verbose: bool | None = None,
+        end_of_options_delimiter: str | None = None,
+        backend: Literal["asyncio", "trio"] | None = None,
+        result_action: Any = None,
+        error_formatter: Callable[[CycloptsError], Any] | None = None,
+    ) -> Any:
+        raw_tokens = sys.argv[1:] if tokens is None else tokens
+        parsed_tokens, rich, jsonl, output_format = _extract_output_flags(raw_tokens)
+        try:
+            _configure_output(rich=rich, jsonl=jsonl, output_format=output_format, force=True)
+        except ValueError as error:
+            OutputRenderer().emit_error(str(error))
+            raise SystemExit(2) from error
+        if not parsed_tokens:
+            parsed_tokens = ["--help"]
+        return super().__call__(
+            parsed_tokens,
+            console=console,
+            error_console=error_console,
+            print_error=print_error,
+            exit_on_error=exit_on_error,
+            help_on_error=help_on_error,
+            verbose=verbose,
+            end_of_options_delimiter=end_of_options_delimiter,
+            backend=backend,
+            result_action=result_action,
+            error_formatter=error_formatter,
+        )
+
+
+_OUTPUT = OutputRenderer()
+
+app = BlackCellCli(name="blackcell", help="BlackCell project workflow tooling.")
+config_app = App(name="config")
+provider_app = App(name="providers")
+project_app = App(name="project")
+issue_app = App(name="issue")
+world_app = App(name="world")
+nesy_app = App(name="nesy")
+harness_app = App(name="harness")
+adapters_app = App(name="adapters")
+agents_app = App(name="agents")
+control_plane_app = App(name="control-plane")
+capabilities_app = App(name="capabilities")
+pull_request_app = App(name="pr")
+agent_workflow_app = App(name="agent-workflow")
+vanguard_app = App(name="vanguard")
+vanguard_changespec_app = App(name="changespec")
+vanguard_qa_app = App(name="qa")
+vanguard_templates_app = App(name="templates")
+
+app.command(config_app)
+app.command(provider_app)
+app.command(project_app)
+app.command(issue_app)
+app.command(world_app)
+app.command(nesy_app)
+app.command(harness_app)
+app.command(adapters_app)
+app.command(agents_app)
+app.command(control_plane_app)
+control_plane_app.command(capabilities_app)
+control_plane_app.command(pull_request_app)
+control_plane_app.command(agent_workflow_app)
+app.command(vanguard_app)
+vanguard_app.command(vanguard_changespec_app)
+vanguard_app.command(vanguard_qa_app)
+vanguard_app.command(vanguard_templates_app)
+
+
+@world_app.command(name="observe")
+def world_observe() -> None:
+    """Observe the repository and emit a world snapshot."""
+    snapshot = observe_repo()
+    _output().emit(snapshot, rich=_world_snapshot_table(snapshot))
+
+
+@world_app.command(name="facts")
+def world_facts() -> None:
+    """Emit the current typed fact surface."""
+    snapshot = observe_repo()
+    _output().emit_collection("facts", snapshot.facts, rich=_facts_table(snapshot.facts))
+
+
+@nesy_app.command(name="validate")
+def nesy_validate() -> None:
+    """Validate the default NeSy rule scaffold against the repo world model."""
+    snapshot = observe_repo()
+    result = validate_ruleset(build_default_rules(snapshot))
+    _output().emit(result, rich=_rule_validation_table(result))
+    if not result.valid:
+        raise SystemExit(1)
+
+
+@harness_app.command(name="plan")
+def harness_plan_command() -> None:
+    """Plan the first harness loop from the observed repo state."""
+    plan = plan_harness(observe_repo())
+    _output().emit(plan, rich=_harness_plan_table(plan))
+
+
+@harness_app.command(name="run")
+def harness_run_command(
+    runtime: Annotated[
+        str,
+        Parameter("--runtime", help="Runtime adapter to use."),
+    ] = "dry-run",
 ) -> None:
-    """BlackCell project workflow tooling."""
-    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format, force=True)
+    """Run the first harness loop through a runtime adapter."""
+    plan = plan_harness(observe_repo())
+    try:
+        trace = run_harness(plan, runtime=runtime)
+    except ValueError as error:
+        _fail(str(error))
+    _output().emit(trace, rich=_run_trace_table(trace))
 
 
-@control_plane_app.callback()
-def configure_control_plane_cli(
-    context: typer.Context,
-    rich: Annotated[
-        bool,
-        typer.Option("--rich", help="Render human-oriented Rich output."),
-    ] = False,
-    jsonl: Annotated[
-        bool,
-        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
-    ] = False,
-    output_format: Annotated[
-        str | None,
-        typer.Option("--format", help="Output format: json, jsonl, or rich."),
-    ] = None,
+@adapters_app.command(name="list")
+def adapters_list() -> None:
+    """List available runtime adapters."""
+    adapters = list_runtime_adapters()
+    _output().emit_collection("adapters", adapters, rich=_runtime_adapters_table(adapters))
+
+
+@agents_app.command(name="list")
+def agents_list() -> None:
+    """List the canonical BlackCell agent pack."""
+    agents = list_agent_summaries()
+    _output().emit_collection("agents", agents, rich=_agents_table(agents))
+
+
+@agents_app.command(name="render")
+def agents_render(
+    target: Annotated[
+        str,
+        Parameter("--target", help="Agent target. Supported: opencode."),
+    ] = OPENCODE_TARGET,
+    scope: Annotated[
+        str,
+        Parameter("--scope", help="Config scope: project or global."),
+    ] = ConfigScope.PROJECT.value,
 ) -> None:
-    """Control-plane contract and capability commands."""
-    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
+    """Render managed agent artifacts without writing them."""
+    try:
+        _validate_agent_target(target)
+        artifacts = render_opencode_artifacts(scope=scope)
+    except ValueError as error:
+        _fail(str(error))
+    _output().emit_collection("artifacts", artifacts, rich=_agent_artifacts_table(artifacts))
 
 
-@capabilities_app.callback()
-def configure_capabilities_cli(
-    context: typer.Context,
-    rich: Annotated[
+@agents_app.command(name="install")
+def agents_install(
+    target: Annotated[
+        str,
+        Parameter("--target", help="Agent target. Supported: opencode."),
+    ] = OPENCODE_TARGET,
+    scope: Annotated[
+        str,
+        Parameter("--scope", help="Config scope: project or global."),
+    ] = ConfigScope.PROJECT.value,
+    apply_changes: Annotated[
         bool,
-        typer.Option("--rich", help="Render human-oriented Rich output."),
+        Parameter("--apply", help="Write non-conflicting managed artifacts."),
     ] = False,
-    jsonl: Annotated[
-        bool,
-        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
-    ] = False,
-    output_format: Annotated[
-        str | None,
-        typer.Option("--format", help="Output format: json, jsonl, or rich."),
-    ] = None,
 ) -> None:
-    """GitHub GraphQL capability cache commands."""
-    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
+    """Install managed agent artifacts. Defaults to dry run."""
+    try:
+        _validate_agent_target(target)
+        result = install_opencode_agent_pack(scope=scope, apply_changes=apply_changes)
+    except (OSError, ValueError) as error:
+        _fail(str(error))
+    _output().emit(result, rich=_agent_projection_table(result))
+    if result.conflicts:
+        raise SystemExit(1)
 
 
-@agent_workflow_app.callback()
-def configure_agent_workflow_cli(
-    context: typer.Context,
-    rich: Annotated[
-        bool,
-        typer.Option("--rich", help="Render human-oriented Rich output."),
-    ] = False,
-    jsonl: Annotated[
-        bool,
-        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
-    ] = False,
-    output_format: Annotated[
-        str | None,
-        typer.Option("--format", help="Output format: json, jsonl, or rich."),
-    ] = None,
+@agents_app.command(name="check-drift")
+def agents_check_drift(
+    target: Annotated[
+        str,
+        Parameter("--target", help="Agent target. Supported: opencode."),
+    ] = OPENCODE_TARGET,
+    scope: Annotated[
+        str,
+        Parameter("--scope", help="Config scope: project or global."),
+    ] = ConfigScope.PROJECT.value,
 ) -> None:
-    """Agent workflow projection commands."""
-    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
+    """Fail when managed agent artifacts drift from rendered content."""
+    try:
+        _validate_agent_target(target)
+        result = check_opencode_agent_pack_drift(scope=scope)
+    except (OSError, ValueError) as error:
+        _fail(str(error))
+    _output().emit(result, rich=_agent_projection_table(result))
+    if result.drift:
+        raise SystemExit(1)
 
 
-@vanguard_app.callback()
-def configure_vanguard_cli(
-    context: typer.Context,
-    rich: Annotated[
-        bool,
-        typer.Option("--rich", help="Render human-oriented Rich output."),
-    ] = False,
-    jsonl: Annotated[
-        bool,
-        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
-    ] = False,
-    output_format: Annotated[
-        str | None,
-        typer.Option("--format", help="Output format: json, jsonl, or rich."),
-    ] = None,
+@agents_app.command(name="doctor")
+def agents_doctor(
+    target: Annotated[
+        str,
+        Parameter("--target", help="Agent target. Supported: opencode."),
+    ] = OPENCODE_TARGET,
+    scope: Annotated[
+        str,
+        Parameter("--scope", help="Config scope: project or global."),
+    ] = ConfigScope.PROJECT.value,
 ) -> None:
-    """Vanguard spec-first QA workflow commands."""
-    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
+    """Report local target health for managed BlackCell agents."""
+    try:
+        _validate_agent_target(target)
+        report = doctor_opencode_agent_pack(scope=scope)
+    except (OSError, ValueError) as error:
+        _fail(str(error))
+    _output().emit(report, rich=_agent_doctor_table(report))
 
 
-@vanguard_changespec_app.callback()
-def configure_vanguard_changespec_cli(
-    context: typer.Context,
-    rich: Annotated[
-        bool,
-        typer.Option("--rich", help="Render human-oriented Rich output."),
-    ] = False,
-    jsonl: Annotated[
-        bool,
-        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
-    ] = False,
-    output_format: Annotated[
-        str | None,
-        typer.Option("--format", help="Output format: json, jsonl, or rich."),
-    ] = None,
-) -> None:
-    """Vanguard ChangeSpec commands."""
-    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
+@app.command(name="doctor")
+def runtime_doctor() -> None:
+    """Report local runtime adapter and repo observation health."""
+    report = doctor_report(observe_repo())
+    _output().emit(report, rich=_doctor_table(report))
 
 
-@vanguard_qa_app.callback()
-def configure_vanguard_qa_cli(
-    context: typer.Context,
-    rich: Annotated[
-        bool,
-        typer.Option("--rich", help="Render human-oriented Rich output."),
-    ] = False,
-    jsonl: Annotated[
-        bool,
-        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
-    ] = False,
-    output_format: Annotated[
-        str | None,
-        typer.Option("--format", help="Output format: json, jsonl, or rich."),
-    ] = None,
-) -> None:
-    """Vanguard QA planning commands."""
-    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
-
-
-@vanguard_templates_app.callback()
-def configure_vanguard_templates_cli(
-    context: typer.Context,
-    rich: Annotated[
-        bool,
-        typer.Option("--rich", help="Render human-oriented Rich output."),
-    ] = False,
-    jsonl: Annotated[
-        bool,
-        typer.Option("--jsonl", help="Render newline-delimited JSON records."),
-    ] = False,
-    output_format: Annotated[
-        str | None,
-        typer.Option("--format", help="Output format: json, jsonl, or rich."),
-    ] = None,
-) -> None:
-    """Vanguard template commands."""
-    _configure_output(context, rich=rich, jsonl=jsonl, output_format=output_format)
-
-
-@app.command("init")
+@app.command(name="init")
 def init_config(
-    context: typer.Context,
     repository: Annotated[
         str | None,
-        typer.Option("--repository", "-r", help="GitHub repository in owner/name form."),
+        Parameter(("--repository", "-r"), help="GitHub repository in owner/name form."),
     ] = None,
     project_id: Annotated[
         str | None,
-        typer.Option("--project-id", help="GitHub Project node ID."),
+        Parameter("--project-id", help="GitHub Project node ID."),
     ] = None,
     project_title: Annotated[
         str,
-        typer.Option("--project-title", help="Project display title."),
+        Parameter("--project-title", help="Project display title."),
     ] = "BlackCell",
     project_number: Annotated[
         int | None,
-        typer.Option("--project-number", help="GitHub Project number."),
+        Parameter("--project-number", help="GitHub Project number."),
     ] = None,
     project_url: Annotated[
         str | None,
-        typer.Option("--project-url", help="GitHub Project URL."),
+        Parameter("--project-url", help="GitHub Project URL."),
     ] = None,
     repository_id: Annotated[
         str | None,
-        typer.Option("--repository-id", help="GitHub repository node ID."),
+        Parameter("--repository-id", help="GitHub repository node ID."),
     ] = None,
     provider: Annotated[
         str,
-        typer.Option("--provider", help="Project provider plugin name."),
+        Parameter("--provider", help="Project provider plugin name."),
     ] = "github",
     overwrite: Annotated[
         bool,
-        typer.Option("--overwrite", help="Replace an existing blackcell.toml."),
+        Parameter("--overwrite", help="Replace an existing blackcell.toml."),
     ] = False,
 ) -> None:
     """Initialize repo-local BlackCell project config."""
@@ -284,23 +353,23 @@ def init_config(
         )
         path = write_config(config, overwrite=overwrite)
     except (ConfigError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(
+    _output().emit(
         {"path": path, "config": config},
         rich=f"[green]Wrote[/green] {path}",
     )
 
 
-@config_app.command("show")
-def show_config(context: typer.Context) -> None:
+@config_app.command(name="show")
+def show_config() -> None:
     """Show the discovered repo-local config."""
     try:
         config = load_config()
     except (ConfigError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(config, rich=_config_table(config))
+    _output().emit(config, rich=_config_table(config))
 
 
 def _config_table(config: BlackcellConfig) -> Table:
@@ -317,12 +386,12 @@ def _config_table(config: BlackcellConfig) -> Table:
     return table
 
 
-@provider_app.command("list")
-def list_providers(context: typer.Context) -> None:
+@provider_app.command(name="list")
+def list_providers() -> None:
     """List available project provider plugins."""
     registry = default_registry()
     providers = [{"name": name} for name in registry.names()]
-    _output(context).emit_collection(
+    _output().emit_collection(
         "providers",
         providers,
         rich=_providers_table(registry.names()),
@@ -337,68 +406,66 @@ def _providers_table(names: list[str]) -> Table:
     return table
 
 
-@control_plane_app.command("validate")
-def validate_control_plane(context: typer.Context) -> None:
+@control_plane_app.command(name="validate")
+def validate_control_plane() -> None:
     """Validate the repo-authored planning contract."""
     control_plane = LocalControlPlane()
     try:
         result = control_plane.validate_contract()
     except (ContractError, ConfigError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(result, rich=_validation_table("Control Plane Validation", result))
+    _output().emit(result, rich=_validation_table("Control Plane Validation", result))
     if not result.valid:
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
-@control_plane_app.command("schema")
-def show_control_plane_schema(context: typer.Context) -> None:
+@control_plane_app.command(name="schema")
+def show_control_plane_schema() -> None:
     """Show the planning contract schema."""
     schema = plan_contract_schema()
-    _output(context).emit(schema, rich=_schema_table(schema))
+    _output().emit(schema, rich=_schema_table(schema))
 
 
-@control_plane_app.command("agent-context")
+@control_plane_app.command(name="agent-context")
 def render_agent_context(
-    context: typer.Context,
-    issue_key: Annotated[str, typer.Argument(help="Planning contract issue key.")],
+    issue_key: str,
 ) -> None:
     """Render issue context for an agent worker."""
     control_plane = LocalControlPlane()
     try:
         agent_context = control_plane.render_agent_context(issue_key)
     except (ContractError, ConfigError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(agent_context, rich=_agent_context_table(agent_context))
+    _output().emit(agent_context, rich=_agent_context_table(agent_context))
 
 
-@control_plane_app.command("shape")
-def plan_project_shape(context: typer.Context) -> None:
+@control_plane_app.command(name="shape")
+def plan_project_shape() -> None:
     """Render the provider-neutral project shape implied by the contract."""
     control_plane = LocalControlPlane()
     try:
         shape = control_plane.plan_project_shape()
     except (ContractError, ConfigError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(shape, rich=_project_shape_table(shape))
+    _output().emit(shape, rich=_project_shape_table(shape))
 
 
-@control_plane_app.command("sync")
+@control_plane_app.command(name="sync")
 def sync_control_plane(
-    context: typer.Context,
     apply_changes: Annotated[
         bool,
-        typer.Option("--apply", help="Apply remote GitHub changes. Defaults to dry run."),
+        Parameter("--apply", help="Apply remote GitHub changes. Defaults to dry run."),
     ] = False,
     issue_key: Annotated[
         str | None,
-        typer.Option("--issue-key", help="Sync one planning contract issue key."),
+        Parameter("--issue-key", help="Sync one planning contract issue key."),
     ] = None,
     refresh_cache: Annotated[
         bool,
-        typer.Option("--refresh-cache", help="Ignore cached remote identity and rediscover."),
+        Parameter("--refresh-cache", help="Ignore cached remote identity and rediscover."),
     ] = False,
 ) -> None:
     """Create/update GitHub issues from the local planning contract."""
@@ -410,31 +477,30 @@ def sync_control_plane(
             refresh_cache=refresh_cache,
         )
     except (ContractError, ConfigError, FileNotFoundError, GitHubApiError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(result, rich=_sync_table(result))
+    _output().emit(result, rich=_sync_table(result))
 
 
-@agent_workflow_app.command("validate")
-def validate_agent_workflow_command(context: typer.Context) -> None:
+@agent_workflow_app.command(name="validate")
+def validate_agent_workflow_command() -> None:
     """Validate the repo-authored agent workflow and rendered Codex constraints."""
     control_plane = LocalControlPlane()
     try:
         result = control_plane.validate_agent_workflow()
     except (ContractError, ConfigError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(result, rich=_validation_table("Agent Workflow Validation", result))
+    _output().emit(result, rich=_validation_table("Agent Workflow Validation", result))
     if not result.valid:
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
-@agent_workflow_app.command("diff")
+@agent_workflow_app.command(name="diff")
 def diff_agent_workflow(
-    context: typer.Context,
     target: Annotated[
         str,
-        typer.Option("--target", help="Projection target. Supported: codex-cli."),
+        Parameter("--target", help="Projection target. Supported: codex-cli."),
     ],
 ) -> None:
     """Compare rendered agent workflow artifacts to the working tree."""
@@ -442,23 +508,22 @@ def diff_agent_workflow(
     try:
         result = control_plane.agent_workflow_diff(target)
     except (ContractError, ConfigError, OSError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(result, rich=_agent_workflow_projection_table(result))
+    _output().emit(result, rich=_agent_workflow_projection_table(result))
     if result.conflicts:
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
-@agent_workflow_app.command("install")
+@agent_workflow_app.command(name="install")
 def install_agent_workflow(
-    context: typer.Context,
     target: Annotated[
         str,
-        typer.Option("--target", help="Projection target. Supported: codex-cli."),
+        Parameter("--target", help="Projection target. Supported: codex-cli."),
     ],
     apply_changes: Annotated[
         bool,
-        typer.Option("--apply", help="Write non-conflicting managed artifacts."),
+        Parameter("--apply", help="Write non-conflicting managed artifacts."),
     ] = False,
 ) -> None:
     """Install rendered agent workflow artifacts. Defaults to dry run."""
@@ -466,19 +531,18 @@ def install_agent_workflow(
     try:
         result = control_plane.agent_workflow_install(target, apply_changes=apply_changes)
     except (ContractError, ConfigError, OSError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(result, rich=_agent_workflow_projection_table(result))
+    _output().emit(result, rich=_agent_workflow_projection_table(result))
     if result.conflicts:
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
-@agent_workflow_app.command("check-drift")
+@agent_workflow_app.command(name="check-drift")
 def check_agent_workflow_drift(
-    context: typer.Context,
     target: Annotated[
         str,
-        typer.Option("--target", help="Projection target. Supported: codex-cli."),
+        Parameter("--target", help="Projection target. Supported: codex-cli."),
     ],
 ) -> None:
     """Fail when managed agent workflow artifacts drift from rendered content."""
@@ -486,32 +550,30 @@ def check_agent_workflow_drift(
     try:
         result = control_plane.agent_workflow_check_drift(target)
     except (ContractError, ConfigError, OSError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(result, rich=_agent_workflow_projection_table(result))
+    _output().emit(result, rich=_agent_workflow_projection_table(result))
     if result.drift:
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
-@pull_request_app.command("status")
+@pull_request_app.command(name="status")
 def pull_request_status(
-    context: typer.Context,
     issue_key: Annotated[
         str,
-        typer.Option("--issue-key", help="Planning contract issue key."),
+        Parameter("--issue-key", help="Planning contract issue key."),
     ],
     base_ref_name: Annotated[
         str,
-        typer.Option("--base", help="Base branch for draft pull request creation."),
+        Parameter("--base", help="Base branch for draft pull request creation."),
     ] = "main",
     run_checks: Annotated[
         bool,
-        typer.Option("--run-checks", help="Run local required checks while reporting status."),
+        Parameter("--run-checks", help="Run local required checks while reporting status."),
     ] = False,
 ) -> None:
     """Report the guarded PR workflow state for an issue."""
     _run_pull_request_workflow(
-        context,
         issue_key=issue_key,
         command=PullRequestCommand.STATUS,
         apply_changes=False,
@@ -520,25 +582,23 @@ def pull_request_status(
     )
 
 
-@pull_request_app.command("sync")
+@pull_request_app.command(name="sync")
 def pull_request_sync(
-    context: typer.Context,
     issue_key: Annotated[
         str,
-        typer.Option("--issue-key", help="Planning contract issue key."),
+        Parameter("--issue-key", help="Planning contract issue key."),
     ],
     apply_changes: Annotated[
         bool,
-        typer.Option("--apply", help="Apply remote GitHub PR changes. Defaults to dry run."),
+        Parameter("--apply", help="Apply remote GitHub PR changes. Defaults to dry run."),
     ] = False,
     base_ref_name: Annotated[
         str,
-        typer.Option("--base", help="Base branch for draft pull request creation."),
+        Parameter("--base", help="Base branch for draft pull request creation."),
     ] = "main",
 ) -> None:
     """Create or update the managed draft pull request for an issue."""
     _run_pull_request_workflow(
-        context,
         issue_key=issue_key,
         command=PullRequestCommand.SYNC,
         apply_changes=apply_changes,
@@ -547,25 +607,23 @@ def pull_request_sync(
     )
 
 
-@pull_request_app.command("ready")
+@pull_request_app.command(name="ready")
 def pull_request_ready(
-    context: typer.Context,
     issue_key: Annotated[
         str,
-        typer.Option("--issue-key", help="Planning contract issue key."),
+        Parameter("--issue-key", help="Planning contract issue key."),
     ],
     apply_changes: Annotated[
         bool,
-        typer.Option("--apply", help="Mark the draft PR ready when all gates pass."),
+        Parameter("--apply", help="Mark the draft PR ready when all gates pass."),
     ] = False,
     base_ref_name: Annotated[
         str,
-        typer.Option("--base", help="Base branch for draft pull request creation."),
+        Parameter("--base", help="Base branch for draft pull request creation."),
     ] = "main",
 ) -> None:
     """Move a managed draft pull request to review when gates pass."""
     _run_pull_request_workflow(
-        context,
         issue_key=issue_key,
         command=PullRequestCommand.READY,
         apply_changes=apply_changes,
@@ -574,12 +632,11 @@ def pull_request_ready(
     )
 
 
-@capabilities_app.command("refresh")
+@capabilities_app.command(name="refresh")
 def refresh_capabilities(
-    context: typer.Context,
     output: Annotated[
         Path | None,
-        typer.Option("--output", help="Manifest path to write."),
+        Parameter("--output", help="Manifest path to write."),
     ] = None,
 ) -> None:
     """Refresh cached GitHub GraphQL capability metadata."""
@@ -587,18 +644,17 @@ def refresh_capabilities(
         manifest = refresh_github_capabilities()
         path = write_github_capabilities(manifest, path=output)
     except (httpx.HTTPError, OSError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
     payload = {"path": path, "manifest": capability_summary(manifest)}
-    _output(context).emit(payload, rich=f"[green]Wrote[/green] {path}")
+    _output().emit(payload, rich=f"[green]Wrote[/green] {path}")
 
 
-@capabilities_app.command("check")
+@capabilities_app.command(name="check")
 def check_capabilities(
-    context: typer.Context,
     manifest: Annotated[
         Path | None,
-        typer.Option("--manifest", help="Capability manifest path to check."),
+        Parameter("--manifest", help="Capability manifest path to check."),
     ] = None,
 ) -> None:
     """Check referenced GraphQL capabilities against the cached manifest."""
@@ -606,19 +662,18 @@ def check_capabilities(
     try:
         result = control_plane.validate_github_capabilities()
     except (ConfigError, FileNotFoundError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(result, rich=_validation_table("GitHub GraphQL Capabilities", result))
+    _output().emit(result, rich=_validation_table("GitHub GraphQL Capabilities", result))
     if not result.valid:
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
-@vanguard_changespec_app.command("init")
+@vanguard_changespec_app.command(name="init")
 def init_vanguard_changespec(
-    context: typer.Context,
     issue_key: Annotated[
         str,
-        typer.Option("--issue-key", help="Planning contract issue key."),
+        Parameter("--issue-key", help="Planning contract issue key."),
     ],
 ) -> None:
     """Render a draft Vanguard ChangeSpec for a control-plane issue."""
@@ -626,53 +681,51 @@ def init_vanguard_changespec(
     try:
         agent_context = control_plane.render_agent_context(issue_key)
     except (ContractError, ConfigError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(draft_changespec_from_agent_context(agent_context))
+    _output().emit(draft_changespec_from_agent_context(agent_context))
 
 
-@vanguard_changespec_app.command("validate")
+@vanguard_changespec_app.command(name="validate")
 def validate_vanguard_changespec(
-    context: typer.Context,
-    path: Annotated[Path, typer.Argument(help="ChangeSpec JSON path.")],
+    path: Path,
 ) -> None:
     """Validate a Vanguard ChangeSpec JSON file."""
     try:
         result = validate_changespec_file(path)
     except OSError as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(result, rich=_validation_table("Vanguard ChangeSpec", result))
+    _output().emit(result, rich=_validation_table("Vanguard ChangeSpec", result))
     if not result.valid:
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
-@vanguard_qa_app.command("plan")
+@vanguard_qa_app.command(name="plan")
 def plan_vanguard_qa(
-    context: typer.Context,
-    path: Annotated[Path, typer.Argument(help="ChangeSpec JSON path.")],
+    path: Path,
 ) -> None:
     """Render deterministic, non-mutating QA command records."""
     try:
         spec, validation = read_changespec_file(path)
     except OSError as error:
-        _fail(context, str(error))
+        _fail(str(error))
     if not validation.valid or spec is None:
-        _output(context).emit(validation, rich=_validation_table("Vanguard ChangeSpec", validation))
-        raise typer.Exit(1)
+        _output().emit(validation, rich=_validation_table("Vanguard ChangeSpec", validation))
+        raise SystemExit(1)
 
     try:
         qa_plan = plan_qa(spec)
     except ValueError as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(qa_plan)
+    _output().emit(qa_plan)
 
 
-@vanguard_templates_app.command("render")
-def render_vanguard_templates(context: typer.Context) -> None:
+@vanguard_templates_app.command(name="render")
+def render_vanguard_templates() -> None:
     """Render deterministic Vanguard workflow templates."""
-    _output(context).emit_collection("templates", render_templates())
+    _output().emit_collection("templates", render_templates())
 
 
 def _validation_table(title: str, result: ValidationResult) -> Table:
@@ -770,6 +823,58 @@ def _agent_workflow_projection_table(result: AgentWorkflowProjectionResult) -> T
     return table
 
 
+def _agents_table(agents: Sequence[AgentSummary]) -> Table:
+    table = Table(title="BlackCell Agents")
+    table.add_column("Key")
+    table.add_column("Mode")
+    table.add_column("Writes")
+    table.add_column("Description")
+    for agent in agents:
+        table.add_row(agent.key, agent.mode, agent.writes, agent.description)
+    return table
+
+
+def _agent_artifacts_table(artifacts: Sequence[RenderedAgentArtifact]) -> Table:
+    table = Table(title="Rendered Agent Artifacts")
+    table.add_column("Kind")
+    table.add_column("Path")
+    table.add_column("Digest")
+    for artifact in artifacts:
+        table.add_row(artifact.kind, artifact.path, artifact.digest)
+    return table
+
+
+def _agent_projection_table(result: AgentProjectionResult) -> Table:
+    title = f"Agent Pack {result.operation} ({result.scope})"
+    if result.dry_run:
+        title += " (dry run)"
+    table = Table(title=title)
+    table.add_column("Action")
+    table.add_column("Path")
+    table.add_column("Applied")
+    table.add_column("Digest")
+    table.add_column("Message")
+    for action in result.actions:
+        table.add_row(
+            action.action,
+            action.path,
+            str(action.applied),
+            action.digest,
+            action.message,
+        )
+    return table
+
+
+def _agent_doctor_table(report: AgentDoctorReport) -> Table:
+    table = Table(title=f"Agent Pack Doctor ({report.scope})")
+    table.add_column("Check")
+    table.add_column("OK")
+    table.add_column("Message")
+    for check in report.checks:
+        table.add_row(check.key, str(check.ok), check.message)
+    return table
+
+
 def _pull_request_table(result: PullRequestWorkflowResult) -> Table:
     title = "Control Plane PR"
     if result.dry_run:
@@ -787,7 +892,6 @@ def _pull_request_table(result: PullRequestWorkflowResult) -> Table:
 
 
 def _run_pull_request_workflow(
-    context: typer.Context,
     *,
     issue_key: str,
     command: PullRequestCommand,
@@ -805,27 +909,26 @@ def _run_pull_request_workflow(
             base_ref_name=base_ref_name,
         )
     except (ContractError, ConfigError, FileNotFoundError, GitHubApiError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(result, rich=_pull_request_table(result))
+    _output().emit(result, rich=_pull_request_table(result))
 
 
-@project_app.command("items")
+@project_app.command(name="items")
 def list_project_items(
-    context: typer.Context,
     first: Annotated[
         int,
-        typer.Option("--first", min=1, max=100, help="Number of project items to read."),
+        Parameter("--first", help="Number of project items to read."),
     ] = 20,
 ) -> None:
     """List project items through the active project provider."""
-    provider = _provider(context)
+    provider = _provider()
     try:
         items = provider.list_project_items(first=first)
     except GitHubApiError as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit_collection("items", items, rich=_project_items_table(items))
+    _output().emit_collection("items", items, rich=_project_items_table(items))
 
 
 def _project_items_table(items: Sequence[ProjectItemRef]) -> Table:
@@ -844,19 +947,18 @@ def _project_items_table(items: Sequence[ProjectItemRef]) -> Table:
     return table
 
 
-@issue_app.command("read")
+@issue_app.command(name="read")
 def read_issue(
-    context: typer.Context,
-    number: Annotated[int, typer.Argument(help="Issue number to read.")],
+    number: int,
 ) -> None:
     """Read a configured repo issue through the active project provider."""
-    provider = _provider(context)
+    provider = _provider()
     try:
         issue = provider.read_issue(number)
     except GitHubApiError as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(issue, rich=_issue_table(issue))
+    _output().emit(issue, rich=_issue_table(issue))
 
 
 def _issue_table(issue: IssueRef) -> Table:
@@ -871,31 +973,30 @@ def _issue_table(issue: IssueRef) -> Table:
     return table
 
 
-@issue_app.command("create")
+@issue_app.command(name="create")
 def create_issue(
-    context: typer.Context,
-    title: Annotated[str, typer.Argument(help="Issue title.")],
+    title: str,
     body: Annotated[
         str,
-        typer.Option("--body", "-b", help="Issue body."),
+        Parameter(("--body", "-b"), help="Issue body."),
     ] = "",
 ) -> None:
     """Create a repo issue and attach it to the configured project."""
-    provider = _provider(context)
+    provider = _provider()
     try:
         issue = provider.create_issue(CreateIssueRequest(title=title, body=body))
     except GitHubApiError as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
-    _output(context).emit(issue, rich=f"[green]Created[/green] #{issue.number}: {issue.url}")
+    _output().emit(issue, rich=f"[green]Created[/green] #{issue.number}: {issue.url}")
 
 
-def _provider(context: typer.Context) -> ProjectProvider:
+def _provider() -> ProjectProvider:
     try:
         config = load_config()
         return default_registry().create(config.provider, config)
     except (ConfigError, ValueError) as error:
-        _fail(context, str(error))
+        _fail(str(error))
 
 
 def _project_id_from_environment() -> str:
@@ -933,51 +1034,144 @@ def _infer_github_repository() -> str:
     raise ValueError(f"could not infer GitHub repository from origin remote: {remote}")
 
 
-def _output(context: typer.Context) -> OutputRenderer:
-    context.ensure_object(dict)
-    output = context.obj.get("output")
-    if isinstance(output, OutputRenderer):
-        return output
+def _world_snapshot_table(snapshot: WorldSnapshot) -> Table:
+    table = Table(title="World Snapshot")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Repo root", str(snapshot.repo_root))
+    table.add_row("Branch", snapshot.branch or "unknown")
+    table.add_row("Observations", str(len(snapshot.observations)))
+    table.add_row("Facts", str(len(snapshot.facts)))
+    table.add_row("Beliefs", str(len(snapshot.beliefs)))
+    table.add_row("Expectations", str(len(snapshot.expectations)))
+    table.add_row("Surprises", str(len(snapshot.surprises)))
+    return table
 
-    output = OutputRenderer()
-    context.obj["output"] = output
-    return output
+
+def _facts_table(facts: Sequence[Fact]) -> Table:
+    table = Table(title="Facts")
+    table.add_column("Subject")
+    table.add_column("Predicate")
+    table.add_column("Object")
+    table.add_column("Source")
+    for fact in facts:
+        table.add_row(fact.subject, fact.predicate, fact.object, fact.source)
+    return table
+
+
+def _rule_validation_table(result: RuleValidationResult) -> Table:
+    table = Table(title="NeSy Validation")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Valid", "yes" if result.valid else "no")
+    table.add_row("Errors", str(len(result.errors)))
+    table.add_row("Warnings", str(len(result.warnings)))
+    return table
+
+
+def _harness_plan_table(plan: HarnessPlan) -> Table:
+    table = Table(title="Harness Plan")
+    table.add_column("Step")
+    table.add_column("Summary")
+    table.add_column("Uses")
+    for step in plan.steps:
+        table.add_row(step.key, step.summary, ", ".join(step.uses))
+    return table
+
+
+def _run_trace_table(trace: RunTrace) -> Table:
+    table = Table(title="Run Trace")
+    table.add_column("#")
+    table.add_column("Kind")
+    table.add_column("Message")
+    for event in trace.events:
+        table.add_row(str(event.index), event.kind, event.message)
+    return table
+
+
+def _runtime_adapters_table(adapters: Sequence[RuntimeAdapter]) -> Table:
+    table = Table(title="Runtime Adapters")
+    table.add_column("Name")
+    table.add_column("Available")
+    table.add_column("Kind")
+    table.add_column("Write")
+    for adapter in adapters:
+        table.add_row(
+            adapter.name,
+            "yes" if adapter.available else "no",
+            adapter.kind,
+            "yes" if adapter.supports_write else "no",
+        )
+    return table
+
+
+def _doctor_table(report: DoctorReport) -> Table:
+    table = Table(title="Doctor")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Repo root", report.repo_root)
+    table.add_row("Branch", report.branch or "unknown")
+    table.add_row("Adapters", str(report.adapter_count))
+    return table
+
+
+def _validate_agent_target(target: str) -> None:
+    if target != OPENCODE_TARGET:
+        raise ValueError("agent target must be opencode")
+
+
+def _output() -> OutputRenderer:
+    return _OUTPUT
 
 
 def _configure_output(
-    context: typer.Context,
     *,
     rich: bool,
     jsonl: bool,
     output_format: str | None,
     force: bool = False,
 ) -> None:
-    context.ensure_object(dict)
-    if (
-        not force
-        and not rich
-        and not jsonl
-        and output_format is None
-        and isinstance(context.obj.get("output"), OutputRenderer)
-    ):
+    global _OUTPUT
+    if not force and not rich and not jsonl and output_format is None:
         return
 
-    try:
-        output = OutputRenderer.from_flags(
-            rich=rich,
-            jsonl=jsonl,
-            output_format=output_format,
-        )
-    except ValueError as error:
-        OutputRenderer().emit_error(str(error))
-        raise typer.Exit(2) from error
-
-    context.obj["output"] = output
+    _OUTPUT = OutputRenderer.from_flags(
+        rich=rich,
+        jsonl=jsonl,
+        output_format=output_format,
+    )
 
 
-def _fail(context: typer.Context, message: str, *, code: int = 1) -> Never:
-    _output(context).emit_error(message)
-    raise typer.Exit(code)
+def _extract_output_flags(tokens: str | Iterable[str]) -> tuple[list[str], bool, bool, str | None]:
+    token_list = tokens.split() if isinstance(tokens, str) else list(tokens)
+
+    parsed: list[str] = []
+    rich = False
+    jsonl = False
+    output_format: str | None = None
+    index = 0
+    while index < len(token_list):
+        token = token_list[index]
+        if token == "--rich":
+            rich = True
+        elif token == "--jsonl":
+            jsonl = True
+        elif token == "--format":
+            index += 1
+            if index >= len(token_list):
+                raise SystemExit(2)
+            output_format = token_list[index]
+        elif token.startswith("--format="):
+            output_format = token.removeprefix("--format=")
+        else:
+            parsed.append(token)
+        index += 1
+    return parsed, rich, jsonl, output_format
+
+
+def _fail(message: str, *, code: int = 1) -> Never:
+    _output().emit_error(message)
+    raise SystemExit(code)
 
 
 def main() -> None:

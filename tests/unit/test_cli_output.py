@@ -2,12 +2,12 @@ import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from blackcell.cli.app import app
 from blackcell.config import BlackcellConfig, ProjectRef, RepositoryRef, write_config
+from tests.cli_runner import CycloptsCliRunner
 
-runner = CliRunner()
+runner = CycloptsCliRunner()
 
 
 def test_config_show_defaults_to_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

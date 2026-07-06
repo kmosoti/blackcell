@@ -1,3 +1,13 @@
+---
+node: legacy/vanguard
+kind: legacy
+edges:
+  consumes:
+    - legacy/control-plane
+  superseded-by:
+    - concepts/harness
+---
+
 # Vanguard
 
 Vanguard is a spec-first QA workflow layer under the existing BlackCell CLI:

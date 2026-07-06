@@ -2,12 +2,12 @@ import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from blackcell.cli.app import app
 from blackcell.vanguard import DEFAULT_QA_COMMANDS
+from tests.cli_runner import CycloptsCliRunner
 
-runner = CliRunner()
+runner = CycloptsCliRunner()
 
 
 def test_vanguard_changespec_init_outputs_json(

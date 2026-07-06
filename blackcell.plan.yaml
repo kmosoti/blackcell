@@ -193,7 +193,7 @@ issues:
     areas_of_responsibility:
       - blackcell.plan.yaml
       - README.md
-      - docs/vanguard.md
+      - docs/legacy/vanguard.md
       - src/blackcell/cli/app.py
       - src/blackcell/vanguard/
       - tests/unit/test_vanguard.py
@@ -234,8 +234,8 @@ issues:
       - BCP-0006
     areas_of_responsibility:
       - README.md
-      - docs/control-plane-configuration.md
-      - docs/vanguard.md
+      - docs/legacy/control-plane.md
+      - docs/legacy/vanguard.md
       - src/blackcell/cli/app.py
       - src/blackcell/control_plane/pr.py
       - tests/unit/test_control_plane_cli.py
@@ -270,8 +270,8 @@ issues:
       - BCP-0007
     areas_of_responsibility:
       - blackcell.plan.yaml
-      - docs/control-plane-configuration.md
-      - docs/vanguard.md
+      - docs/legacy/control-plane.md
+      - docs/legacy/vanguard.md
       - src/blackcell/cli/app.py
       - src/blackcell/control_plane/agent_workflow.py
       - src/blackcell/control_plane/agent_rendering.py
@@ -311,7 +311,7 @@ issues:
     areas_of_responsibility:
       - pyproject.toml
       - README.md
-      - docs/control-plane-configuration.md
+      - docs/legacy/control-plane.md
       - src/blackcell/github_app/
       - src/blackcell/cli/app.py
       - src/blackcell/providers/github.py
@@ -359,7 +359,7 @@ issues:
       - src/blackcell/github_app/
       - tests/unit/test_github_provider.py
       - tests/unit/test_github_app.py
-      - docs/control-plane-configuration.md
+      - docs/legacy/control-plane.md
     scope:
       - Add a small GitHub auth provider protocol that returns bearer-token headers.
       - Keep GH_TOKEN and GITHUB_TOKEN as explicit local/dev auth providers.
@@ -390,7 +390,7 @@ issues:
     areas_of_responsibility:
       - src/blackcell/github_app/
       - tests/unit/test_github_app.py
-      - docs/control-plane-configuration.md
+      - docs/legacy/control-plane.md
     scope:
       - Add stdlib HMAC verification for X-Hub-Signature-256.
       - Parse GitHub App webhook headers and installation routing metadata.

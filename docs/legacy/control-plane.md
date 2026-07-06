@@ -1,3 +1,14 @@
+---
+node: legacy/control-plane
+kind: legacy
+edges:
+  replaced-by:
+    - concepts/harness
+    - concepts/custom-agents
+  related:
+    - legacy/vanguard
+---
+
 # Control Plane Configuration
 
 BlackCell keeps provider binding and authored planning state separate.
