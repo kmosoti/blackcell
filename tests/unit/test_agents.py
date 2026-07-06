@@ -42,6 +42,19 @@ def test_astrophage_permissions_allow_safe_work_and_gate_dangerous_actions() -> 
     assert "blackcell-*: allow" in astrophage.content
     assert "external_directory: deny" in astrophage.content
     assert "up to five concurrent blackcell-chimera worker packets" in astrophage.content
+    assert "multiple runs/waves" in astrophage.content
+
+
+def test_chimera_has_full_normal_work_access_with_gates() -> None:
+    artifacts = render_opencode_artifacts(scope=ConfigScope.PROJECT)
+    by_path = {artifact.path: artifact for artifact in artifacts}
+    chimera = by_path[".opencode/agents/blackcell-chimera.md"]
+
+    assert "edit: allow" in chimera.content
+    assert "'*': allow" in chimera.content
+    assert "git push*: ask" in chimera.content
+    assert "rm *: ask" in chimera.content
+    assert "external_directory: deny" in chimera.content
 
 
 def test_all_agents_allow_normal_git_and_gate_push_or_deletion() -> None:

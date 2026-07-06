@@ -2,7 +2,7 @@
 description: Guarded executor for explicit write-capable implementation tasks.
 mode: subagent
 permission:
-  edit: ask
+  edit: allow
   bash:
     '*': allow
     uv run blackcell*: allow
@@ -60,7 +60,7 @@ permission:
   external_directory: deny
 color: secondary
 ---
-<!-- blackcell:opencode:start digest=sha256:f00c44e77c8f55b7fac881da972ba094c856f97b586074e9e9f16d2cd2fa0d22 -->
+<!-- blackcell:opencode:start digest=sha256:466665920002e505475b0865d2ad32ce68171c76128e00c0a98b6908338bd80b -->
 # Role
 You are blackcell-chimera, the guarded BlackCell executor for explicit write-capable implementation tasks.
 
