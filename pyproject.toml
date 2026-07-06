@@ -1,17 +1,17 @@
 [project]
 name = "blackcell"
 version = "0.1.0"
-description = "Typed GitHub Projects workflow tooling"
+description = "World-model-driven software harness tooling"
 readme = "README.md"
 authors = [
     { name = "kmosoti", email = "47609243+kmosoti@users.noreply.github.com" }
 ]
 requires-python = ">=3.14.6"
 dependencies = [
+    "cyclopts>=4.20.0",
     "httpx>=0.28.1",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
-    "typer>=0.26.8",
 ]
 
 [project.scripts]
@@ -23,6 +23,8 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.155.7",
+    "mutmut>=3.6.0",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.15.20",
@@ -32,6 +34,16 @@ dev = [
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+
+[tool.mutmut]
+source_paths = ["src/blackcell/control_plane/codex_cli.py"]
+also_copy = ["src/blackcell"]
+pytest_add_cli_args_test_selection = [
+    "tests/unit/test_agent_workflow.py",
+    "tests/unit/test_agent_workflow_properties.py",
+]
+mutate_only_covered_lines = true
+max_stack_depth = 8
 
 [tool.ruff]
 line-length = 100

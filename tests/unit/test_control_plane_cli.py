@@ -2,11 +2,11 @@ import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from blackcell.cli.app import app
+from tests.cli_runner import CycloptsCliRunner
 
-runner = CliRunner()
+runner = CycloptsCliRunner()
 
 
 def test_control_plane_validate_defaults_to_json(

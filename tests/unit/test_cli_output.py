@@ -2,12 +2,12 @@ import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from blackcell.cli.app import app
 from blackcell.config import BlackcellConfig, ProjectRef, RepositoryRef, write_config
+from tests.cli_runner import CycloptsCliRunner
 
-runner = CliRunner()
+runner = CycloptsCliRunner()
 
 
 def test_config_show_defaults_to_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -49,6 +49,7 @@ def test_project_items_missing_token_reports_json_error(
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setenv("BLACKCELL_AUTH_FILE", str(tmp_path / "missing-auth.json"))
 
     result = runner.invoke(app, ["project", "items"], catch_exceptions=False)
 

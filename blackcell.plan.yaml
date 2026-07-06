@@ -18,8 +18,9 @@ global:
 pr_policy:
   require_issue_link: true
   required_checks:
-    - pytest
+    - ruff-format
     - ruff
+    - pytest
   merge_strategy: squash
 
 roadmaps:
@@ -192,7 +193,7 @@ issues:
     areas_of_responsibility:
       - blackcell.plan.yaml
       - README.md
-      - docs/vanguard.md
+      - docs/legacy/vanguard.md
       - src/blackcell/cli/app.py
       - src/blackcell/vanguard/
       - tests/unit/test_vanguard.py
@@ -233,8 +234,8 @@ issues:
       - BCP-0006
     areas_of_responsibility:
       - README.md
-      - docs/control-plane-configuration.md
-      - docs/vanguard.md
+      - docs/legacy/control-plane.md
+      - docs/legacy/vanguard.md
       - src/blackcell/cli/app.py
       - src/blackcell/control_plane/pr.py
       - tests/unit/test_control_plane_cli.py
@@ -256,6 +257,155 @@ issues:
       - issue_not_synced guidance points to the targeted control-plane sync command.
       - Vanguard remains read-only and does not gain qa run, remote mutation, or agent-spawning behavior.
       - Tests cover any changed guidance or CLI output.
+
+  - key: BCP-0008
+    title: Render Codex CLI agent workflow artifacts
+    type: feature
+    status: Review Required
+    priority: P0
+    complexity: 5
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0007
+    areas_of_responsibility:
+      - blackcell.plan.yaml
+      - docs/legacy/control-plane.md
+      - docs/legacy/vanguard.md
+      - src/blackcell/cli/app.py
+      - src/blackcell/control_plane/agent_workflow.py
+      - src/blackcell/control_plane/agent_rendering.py
+      - src/blackcell/control_plane/codex_cli.py
+      - tests/unit/test_agent_workflow.py
+      - tests/unit/test_agent_workflow_cli.py
+    scope:
+      - Render repo-authored agent_workflow metadata into managed Codex CLI project artifacts.
+      - Add dry-run diff, install, apply install, and drift-check commands for target codex-cli.
+      - Preserve unmanaged Markdown outside BlackCell managed sections.
+      - Treat Codex TOML files as whole-file managed and conflict on unmanaged existing TOML.
+    context:
+      - Control-plane owns the projection from blackcell.plan.yaml to local operational artifacts.
+      - The implementation must not spawn Codex, call Codex APIs, or require Codex to be installed.
+      - Rendered Codex agents are read-only and limited to evidence drafting or quality review.
+      - Vanguard may consume workflow context but does not own or install Codex artifacts.
+    change_spec:
+      - Add agent workflow validation for rendered Codex CLI constraints and prohibited guidance.
+      - Add deterministic TOML and Markdown artifact rendering with BlackCell markers and SHA-256 digests.
+      - Add Codex CLI artifact comparison, dry-run install, apply install, and drift detection.
+      - Document ownership, marker policy, conflict behavior, and drift workflow.
+    acceptance_criteria:
+      - agent-workflow commands require --target codex-cli for file projection.
+      - Dry-run install reports create, update, noop, or conflict actions without writing.
+      - Apply install writes only non-conflicting managed artifacts.
+      - check-drift exits non-zero when any managed artifact differs, is missing, or conflicts.
+      - Tests cover rendering, idempotence, conflict handling, Markdown preservation, validation, and CLI behavior.
+
+  - key: BCP-0009
+    title: Add GitHub App installation-token auth
+    type: feature
+    status: Todo
+    priority: P0
+    complexity: 8
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    areas_of_responsibility:
+      - pyproject.toml
+      - README.md
+      - docs/legacy/control-plane.md
+      - src/blackcell/github_app/
+      - src/blackcell/cli/app.py
+      - src/blackcell/providers/github.py
+      - tests/unit/test_github_app.py
+      - tests/unit/test_cli_output.py
+    scope:
+      - Add pyjwt[crypto] and pydantic-settings as the minimal GitHub App auth dependencies.
+      - Load GitHub App settings from BLACKCELL_GITHUB_* environment variables.
+      - Generate GitHub App JWTs from the app private key.
+      - Discover or accept the installation ID for the configured repository.
+      - Exchange app JWTs for short-lived installation access tokens.
+      - Cache installation token metadata until near expiry without printing token material.
+      - Add github-app CLI commands for JWT, installations, installation-token, and auth-check.
+    context:
+      - BlackCell control-plane sync acts as the installed app, not as an OAuth device-flow user.
+      - Installation tokens expire after one hour and must be regenerated from a signed app JWT.
+      - The app private key is operator-owned secret material and must stay outside the repository.
+      - Token values must not be printed in CLI output.
+      - GH_TOKEN and GITHUB_TOKEN remain the local development fallback until app auth is wired into the provider.
+    change_spec:
+      - Add blackcell.github_app settings and installation-token modules.
+      - Use httpx for GitHub REST and GraphQL calls; do not add a GitHub SDK.
+      - Add owner-only cache writes for installation-token metadata.
+      - Add JSON-first CLI commands for inspection and auth preflight.
+      - Document required app ID, private key, installation ID, and permission setup.
+    acceptance_criteria:
+      - Auth commands emit JSON-first sanitized status and never print bearer tokens.
+      - auth-check validates repository lookup and configured Project V2 node access.
+      - Installation tokens are regenerated before expiry.
+      - Private key path/value handling is covered without committing secret material.
+      - Tests cover JWT claim construction, installation-token exchange, cache expiry, and CLI output.
+
+  - key: BCP-0010
+    title: Wire GitHub provider auth strategies
+    type: feature
+    status: Backlog
+    priority: P0
+    complexity: 5
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0009
+    areas_of_responsibility:
+      - src/blackcell/providers/github.py
+      - src/blackcell/github_app/
+      - tests/unit/test_github_provider.py
+      - tests/unit/test_github_app.py
+      - docs/legacy/control-plane.md
+    scope:
+      - Add a small GitHub auth provider protocol that returns bearer-token headers.
+      - Keep GH_TOKEN and GITHUB_TOKEN as explicit local/dev auth providers.
+      - Add a GitHub App auth provider that supplies cached installation tokens.
+      - Keep Projects, Issues, PRs, and GraphQL behavior inside the existing provider.
+    context:
+      - GitHub App auth is a credential adapter, not a replacement control-plane provider.
+      - Existing BlackCell provider tests should remain focused on GitHub behavior, not SDK behavior.
+    change_spec:
+      - Introduce TokenEnvAuthProvider and GitHubAppAuthProvider.
+      - Let GitHubProjectsProvider depend on an auth header source instead of reading every token source directly.
+      - Preserve current env-token precedence unless BLACKCELL_GITHUB_AUTH_MODE=app is selected.
+    acceptance_criteria:
+      - Existing provider tests pass with env-token auth.
+      - New tests cover app-token auth without hitting GitHub.
+      - Missing-token errors tell operators which auth modes are configured and what is missing.
+
+  - key: BCP-0011
+    title: Plan optional GitHub App webhook verification
+    type: feature
+    status: Backlog
+    priority: P2
+    complexity: 3
+    epic: EPIC-CONTROL-PLANE
+    milestone: MS-CP-1
+    depends_on:
+      - BCP-0009
+    areas_of_responsibility:
+      - src/blackcell/github_app/
+      - tests/unit/test_github_app.py
+      - docs/legacy/control-plane.md
+    scope:
+      - Add stdlib HMAC verification for X-Hub-Signature-256.
+      - Parse GitHub App webhook headers and installation routing metadata.
+      - Keep any always-on web server dependency optional and out of the core CLI path.
+    context:
+      - BlackCell is currently a local CLI control-plane that syncs outward.
+      - Webhook support changes the operating model and should remain optional.
+    change_spec:
+      - Add webhook signature helpers using hmac.compare_digest.
+      - Add delivery dedupe planning against SQLite cache state.
+      - Document optional github-app-web extra only when a server slice is accepted.
+    acceptance_criteria:
+      - Signature verification rejects missing, malformed, and mismatched signatures.
+      - Valid signatures pass using the configured webhook secret.
+      - No FastAPI, Uvicorn, queue, or Redis dependency is added to the core package.
 
 native_automation:
   - key: native-validate-contract
@@ -300,3 +450,25 @@ agent_workflow:
         - tests/unit/test_control_plane_cli.py
       change_spec:
         - Own fixtures and validation scenarios.
+  codex_cli:
+    max_threads: 6
+    max_depth: 1
+    agents:
+      - key: spark-evidence-drafter
+        name: spark-evidence-drafter
+        description: Drafts evidence summaries from repository context without approving behavior.
+        developer_instructions: |
+          You are the BlackCell Spark evidence drafter for this repository.
+          Operate in read-only mode. Inspect repository-authored planning context and summarize evidence only.
+          Do not approve behavior, draft fixes, edit files, run mutating commands, or request remote state changes.
+          Return concise notes that separate observed facts from open questions.
+        sandbox_mode: read-only
+      - key: quality-reviewer
+        name: quality-reviewer
+        description: Reviews repository changes for contract, test, and documentation risks.
+        developer_instructions: |
+          You are the BlackCell quality reviewer for repository changes.
+          Operate in read-only review mode. Inspect diffs, tests, docs, and contract context.
+          Report defects, missing coverage, and contract risks. Do not enter fix mode, edit files, commit changes, push branches, merge pull requests, close issues, or run remote-mutating workflows.
+          When suggesting verification, use non-mutating check commands only.
+        sandbox_mode: read-only

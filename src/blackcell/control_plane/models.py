@@ -1,3 +1,4 @@
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum, StrEnum
@@ -37,6 +38,10 @@ class Complexity(IntEnum):
 class ValidationLevel(StrEnum):
     ERROR = "error"
     WARNING = "warning"
+
+
+CODEX_AGENT_KEY_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]*$"
+_CODEX_AGENT_KEY_RE = re.compile(CODEX_AGENT_KEY_PATTERN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,9 +130,26 @@ class AgentWorker:
 
 
 @dataclass(frozen=True, slots=True)
+class CodexCliAgent:
+    key: str
+    name: str
+    description: str
+    developer_instructions: str
+    sandbox_mode: str = "read-only"
+
+
+@dataclass(frozen=True, slots=True)
+class CodexCliWorkflow:
+    max_threads: int = 6
+    max_depth: int = 1
+    agents: tuple[CodexCliAgent, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class AgentWorkflow:
     model: str
     workers: tuple[AgentWorker, ...] = ()
+    codex_cli: CodexCliWorkflow | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -392,13 +414,16 @@ def _agent_workflow(data: Mapping[str, Any], path: str) -> AgentWorkflow | None:
     if not data:
         return None
 
-    _reject_unknown(data, {"model", "workers"}, path)
+    _reject_unknown(data, {"model", "workers", "codex_cli"}, path)
     model = _string(data, "model", path)
     return AgentWorkflow(
         model=model,
         workers=tuple(
             _agent_worker(item, f"{path}.workers[{index}]", default_model=model)
             for index, item in enumerate(_sequence(data, "workers", path, default=()))
+        ),
+        codex_cli=_codex_cli_workflow(
+            _optional_mapping(data, "codex_cli", path), f"{path}.codex_cli"
         ),
     )
 
@@ -412,6 +437,37 @@ def _agent_worker(data: Any, path: str, *, default_model: str) -> AgentWorker:
         model=_string(mapping, "model", path, default=default_model),
         owns=_strings(mapping, "owns", path, default=()),
         change_spec=_strings(mapping, "change_spec", path, default=()),
+    )
+
+
+def _codex_cli_workflow(data: Mapping[str, Any], path: str) -> CodexCliWorkflow | None:
+    if not data:
+        return None
+
+    _reject_unknown(data, {"max_threads", "max_depth", "agents"}, path)
+    return CodexCliWorkflow(
+        max_threads=_int_default(data, "max_threads", path, default=6),
+        max_depth=_int_default(data, "max_depth", path, default=1),
+        agents=tuple(
+            _codex_cli_agent(item, f"{path}.agents[{index}]")
+            for index, item in enumerate(_sequence(data, "agents", path, default=()))
+        ),
+    )
+
+
+def _codex_cli_agent(data: Any, path: str) -> CodexCliAgent:
+    mapping = _as_mapping(data, path)
+    _reject_unknown(
+        mapping,
+        {"key", "name", "description", "developer_instructions", "sandbox_mode"},
+        path,
+    )
+    return CodexCliAgent(
+        key=_codex_agent_key(mapping, "key", path),
+        name=_string(mapping, "name", path),
+        description=_string(mapping, "description", path),
+        developer_instructions=_string(mapping, "developer_instructions", path),
+        sandbox_mode=_string(mapping, "sandbox_mode", path, default="read-only"),
     )
 
 
@@ -456,6 +512,16 @@ def _issue(data: Any, path: str) -> IssuePlan:
         acceptance_criteria=_strings(mapping, "acceptance_criteria", path, default=()),
         definition_of_ready=_strings(mapping, "definition_of_ready", path, default=()),
         definition_of_done=_strings(mapping, "definition_of_done", path, default=()),
+    )
+
+
+def _codex_agent_key(data: Mapping[str, Any], key: str, path: str) -> str:
+    value = _string(data, key, path)
+    if _CODEX_AGENT_KEY_RE.fullmatch(value):
+        return value
+    raise ValueError(
+        f"{path}.{key} must start with an ASCII letter or digit and contain only "
+        "ASCII letters, digits, hyphens, or underscores"
     )
 
 
@@ -530,6 +596,13 @@ def _strings(
 
 def _int(data: Mapping[str, Any], key: str, path: str) -> int:
     value = data.get(key)
+    if not isinstance(value, int):
+        raise ValueError(f"{path}.{key} must be an integer")
+    return value
+
+
+def _int_default(data: Mapping[str, Any], key: str, path: str, *, default: int) -> int:
+    value = data.get(key, default)
     if not isinstance(value, int):
         raise ValueError(f"{path}.{key} must be an integer")
     return value
