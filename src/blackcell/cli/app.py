@@ -1,5 +1,6 @@
 import sys
 from collections.abc import Callable, Iterable, Sequence
+from pathlib import Path
 from typing import Annotated, Any, Literal, Never
 
 from cyclopts import App, Parameter
@@ -22,6 +23,21 @@ from blackcell.agents import (
 )
 from blackcell.cli.output import OutputRenderer
 from blackcell.harness import HarnessPlan, RunTrace, plan_harness, run_harness
+from blackcell.latent import (
+    LatentLedgerRecordResult,
+    LatentLedgerStats,
+    LatentLedgerSummary,
+    LatentPredictionError,
+    LatentState,
+    PredictionSet,
+    encode_world_state,
+    load_transitions,
+    predict_next_states,
+    record_simulation,
+    simulate_transition,
+    summarize_ledger,
+    summarize_prediction_stats,
+)
 from blackcell.nesy import ValidationResult as RuleValidationResult
 from blackcell.nesy import build_default_rules, validate_ruleset
 from blackcell.runtime import DoctorReport, RuntimeAdapter, doctor_report, list_runtime_adapters
@@ -74,12 +90,14 @@ app = BlackCellCli(name="blackcell", help="BlackCell world-model harness tooling
 world_app = App(name="world")
 nesy_app = App(name="nesy")
 harness_app = App(name="harness")
+latent_app = App(name="latent")
 adapters_app = App(name="adapters")
 agents_app = App(name="agents")
 
 app.command(world_app)
 app.command(nesy_app)
 app.command(harness_app)
+app.command(latent_app)
 app.command(adapters_app)
 app.command(agents_app)
 
@@ -121,14 +139,108 @@ def harness_run_command(
         str,
         Parameter("--runtime", help="Runtime adapter to use."),
     ] = "dry-run",
+    latent_db: Annotated[
+        Path | None,
+        Parameter("--latent-db", help="Optional SQLite ledger path for latent recording."),
+    ] = None,
+    latent: Annotated[
+        Literal["off", "summary", "record", "stats"],
+        Parameter("--latent", help="Latent mode: off, summary, record, or stats."),
+    ] = "summary",
+    show_stats: Annotated[
+        bool,
+        Parameter("--show-stats", help="Include latent ledger stats in dry-run output."),
+    ] = False,
 ) -> None:
     """Run the first harness loop through a runtime adapter."""
-    plan = plan_harness(observe_repo())
+    snapshot = observe_repo()
+    plan = plan_harness(snapshot)
+    latent_mode = _resolve_latent_mode(latent=latent, latent_db=latent_db, show_stats=show_stats)
     try:
-        trace = run_harness(plan, runtime=runtime)
+        trace = run_harness(
+            plan,
+            runtime=runtime,
+            snapshot=snapshot,
+            latent_db=latent_db,
+            latent_mode=latent_mode,
+        )
     except ValueError as error:
         _fail(str(error))
     _output().emit(trace, rich=_run_trace_table(trace))
+
+
+@latent_app.command(name="encode")
+def latent_encode() -> None:
+    """Encode the current world snapshot as a deterministic latent capsule."""
+    state = encode_world_state(observe_repo())
+    _output().emit(state, rich=_latent_state_table(state))
+
+
+@latent_app.command(name="predict")
+def latent_predict(
+    db: Annotated[
+        Path | None,
+        Parameter("--db", help="Optional SQLite ledger path for transition memory."),
+    ] = None,
+) -> None:
+    """Predict candidate next latent states using non-parametric V0 memory."""
+    state = encode_world_state(observe_repo())
+    transition_memory = load_transitions(db) if db is not None else ()
+    stats = summarize_prediction_stats(db) if db is not None else None
+    labels_by_action = (
+        {action.action_id: action.confidence_label for action in stats.action_stats}
+        if stats is not None
+        else None
+    )
+    predictions = predict_next_states(
+        state,
+        transition_memory=transition_memory,
+        confidence_labels_by_action=labels_by_action,
+    )
+    _output().emit(predictions, rich=_latent_predictions_table(predictions))
+
+
+@latent_app.command(name="errors")
+def latent_errors() -> None:
+    """Simulate prediction/actual comparison and emit latent error evidence."""
+    result = simulate_transition(observe_repo())
+    _output().emit(result, rich=_latent_error_table(result.error))
+
+
+@latent_app.command(name="record")
+def latent_record(
+    db: Annotated[
+        Path,
+        Parameter("--db", help="SQLite ledger path."),
+    ] = Path(".blackcell/latent.sqlite3"),
+) -> None:
+    """Record a simulated latent transition in the local SQLite ledger."""
+    result = record_simulation(simulate_transition(observe_repo()), path=db)
+    _output().emit(result, rich=_latent_record_table(result))
+
+
+@latent_app.command(name="ledger")
+def latent_ledger(
+    db: Annotated[
+        Path,
+        Parameter("--db", help="SQLite ledger path."),
+    ] = Path(".blackcell/latent.sqlite3"),
+) -> None:
+    """Summarize the local latent SQLite ledger."""
+    summary = summarize_ledger(path=db)
+    _output().emit(summary, rich=_latent_ledger_table(summary))
+
+
+@latent_app.command(name="stats")
+def latent_stats(
+    db: Annotated[
+        Path,
+        Parameter("--db", help="SQLite ledger path."),
+    ] = Path(".blackcell/latent.sqlite3"),
+) -> None:
+    """Summarize ledger-backed latent prediction quality by action."""
+    stats = summarize_prediction_stats(path=db)
+    _output().emit(stats, rich=_latent_stats_table(stats))
 
 
 @adapters_app.command(name="list")
@@ -295,6 +407,99 @@ def _run_trace_table(trace: RunTrace) -> Table:
     return table
 
 
+def _latent_state_table(state: LatentState) -> Table:
+    table = Table(title="Latent State")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("State", state.state_id)
+    table.add_row("Source", state.source)
+    table.add_row("Encoder", state.encoder_version)
+    table.add_row("Facts", str(state.structural.get("fact_count", "unknown")))
+    table.add_row("Dirty", str(state.structural.get("workspace_dirty", "unknown")))
+    return table
+
+
+def _latent_predictions_table(prediction_set: PredictionSet) -> Table:
+    table = Table(title="Latent Predictions")
+    table.add_column("Prediction")
+    table.add_column("Action")
+    table.add_column("Confidence")
+    table.add_column("Label")
+    table.add_column("Samples")
+    table.add_column("Checks")
+    for prediction in prediction_set.predictions:
+        table.add_row(
+            prediction.prediction_id,
+            prediction.action.kind,
+            str(prediction.confidence),
+            prediction.confidence_label,
+            str(prediction.sample_count),
+            ", ".join(prediction.required_checks),
+        )
+    return table
+
+
+def _latent_error_table(error: object) -> Table:
+    typed_error = error if isinstance(error, LatentPredictionError) else None
+    table = Table(title="Latent Prediction Error")
+    table.add_column("Field")
+    table.add_column("Value")
+    if typed_error is None:
+        return table
+    table.add_row("Error", typed_error.error_id)
+    table.add_row("Surprise", typed_error.surprise)
+    table.add_row("Semantic distance", str(typed_error.semantic_distance))
+    table.add_row("Structural deltas", str(len(typed_error.structural_delta)))
+    table.add_row("Symbolic deltas", str(len(typed_error.symbolic_delta)))
+    return table
+
+
+def _latent_record_table(result: LatentLedgerRecordResult) -> Table:
+    table = Table(title="Latent Ledger Record")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Path", str(result.path))
+    table.add_row("State", result.state_id)
+    table.add_row("Prediction", result.prediction_id)
+    table.add_row("Actual", result.actual_state_id)
+    table.add_row("Error", result.error_id)
+    table.add_row("Transition", result.transition_id)
+    table.add_row("Sample", result.sample_id)
+    return table
+
+
+def _latent_ledger_table(summary: LatentLedgerSummary) -> Table:
+    table = Table(title="Latent Ledger")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Path", str(summary.path))
+    table.add_row("Schema", str(summary.schema_version))
+    table.add_row("States", str(summary.state_count))
+    table.add_row("Predictions", str(summary.prediction_count))
+    table.add_row("Errors", str(summary.error_count))
+    table.add_row("Transitions", str(summary.transition_count))
+    table.add_row("Samples", str(summary.sample_count))
+    return table
+
+
+def _latent_stats_table(stats: LatentLedgerStats) -> Table:
+    table = Table(title="Latent Prediction Stats")
+    table.add_column("Action")
+    table.add_column("Samples")
+    table.add_column("Mean Semantic Distance")
+    table.add_column("Surprises")
+    table.add_column("Confidence")
+    for action in stats.action_stats:
+        table.add_row(
+            action.action_id,
+            str(action.sample_count),
+            str(action.mean_semantic_distance),
+            str(action.surprise_count),
+            action.confidence_label,
+        )
+    return table
+
+
 def _runtime_adapters_table(adapters: Sequence[RuntimeAdapter]) -> Table:
     table = Table(title="Runtime Adapters")
     table.add_column("Name")
@@ -376,6 +581,19 @@ def _agent_doctor_table(report: AgentDoctorReport) -> Table:
 def _validate_agent_target(target: str) -> None:
     if target != OPENCODE_TARGET:
         raise ValueError("agent target must be opencode")
+
+
+def _resolve_latent_mode(
+    *,
+    latent: Literal["off", "summary", "record", "stats"],
+    latent_db: Path | None,
+    show_stats: bool,
+) -> Literal["off", "summary", "record", "stats"]:
+    if show_stats:
+        return "stats"
+    if latent == "summary" and latent_db is not None:
+        return "record"
+    return latent
 
 
 def _output() -> OutputRenderer:

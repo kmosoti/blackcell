@@ -9,6 +9,7 @@ edges:
     - concepts/runtime-adapters
     - concepts/custom-agents
     - concepts/agent-operating-model
+    - guides/latent-harness-quickstart
     - targets/opencode
     - targets/containers
 ---
@@ -24,6 +25,13 @@ graph TD
     Harness --> Runtime[Runtime Adapters]
     Runtime --> Trace[Run Traces]
     Trace --> World
+    Trace --> Latent[Latent Prediction]
+    World --> Latent
+    NeSy --> Latent
+    Latent --> Surprise[Surprise / Revision]
+    Surprise --> World
+    Harness --> LatentGuide[Latent Harness Quickstart]
+    LatentGuide --> Latent
     Harness --> Agents[Custom Agents]
     Agents --> AgentModel[Agent Operating Model]
     Agents --> OpenCode[OpenCode Target]
@@ -34,5 +42,7 @@ graph TD
 
 - `atlas`: maps and vocabulary for navigating the graph
 - `concepts`: stable project ideas and internal seams
+- `guides`: user-facing workflows over stable concepts and specs
 - `targets`: generated or runtime-specific integration surfaces
 - `research`: reference notes that inform future design
+- `spec`: durable implementation plans and BCP-sized roadmap nodes

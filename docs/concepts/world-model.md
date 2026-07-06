@@ -38,3 +38,14 @@ This is intentionally minimal. The next steps can extend the model to include:
 - verification outcomes
 - contradiction tracking
 - provenance and confidence updates over time
+
+## Intended Latent Prediction Behavior
+
+The world model is expected to grow into a JEPA-inspired latent transition layer.
+The first usable slice encodes current world state into an inspectable latent
+capsule, predicts next latent state for candidate actions using transition
+memory, then compares the prediction with the next observed capsule. The error
+becomes surprise, revision, and self-supervision evidence.
+
+This is intended product behavior, but V0 is non-training-first and does not
+claim to be a true trained JEPA.

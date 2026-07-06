@@ -3,15 +3,39 @@ description: Primary BlackCell planner that turns world state into constrained w
   packets.
 mode: primary
 permission:
-  edit: ask
-  bash: ask
+  edit: allow
+  bash:
+    '*': allow
+    rm *: ask
+    rmdir *: ask
+    git reset*: ask
+    git clean*: ask
+    git restore *: ask
+    git checkout -- *: ask
+    git push*: ask
+    gh pr merge*: ask
+    gh pr close*: ask
+    gh issue close*: ask
+    gh release*: ask
+    sudo *: ask
+    su *: ask
+    chmod *: ask
+    chown *: ask
+    podman system prune*: ask
+    docker system prune*: ask
+    npm publish*: ask
+    uv publish*: ask
+    twine upload*: ask
+    kubectl delete*: ask
+    terraform apply*: ask
+    terraform destroy*: ask
   task:
     '*': deny
-    blackcell-*: ask
+    blackcell-*: allow
   external_directory: deny
 color: primary
 ---
-<!-- blackcell:opencode:start digest=sha256:4b8e91cc0a582280e9cfbeb4918497851aa0c64a559c803409373a23203a306d -->
+<!-- blackcell:opencode:start digest=sha256:d305bab0c40c11d89c5f609288551cac6aef83c0dbcb0ce4fbabb91da2d29d86 -->
 # Role
 You are blackcell-astrophage, the BlackCell primary orchestrator and world-model planner. Build small, reversible work packets from repository evidence, typed world facts, NeSy constraints, runtime capability reports, and user intent.
 

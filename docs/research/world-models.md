@@ -18,6 +18,13 @@ predictive latent state rather than surface reconstruction.
   reconstructing pixels.
 - V-JEPA extends feature prediction into video and is useful as a mental model
   for "predict useful latent state, not raw output".
+- V-JEPA 2 strengthens the analogy with encoder/predictor structure,
+  action-conditioned prediction, and planning over predicted embeddings.
+- AMI/world-model framing treats future prediction in abstract representation
+  space as the substrate for planning through possible action sequences.
+- Graph-JEPA, time-series JEPA, and related systems show that latent prediction
+  ideas are not limited to images or video. They remain research inspiration for
+  BlackCell rather than V0 dependencies.
 
 The software analogy is:
 
@@ -52,5 +59,8 @@ The first branch focuses on representation and interfaces:
 - planner seams
 - runtime adapters
 - run traces
+- deterministic latent capsules
+- transition-memory prediction
+- self-supervision samples for later learned baselines
 
 That keeps BlackCell flexible while the research direction solidifies.

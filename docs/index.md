@@ -7,6 +7,8 @@ edges:
   introduces:
     - concepts/world-model
     - concepts/harness
+    - guides/latent-harness-quickstart
+    - spec/index
     - targets/opencode
 ---
 
@@ -21,7 +23,9 @@ BlackCell docs are organized as a small graph rather than a flat list.
 - `concepts/world-model.md`: repository observation and typed facts
 - `concepts/nesy.md`: symbolic constraint seam
 - `concepts/harness.md`: planning and trace loop
+- `guides/latent-harness-quickstart.md`: copy-paste latent harness workflow
 - `concepts/custom-agents.md`: shippable BlackCell agent pack
 - `concepts/agent-operating-model.md`: shared agent and command protocol
+- `spec/index.md`: implementation roadmap and latent prediction specs
 - `targets/opencode.md`: preferred local agent target
 - `targets/containers.md`: container/devcontainer workflow
