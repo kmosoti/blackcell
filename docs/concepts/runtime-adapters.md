@@ -6,7 +6,6 @@ edges:
     - concepts/harness
   targets:
     - targets/opencode
-    - targets/codex-cli
     - targets/containers
 ---
 
@@ -25,7 +24,6 @@ BlackCell treats runtimes as adapters behind a stable harness interface.
 
 - `dry-run`: always available, no external dispatch
 - `opencode`: preferred local OpenCode adapter when installed
-- `codex`: optional local Codex CLI adapter when installed
 
 ## Future Adapters
 

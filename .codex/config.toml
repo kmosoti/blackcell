@@ -1,6 +1,0 @@
-# BlackCell managed: codex-cli agent workflow
-# blackcell:digest sha256:31c279fadde31242c333bbebc9d5f4cf7a1d2f55acf69ee38b83a129b73a2341
-# Generated from blackcell.plan.yaml; edit the contract and reinstall.
-[agents]
-max_threads = 6
-max_depth = 1

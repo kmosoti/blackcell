@@ -11,6 +11,7 @@ from blackcell.agents import (
     resolve_opencode_config_root,
 )
 from blackcell.agents.opencode import MARKDOWN_START_PREFIX
+from blackcell.agents.registry import blackcell_agent_commands, blackcell_agents
 
 
 def test_opencode_artifacts_render_markdown_frontmatter() -> None:
@@ -27,6 +28,40 @@ def test_opencode_artifacts_render_markdown_frontmatter() -> None:
     assert "edit: deny" in spore.content
     assert MARKDOWN_START_PREFIX in spore.content
     assert "agent: blackcell-spore" in observe.content
+
+
+def test_agent_prompts_keep_world_model_protocol_sections() -> None:
+    required = (
+        "# Role",
+        "# Operating Model",
+        "# Inputs",
+        "# Workflow",
+        "# Evidence Rules",
+        "# Constraint Rules",
+        "# Handoff Protocol",
+        "# Output Format",
+        "# Stop Conditions",
+        "# Failure Handling",
+    )
+
+    for agent in blackcell_agents():
+        for section in required:
+            assert section in agent.prompt, f"{agent.key} missing {section}"
+
+
+def test_command_prompts_keep_structured_workflow_sections() -> None:
+    required = (
+        "# Workflow",
+        "# Evidence Rules",
+        "# Output Format",
+        "# Verification",
+        "# Risks",
+        "# Stop Conditions",
+    )
+
+    for command in blackcell_agent_commands():
+        for section in required:
+            assert section in command.template, f"{command.key} missing {section}"
 
 
 def test_opencode_global_scope_uses_user_config_root(
@@ -80,7 +115,10 @@ def test_opencode_check_drift_detects_managed_change(tmp_path: Path) -> None:
     install_opencode_agent_pack(start=tmp_path, apply_changes=True)
     agent_path = tmp_path / ".opencode" / "agents" / "blackcell-spore.md"
     agent_path.write_text(
-        agent_path.read_text(encoding="utf-8").replace("Operate read-only.", "Operate quietly."),
+        agent_path.read_text(encoding="utf-8").replace(
+            "Observe the repository without changing it.",
+            "Observe the repository quietly.",
+        ),
         encoding="utf-8",
     )
 

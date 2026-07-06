@@ -6,6 +6,8 @@ edges:
     - targets/opencode
   planned-by:
     - concepts/harness
+  refined-by:
+    - concepts/agent-operating-model
 ---
 
 # Custom Agents
@@ -26,6 +28,11 @@ runtime-specific configuration.
 
 Generated artifacts are managed with BlackCell digest markers. Installs default
 to dry-run; writes require `--apply`.
+
+The generated prompts follow the shared
+[`agent-operating-model`](agent-operating-model.md): role-specific workflows,
+evidence rules, constraint rules, handoff protocols, output formats, stop
+conditions, and failure handling.
 
 ```bash
 uv run blackcell agents list

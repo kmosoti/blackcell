@@ -8,7 +8,6 @@ from blackcell.world.models import WorldSnapshot
 
 
 def list_runtime_adapters() -> tuple[RuntimeAdapter, ...]:
-    codex_available = shutil.which("codex") is not None
     opencode_available = _which_runtime("opencode", Path.home() / ".opencode" / "bin" / "opencode")
     return (
         RuntimeAdapter(
@@ -24,13 +23,6 @@ def list_runtime_adapters() -> tuple[RuntimeAdapter, ...]:
             kind="external-agent",
             supports_write=True,
             description="Preferred OpenCode adapter for local project or global agent packs.",
-        ),
-        RuntimeAdapter(
-            name="codex",
-            available=codex_available,
-            kind="external-agent",
-            supports_write=True,
-            description="Optional adapter for a locally installed Codex CLI runtime.",
         ),
     )
 

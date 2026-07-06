@@ -16,4 +16,3 @@ site
 .coverage
 .coverage.*
 node_modules
-generated/cache/control_plane.sqlite3

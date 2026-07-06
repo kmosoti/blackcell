@@ -4,71 +4,32 @@ from pathlib import Path
 import pytest
 
 from blackcell.cli.app import app
-from blackcell.config import BlackcellConfig, ProjectRef, RepositoryRef, write_config
 from tests.cli_runner import CycloptsCliRunner
 
 runner = CycloptsCliRunner()
 
 
-def test_config_show_defaults_to_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _write_test_config(tmp_path)
-    monkeypatch.chdir(tmp_path)
-
-    result = runner.invoke(app, ["config", "show"], catch_exceptions=False)
+def test_agents_list_jsonl_outputs_one_record_per_line() -> None:
+    result = runner.invoke(app, ["--jsonl", "agents", "list"], catch_exceptions=False)
 
     assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert payload["repository"]["owner"] == "kmosoti"
-    assert payload["project"]["id"] == "PVT_123"
+    records = [json.loads(line) for line in result.stdout.splitlines()]
+    assert records
+    assert records[0]["key"].startswith("blackcell-")
 
 
-def test_config_show_renders_rich_when_requested(
+def test_world_facts_renders_rich_when_requested(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _write_test_config(tmp_path)
+    _write_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ["--rich", "config", "show"], catch_exceptions=False)
+    result = runner.invoke(app, ["--rich", "world", "facts"], catch_exceptions=False)
 
     assert result.exit_code == 0
-    assert "BlackCell Config" in result.stdout
-    assert "PVT_123" in result.stdout
+    assert "Facts" in result.stdout
 
 
-def test_provider_list_jsonl_outputs_one_record_per_line() -> None:
-    result = runner.invoke(app, ["--jsonl", "providers", "list"], catch_exceptions=False)
-
-    assert result.exit_code == 0
-    assert [json.loads(line) for line in result.stdout.splitlines()] == [{"name": "github"}]
-
-
-def test_project_items_missing_token_reports_json_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _write_test_config(tmp_path)
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
-    monkeypatch.delenv("GH_TOKEN", raising=False)
-    monkeypatch.setenv("BLACKCELL_AUTH_FILE", str(tmp_path / "missing-auth.json"))
-
-    result = runner.invoke(app, ["project", "items"], catch_exceptions=False)
-
-    assert result.exit_code == 1
-    payload = json.loads(result.stderr)
-    assert payload == {
-        "error": {"message": "GITHUB_TOKEN or GH_TOKEN is required for GitHub API calls"}
-    }
-
-
-def _write_test_config(path: Path) -> None:
+def _write_repo(path: Path) -> None:
     (path / ".git").mkdir()
-    config = BlackcellConfig(
-        repository=RepositoryRef(owner="kmosoti", name="blackcell", node_id="R_123"),
-        project=ProjectRef(
-            id="PVT_123",
-            number=7,
-            title="BlackCell",
-            url="https://github.com/users/kmosoti/projects/7",
-        ),
-    )
-    write_config(config, start=path)
+    (path / "README.md").write_text("# Test\n", encoding="utf-8")

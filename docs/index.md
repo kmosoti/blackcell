@@ -22,7 +22,6 @@ BlackCell docs are organized as a small graph rather than a flat list.
 - `concepts/nesy.md`: symbolic constraint seam
 - `concepts/harness.md`: planning and trace loop
 - `concepts/custom-agents.md`: shippable BlackCell agent pack
+- `concepts/agent-operating-model.md`: shared agent and command protocol
 - `targets/opencode.md`: preferred local agent target
 - `targets/containers.md`: container/devcontainer workflow
-- `legacy/control-plane.md`: prior GitHub control-plane surface
-- `legacy/vanguard.md`: prior Vanguard QA layer
