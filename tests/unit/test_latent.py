@@ -177,6 +177,59 @@ def test_latent_ledger_rejects_divergent_transition_replay(
     assert load_transitions(path=db) == (simulation.transition,)
 
 
+def test_latent_ledger_allows_additive_transition_evidence_upgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    db = tmp_path / "latent.sqlite3"
+    simulation = simulate_transition(observe_repo())
+    with_evidence = replace(
+        simulation,
+        transition=replace(
+            simulation.transition,
+            evidence_run_id="ledger-run:1",
+            evidence_event_ids=("ledger-event:1",),
+        ),
+    )
+
+    record_simulation(simulation, path=db)
+    record_simulation(with_evidence, path=db)
+
+    assert load_transitions(path=db) == (with_evidence.transition,)
+
+
+def test_latent_ledger_rejects_conflicting_transition_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    db = tmp_path / "latent.sqlite3"
+    simulation = simulate_transition(observe_repo())
+    first = replace(
+        simulation,
+        transition=replace(
+            simulation.transition,
+            evidence_run_id="ledger-run:1",
+            evidence_event_ids=("ledger-event:1",),
+        ),
+    )
+    second = replace(
+        simulation,
+        transition=replace(
+            simulation.transition,
+            evidence_run_id="ledger-run:2",
+            evidence_event_ids=("ledger-event:2",),
+        ),
+    )
+
+    record_simulation(first, path=db)
+    with pytest.raises(ValueError, match="latent ledger conflict"):
+        record_simulation(second, path=db)
+
+    assert load_transitions(path=db) == (first.transition,)
+
+
 def test_latent_predictor_uses_loaded_ledger_memory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
