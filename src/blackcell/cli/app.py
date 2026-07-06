@@ -161,6 +161,10 @@ def harness_run_command(
         bool,
         Parameter("--show-stats", help="Include latent ledger stats in dry-run output."),
     ] = False,
+    ledger_db: Annotated[
+        Path | None,
+        Parameter("--ledger-db", help="Optional generic run/event ledger path."),
+    ] = None,
 ) -> None:
     """Run the first harness loop through a runtime adapter."""
     snapshot = observe_repo()
@@ -173,6 +177,7 @@ def harness_run_command(
             snapshot=snapshot,
             latent_db=latent_db,
             latent_mode=latent_mode,
+            ledger_db=ledger_db,
         )
     except ValueError as error:
         _fail(str(error))

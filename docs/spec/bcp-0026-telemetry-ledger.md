@@ -34,5 +34,6 @@ export.
 - BlackCell can record a local run and its events.
 - BlackCell can initialize and inspect a local SQLite ledger with `ledger init`,
   `ledger runs`, and `ledger events`.
+- BlackCell can record dry-run harness traces with `harness run --ledger-db`.
 - Later latent transitions can cite run/event evidence.
 - Existing `world`, `nesy`, and `harness` checks still pass.

@@ -53,13 +53,14 @@ BCP-0026 also exposes a generic local ledger for run/event provenance:
 
 ```bash
 uv run blackcell ledger init --db .blackcell/ledger.sqlite3
+uv run blackcell harness run --runtime dry-run --ledger-db .blackcell/ledger.sqlite3
 uv run blackcell ledger runs --db .blackcell/ledger.sqlite3
 uv run blackcell ledger events --db .blackcell/ledger.sqlite3
 ```
 
 This ledger is local-first and deterministic. The initial command slice creates
-and reads SQLite state; harness-to-ledger recording can build on the same
-run/event schema later.
+and reads SQLite state; `--ledger-db` records dry-run harness events into the
+same run/event schema.
 
 ## Output Contract
 

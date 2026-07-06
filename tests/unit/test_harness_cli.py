@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from blackcell.cli.app import app
+from blackcell.ledger import list_events, list_runs
 from tests.cli_runner import CycloptsCliRunner
 
 runner = CycloptsCliRunner()
@@ -149,6 +150,67 @@ def test_harness_run_can_fold_latent_stats_into_dry_run(
     assert payload["latent_stats"][0]["action_id"] == "action:observe-validate"
     assert payload["latent_stats"][0]["sample_count"] == 2
     assert payload["latent_stats"][0]["confidence_label"] == "warming"
+
+
+def test_harness_run_can_record_generic_run_event_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    db = tmp_path / "ledger.sqlite3"
+
+    first = runner.invoke(
+        app,
+        ["harness", "run", "--runtime", "dry-run", "--ledger-db", str(db)],
+        catch_exceptions=False,
+    )
+    second = runner.invoke(
+        app,
+        ["harness", "run", "--runtime", "dry-run", "--ledger-db", str(db)],
+        catch_exceptions=False,
+    )
+
+    first_payload = json.loads(first.stdout)
+    second_payload = json.loads(second.stdout)
+    assert first.exit_code == 0
+    assert first_payload["ledger_path"] == str(db)
+    assert first_payload["ledger_run_id"] is not None
+    assert second.exit_code == 0
+    assert second_payload["ledger_run_id"] == first_payload["ledger_run_id"]
+    assert len(list_runs(path=db)) == 1
+    assert len(list_events(path=db, run_id=first_payload["ledger_run_id"])) == len(
+        first_payload["events"]
+    )
+
+
+def test_harness_run_latent_off_can_record_generic_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    db = tmp_path / "ledger.sqlite3"
+
+    result = runner.invoke(
+        app,
+        [
+            "harness",
+            "run",
+            "--runtime",
+            "dry-run",
+            "--latent",
+            "off",
+            "--ledger-db",
+            str(db),
+        ],
+        catch_exceptions=False,
+    )
+
+    payload = json.loads(result.stdout)
+    assert result.exit_code == 0
+    assert payload["latent"] is None
+    assert payload["ledger_path"] == str(db)
+    assert len(list_runs(path=db)) == 1
+    assert len(list_events(path=db, run_id=payload["ledger_run_id"])) == 3
 
 
 def test_adapters_and_doctor_report_available_runtimes(

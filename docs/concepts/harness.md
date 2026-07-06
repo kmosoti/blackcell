@@ -42,8 +42,9 @@ For copy-paste commands and ledger inspection, see
 
 The generic local ledger foundation is tracked in
 `../spec/bcp-0026-telemetry-ledger.md`. It provides local SQLite run/event
-inspection commands (`ledger init`, `ledger runs`, `ledger events`) without
-remote export or server infrastructure.
+inspection commands (`ledger init`, `ledger runs`, `ledger events`) and optional
+dry-run trace capture with `harness run --ledger-db <path>` without remote export
+or server infrastructure.
 
 ## First Slice
 

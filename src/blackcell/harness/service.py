@@ -16,6 +16,9 @@ from blackcell.latent import (
     simulate_transition,
     summarize_prediction_stats,
 )
+from blackcell.latent.ids import stable_digest
+from blackcell.ledger import make_event, record_run
+from blackcell.ledger.models import Payload
 from blackcell.runtime import list_runtime_adapters
 from blackcell.world.models import WorldSnapshot
 
@@ -65,6 +68,7 @@ def run_harness(
     snapshot: WorldSnapshot,
     latent_db: Path | None = None,
     latent_mode: Literal["off", "summary", "record", "stats"] = "summary",
+    ledger_db: Path | None = None,
 ) -> RunTrace:
     if runtime != "dry-run":
         raise ValueError("only the dry-run runtime is implemented in the first overhaul slice")
@@ -74,7 +78,11 @@ def run_harness(
         for index, step in enumerate(plan.steps, start=1)
     )
     if latent_mode == "off":
-        return RunTrace(runtime=runtime, status="simulated", events=events)
+        return _attach_ledger(
+            RunTrace(runtime=runtime, status="simulated", events=events),
+            plan=plan,
+            ledger_db=ledger_db,
+        )
 
     should_record = latent_mode in {"record", "stats"} and latent_db is not None
     should_show_stats = latent_mode == "stats" and latent_db is not None
@@ -128,10 +136,69 @@ def run_harness(
             )
             for action in stats.action_stats
         )
-    return RunTrace(
-        runtime=runtime,
-        status="simulated",
+    return _attach_ledger(
+        RunTrace(
+            runtime=runtime,
+            status="simulated",
+            events=events,
+            latent=latent_summary,
+            latent_stats=latent_stats,
+        ),
+        plan=plan,
+        ledger_db=ledger_db,
+    )
+
+
+def _attach_ledger(
+    trace: RunTrace,
+    *,
+    plan: HarnessPlan,
+    ledger_db: Path | None,
+) -> RunTrace:
+    if ledger_db is None:
+        return trace
+    payload: Payload = {
+        "goal": plan.goal,
+        "runtime": trace.runtime,
+        "event_count": len(trace.events),
+        "latent": trace.latent is not None,
+    }
+    created_at = "deterministic:harness-dry-run:v1"
+    run_id = stable_digest(
+        "ledger-run",
+        {
+            "kind": "harness-run",
+            "status": trace.status,
+            "created_at": created_at,
+            "payload": payload,
+        },
+    )
+    events = tuple(
+        make_event(
+            run_id=run_id,
+            sequence=event.index,
+            kind=event.kind,
+            source="harness",
+            message=event.message,
+            payload={"trace_index": event.index},
+        )
+        for event in trace.events
+    )
+    result = record_run(
+        path=ledger_db,
+        run_id=run_id,
+        kind="harness-run",
+        status=trace.status,
+        created_at=created_at,
+        payload=payload,
         events=events,
-        latent=latent_summary,
-        latent_stats=latent_stats,
+    )
+    return RunTrace(
+        runtime=trace.runtime,
+        status=trace.status,
+        events=trace.events,
+        latent=trace.latent,
+        latent_stats=trace.latent_stats,
+        ledger_path=str(result.path),
+        ledger_run_id=result.run_id,
     )

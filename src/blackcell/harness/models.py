@@ -59,3 +59,5 @@ class RunTrace:
     events: tuple[TraceEvent, ...]
     latent: LatentTraceSummary | None = None
     latent_stats: tuple[LatentTraceActionStats, ...] = ()
+    ledger_path: str | None = None
+    ledger_run_id: str | None = None
