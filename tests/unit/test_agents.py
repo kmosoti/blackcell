@@ -30,6 +30,19 @@ def test_opencode_artifacts_render_markdown_frontmatter() -> None:
     assert "agent: blackcell-spore" in observe.content
 
 
+def test_astrophage_permissions_allow_safe_work_and_gate_dangerous_actions() -> None:
+    artifacts = render_opencode_artifacts(scope=ConfigScope.PROJECT)
+    by_path = {artifact.path: artifact for artifact in artifacts}
+    astrophage = by_path[".opencode/agents/blackcell-astrophage.md"]
+
+    assert "edit: allow" in astrophage.content
+    assert "'*': allow" in astrophage.content
+    assert "git push*: ask" in astrophage.content
+    assert "rm *: ask" in astrophage.content
+    assert "blackcell-*: allow" in astrophage.content
+    assert "external_directory: deny" in astrophage.content
+
+
 def test_agent_prompts_keep_world_model_protocol_sections() -> None:
     required = (
         "# Role",

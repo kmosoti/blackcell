@@ -13,8 +13,11 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/concepts/world-model.md",
         "docs/concepts/nesy.md",
         "docs/concepts/harness.md",
+        "docs/guides/latent-harness-quickstart.md",
         "docs/concepts/custom-agents.md",
         "docs/concepts/agent-operating-model.md",
+        "docs/spec/index.md",
+        "docs/spec/jepa-latent-prediction.md",
         "docs/targets/opencode.md",
         "docs/targets/containers.md",
     }

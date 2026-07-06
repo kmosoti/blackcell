@@ -52,6 +52,9 @@ coverage.xml
 mutants/
 cover/
 
+# BlackCell local state
+.blackcell/
+
 # Translations
 *.mo
 *.pot

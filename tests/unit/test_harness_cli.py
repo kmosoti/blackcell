@@ -37,7 +37,118 @@ def test_harness_plan_and_run_are_json_first(
     assert plan_result.exit_code == 0
     assert json.loads(plan_result.stdout)["goal"].startswith("Build and iterate")
     assert run_result.exit_code == 0
-    assert json.loads(run_result.stdout)["status"] == "simulated"
+    run_payload = json.loads(run_result.stdout)
+    assert run_payload["status"] == "simulated"
+    assert run_payload["events"][-1]["kind"] == "latent-prediction"
+    assert run_payload["latent"]["confidence_label"] == "cold"
+    assert run_payload["latent"]["recorded_path"] is None
+
+
+def test_harness_run_can_record_latent_transition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    db = tmp_path / "latent.sqlite3"
+
+    first = runner.invoke(
+        app,
+        ["harness", "run", "--runtime", "dry-run", "--latent-db", str(db)],
+        catch_exceptions=False,
+    )
+    second = runner.invoke(
+        app,
+        ["harness", "run", "--runtime", "dry-run", "--latent-db", str(db)],
+        catch_exceptions=False,
+    )
+
+    first_payload = json.loads(first.stdout)
+    second_payload = json.loads(second.stdout)
+    assert first.exit_code == 0
+    assert first_payload["latent"]["recorded_path"] == str(db)
+    assert first_payload["latent"]["sample_count"] == 0
+    assert second.exit_code == 0
+    assert second_payload["latent"]["recorded_path"] == str(db)
+    assert second_payload["latent"]["sample_count"] == 1
+    assert second_payload["latent"]["confidence_label"] == "warming"
+
+
+def test_harness_run_latent_modes_control_output_and_recording(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    db = tmp_path / "latent.sqlite3"
+
+    off = runner.invoke(
+        app,
+        ["harness", "run", "--runtime", "dry-run", "--latent", "off"],
+        catch_exceptions=False,
+    )
+    summary = runner.invoke(
+        app,
+        ["harness", "run", "--runtime", "dry-run", "--latent", "summary"],
+        catch_exceptions=False,
+    )
+    stats = runner.invoke(
+        app,
+        [
+            "harness",
+            "run",
+            "--runtime",
+            "dry-run",
+            "--latent",
+            "stats",
+            "--latent-db",
+            str(db),
+        ],
+        catch_exceptions=False,
+    )
+
+    off_payload = json.loads(off.stdout)
+    summary_payload = json.loads(summary.stdout)
+    stats_payload = json.loads(stats.stdout)
+    assert off_payload["latent"] is None
+    assert off_payload["latent_stats"] == []
+    assert summary_payload["latent"]["recorded_path"] is None
+    assert stats_payload["latent"]["recorded_path"] == str(db)
+    assert stats_payload["latent_stats"][0]["sample_count"] == 1
+    assert stats_payload["latent_stats"][0]["confidence_label"] == "warming"
+    assert db.exists()
+
+
+def test_harness_run_can_fold_latent_stats_into_dry_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    db = tmp_path / "latent.sqlite3"
+    runner.invoke(
+        app,
+        ["harness", "run", "--runtime", "dry-run", "--latent-db", str(db)],
+        catch_exceptions=False,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "harness",
+            "run",
+            "--runtime",
+            "dry-run",
+            "--latent-db",
+            str(db),
+            "--show-stats",
+        ],
+        catch_exceptions=False,
+    )
+
+    payload = json.loads(result.stdout)
+    assert result.exit_code == 0
+    assert payload["latent"]["confidence_label"] == "warming"
+    assert payload["latent_stats"][0]["action_id"] == "action:observe-validate"
+    assert payload["latent_stats"][0]["sample_count"] == 2
+    assert payload["latent_stats"][0]["confidence_label"] == "warming"
 
 
 def test_adapters_and_doctor_report_available_runtimes(
