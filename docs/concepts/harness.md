@@ -9,6 +9,8 @@ edges:
     - concepts/runtime-adapters
   produces:
     - concepts/traces
+  records:
+    - spec/bcp-0026-telemetry-ledger
   introduces:
     - guides/latent-harness-quickstart
 ---
@@ -37,6 +39,11 @@ and `stats` behavior.
 
 For copy-paste commands and ledger inspection, see
 `../guides/latent-harness-quickstart.md`.
+
+The generic local ledger foundation is tracked in
+`../spec/bcp-0026-telemetry-ledger.md`. It provides local SQLite run/event
+inspection commands (`ledger init`, `ledger runs`, `ledger events`) without
+remote export or server infrastructure.
 
 ## First Slice
 

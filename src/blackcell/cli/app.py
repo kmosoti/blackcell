@@ -38,6 +38,14 @@ from blackcell.latent import (
     summarize_ledger,
     summarize_prediction_stats,
 )
+from blackcell.ledger import (
+    LedgerEvent,
+    LedgerRun,
+    LedgerSummary,
+    init_ledger,
+    list_events,
+    list_runs,
+)
 from blackcell.nesy import ValidationResult as RuleValidationResult
 from blackcell.nesy import build_default_rules, validate_ruleset
 from blackcell.runtime import DoctorReport, RuntimeAdapter, doctor_report, list_runtime_adapters
@@ -91,6 +99,7 @@ world_app = App(name="world")
 nesy_app = App(name="nesy")
 harness_app = App(name="harness")
 latent_app = App(name="latent")
+ledger_app = App(name="ledger")
 adapters_app = App(name="adapters")
 agents_app = App(name="agents")
 
@@ -98,6 +107,7 @@ app.command(world_app)
 app.command(nesy_app)
 app.command(harness_app)
 app.command(latent_app)
+app.command(ledger_app)
 app.command(adapters_app)
 app.command(agents_app)
 
@@ -241,6 +251,46 @@ def latent_stats(
     """Summarize ledger-backed latent prediction quality by action."""
     stats = summarize_prediction_stats(path=db)
     _output().emit(stats, rich=_latent_stats_table(stats))
+
+
+@ledger_app.command(name="init")
+def ledger_init(
+    db: Annotated[
+        Path,
+        Parameter("--db", help="SQLite ledger path."),
+    ] = Path(".blackcell/ledger.sqlite3"),
+) -> None:
+    """Initialize the local generic run/event ledger."""
+    summary = init_ledger(path=db)
+    _output().emit(summary, rich=_ledger_summary_table(summary))
+
+
+@ledger_app.command(name="runs")
+def ledger_runs(
+    db: Annotated[
+        Path,
+        Parameter("--db", help="SQLite ledger path."),
+    ] = Path(".blackcell/ledger.sqlite3"),
+) -> None:
+    """List runs from the local generic ledger."""
+    runs = list_runs(path=db)
+    _output().emit_collection("runs", runs, rich=_ledger_runs_table(runs))
+
+
+@ledger_app.command(name="events")
+def ledger_events(
+    db: Annotated[
+        Path,
+        Parameter("--db", help="SQLite ledger path."),
+    ] = Path(".blackcell/ledger.sqlite3"),
+    run: Annotated[
+        str | None,
+        Parameter("--run", help="Optional run ID filter."),
+    ] = None,
+) -> None:
+    """List events from the local generic ledger."""
+    events = list_events(path=db, run_id=run)
+    _output().emit_collection("events", events, rich=_ledger_events_table(events))
 
 
 @adapters_app.command(name="list")
@@ -496,6 +546,48 @@ def _latent_stats_table(stats: LatentLedgerStats) -> Table:
             str(action.mean_semantic_distance),
             str(action.surprise_count),
             action.confidence_label,
+        )
+    return table
+
+
+def _ledger_summary_table(summary: LedgerSummary) -> Table:
+    table = Table(title="Ledger")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Path", str(summary.path))
+    table.add_row("Schema", str(summary.schema_version))
+    table.add_row("Runs", str(summary.run_count))
+    table.add_row("Events", str(summary.event_count))
+    return table
+
+
+def _ledger_runs_table(runs: Sequence[LedgerRun]) -> Table:
+    table = Table(title="Ledger Runs")
+    table.add_column("Run")
+    table.add_column("Kind")
+    table.add_column("Status")
+    table.add_column("Created")
+    for run in runs:
+        table.add_row(run.run_id, run.kind, run.status, run.created_at)
+    return table
+
+
+def _ledger_events_table(events: Sequence[LedgerEvent]) -> Table:
+    table = Table(title="Ledger Events")
+    table.add_column("Event")
+    table.add_column("Run")
+    table.add_column("Seq")
+    table.add_column("Kind")
+    table.add_column("Source")
+    table.add_column("Message")
+    for event in events:
+        table.add_row(
+            event.event_id,
+            event.run_id,
+            str(event.sequence),
+            event.kind,
+            event.source,
+            event.message,
         )
     return table
 

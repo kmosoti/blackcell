@@ -4,6 +4,7 @@ kind: guide
 edges:
   depends-on:
     - concepts/harness
+    - spec/bcp-0026-telemetry-ledger
     - spec/bcp-0027-latent-transition-capsules
   informs:
     - concepts/traces
@@ -45,6 +46,20 @@ uv run blackcell latent stats --db .blackcell/latent.sqlite3
 
 The SQLite ledger stores deterministic, idempotent records keyed by stable IDs.
 It is not a remote telemetry export and it is not a neural training loop.
+
+## Inspect the Generic Run/Event Ledger
+
+BCP-0026 also exposes a generic local ledger for run/event provenance:
+
+```bash
+uv run blackcell ledger init --db .blackcell/ledger.sqlite3
+uv run blackcell ledger runs --db .blackcell/ledger.sqlite3
+uv run blackcell ledger events --db .blackcell/ledger.sqlite3
+```
+
+This ledger is local-first and deterministic. The initial command slice creates
+and reads SQLite state; harness-to-ledger recording can build on the same
+run/event schema later.
 
 ## Output Contract
 

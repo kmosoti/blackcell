@@ -19,7 +19,7 @@ the repository reference.
 
 ## Current Sequence
 
-1. `BCP-0026`: telemetry and durable ledger foundation.
+1. `BCP-0026`: local run/event ledger foundation.
 2. `BCP-0027`: JEPA-inspired latent transition capsules.
 
 The latent layer is intended BlackCell behavior, but the first implementation is
