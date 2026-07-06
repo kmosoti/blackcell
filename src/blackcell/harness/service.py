@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 from typing import Literal
 
@@ -100,6 +101,38 @@ def run_harness(
         transition_memory=transition_memory,
         confidence_labels_by_action=confidence_labels,
     )
+    latent_message = (
+        "V0 latent loop encoded z_t, predicted z_hat_next, compared z_next, "
+        f"and produced a {latent_simulation.prediction.confidence_label} prediction."
+    )
+    events += (
+        TraceEvent(
+            index=len(events) + 1,
+            kind="latent-prediction",
+            message=latent_message,
+        ),
+    )
+    evidence_run_id: str | None = None
+    evidence_event_ids: tuple[str, ...] = ()
+    if ledger_db is not None:
+        evidence_run_id = _ledger_run_id(
+            plan=plan,
+            runtime=runtime,
+            status="simulated",
+            event_count=len(events),
+            has_latent=True,
+        )
+        evidence_event_ids = tuple(
+            event.event_id for event in _ledger_events(evidence_run_id, events)
+        )
+        latent_simulation = replace(
+            latent_simulation,
+            transition=replace(
+                latent_simulation.transition,
+                evidence_run_id=evidence_run_id,
+                evidence_event_ids=evidence_event_ids,
+            ),
+        )
     record_result = record_simulation(latent_simulation, path=latent_db) if should_record else None
     latent_summary = LatentTraceSummary(
         state_id=latent_simulation.state.state_id,
@@ -111,16 +144,8 @@ def run_harness(
         transition_id=latent_simulation.transition.transition_id,
         sample_id=latent_simulation.self_supervision_sample.sample_id,
         recorded_path=str(record_result.path) if record_result is not None else None,
-    )
-    events += (
-        TraceEvent(
-            index=len(events) + 1,
-            kind="latent-prediction",
-            message=(
-                "V0 latent loop encoded z_t, predicted z_hat_next, compared z_next, "
-                f"and produced a {latent_summary.confidence_label} prediction."
-            ),
-        ),
+        evidence_run_id=evidence_run_id,
+        evidence_event_ids=evidence_event_ids,
     )
     latent_stats = ()
     if should_show_stats and latent_db is not None:
@@ -157,33 +182,21 @@ def _attach_ledger(
 ) -> RunTrace:
     if ledger_db is None:
         return trace
-    payload: Payload = {
-        "goal": plan.goal,
-        "runtime": trace.runtime,
-        "event_count": len(trace.events),
-        "latent": trace.latent is not None,
-    }
+    payload = _ledger_payload(
+        plan=plan,
+        runtime=trace.runtime,
+        event_count=len(trace.events),
+        has_latent=trace.latent is not None,
+    )
     created_at = "deterministic:harness-dry-run:v1"
-    run_id = stable_digest(
-        "ledger-run",
-        {
-            "kind": "harness-run",
-            "status": trace.status,
-            "created_at": created_at,
-            "payload": payload,
-        },
+    run_id = _ledger_run_id(
+        plan=plan,
+        runtime=trace.runtime,
+        status=trace.status,
+        event_count=len(trace.events),
+        has_latent=trace.latent is not None,
     )
-    events = tuple(
-        make_event(
-            run_id=run_id,
-            sequence=event.index,
-            kind=event.kind,
-            source="harness",
-            message=event.message,
-            payload={"trace_index": event.index},
-        )
-        for event in trace.events
-    )
+    events = _ledger_events(run_id, trace.events)
     result = record_run(
         path=ledger_db,
         run_id=run_id,
@@ -201,4 +214,48 @@ def _attach_ledger(
         latent_stats=trace.latent_stats,
         ledger_path=str(result.path),
         ledger_run_id=result.run_id,
+    )
+
+
+def _ledger_payload(
+    *, plan: HarnessPlan, runtime: str, event_count: int, has_latent: bool
+) -> Payload:
+    return {
+        "goal": plan.goal,
+        "runtime": runtime,
+        "event_count": event_count,
+        "latent": has_latent,
+    }
+
+
+def _ledger_run_id(
+    *, plan: HarnessPlan, runtime: str, status: str, event_count: int, has_latent: bool
+) -> str:
+    return stable_digest(
+        "ledger-run",
+        {
+            "kind": "harness-run",
+            "status": status,
+            "created_at": "deterministic:harness-dry-run:v1",
+            "payload": _ledger_payload(
+                plan=plan,
+                runtime=runtime,
+                event_count=event_count,
+                has_latent=has_latent,
+            ),
+        },
+    )
+
+
+def _ledger_events(run_id: str, trace_events: tuple[TraceEvent, ...]):
+    return tuple(
+        make_event(
+            run_id=run_id,
+            sequence=event.index,
+            kind=event.kind,
+            source="harness",
+            message=event.message,
+            payload={"trace_index": event.index},
+        )
+        for event in trace_events
     )

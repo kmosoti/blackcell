@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from blackcell.cli.app import app
+from blackcell.latent import load_transitions
 from blackcell.ledger import list_events, list_runs
 from tests.cli_runner import CycloptsCliRunner
 
@@ -211,6 +212,41 @@ def test_harness_run_latent_off_can_record_generic_ledger(
     assert payload["ledger_path"] == str(db)
     assert len(list_runs(path=db)) == 1
     assert len(list_events(path=db, run_id=payload["ledger_run_id"])) == 3
+
+
+def test_harness_latent_transition_cites_generic_ledger_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    latent_db = tmp_path / "latent.sqlite3"
+    ledger_db = tmp_path / "ledger.sqlite3"
+
+    result = runner.invoke(
+        app,
+        [
+            "harness",
+            "run",
+            "--runtime",
+            "dry-run",
+            "--latent",
+            "record",
+            "--latent-db",
+            str(latent_db),
+            "--ledger-db",
+            str(ledger_db),
+        ],
+        catch_exceptions=False,
+    )
+
+    payload = json.loads(result.stdout)
+    transition = load_transitions(path=latent_db)[0]
+    ledger_events = list_events(path=ledger_db, run_id=payload["ledger_run_id"])
+    assert result.exit_code == 0
+    assert payload["latent"]["evidence_run_id"] == payload["ledger_run_id"]
+    assert payload["latent"]["evidence_event_ids"] == [event.event_id for event in ledger_events]
+    assert transition.evidence_run_id == payload["ledger_run_id"]
+    assert transition.evidence_event_ids == tuple(event.event_id for event in ledger_events)
 
 
 def test_adapters_and_doctor_report_available_runtimes(

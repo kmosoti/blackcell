@@ -280,6 +280,8 @@ def _transition_from_json(payload: str) -> LatentTransition:
         actual_state_id=_required_str(data, "actual_state_id"),
         error_id=_required_str(data, "error_id"),
         outcome=_required_str(data, "outcome"),
+        evidence_run_id=_optional_str(data, "evidence_run_id"),
+        evidence_event_ids=_optional_str_tuple(data, "evidence_event_ids"),
     )
 
 
@@ -288,6 +290,27 @@ def _required_str(data: dict[str, object], key: str) -> str:
     if not isinstance(value, str):
         raise TypeError(f"latent transition field {key!r} must be a string")
     return value
+
+
+def _optional_str(data: dict[str, object], key: str) -> str | None:
+    value = data.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError(f"latent transition field {key!r} must be a string")
+    return value
+
+
+def _optional_str_tuple(data: dict[str, object], key: str) -> tuple[str, ...]:
+    value = data.get(key)
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise TypeError(f"latent transition field {key!r} must be a list")
+    result = tuple(str(item) for item in value if isinstance(item, str))
+    if len(result) != len(value):
+        raise TypeError(f"latent transition field {key!r} must contain only strings")
+    return result
 
 
 def _required_number(data: dict[str, object], key: str) -> float:

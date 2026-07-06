@@ -47,6 +47,17 @@ uv run blackcell latent stats --db .blackcell/latent.sqlite3
 The SQLite ledger stores deterministic, idempotent records keyed by stable IDs.
 It is not a remote telemetry export and it is not a neural training loop.
 
+When both ledgers are enabled, latent transition records cite the generic
+run/event evidence that produced them:
+
+```bash
+uv run blackcell harness run \
+  --runtime dry-run \
+  --latent record \
+  --latent-db .blackcell/latent.sqlite3 \
+  --ledger-db .blackcell/ledger.sqlite3
+```
+
 ## Inspect the Generic Run/Event Ledger
 
 BCP-0026 also exposes a generic local ledger for run/event provenance:

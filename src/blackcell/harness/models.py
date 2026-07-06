@@ -41,6 +41,8 @@ class LatentTraceSummary:
     transition_id: str
     sample_id: str
     recorded_path: str | None = None
+    evidence_run_id: str | None = None
+    evidence_event_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
