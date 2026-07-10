@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "captured_at": "2026-07-10",
+  "source": {
+    "repository": "kmosoti/blackcell",
+    "remote_base_branch": "main",
+    "remote_base_commit": "1dcc0e0621bd91665fdac19b49926e7154a90126",
+    "local_source_commit": "e01c61ccb71e914830f7634366354472b46f019b",
+    "source_tree": "73857bf1a30cb0aec5cbcfdc03ff0b712c61e5aa"
+  },
+  "environment": {
+    "python": "3.14.2",
+    "sqlite": "3.50.4",
+    "uv": "0.9.25"
+  },
+  "verification": {
+    "tests_passed": 151,
+    "tests_failed": 0,
+    "covered_lines": 4459,
+    "statements": 4949,
+    "combined_coverage_percent": 86.49045521292217,
+    "statement_coverage_percent": 90.0990099009901,
+    "branch_coverage_percent": 71.35593220338983,
+    "ruff_check": "pass",
+    "ruff_format": "pass",
+    "ty_check": "pass"
+  },
+  "runtime_generations": [
+    "repository-operator",
+    "research-prototype"
+  ],
+  "sqlite_persistence_paths": [
+    "kernel",
+    "ledger",
+    "latent"
+  ],
+  "quality_floor": {
+    "minimum_tests_passed": 151,
+    "minimum_combined_coverage_percent": 86.0
+  }
+}

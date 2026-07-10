@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -32,87 +33,198 @@ class EventStore:
         occurrence before applying the optimistic concurrency check.
         """
 
-        if expected_sequence < 0:
-            raise ValueError("expected_sequence must be non-negative")
+        return self.append_many(
+            (event,),
+            expected_sequences={event.stream_id: expected_sequence},
+        )[0]
+
+    def append_many(
+        self,
+        events: Sequence[EventEnvelope],
+        *,
+        expected_sequences: Mapping[str, int],
+    ) -> tuple[EventEnvelope, ...]:
+        """Atomically append an ordered batch spanning one or more streams.
+
+        ``expected_sequences`` contains the caller's last observed sequence for
+        every stream in the batch. Events for a stream must appear in declared
+        stream-sequence order, although events from different streams may be
+        interleaved. A complete exact idempotent retry returns the original
+        occurrences before applying optimistic concurrency checks, matching
+        :meth:`append` semantics.
+
+        Exact idempotent occurrences may also form a committed prefix for a
+        stream. This permits a caller to append the remaining suffix without
+        weakening concurrency checks for unrelated intervening events.
+        """
+
+        batch = tuple(events)
+        if not batch:
+            return ()
+
+        stream_ids = {event.stream_id for event in batch}
+        missing = stream_ids.difference(expected_sequences)
+        if missing:
+            names = ", ".join(repr(name) for name in sorted(missing))
+            raise ValueError(f"expected_sequences is missing streams: {names}")
+        for stream_id in stream_ids:
+            if expected_sequences[stream_id] < 0:
+                raise ValueError(f"expected sequence for stream {stream_id!r} must be non-negative")
 
         with connect(self.path) as connection:
             connection.execute("begin immediate")
             try:
-                existing = self._idempotent_event(connection, event)
-                if existing is not None:
+                existing = tuple(self._idempotent_event(connection, event) for event in batch)
+                if all(event is not None for event in existing):
+                    self._validate_existing_batch_order(existing)
                     connection.commit()
-                    return existing
+                    return tuple(event for event in existing if event is not None)
 
-                row = connection.execute(
-                    "select current_sequence from event_streams where stream_id = ?",
-                    (event.stream_id,),
-                ).fetchone()
-                actual_sequence = int(row["current_sequence"]) if row is not None else 0
-                if actual_sequence != expected_sequence:
-                    raise ConcurrencyError(event.stream_id, expected_sequence, actual_sequence)
-                required_sequence = expected_sequence + 1
-                if event.stream_sequence != required_sequence:
-                    raise EventSequenceError(
-                        f"event {event.event_id} declares sequence {event.stream_sequence}; "
-                        f"next sequence for stream {event.stream_id!r} is {required_sequence}"
+                grouped: dict[str, list[tuple[EventEnvelope, EventEnvelope | None]]] = {
+                    stream_id: [] for stream_id in stream_ids
+                }
+                for candidate, stored in zip(batch, existing, strict=True):
+                    grouped[candidate.stream_id].append((candidate, stored))
+
+                current_sequences: dict[str, int] = {}
+                committed_prefixes: dict[str, int] = {}
+                for stream_id, stream_events in grouped.items():
+                    expected = expected_sequences[stream_id]
+                    actual = self._current_sequence(connection, stream_id)
+                    current_sequences[stream_id] = actual
+                    prefix = self._validate_batch_stream(
+                        stream_id,
+                        stream_events,
+                        expected_sequence=expected,
+                        actual_sequence=actual,
                     )
+                    committed_prefixes[stream_id] = prefix
+                    if actual == 0:
+                        connection.execute(
+                            "insert into event_streams(stream_id, current_sequence) values (?, 0)",
+                            (stream_id,),
+                        )
 
-                if row is None:
-                    connection.execute(
-                        "insert into event_streams(stream_id, current_sequence) values (?, 0)",
-                        (event.stream_id,),
-                    )
+                appended: list[EventEnvelope] = []
+                for candidate, stored in zip(batch, existing, strict=True):
+                    if stored is not None:
+                        appended.append(stored)
+                        continue
+                    appended.append(self._insert_event(connection, candidate))
 
-                try:
-                    cursor = connection.execute(
+                for stream_id, stream_events in grouped.items():
+                    new_count = len(stream_events) - committed_prefixes[stream_id]
+                    if new_count == 0:
+                        continue
+                    previous = current_sequences[stream_id]
+                    required = previous + new_count
+                    changed = connection.execute(
                         """
-                        insert into kernel_events(
-                            event_id, stream_id, stream_sequence, event_type, schema_version,
-                            recorded_at, effective_at, correlation_id, causation_id, actor,
-                            source, payload_json, payload_hash, idempotency_key, idempotency_hash
-                        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        update event_streams set current_sequence = ?
+                        where stream_id = ? and current_sequence = ?
                         """,
-                        (
-                            event.event_id,
-                            event.stream_id,
-                            event.stream_sequence,
-                            event.event_type,
-                            event.schema_version,
-                            event.recorded_at.isoformat(),
-                            event.effective_at.isoformat(),
-                            event.correlation_id,
-                            event.causation_id,
-                            event.actor,
-                            event.source,
-                            canonical_json(event.payload),
-                            event.payload_hash,
-                            event.idempotency_key,
-                            event.idempotency_hash if event.idempotency_key is not None else None,
-                        ),
-                    )
-                except sqlite3.IntegrityError as error:
-                    raise EventConflictError(
-                        f"event {event.event_id} violates event ledger integrity: {error}"
-                    ) from error
+                        (required, stream_id, previous),
+                    ).rowcount
+                    if changed != 1:  # guarded by begin immediate; retained as an invariant check
+                        fresh = self._current_sequence(connection, stream_id)
+                        raise ConcurrencyError(stream_id, previous, fresh)
 
-                changed = connection.execute(
-                    """
-                    update event_streams set current_sequence = ?
-                    where stream_id = ? and current_sequence = ?
-                    """,
-                    (required_sequence, event.stream_id, expected_sequence),
-                ).rowcount
-                if changed != 1:  # guarded by begin immediate, retained as an invariant check
-                    fresh = self._current_sequence(connection, event.stream_id)
-                    raise ConcurrencyError(event.stream_id, expected_sequence, fresh)
-                global_position = cursor.lastrowid
-                if global_position is None:  # pragma: no cover - SQLite INSERT invariant
-                    raise EventConflictError("SQLite did not assign an event position")
                 connection.commit()
-                return replace(event, global_position=global_position)
+                return tuple(appended)
             except Exception:
                 connection.rollback()
                 raise
+
+    @staticmethod
+    def _validate_existing_batch_order(events: Sequence[EventEnvelope | None]) -> None:
+        """Ensure an idempotent retry preserves per-stream append order."""
+
+        last_sequence: dict[str, int] = {}
+        for event in events:
+            if event is None:  # pragma: no cover - guarded by the all() fast path
+                raise ValueError("idempotent batch requires stored events")
+            previous = last_sequence.get(event.stream_id)
+            if previous is not None and event.stream_sequence != previous + 1:
+                raise EventSequenceError(
+                    f"idempotent batch is not ordered for stream {event.stream_id!r}: "
+                    f"{event.stream_sequence} follows {previous}"
+                )
+            last_sequence[event.stream_id] = event.stream_sequence
+
+    @staticmethod
+    def _validate_batch_stream(
+        stream_id: str,
+        events: Sequence[tuple[EventEnvelope, EventEnvelope | None]],
+        *,
+        expected_sequence: int,
+        actual_sequence: int,
+    ) -> int:
+        committed_prefix = 0
+        encountered_new = False
+        for _, stored in events:
+            if stored is not None:
+                if encountered_new:
+                    raise ConcurrencyError(stream_id, expected_sequence, actual_sequence)
+                committed_prefix += 1
+            else:
+                encountered_new = True
+
+        required_actual = expected_sequence + committed_prefix
+        if actual_sequence != required_actual:
+            raise ConcurrencyError(stream_id, required_actual, actual_sequence)
+
+        for offset, (candidate, stored) in enumerate(events, start=1):
+            required_sequence = expected_sequence + offset
+            if stored is not None:
+                if stored.stream_sequence != required_sequence:
+                    raise ConcurrencyError(stream_id, expected_sequence, actual_sequence)
+            elif candidate.stream_sequence != required_sequence:
+                raise EventSequenceError(
+                    f"event {candidate.event_id} declares sequence {candidate.stream_sequence}; "
+                    f"batch sequence for stream {stream_id!r} is {required_sequence}"
+                )
+        return committed_prefix
+
+    @staticmethod
+    def _insert_event(
+        connection: sqlite3.Connection,
+        event: EventEnvelope,
+    ) -> EventEnvelope:
+        try:
+            cursor = connection.execute(
+                """
+                insert into kernel_events(
+                    event_id, stream_id, stream_sequence, event_type, schema_version,
+                    recorded_at, effective_at, correlation_id, causation_id, actor,
+                    source, payload_json, payload_hash, idempotency_key, idempotency_hash
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event.event_id,
+                    event.stream_id,
+                    event.stream_sequence,
+                    event.event_type,
+                    event.schema_version,
+                    event.recorded_at.isoformat(),
+                    event.effective_at.isoformat(),
+                    event.correlation_id,
+                    event.causation_id,
+                    event.actor,
+                    event.source,
+                    canonical_json(event.payload),
+                    event.payload_hash,
+                    event.idempotency_key,
+                    event.idempotency_hash if event.idempotency_key is not None else None,
+                ),
+            )
+        except sqlite3.IntegrityError as error:
+            raise EventConflictError(
+                f"event {event.event_id} violates event ledger integrity: {error}"
+            ) from error
+        global_position = cursor.lastrowid
+        if global_position is None:  # pragma: no cover - SQLite INSERT invariant
+            raise EventConflictError("SQLite did not assign an event position")
+        return replace(event, global_position=global_position)
 
     def get(self, event_id: str) -> EventEnvelope | None:
         with connect(self.path) as connection:

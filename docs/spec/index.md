@@ -9,6 +9,7 @@ edges:
     - spec/bcp-0031-context-and-control
     - spec/bcp-0032-repository-operator
     - spec/bcp-0033-operator-bench
+    - spec/bcp-0034-evolutionary-runtime
   informs:
     - charter
     - architecture
@@ -24,6 +25,7 @@ edges:
 4. `BCP-0031`: context projection and symbolic control.
 5. `BCP-0032`: Repository Operator loop.
 6. `BCP-0033`: OperatorBench and ablations.
+7. `BCP-0034`: evolutionary runtime migration, gateway, DAG, API, and deployment.
 
 BCP-0026 and BCP-0027 describe the superseded July 6 prototype. Their generic SQLite and
 feature-baseline lessons are preserved, but the current architecture no longer treats a

@@ -6,6 +6,7 @@ edges:
     - targets/opencode
     - targets/containers
     - concepts/custom-agents
+    - adr/0004-evolutionary-runtime-architecture
 ---
 
 # Decisions
@@ -17,3 +18,8 @@ edges:
 - Keep `global` scope explicit and user-local under `~/.config/opencode`.
 - Keep credentials and provider auth out of repo files and container images.
 - Use Cyclopts for the CLI surface.
+- Use a modular monolith with inward dependencies, vertical feature slices, and one event-driven
+  kernel before considering distributed services.
+- Route model capabilities through a gateway; models propose while Blackcell authorizes and acts.
+- Treat durable multi-agent DAG orchestration as a ledger-backed workflow consumer, not a second
+  runtime or authority boundary.

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "classified_roots": {
+    "agents": "legacy",
+    "cli": "interface",
+    "config": "edge",
+    "context": "legacy-canonical",
+    "control": "legacy-canonical",
+    "domains": "legacy-canonical",
+    "evaluation": "legacy-canonical",
+    "harness": "legacy",
+    "kernel": "kernel",
+    "latent": "legacy",
+    "ledger": "legacy",
+    "models": "legacy-canonical",
+    "nesy": "legacy",
+    "operator": "compatibility",
+    "runtime": "legacy",
+    "telemetry": "legacy-canonical",
+    "world": "legacy"
+  },
+  "reserved_target_roots": [
+    "adapters",
+    "bootstrap",
+    "compatibility",
+    "features",
+    "gateway",
+    "interfaces",
+    "orchestration",
+    "workflows"
+  ],
+  "framework_and_provider_modules": [
+    "anthropic",
+    "clingo",
+    "google.generativeai",
+    "granian",
+    "litestar",
+    "llama_cpp",
+    "msgspec",
+    "openai",
+    "opentelemetry"
+  ]
+}

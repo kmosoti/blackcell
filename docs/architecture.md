@@ -6,9 +6,22 @@ edges:
     - charter
   constrained-by:
     - scientific-basis
+  decided-by:
+    - adr/0004-evolutionary-runtime-architecture
 ---
 
 # Runtime Architecture
+
+## Architectural style
+
+Blackcell is a modular monolith with Clean/Onion dependency direction, vertical feature slices,
+and an event-driven kernel. These patterns apply at different scales: dependency direction keeps
+policy independent from frameworks, slices keep behavior cohesive, and events make accepted state
+transitions durable and replayable. The initial runtime uses in-process dispatch and SQLite; it
+does not simulate maturity by requiring a distributed broker.
+
+The model gateway, persistence, retrieval, solvers, execution, telemetry, and HTTP server are edge
+adapters. Workflows coordinate feature ports. Only bootstrap code assembles concrete dependencies.
 
 ## Boundaries
 
@@ -24,7 +37,8 @@ flowchart TD
     Projector --> State[Operational state estimate]
     State --> Signal[Telemetry SignalPacket]
     State --> Context[ContextFrame]
-    Context --> Proposal[Model proposal]
+    Context --> Gateway[Model gateway]
+    Gateway --> Proposal[Typed model proposal]
     Proposal --> Gate[Policy and constraint gate]
     Gate --> Executor[Typed affordance executor]
     Executor --> Outcome[Outcome observation]
@@ -34,6 +48,10 @@ flowchart TD
     State --> Transition[Future transition model]
     Transition --> Gate
 ```
+
+Durable multi-agent orchestration is a consumer of these same boundaries, not a separate agent
+runtime. DAG nodes invoke typed workflow or feature ports; their attempts, leases, results, and
+evaluations append to the same ledger and share the same authorization path.
 
 ## Command, event, projection, and artifact separation
 

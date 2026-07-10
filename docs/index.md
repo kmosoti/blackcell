@@ -9,6 +9,8 @@ edges:
     - architecture
     - scientific-basis
     - evaluation-methodology
+    - implementation-baseline
+    - migration-ledger
     - spec/index
 ---
 
@@ -20,6 +22,8 @@ edges:
 - `scientific-basis.md`: terminology and research promotion rules
 - `architecture.md`: event, projection, model, policy, execution, and replay boundaries
 - `evaluation-methodology.md`: OperatorBench conditions, measures, and trial protocol
+- `implementation-baseline.md`: measured starting point and preservation boundaries
+- `migration-ledger.md`: strangler map from current packages to target feature ownership
 - `adr/`: accepted architectural decisions
 
 ## Phase 1 specifications
@@ -30,6 +34,7 @@ edges:
 - `spec/bcp-0031-context-and-control.md`
 - `spec/bcp-0032-repository-operator.md`
 - `spec/bcp-0033-operator-bench.md`
+- `spec/bcp-0034-evolutionary-runtime.md`
 
 ## Prototype archive
 

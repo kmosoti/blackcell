@@ -17,6 +17,7 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/adr/0001-event-sourced-kernel.md",
         "docs/adr/0002-domain-scoped-state.md",
         "docs/adr/0003-model-execution-boundary.md",
+        "docs/adr/0004-evolutionary-runtime-architecture.md",
         "docs/spec/index.md",
         "docs/spec/bcp-0028-charter-reset.md",
         "docs/spec/bcp-0029-event-kernel.md",
@@ -24,6 +25,7 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/spec/bcp-0031-context-and-control.md",
         "docs/spec/bcp-0032-repository-operator.md",
         "docs/spec/bcp-0033-operator-bench.md",
+        "docs/spec/bcp-0034-evolutionary-runtime.md",
     }
 
     assert all(Path(path).exists() for path in expected)
