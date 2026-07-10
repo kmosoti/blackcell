@@ -12,7 +12,7 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP00-WP07a complete; WP07b fail-closed authorization implemented
+Status: active — WP00-WP07b complete; WP08 typed affordance execution implemented
 
 ## Outcome
 

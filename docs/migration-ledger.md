@@ -65,8 +65,9 @@ Clingo, llama.cpp, OpenTelemetry, Podman, and provider SDKs are replaceable edge
 | WP06a | Capability-based model gateway and recorded adapter | complete |
 | WP06b | Versioned Blackcell-owned gateway configuration | complete |
 | WP07a | Deterministic symbolic constraint solver and proof artifacts | complete |
-| WP07b | Fail-closed action authorization over proof artifacts | complete on merge of this change |
-| WP08-WP09 | Affordances, DAG, compatibility | pending |
+| WP07b | Fail-closed action authorization over proof artifacts | complete |
+| WP08 | Typed affordance execution, idempotency, and reconciliation | complete on merge of this change |
+| WP09 | Daily Operator workflow, DAG preparation, compatibility | pending |
 | WP10-WP15 | Predictive/NeSy experiments, evaluation, replay, simulations | pending |
 | WP16-WP22 | HTTP runtime, Podman, observability, security, recovery | pending |
 | WP23-WP27 | Benchmarks, migration completion, documentation, release | pending |
