@@ -34,6 +34,7 @@ edges:
 - `spec/bcp-0031-context-and-control.md`
 - `spec/bcp-0032-repository-operator.md`
 - `spec/bcp-0033-operator-bench.md`
+- `spec/bcp-0034-evolutionary-runtime.md`
 
 ## Prototype archive
 
