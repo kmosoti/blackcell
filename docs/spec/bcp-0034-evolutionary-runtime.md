@@ -12,7 +12,7 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP00-WP02 complete; WP03 transactional batch append implemented
+Status: active — WP00-WP03 complete; WP04a state projection implemented
 
 ## Outcome
 
