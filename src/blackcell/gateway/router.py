@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from blackcell.gateway.models import (
     GatewayAuditRecord,
+    GatewayBudget,
     GatewayResult,
     LocalityPolicy,
     ModelRequest,
@@ -37,15 +39,39 @@ class ModelGateway:
 
     def invoke(self, request: ModelRequest) -> GatewayResult:
         profile, adapter = self._select(request)
-        result = adapter.invoke(request, model_id=profile.model_id)
+        adapter_request = replace(
+            request,
+            budget=GatewayBudget(
+                max_input_tokens=min(
+                    request.budget.max_input_tokens,
+                    profile.max_input_tokens,
+                ),
+                max_output_tokens=min(
+                    request.budget.max_output_tokens,
+                    profile.max_output_tokens,
+                ),
+                max_latency_ms=request.budget.max_latency_ms,
+                max_cost_microusd=min(
+                    request.budget.max_cost_microusd,
+                    profile.max_cost_microusd,
+                ),
+            ),
+        )
+        result = adapter.invoke(adapter_request, model_id=profile.model_id)
         if result.input_tokens > request.budget.max_input_tokens:
             raise GatewayAdmissionError("adapter exceeded the input-token budget")
+        if result.input_tokens > profile.max_input_tokens:
+            raise GatewayAdmissionError("adapter exceeded the profile input-token limit")
         if result.output_tokens > request.budget.max_output_tokens:
             raise GatewayAdmissionError("adapter exceeded the output-token budget")
+        if result.output_tokens > profile.max_output_tokens:
+            raise GatewayAdmissionError("adapter exceeded the profile output-token limit")
         if result.latency_ms > request.budget.max_latency_ms:
             raise GatewayAdmissionError("adapter exceeded the latency budget")
         if result.cost_microusd > request.budget.max_cost_microusd:
             raise GatewayAdmissionError("adapter exceeded the cost budget")
+        if result.cost_microusd > profile.max_cost_microusd:
+            raise GatewayAdmissionError("adapter exceeded the profile cost limit")
         if request.deterministic_required and not result.deterministic:
             raise GatewayAdmissionError("adapter returned a non-deterministic result")
         validate_output(result.output, request.output_schema)
@@ -92,10 +118,6 @@ class ModelGateway:
             if request.classification > profile.maximum_classification:
                 continue
             if request.estimated_input_tokens > profile.max_input_tokens:
-                continue
-            if request.budget.max_output_tokens > profile.max_output_tokens:
-                continue
-            if request.budget.max_cost_microusd > profile.max_cost_microusd:
                 continue
             candidates.append((profile, adapter))
         if not candidates:
