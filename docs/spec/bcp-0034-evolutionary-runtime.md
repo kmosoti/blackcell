@@ -12,7 +12,7 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP00 complete; WP01 architecture accepted
+Status: active — WP00-WP01 complete; WP02 dependency fitness implemented
 
 ## Outcome
 
