@@ -1,5 +1,6 @@
 """Capability-based model gateway control plane."""
 
+from blackcell.gateway.configuration import GatewayConfiguration
 from blackcell.gateway.models import (
     AdapterResult,
     DataClassification,
@@ -21,6 +22,7 @@ __all__ = [
     "GatewayAdmissionError",
     "GatewayAuditRecord",
     "GatewayBudget",
+    "GatewayConfiguration",
     "GatewayProfile",
     "GatewayResult",
     "LocalityPolicy",

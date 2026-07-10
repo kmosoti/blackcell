@@ -12,7 +12,7 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP00-WP05b complete; WP06a model gateway implemented
+Status: active — WP00-WP06a complete; WP06b gateway configuration implemented
 
 ## Outcome
 
