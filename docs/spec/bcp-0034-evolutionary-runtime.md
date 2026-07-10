@@ -12,7 +12,7 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP00-WP06b complete; WP07a symbolic constraint proofs implemented
+Status: active — WP00-WP07a complete; WP07b fail-closed authorization implemented
 
 ## Outcome
 
