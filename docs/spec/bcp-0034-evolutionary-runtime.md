@@ -12,7 +12,7 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP00-WP04b complete; WP05a SignalPacket derivation implemented
+Status: active — WP00-WP05a complete; WP05b retrieval and ContextFrame implemented
 
 ## Outcome
 
