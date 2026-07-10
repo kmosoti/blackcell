@@ -58,8 +58,9 @@ Clingo, llama.cpp, OpenTelemetry, Podman, and provider SDKs are replaceable edge
 | WP01 | Architecture decision record and package contracts | complete |
 | WP02 | Executable dependency rules and shrinking debt manifest | complete |
 | WP03 | Transactional kernel event store and replay contracts | complete |
-| WP04a | Operational belief-state projection slice | complete on merge of this change |
-| WP04b-WP09 | Ingestion, context, gateway, control, DAG, compatibility | pending |
+| WP04a | Operational belief-state projection slice | complete |
+| WP04b | Typed, provenance-aware observation ingestion | complete on merge of this change |
+| WP05-WP09 | Context, gateway, control, DAG, compatibility | pending |
 | WP10-WP15 | Predictive/NeSy experiments, evaluation, replay, simulations | pending |
 | WP16-WP22 | HTTP runtime, Podman, observability, security, recovery | pending |
 | WP23-WP27 | Benchmarks, migration completion, documentation, release | pending |
