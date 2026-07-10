@@ -10,16 +10,20 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/index.md",
         "docs/atlas/graph.md",
         "docs/atlas/glossary.md",
-        "docs/concepts/world-model.md",
-        "docs/concepts/nesy.md",
-        "docs/concepts/harness.md",
-        "docs/guides/latent-harness-quickstart.md",
-        "docs/concepts/custom-agents.md",
-        "docs/concepts/agent-operating-model.md",
+        "docs/charter.md",
+        "docs/architecture.md",
+        "docs/scientific-basis.md",
+        "docs/evaluation-methodology.md",
+        "docs/adr/0001-event-sourced-kernel.md",
+        "docs/adr/0002-domain-scoped-state.md",
+        "docs/adr/0003-model-execution-boundary.md",
         "docs/spec/index.md",
-        "docs/spec/jepa-latent-prediction.md",
-        "docs/targets/opencode.md",
-        "docs/targets/containers.md",
+        "docs/spec/bcp-0028-charter-reset.md",
+        "docs/spec/bcp-0029-event-kernel.md",
+        "docs/spec/bcp-0030-repository-state.md",
+        "docs/spec/bcp-0031-context-and-control.md",
+        "docs/spec/bcp-0032-repository-operator.md",
+        "docs/spec/bcp-0033-operator-bench.md",
     }
 
     assert all(Path(path).exists() for path in expected)
@@ -36,13 +40,13 @@ def test_docs_graph_nodes_have_frontmatter() -> None:
         assert isinstance(metadata.get("edges", {}), dict)
 
 
-def test_docs_graph_map_links_core_nodes() -> None:
+def test_docs_graph_map_links_canonical_nodes() -> None:
     text = Path("docs/atlas/graph.md").read_text(encoding="utf-8")
 
-    assert "World Model" in text
-    assert "NeSy Rules" in text
-    assert "OpenCode Target" in text
-    assert "Container Runtime" in text
+    assert "Charter" in text
+    assert "Runtime Architecture" in text
+    assert "Scientific Basis" in text
+    assert "OperatorBench" in text
 
 
 def _frontmatter(path: Path) -> dict[str, object]:

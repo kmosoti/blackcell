@@ -1,26 +1,26 @@
 from pathlib import Path
 
 
-def test_containerfile_installs_python_node_npm_and_opencode() -> None:
+def test_containerfile_installs_reproducible_python_runtime_only() -> None:
     text = Path("Containerfile").read_text(encoding="utf-8")
 
     assert "ghcr.io/astral-sh/uv:python3.14-trixie-slim" in text
-    assert "NVM_VERSION" in text
-    assert "nvm install" in text
-    assert "npm install -g npm@latest" in text
-    assert "opencode-ai" in text
-    assert "uv sync --locked --dev" in text
+    assert "uv sync --locked --all-groups" in text
+    assert "NVM_VERSION" not in text
+    assert "curl" not in text
+    assert "npm" not in text
+    assert "opencode-ai" not in text
 
 
-def test_devcontainer_and_compose_mount_user_local_opencode_config() -> None:
+def test_devcontainer_and_compose_do_not_mount_model_credentials() -> None:
     devcontainer = Path(".devcontainer/devcontainer.json").read_text(encoding="utf-8")
     compose = Path("compose.yaml").read_text(encoding="utf-8")
 
-    assert "blackcell-opencode" in devcontainer
-    assert "/root/.config/opencode" in devcontainer
-    assert "blackcell-opencode" in compose
-    assert "/root/.config/opencode" in compose
+    assert "blackcell-opencode" not in devcontainer
+    assert "/root/.config/opencode" not in devcontainer
+    assert "blackcell-opencode" not in compose
+    assert "/root/.config/opencode" not in compose
 
 
-def test_nvmrc_matches_container_node_major() -> None:
-    assert Path(".nvmrc").read_text(encoding="utf-8").strip() == "22"
+def test_node_version_file_is_not_referenced_by_core_runtime() -> None:
+    assert ".nvmrc" not in Path("Containerfile").read_text(encoding="utf-8")

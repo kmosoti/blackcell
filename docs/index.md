@@ -5,27 +5,34 @@ edges:
   maps:
     - atlas/graph
   introduces:
-    - concepts/world-model
-    - concepts/harness
-    - guides/latent-harness-quickstart
+    - charter
+    - architecture
+    - scientific-basis
+    - evaluation-methodology
     - spec/index
-    - targets/opencode
 ---
 
-# BlackCell Docs
+# Blackcell Documentation
 
-BlackCell docs are organized as a small graph rather than a flat list.
+## Canonical documents
 
-## Entry Points
+- `charter.md`: identity, scope, claim gates, and Phase 1 acceptance criteria
+- `scientific-basis.md`: terminology and research promotion rules
+- `architecture.md`: event, projection, model, policy, execution, and replay boundaries
+- `evaluation-methodology.md`: OperatorBench conditions, measures, and trial protocol
+- `adr/`: accepted architectural decisions
 
-- `atlas/graph.md`: map of the main concepts and target surfaces
-- `atlas/glossary.md`: project vocabulary
-- `concepts/world-model.md`: repository observation and typed facts
-- `concepts/nesy.md`: symbolic constraint seam
-- `concepts/harness.md`: planning and trace loop
-- `guides/latent-harness-quickstart.md`: copy-paste latent harness workflow
-- `concepts/custom-agents.md`: shippable BlackCell agent pack
-- `concepts/agent-operating-model.md`: shared agent and command protocol
-- `spec/index.md`: implementation roadmap and latent prediction specs
-- `targets/opencode.md`: preferred local agent target
-- `targets/containers.md`: container/devcontainer workflow
+## Phase 1 specifications
+
+- `spec/bcp-0028-charter-reset.md`
+- `spec/bcp-0029-event-kernel.md`
+- `spec/bcp-0030-repository-state.md`
+- `spec/bcp-0031-context-and-control.md`
+- `spec/bcp-0032-repository-operator.md`
+- `spec/bcp-0033-operator-bench.md`
+
+## Prototype archive
+
+Documents under `concepts/`, `guides/latent-harness-quickstart.md`, `research/`, and the older
+BCP-0026/0027 specifications describe the July 6 prototype. They are retained temporarily
+for migration history and are not the current architecture contract.

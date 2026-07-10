@@ -1,43 +1,64 @@
-version: 2
+version: 3
 project:
   key: BCP
-  name: BlackCell
-  description: World-model-driven, runtime-agnostic multiagent harness tooling.
+  name: Blackcell
+  description: Event-sourced control runtime for evidence-grounded LLM agents.
 
 principles:
-  - Treat runtimes as adapters, not product identity.
-  - Prefer OpenCode as the first-class local agent target.
-  - Keep authentication user-local and out of repository/container state.
-  - Keep install/check commands dry-run by default unless --apply is passed.
-  - Keep generated project agent artifacts managed and digest-checked.
+  - Keep one immutable evidence ledger and domain-scoped state projectors.
+  - Treat models as replaceable proposal mechanisms without ambient tool authority.
+  - Separate occurrence identity, idempotency, correlation, and causation.
+  - Preserve conflicts, unknowns, effective time, and source provenance.
+  - Make ContextFrame selections and omissions independently inspectable.
+  - Gate every action through typed developer-authored policy.
+  - Distinguish historical replay from counterfactual reruns.
+  - Promote scientific claims only after held-out comparison with simple baselines.
+
+phase_1:
+  product_slice: repository-operator
+  research_surface: operator-bench
+  specifications:
+    - BCP-0028
+    - BCP-0029
+    - BCP-0030
+    - BCP-0031
+    - BCP-0032
+    - BCP-0033
 
 active_surfaces:
   cli:
-    - blackcell world observe
-    - blackcell world facts
-    - blackcell nesy validate
-    - blackcell harness plan
-    - blackcell harness run --runtime dry-run
-    - blackcell adapters list
-    - blackcell doctor
-    - blackcell agents list
-    - blackcell agents render --target opencode --scope project
-    - blackcell agents install --target opencode --scope project
-    - blackcell agents check-drift --target opencode --scope project
-    - blackcell agents doctor --target opencode --scope project
+    - blackcell operator run --model recorded --repo .
+    - blackcell operator state
+    - blackcell operator context
+    - blackcell operator replay
+    - blackcell events list
+    - blackcell bench list
+    - blackcell bench run --condition structured --trials 3
+  packages:
+    - blackcell.kernel
+    - blackcell.domains.repository
+    - blackcell.context
+    - blackcell.control
+    - blackcell.models
+    - blackcell.operator
+    - blackcell.evaluation
+    - blackcell.telemetry
+
+compatibility_surfaces:
+  status: retained-temporarily
   packages:
     - blackcell.world
     - blackcell.nesy
     - blackcell.harness
-    - blackcell.runtime
+    - blackcell.latent
     - blackcell.agents
-  generated:
-    - .opencode/agents
-    - .opencode/commands
+  note: These surfaces describe the July 6 prototype and do not define the current architecture.
 
 verification:
-  - uv run ruff format .
+  - uv run ruff format --check .
   - uv run ruff check .
-  - uv run pytest
+  - uv run pytest --cov=blackcell --cov-report=term-missing
   - uv run ty check
-  - uv run blackcell agents check-drift --target opencode --scope project
+  - uv run blackcell operator run --model recorded --repo .
+  - uv run blackcell operator replay
+  - uv run blackcell bench run --condition structured --trials 3

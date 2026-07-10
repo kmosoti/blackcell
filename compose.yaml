@@ -3,14 +3,11 @@ services:
     build:
       context: .
       dockerfile: Containerfile
-      args:
-        INSTALL_OPENCODE: "true"
     image: blackcell:dev
     working_dir: /workspace
     volumes:
       - .:/workspace
       - blackcell-uv-cache:/root/.cache/uv
-      - blackcell-opencode:/root/.config/opencode
     environment:
       UV_LINK_MODE: copy
     command: bash
@@ -19,4 +16,3 @@ services:
 
 volumes:
   blackcell-uv-cache:
-  blackcell-opencode:

@@ -2,18 +2,14 @@
   "name": "BlackCell",
   "build": {
     "dockerfile": "../Containerfile",
-    "context": "..",
-    "args": {
-      "INSTALL_OPENCODE": "true"
-    }
+    "context": ".."
   },
   "workspaceFolder": "/workspace",
   "mounts": [
     "source=${localWorkspaceFolder},target=/workspace,type=bind",
-    "source=blackcell-uv-cache,target=/root/.cache/uv,type=volume",
-    "source=blackcell-opencode,target=/root/.config/opencode,type=volume"
+    "source=blackcell-uv-cache,target=/root/.cache/uv,type=volume"
   ],
-  "postCreateCommand": "uv sync --locked --dev",
+  "postCreateCommand": "uv sync --locked --all-groups",
   "customizations": {
     "vscode": {
       "extensions": [

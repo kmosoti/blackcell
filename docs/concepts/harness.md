@@ -17,6 +17,9 @@ edges:
 
 # Harness Runtime
 
+> **Historical prototype:** the fixed dry-run harness is retained for compatibility while the
+> Repository Operator becomes the canonical loop. See `../architecture.md`.
+
 The harness turns world state into an explicit plan and then dispatches that
 plan through a runtime adapter.
 

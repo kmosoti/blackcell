@@ -12,6 +12,10 @@ edges:
 
 # Latent Harness Quickstart
 
+> **Archived experiment:** this deterministic feature sketch is kept as a reproducible
+> baseline. It is not a semantic encoder, learned transition model, or JEPA implementation.
+> The canonical workflow is the Repository Operator described in `../charter.md`.
+
 BlackCell's dry-run harness can emit a JEPA-inspired latent prediction summary,
 record local transition samples, and fold action-level stats into the same JSON
 trace. This is a non-training V0 workflow: deterministic latent capsules,

@@ -12,6 +12,11 @@ edges:
 
 # World Model
 
+> **Historical prototype:** this document describes the July 6 deterministic feature-state
+> experiment. The current contract is `../scientific-basis.md`. Blackcell now calls its
+> Phase 1 projection an `OperationalStateEstimate` and reserves `learned world model` for an
+> evaluated action-conditioned predictor.
+
 BlackCell uses a compact world model for software work rather than treating the
 repository as unstructured prompt context.
 
