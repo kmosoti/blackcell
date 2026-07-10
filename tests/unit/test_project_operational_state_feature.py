@@ -11,7 +11,7 @@ NOW = datetime(2026, 7, 10, 12, tzinfo=UTC)
 
 def observation(
     sequence: int,
-    value: str,
+    value: str | int | bool,
     *,
     effective_at: datetime = NOW,
     confidence: float = 0.8,
@@ -36,6 +36,25 @@ def observation(
         effective_at=effective_at,
         correlation_id="run:daily",
     )
+
+
+def test_projection_accepts_legacy_observation_event_spelling(tmp_path: Path) -> None:
+    store = EventStore(tmp_path / "kernel.sqlite3")
+    legacy = observation(1, "ready")
+    legacy = EventEnvelope.create(
+        stream_id=legacy.stream_id,
+        stream_sequence=legacy.stream_sequence,
+        event_type="ObservationRecorded",
+        actor=legacy.actor,
+        source=legacy.source,
+        payload=legacy.payload,
+        recorded_at=legacy.recorded_at,
+        effective_at=legacy.effective_at,
+        correlation_id=legacy.correlation_id,
+    )
+    store.append(legacy, expected_sequence=0)
+
+    assert OperationalStateProjector().replay(store.read_all()).claims[0].value == "ready"
 
 
 def test_projection_preserves_confidence_time_and_provenance(tmp_path: Path) -> None:
@@ -68,6 +87,18 @@ def test_equal_time_disagreement_remains_an_explicit_conflict(tmp_path: Path) ->
     assert {claim.value for claim in state.claims} == {"ready", "blocked"}
     assert len(state.conflicts) == 1
     assert set(state.conflicts[0].values) == {"ready", "blocked"}
+
+
+def test_equal_time_json_distinct_booleans_and_numbers_conflict(tmp_path: Path) -> None:
+    store = EventStore(tmp_path / "kernel.sqlite3")
+    store.append_many(
+        (observation(1, True), observation(2, 1)),
+        expected_sequences={"observations:daily": 0},
+    )
+
+    state = OperationalStateProjector().replay(store.read_all())
+
+    assert state.conflicts[0].values == (True, 1)
 
 
 def test_newer_evidence_supersedes_candidates_and_older_evidence_is_ignored(

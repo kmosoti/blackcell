@@ -76,6 +76,7 @@ class EventStore:
             try:
                 existing = tuple(self._idempotent_event(connection, event) for event in batch)
                 if all(event is not None for event in existing):
+                    self._validate_existing_batch_order(existing)
                     connection.commit()
                     return tuple(event for event in existing if event is not None)
 
@@ -133,6 +134,22 @@ class EventStore:
             except Exception:
                 connection.rollback()
                 raise
+
+    @staticmethod
+    def _validate_existing_batch_order(events: Sequence[EventEnvelope | None]) -> None:
+        """Ensure an idempotent retry preserves per-stream append order."""
+
+        last_sequence: dict[str, int] = {}
+        for event in events:
+            if event is None:  # pragma: no cover - guarded by the all() fast path
+                raise ValueError("idempotent batch requires stored events")
+            previous = last_sequence.get(event.stream_id)
+            if previous is not None and event.stream_sequence != previous + 1:
+                raise EventSequenceError(
+                    f"idempotent batch is not ordered for stream {event.stream_id!r}: "
+                    f"{event.stream_sequence} follows {previous}"
+                )
+            last_sequence[event.stream_id] = event.stream_sequence
 
     @staticmethod
     def _validate_batch_stream(

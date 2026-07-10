@@ -8,8 +8,9 @@ from blackcell.features.project_operational_state.models import (
     OperationalBeliefState,
 )
 from blackcell.kernel import EventEnvelope
+from blackcell.kernel._json import canonical_json
 
-OBSERVATION_RECORDED = "observation.recorded"
+OBSERVATION_EVENT_TYPES = frozenset({"observation.recorded", "ObservationRecorded"})
 
 
 class OperationalStateProjector:
@@ -28,7 +29,7 @@ class OperationalStateProjector:
             if position <= last_position:
                 raise ValueError("operational-state replay events must be globally ordered")
             last_position = position
-            if event.event_type != OBSERVATION_RECORDED:
+            if event.event_type not in OBSERVATION_EVENT_TYPES:
                 continue
             for claim in _claims(event):
                 current = candidates.get(claim.key, [])
@@ -50,7 +51,7 @@ class OperationalStateProjector:
                 values=tuple(claim.value for claim in group),
             )
             for key in sorted(candidates)
-            if (group := candidates[key]) and len({claim.value for claim in group}) > 1
+            if (group := candidates[key]) and len({_value_key(claim) for claim in group}) > 1
         )
         return OperationalBeliefState(claims, conflicts, last_position)
 
@@ -99,3 +100,9 @@ def _text(
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"claim {index} in event {event.event_id} requires {field}")
     return value
+
+
+def _value_key(claim: BeliefClaim) -> str:
+    """Preserve JSON distinctions Python equality otherwise erases, such as true and 1."""
+
+    return canonical_json({"value": claim.value})

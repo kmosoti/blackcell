@@ -187,6 +187,18 @@ def test_append_many_exact_retry_returns_original_occurrences(tmp_path: Path) ->
     assert store.append_many(retry, expected_sequences={"task:1": 89}) == stored
     assert len(store) == 2
 
+
+def test_append_many_rejects_out_of_order_all_idempotent_retry(tmp_path: Path) -> None:
+    store = EventStore(tmp_path / "kernel.sqlite3")
+    first = event(1, idempotency_key="one", payload={"value": 1})
+    second = event(2, idempotency_key="two", payload={"value": 2})
+    store.append_many((first, second), expected_sequences={"task:1": 0})
+
+    retry_second = event(99, idempotency_key="two", payload={"value": 2})
+    retry_first = event(98, idempotency_key="one", payload={"value": 1})
+    with pytest.raises(EventSequenceError, match="not ordered"):
+        store.append_many((retry_second, retry_first), expected_sequences={"task:1": 97})
+
     divergent = event(3, idempotency_key="two", payload={"value": "changed"})
     with pytest.raises(IdempotencyConflict):
         store.append_many((divergent,), expected_sequences={"task:1": 2})
