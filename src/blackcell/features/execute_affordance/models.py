@@ -103,6 +103,7 @@ class ExecutionResult:
     affordance: str
     adapter_id: str
     idempotency_key: str
+    execution_identity_digest: str
     status: ExecutionStatus
     started_at: datetime
     completed_at: datetime
@@ -110,7 +111,7 @@ class ExecutionResult:
     observed_effects: tuple[ObservedEffect, ...]
     error_code: str | None
     reconciled: bool
-    schema_version: str = "execution-result/v1"
+    schema_version: str = "execution-result/v2"
     result_id: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -125,6 +126,7 @@ class ExecutionResult:
                     "affordance": self.affordance,
                     "adapter_id": self.adapter_id,
                     "idempotency_key": self.idempotency_key,
+                    "execution_identity_digest": self.execution_identity_digest,
                     "status": self.status.value,
                     "started_at": self.started_at.isoformat(),
                     "completed_at": self.completed_at.isoformat(),

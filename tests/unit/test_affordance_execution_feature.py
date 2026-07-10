@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -17,6 +18,7 @@ from blackcell.features.execute_affordance import (
     ExecutionDenied,
     ExecutionResult,
     ExecutionStatus,
+    IdempotencyKeyConflict,
     SideEffectClass,
     UncertainExecutionError,
 )
@@ -79,6 +81,37 @@ def test_allowed_execution_is_journaled_and_exact_retry_does_not_repeat() -> Non
     assert journal.results["invoke-once"] == first
 
 
+def test_completed_result_rejects_key_reused_by_another_invocation() -> None:
+    adapter = Adapter()
+    journal = Journal()
+    handler = AffordanceExecutionHandler({"fixture": adapter}, journal)
+    first = handler.handle(_invocation(), _definition(), _decision())
+
+    with pytest.raises(IdempotencyKeyConflict, match="invocation_id"):
+        handler.handle(
+            replace(_invocation(), invocation_id="invocation:2"),
+            _definition(),
+            _decision(),
+        )
+
+    assert adapter.execute_calls == 1
+    assert journal.results["invoke-once"] == first
+
+
+def test_completed_result_rejects_changed_payload_under_the_same_identity() -> None:
+    adapter = Adapter()
+    journal = Journal()
+    handler = AffordanceExecutionHandler({"fixture": adapter}, journal)
+    first = handler.handle(_invocation(), _definition(), _decision())
+    changed = replace(_invocation(), arguments=(AffordanceArgument("path", "pyproject.toml"),))
+
+    with pytest.raises(IdempotencyKeyConflict, match="execution_identity_digest"):
+        handler.handle(changed, _definition(), _decision())
+
+    assert adapter.execute_calls == 1
+    assert journal.results["invoke-once"] == first
+
+
 def test_unknown_side_effect_is_reconciled_before_retry() -> None:
     adapter = Adapter(uncertain=True)
     handler = AffordanceExecutionHandler({"fixture": adapter}, Journal())
@@ -90,6 +123,24 @@ def test_unknown_side_effect_is_reconciled_before_retry() -> None:
     assert reconciled.status is ExecutionStatus.SUCCEEDED
     assert reconciled.reconciled
     assert (adapter.execute_calls, adapter.reconcile_calls) == (1, 1)
+
+
+def test_unknown_result_rejects_changed_definition_before_reconciliation() -> None:
+    adapter = Adapter(uncertain=True)
+    journal = Journal()
+    handler = AffordanceExecutionHandler({"fixture": adapter}, journal)
+    unknown = handler.handle(_invocation(), _definition(), _decision())
+
+    with pytest.raises(IdempotencyKeyConflict, match="execution_identity_digest"):
+        handler.handle(
+            _invocation(),
+            replace(_definition(), timeout_seconds=20.0),
+            _decision(),
+        )
+
+    assert adapter.execute_calls == 1
+    assert adapter.reconcile_calls == 0
+    assert journal.results["invoke-once"] == unknown
 
 
 def test_arguments_are_validated_before_adapter_call() -> None:

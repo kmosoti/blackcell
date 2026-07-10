@@ -12,6 +12,7 @@ from blackcell.features.execute_affordance.ports import (
     AuthorizationDecisionLike,
     ExecutionJournal,
 )
+from blackcell.kernel._json import json_digest
 
 
 class ExecutionDenied(RuntimeError):
@@ -20,6 +21,10 @@ class ExecutionDenied(RuntimeError):
 
 class UncertainExecutionError(RuntimeError):
     """The adapter cannot determine whether the side effect happened."""
+
+
+class IdempotencyKeyConflict(RuntimeError):
+    """An idempotency key is already bound to a different execution identity."""
 
 
 class AffordanceExecutionHandler:
@@ -49,6 +54,14 @@ class AffordanceExecutionHandler:
         if adapter.adapter_id != definition.adapter_id:
             raise ValueError("affordance adapter identity does not match the registry key")
         previous = self._journal.get(invocation.idempotency_key)
+        identity_digest = _execution_identity_digest(invocation, definition)
+        if previous is not None:
+            _validate_previous_identity(
+                previous,
+                invocation,
+                definition,
+                identity_digest=identity_digest,
+            )
         if previous is not None and previous.status is not ExecutionStatus.UNKNOWN:
             return previous
         reconciled = previous is not None
@@ -58,21 +71,28 @@ class AffordanceExecutionHandler:
                 if previous is not None
                 else adapter.execute(invocation, definition)
             )
-            result = _result(invocation, definition, outcome, reconciled=reconciled)
+            result = _result(
+                invocation,
+                definition,
+                outcome,
+                identity_digest=identity_digest,
+                reconciled=reconciled,
+            )
         except UncertainExecutionError:
             result = ExecutionResult(
-                invocation.invocation_id,
-                invocation.proposal_id,
-                invocation.affordance,
-                definition.adapter_id,
-                invocation.idempotency_key,
-                ExecutionStatus.UNKNOWN,
-                invocation.requested_at,
-                invocation.requested_at,
-                None,
-                (),
-                "outcome_unknown",
-                reconciled,
+                invocation_id=invocation.invocation_id,
+                proposal_id=invocation.proposal_id,
+                affordance=invocation.affordance,
+                adapter_id=definition.adapter_id,
+                idempotency_key=invocation.idempotency_key,
+                execution_identity_digest=identity_digest,
+                status=ExecutionStatus.UNKNOWN,
+                started_at=invocation.requested_at,
+                completed_at=invocation.requested_at,
+                output_digest=None,
+                observed_effects=(),
+                error_code="outcome_unknown",
+                reconciled=reconciled,
             )
         self._journal.save(result)
         return result
@@ -103,20 +123,77 @@ def _result(
     definition: AffordanceDefinition,
     outcome: AdapterOutcome,
     *,
+    identity_digest: str,
     reconciled: bool,
 ) -> ExecutionResult:
     status = ExecutionStatus.SUCCEEDED if outcome.success else ExecutionStatus.FAILED
     return ExecutionResult(
-        invocation.invocation_id,
-        invocation.proposal_id,
-        invocation.affordance,
-        definition.adapter_id,
-        invocation.idempotency_key,
-        status,
-        invocation.requested_at,
-        outcome.completed_at,
-        outcome.output_digest,
-        outcome.observed_effects,
-        outcome.error_code,
-        reconciled,
+        invocation_id=invocation.invocation_id,
+        proposal_id=invocation.proposal_id,
+        affordance=invocation.affordance,
+        adapter_id=definition.adapter_id,
+        idempotency_key=invocation.idempotency_key,
+        execution_identity_digest=identity_digest,
+        status=status,
+        started_at=invocation.requested_at,
+        completed_at=outcome.completed_at,
+        output_digest=outcome.output_digest,
+        observed_effects=outcome.observed_effects,
+        error_code=outcome.error_code,
+        reconciled=reconciled,
+    )
+
+
+def _validate_previous_identity(
+    previous: ExecutionResult,
+    invocation: AffordanceInvocation,
+    definition: AffordanceDefinition,
+    *,
+    identity_digest: str,
+) -> None:
+    expected = {
+        "invocation_id": invocation.invocation_id,
+        "proposal_id": invocation.proposal_id,
+        "affordance": invocation.affordance,
+        "adapter_id": definition.adapter_id,
+        "idempotency_key": invocation.idempotency_key,
+        "execution_identity_digest": identity_digest,
+    }
+    mismatches = tuple(name for name, value in expected.items() if getattr(previous, name) != value)
+    if mismatches:
+        fields = ", ".join(mismatches)
+        raise IdempotencyKeyConflict(
+            f"idempotency key {invocation.idempotency_key!r} is already bound to "
+            f"a different execution identity; mismatched fields: {fields}"
+        )
+
+
+def _execution_identity_digest(
+    invocation: AffordanceInvocation,
+    definition: AffordanceDefinition,
+) -> str:
+    return json_digest(
+        {
+            "invocation": {
+                "invocation_id": invocation.invocation_id,
+                "proposal_id": invocation.proposal_id,
+                "affordance": invocation.affordance,
+                "arguments": [
+                    {"name": item.name, "value": item.value}
+                    for item in sorted(invocation.arguments, key=lambda item: item.name)
+                ],
+                "idempotency_key": invocation.idempotency_key,
+                "requested_at": invocation.requested_at.isoformat(),
+            },
+            "definition": {
+                "name": definition.name,
+                "adapter_id": definition.adapter_id,
+                "side_effect_class": definition.side_effect_class.value,
+                "timeout_seconds": definition.timeout_seconds,
+                "arguments": [
+                    {"name": item.name, "required": item.required}
+                    for item in sorted(definition.arguments, key=lambda item: item.name)
+                ],
+            },
+        }
     )

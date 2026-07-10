@@ -3,6 +3,7 @@
 from blackcell.features.execute_affordance.handler import (
     AffordanceExecutionHandler,
     ExecutionDenied,
+    IdempotencyKeyConflict,
     UncertainExecutionError,
 )
 from blackcell.features.execute_affordance.models import (
@@ -27,6 +28,7 @@ __all__ = [
     "ExecutionDenied",
     "ExecutionResult",
     "ExecutionStatus",
+    "IdempotencyKeyConflict",
     "ObservedEffect",
     "SideEffectClass",
     "UncertainExecutionError",
