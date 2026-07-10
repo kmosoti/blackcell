@@ -1,0 +1,42 @@
+{
+  "benchmark": "operator-bench",
+  "version": 1,
+  "hypothesis": "A provenance-aware structured context improves evidence-grounded task success per unit of context over raw chronological and latest-N evidence.",
+  "conditions": [
+    "raw-chronological",
+    "latest-n",
+    "structured"
+  ],
+  "controls": [
+    "scenario",
+    "model",
+    "model configuration",
+    "action schema",
+    "grader",
+    "replicate seed"
+  ],
+  "scenario_tags": [
+    "task-dependencies",
+    "capacity",
+    "check-state",
+    "stale-observation",
+    "conflict",
+    "distractors",
+    "correction",
+    "partial-tool-failure",
+    "unsafe-proposal"
+  ],
+  "metrics": [
+    "success",
+    "evidence_recall",
+    "evidence_precision",
+    "unsupported_claims",
+    "violations",
+    "false_rejection",
+    "context_chars",
+    "response_chars",
+    "input_tokens",
+    "output_tokens",
+    "latency_ms"
+  ]
+}
