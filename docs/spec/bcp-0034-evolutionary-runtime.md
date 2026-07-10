@@ -12,7 +12,16 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP00-WP08 complete; WP09a Daily Operator workflow implemented
+Status: active — PR #39 implements the WP05b-WP09a contracts; integration and product
+acceptance remain incomplete
+
+The current `DailyOperatorWorkflow` is a deterministic control-path skeleton. It proves that the
+new feature contracts can compose through observation, projection, context, proposal, symbolic
+authorization, and typed execution. It does not yet satisfy the charter's closed-loop acceptance:
+the workflow bypasses the model gateway, records no durable run trace, performs no post-action
+observation or outcome evaluation, commits no resulting transition, and has no live-free replay or
+new CLI/bootstrap path. The Repository Operator remains the Phase 1 public product slice; the
+Daily Operator is the generic application workflow it will eventually delegate to.
 
 ## Outcome
 
@@ -165,8 +174,62 @@ configuration committed to Git. The same image runs API and worker entry points.
 | 26 | legacy retirement | no dual stores or obsolete coordination paths |
 | 27 | release evidence | docs, examples, SBOM, reproducible verification |
 
-Every work package is a bounded commit, runs all relevant checks, updates this status and the
-migration ledger, and is published to `evolutionary-runtime` before the next package starts.
+## Re-baselined execution order
+
+The work-package identifiers remain stable, but implementation order follows dependency and
+evidence boundaries rather than their numeric order.
+
+1. **Harden and merge the current contracts.** Resolve PR #39 review findings, run the full suite,
+   and merge only when execution identity, asymmetric gateway budgets, and required-evidence
+   boundaries have regression coverage.
+2. **Correct state and context semantics.** Add domain/stream scope, characterize parity with the
+   legacy repository projector, distinguish missing required evidence from trimmed or irrelevant
+   evidence, and persist inspectable ContextFrames.
+3. **Make the run protocol durable.** Record context, gateway request and response, proposal,
+   proof, authorization, execution, and trace artifacts in the kernel. Add a SQLite execution
+   journal using the WP08 execution-identity invariant.
+4. **Integrate the gateway.** Implement a decision-port adapter that maps a ContextFrame to a
+   `ModelRequest`, validates the returned `ActionProposal`, and records successful and failed
+   routing decisions. The workflow keeps the port; bootstrap owns the concrete gateway.
+5. **Close the feedback loop (WP16 before WP10).** Re-observe after execution, implement
+   `evaluate_outcome`, compare expected and actual effects, and append accepted outcome and
+   transition events. Transition prediction cannot be evaluated before this data exists.
+6. **Prove live-free replay (WP17).** Implement `replay_run` with exploding model and execution
+   adapters that prove replay has no live dependency path.
+7. **Complete compatibility and composition (WP09b).** Make the existing Repository Operator and
+   CLI delegate to the new use cases, expose context and replay inspection, and retire duplicate
+   behavior only after characterization tests pass.
+8. **Establish predictive and symbolic baselines (WP10, WP12).** Score deterministic transition
+   predictors against recorded outcomes and add Clingo only behind solver parity and explanation
+   tests. Add a local-model predictor (WP11) only after the deterministic baseline is measurable.
+9. **Design and simulate DAG failure semantics (WP14-WP15 before WP13).** Freeze typed node I/O,
+   identity, retries, approvals, budgets, and side-effect classes; exercise duplicate delivery,
+   worker loss, stale leases, and self-approval attempts in deterministic simulations.
+10. **Implement durable orchestration (WP13).** Add SQLite attempts, leases, fencing tokens,
+    restart recovery, and atomic result commits, then bind planner, executor, reviewer, verifier,
+    and synthesizer profiles through gateway policy.
+11. **Build the operator platform (WP18-WP22).** Establish the auth, secrets, and data-directory
+    boundary before exposing Litestar/msgspec APIs; then add Granian lifecycle, OTel correlation and
+    redaction, rootless Podman API/worker images, backup/restore, quotas, and recovery tests.
+12. **Run comparative research and release work (WP23-WP27).** Evaluate retrieval interventions,
+    transition prediction, and hybrid symbolic validation under matched budgets before profiling,
+    legacy retirement, SBOM generation, and release evidence.
+
+## Delivery and review protocol
+
+- Use one active integration branch and one PR based directly on current `main`. Keep each work
+  package or review repair as a logically isolated commit; do not stack PRs on unmerged branches.
+- Track maturity as **contract complete**, **integrated**, or **product accepted**. Unit tests alone
+  establish a contract, not an integrated runtime or accepted product slice.
+- Every high-consequence boundary declares its invariant and adversarial matrix before merge. At a
+  minimum cover identity collisions and retries, zero and asymmetric budgets, multiple required
+  items at exact limits, stale/conflicting/missing evidence, duplicate delivery and restart, and
+  replay traps that would call a live dependency.
+- Run focused regressions, the full test suite, Ruff, formatting, and `ty` for every commit set.
+  Add property/state-machine and mutation tests where example tests can pass while the invariant is
+  still wrong.
+- Update this specification and the migration ledger in the same PR as behavior. Publish the branch
+  after every isolated commit so review never depends on unpublished local ancestry.
 
 ## Global acceptance
 

@@ -24,6 +24,7 @@ phase_1:
     - BCP-0031
     - BCP-0032
     - BCP-0033
+    - BCP-0034
 
 active_surfaces:
   cli:
@@ -43,6 +44,16 @@ active_surfaces:
     - blackcell.operator
     - blackcell.evaluation
     - blackcell.telemetry
+    - blackcell.features.ingest_observation
+    - blackcell.features.project_operational_state
+    - blackcell.features.derive_signal_packet
+    - blackcell.features.retrieve_evidence
+    - blackcell.features.build_context
+    - blackcell.features.solve_constraints
+    - blackcell.features.authorize_action
+    - blackcell.features.execute_affordance
+    - blackcell.gateway
+    - blackcell.workflows
 
 compatibility_surfaces:
   status: retained-temporarily
