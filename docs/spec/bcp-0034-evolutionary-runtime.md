@@ -12,7 +12,7 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP00-WP07b complete; WP08 typed affordance execution implemented
+Status: active — WP00-WP08 complete; WP09a Daily Operator workflow implemented
 
 ## Outcome
 
