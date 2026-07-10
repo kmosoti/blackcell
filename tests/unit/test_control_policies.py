@@ -137,9 +137,7 @@ def test_stale_or_conflicting_required_evidence_forces_evidence_action() -> None
     left = _claim("left", "repository", "git.clean", True, group="git-clean")
     right = _claim("right", "repository", "git.clean", False, group="git-clean")
     conflict_state = _state(left, right, conflicts=(ClaimConflict("git-clean", (left, right)),))
-    conflict_decision = PolicyEngine().evaluate(
-        proposal, action, conflict_state, evaluated_at=NOW
-    )
+    conflict_decision = PolicyEngine().evaluate(proposal, action, conflict_state, evaluated_at=NOW)
     assert any(finding.code == "conflicting" for finding in conflict_decision.findings)
 
 
@@ -184,4 +182,3 @@ def test_proposal_evidence_ids_must_be_non_empty_and_unique() -> None:
             "inspect",
             evidence_ids=("same", "same"),
         )
-

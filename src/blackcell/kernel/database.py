@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -75,7 +76,7 @@ create table if not exists projection_checkpoints (
 
 
 def initialize_database(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with connect(path) as connection:
         current = int(connection.execute("pragma user_version").fetchone()[0])
         if current > SCHEMA_VERSION:
@@ -91,17 +92,34 @@ def initialize_database(path: Path) -> None:
                 "pragma user_version = 1;\n"
                 "commit;"
             )
+    _owner_only_file(path)
 
 
 @contextmanager
 def connect(path: Path) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(path, timeout=30.0, isolation_level=None)
+    _owner_only_file(path)
     connection.row_factory = sqlite3.Row
     connection.execute("pragma foreign_keys = on")
     connection.execute("pragma busy_timeout = 30000")
     connection.execute("pragma journal_mode = wal")
     connection.execute("pragma synchronous = normal")
+    for suffix in ("-wal", "-shm"):
+        auxiliary = Path(f"{path}{suffix}")
+        if auxiliary.exists():
+            _owner_only_file(auxiliary)
     try:
         yield connection
     finally:
         connection.close()
+        for suffix in ("-wal", "-shm"):
+            auxiliary = Path(f"{path}{suffix}")
+            if auxiliary.exists():
+                _owner_only_file(auxiliary)
+
+
+def _owner_only_file(path: Path) -> None:
+    try:
+        os.chmod(path, 0o600)
+    except FileNotFoundError:
+        return

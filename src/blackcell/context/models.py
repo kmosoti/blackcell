@@ -36,6 +36,7 @@ class ContextFrame:
     unknowns: tuple[Claim, ...]
     constraints: tuple[str, ...]
     available_affordances: tuple[str, ...]
+    affordance_contracts: tuple[str, ...]
     token_budget: int
     character_budget: int
     selection_reasons: tuple[SelectionReason, ...]
@@ -96,6 +97,7 @@ class ContextProjectorProtocol(Protocol):
         objective: str,
         constraints: tuple[str, ...] = (),
         available_affordances: tuple[str, ...] = (),
+        affordance_contracts: tuple[str, ...] = (),
         required_claim_ids: tuple[str, ...] = (),
         token_budget: int = 2_000,
         character_budget: int = 8_000,
@@ -126,6 +128,7 @@ def _frame_payload(frame: ContextFrame) -> dict[str, object]:
         "unknowns": frame.unknowns,
         "constraints": frame.constraints,
         "available_affordances": frame.available_affordances,
+        "affordance_contracts": frame.affordance_contracts,
         "token_budget": frame.token_budget,
         "character_budget": frame.character_budget,
         "selection_reasons": frame.selection_reasons,
@@ -147,4 +150,3 @@ def _jsonable(value: object) -> object:
     if isinstance(value, Enum):
         return value.value
     return value
-

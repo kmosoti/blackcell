@@ -9,8 +9,10 @@ from blackcell.domains.repository import (
     RepositoryProjector,
     SourceReliability,
     TaskEvidence,
+    ToolEvidence,
     adapt_check_evidence,
     adapt_task_evidence,
+    adapt_tool_evidence,
     observe_file_presence,
     observe_git_status,
 )
@@ -22,9 +24,7 @@ class _GitRunner:
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
 
-    def run(
-        self, argv: tuple[str, ...], *, cwd: Path, timeout_seconds: float
-    ) -> CommandResult:
+    def run(self, argv: tuple[str, ...], *, cwd: Path, timeout_seconds: float) -> CommandResult:
         self.calls.append(argv)
         if argv[-1] == "--show-current":
             return CommandResult(0, "main\n")
@@ -39,9 +39,7 @@ def test_repository_adapters_emit_file_git_task_and_check_claims(tmp_path: Path)
             tmp_path, ("README.md", "missing.txt"), observed_at=NOW, starting_sequence=1
         ),
         observe_git_status(tmp_path, observed_at=NOW, sequence=3, runner=runner),
-        adapt_task_evidence(
-            TaskEvidence("T1", "open", blocked=True), observed_at=NOW, sequence=4
-        ),
+        adapt_task_evidence(TaskEvidence("T1", "open", blocked=True), observed_at=NOW, sequence=4),
         adapt_check_evidence(
             CheckEvidence("unit", "failed", reliability=SourceReliability.TRUSTED),
             observed_at=NOW,
@@ -71,3 +69,23 @@ def test_file_observer_rejects_paths_outside_repository(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="contained"):
         observe_file_presence(tmp_path, ("../secret",), observed_at=NOW)
 
+
+def test_tool_evidence_becomes_provenance_linked_claims() -> None:
+    event = adapt_tool_evidence(
+        ToolEvidence(
+            subject="affordance:git_status",
+            predicate="status",
+            status="succeeded",
+            output_digest="digest:result",
+            artifact_id="sha256:" + "a" * 64,
+        ),
+        observed_at=NOW,
+        sequence=1,
+    )
+
+    state = RepositoryProjector().project((event,), as_of_time=NOW)
+    status = state.find_claims("affordance:git_status", "status")[0]
+
+    assert status.value == "succeeded"
+    assert status.evidence[0].artifact_id == "sha256:" + "a" * 64
+    assert status.evidence[0].digest == "digest:result"

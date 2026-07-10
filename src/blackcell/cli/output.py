@@ -1,7 +1,8 @@
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field, is_dataclass
-from enum import StrEnum
+from dataclasses import dataclass, field, fields, is_dataclass
+from datetime import date, datetime
+from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -96,7 +97,7 @@ def _json(value: object, *, indent: int | None = None) -> str:
 
 def _jsonable(value: object) -> Any:
     if is_dataclass(value) and not isinstance(value, type):
-        return _jsonable(asdict(value))
+        return {item.name: _jsonable(getattr(value, item.name)) for item in fields(value)}
 
     if isinstance(value, Mapping):
         return {str(key): _jsonable(item) for key, item in value.items()}
@@ -106,5 +107,14 @@ def _jsonable(value: object) -> Any:
 
     if isinstance(value, Path):
         return str(value)
+
+    if isinstance(value, datetime | date):
+        return value.isoformat()
+
+    if isinstance(value, Enum):
+        return value.value
+
+    if isinstance(value, set | frozenset):
+        return sorted((_jsonable(item) for item in value), key=str)
 
     return value

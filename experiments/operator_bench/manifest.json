@@ -1,6 +1,7 @@
 {
   "benchmark": "operator-bench",
   "version": 1,
+  "status": "fixture-contract-pilot",
   "hypothesis": "A provenance-aware structured context improves evidence-grounded task success per unit of context over raw chronological and latest-N evidence.",
   "conditions": [
     "raw-chronological",
@@ -30,6 +31,7 @@
     "success",
     "evidence_recall",
     "evidence_precision",
+    "invisible_citations",
     "unsupported_claims",
     "violations",
     "false_rejection",

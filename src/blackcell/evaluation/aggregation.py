@@ -73,6 +73,7 @@ def aggregate_scores(scores: Iterable[TrialScore]) -> tuple[BenchmarkAggregate, 
         continuous = {
             "evidence_recall": [row.evidence_recall for row in rows],
             "evidence_precision": [row.evidence_precision for row in rows],
+            "invisible_citations": [float(row.invisible_citations) for row in rows],
             "unsupported_claims": [float(row.unsupported_claims) for row in rows],
             "violations": [float(row.violations) for row in rows],
             "context_chars": [float(row.context_chars) for row in rows],

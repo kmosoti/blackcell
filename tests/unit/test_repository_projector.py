@@ -29,6 +29,7 @@ def _claim(
     at: datetime = T0,
     status: EpistemicStatus = EpistemicStatus.OBSERVED,
     group: str | None = "task:T1:status",
+    source: str = "test",
 ) -> Claim:
     return Claim(
         claim_id=claim_id,
@@ -37,7 +38,7 @@ def _claim(
         value=value,
         epistemic_status=status,
         source_reliability=SourceReliability.AUTHORITATIVE,
-        evidence=(EvidenceRef(f"event:{claim_id}", "test"),),
+        evidence=(EvidenceRef(f"event:{claim_id}", source),),
         observed_at=at,
         effective_at=at,
         conflict_group=group,
@@ -57,7 +58,7 @@ def _event(sequence: int, *claims: Claim) -> RepositorySemanticEvent:
 
 def test_projection_preserves_conflicting_claims_and_unknowns() -> None:
     open_claim = _claim("open", "open")
-    closed_claim = _claim("closed", "closed", at=T0 + timedelta(minutes=1))
+    closed_claim = _claim("closed", "closed", at=T0 + timedelta(minutes=1), source="other")
     unknown = _claim(
         "branch-unknown",
         None,
@@ -76,6 +77,20 @@ def test_projection_preserves_conflicting_claims_and_unknowns() -> None:
     assert len(state.conflicts) == 1
     assert {claim.value for claim in state.conflicts[0].claims} == {"open", "closed"}
     assert state.unknowns == (unknown,)
+
+
+def test_projection_treats_newer_same_source_claim_as_a_state_change() -> None:
+    original = _claim("open", "open")
+    changed = _claim("closed", "closed", at=T0 + timedelta(minutes=1))
+
+    state = RepositoryProjector().project(
+        (_event(1, original), _event(2, changed)),
+        as_of_time=T0 + timedelta(hours=1),
+    )
+
+    assert state.claims == (changed,)
+    assert state.superseded_claims == (original,)
+    assert state.conflicts == ()
 
 
 def test_effective_time_correction_does_not_rewrite_prior_projection() -> None:
@@ -166,4 +181,3 @@ def test_projection_rejects_claim_id_reuse_instead_of_last_write_wins() -> None:
 
     with pytest.raises(ProjectionError, match="reused"):
         RepositoryProjector().project((_event(1, first), _event(2, second)))
-

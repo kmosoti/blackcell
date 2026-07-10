@@ -49,10 +49,11 @@ executor, or source of truth.
 
 ## Phase 1 product and research surface
 
-The first vertical slice is the **Repository Operator**. It observes a repository and a
-work item, constructs an operational state estimate, projects bounded context, requests one
-typed proposal, evaluates policies, executes at most one bounded read-only affordance,
-re-observes the environment, evaluates the outcome, and appends the resulting evidence.
+The first vertical slice is the **Repository Operator**. It observes repository structure
+and Git status, constructs an operational state estimate and SignalPacket, projects bounded
+context, requests one typed proposal, evaluates policies, executes at most one bounded
+read-only affordance, re-observes the environment, evaluates the outcome, and appends the
+resulting evidence. Task and check adapters use the same repository-domain event contract.
 
 The public `OperatorBench` scenarios exercise the same contracts with deterministic hidden
 state, stale and conflicting evidence, distractors, corrections, unsafe proposals, and
@@ -64,16 +65,17 @@ establishes replay and evaluation integrity.
 - One command completes the observe, project, propose, gate, act, re-observe, evaluate,
   and append loop.
 - Every event occurrence has a unique identity; idempotency is represented separately.
-- Historical replay reuses recorded model and tool results and reproduces projection and
-  artifact hashes.
+- Historical replay verifies every referenced artifact and rebuilds recorded operational-state
+  projections at their recorded cutoffs without invoking observers, models, or executors.
 - The operational state estimate preserves conflicting claims and explicit unknowns.
 - The ContextFrame is inspectable, content-addressed, budgeted, and explains selections
   and omissions.
 - A developer-authored policy rejects at least one unsafe model proposal.
 - The model cannot execute tools or mutate state outside Blackcell's affordance boundary.
 - Human corrections append new evidence rather than rewriting history.
-- OperatorBench compares raw, latest-N, and structured-context conditions using fixed
-  scenarios and deterministic graders.
+- OperatorBench currently validates raw, latest-N, and structured-context rendering plus
+  evidence-visibility grading using fixed scenarios. A model-dependent context-effect study
+  remains a required Phase 3 experiment.
 
 ## Claim gates
 

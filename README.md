@@ -3,10 +3,10 @@
 Blackcell is a local-first, event-sourced control runtime for evidence-grounded LLM
 agents.
 
-It turns immutable observations into domain-scoped operational state estimates, builds
-inspectable ContextFrames, accepts typed action proposals from a model, evaluates symbolic
-policies, executes approved affordances, and records observed outcomes for replay and
-evaluation.
+It turns immutable observations into domain-scoped operational state estimates and
+telemetry-derived SignalPackets, builds inspectable ContextFrames, accepts typed action
+proposals from a model, evaluates symbolic policies, executes approved affordances, and
+records observed outcomes for replay and evaluation.
 
 ## Why
 
@@ -41,12 +41,18 @@ authority inside Blackcell.
 ```bash
 uv sync --all-groups
 uv run blackcell operator run --model recorded --repo .
+uv run blackcell operator state
+uv run blackcell operator context
 uv run blackcell operator replay
-uv run blackcell bench run --condition structured --trials 3
+uv run blackcell events list
+uv run blackcell bench list
+uv run blackcell bench run --condition structured --trials 1
 ```
 
-Blackcell emits JSON by default. Use `--jsonl` for streaming records or `--rich` for operator
-tables.
+Blackcell emits JSON for successful commands by default. Use `--jsonl` for streaming records
+or `--rich` for operator tables. The current OperatorBench command is a deterministic
+fixture-contract pilot; it validates context visibility and grading contracts but does not
+estimate a model-dependent context effect.
 
 ## Scientific boundary
 
@@ -73,4 +79,3 @@ Blackcell targets Python 3.14 and uses uv, Ruff, ty, pytest, Hypothesis, coverag
 testing. SQLite is the Phase 1 persistence substrate. Distributed queues, graph/vector
 databases, Kubernetes, multi-agent orchestration, custom neural training, and Rust components
 remain deferred until measurement justifies them.
-

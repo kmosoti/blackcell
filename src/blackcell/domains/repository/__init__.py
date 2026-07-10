@@ -4,6 +4,7 @@ from blackcell.domains.repository.adapter import (
     SubprocessCommandRunner,
     adapt_check_evidence,
     adapt_task_evidence,
+    adapt_tool_evidence,
     observe_file_presence,
     observe_git_status,
     observe_repository,
@@ -26,6 +27,7 @@ from blackcell.domains.repository.models import (
     Scalar,
     SourceReliability,
     TaskEvidence,
+    ToolEvidence,
 )
 from blackcell.domains.repository.projector import ProjectionError, RepositoryProjector
 
@@ -50,10 +52,11 @@ __all__ = [
     "SourceReliability",
     "SubprocessCommandRunner",
     "TaskEvidence",
+    "ToolEvidence",
     "adapt_check_evidence",
     "adapt_task_evidence",
+    "adapt_tool_evidence",
     "observe_file_presence",
     "observe_git_status",
     "observe_repository",
 ]
-

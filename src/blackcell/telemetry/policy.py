@@ -87,15 +87,13 @@ class ContentPolicy:
 
 def _matches_sensitive_key(normalized: str, candidates: tuple[str, ...]) -> bool:
     return any(
-        normalized == candidate or normalized.endswith(f"_{candidate}")
-        for candidate in candidates
+        normalized == candidate or normalized.endswith(f"_{candidate}") for candidate in candidates
     )
 
 
 def _matches_content_key(normalized: str, candidates: tuple[str, ...]) -> bool:
     return any(
-        normalized == candidate or normalized.endswith(f"_{candidate}")
-        for candidate in candidates
+        normalized == candidate or normalized.endswith(f"_{candidate}") for candidate in candidates
     )
 
 

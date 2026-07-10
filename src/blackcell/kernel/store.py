@@ -116,9 +116,7 @@ class EventStore:
 
     def get(self, event_id: str) -> EventEnvelope | None:
         with connect(self.path) as connection:
-            row = connection.execute(
-                f"{_EVENT_SELECT} where event_id = ?", (event_id,)
-            ).fetchone()
+            row = connection.execute(f"{_EVENT_SELECT} where event_id = ?", (event_id,)).fetchone()
         return None if row is None else _event_from_row(row)
 
     def read_stream(
@@ -130,8 +128,7 @@ class EventStore:
     ) -> tuple[EventEnvelope, ...]:
         _validate_cursor(after_sequence, limit)
         query = (
-            f"{_EVENT_SELECT} where stream_id = ? and stream_sequence > ? "
-            "order by stream_sequence"
+            f"{_EVENT_SELECT} where stream_id = ? and stream_sequence > ? order by stream_sequence"
         )
         params: tuple[object, ...] = (stream_id, after_sequence)
         if limit is not None:
@@ -219,9 +216,7 @@ def _event_from_row(row: sqlite3.Row) -> EventEnvelope:
         source=str(row["source"]),
         payload=payload,
         payload_hash=str(row["payload_hash"]),
-        idempotency_key=(
-            None if row["idempotency_key"] is None else str(row["idempotency_key"])
-        ),
+        idempotency_key=(None if row["idempotency_key"] is None else str(row["idempotency_key"])),
         global_position=int(row["global_position"]),
     )
 

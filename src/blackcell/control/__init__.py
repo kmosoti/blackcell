@@ -1,16 +1,20 @@
 from blackcell.control.executor import (
+    BoundedExecutor,
     BoundedReadOnlyExecutor,
     ExecutionRejected,
     ProcessResult,
     ProcessRunner,
     SubprocessRunner,
+    default_affordances,
     default_read_only_affordances,
 )
 from blackcell.control.models import (
     ActionArgument,
     ActionAttempt,
     ActionProposal,
+    AffordanceArgumentSpec,
     AffordanceDefinition,
+    ArgumentValueType,
     AttemptStatus,
     CheckRequirement,
     ClaimRequirement,
@@ -25,6 +29,7 @@ from blackcell.control.models import (
     PolicyInput,
     PolicyOutcome,
     ProposedAssertion,
+    validate_affordance_arguments,
 )
 from blackcell.control.policies import (
     BlockedTaskPolicy,
@@ -38,9 +43,12 @@ __all__ = [
     "ActionArgument",
     "ActionAttempt",
     "ActionProposal",
+    "AffordanceArgumentSpec",
     "AffordanceDefinition",
+    "ArgumentValueType",
     "AttemptStatus",
     "BlockedTaskPolicy",
+    "BoundedExecutor",
     "BoundedReadOnlyExecutor",
     "CheckRequirement",
     "ClaimRequirement",
@@ -63,5 +71,7 @@ __all__ = [
     "RequiredChecksPolicy",
     "RequiredEvidencePolicy",
     "SubprocessRunner",
+    "default_affordances",
     "default_read_only_affordances",
+    "validate_affordance_arguments",
 ]

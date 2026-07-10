@@ -36,7 +36,10 @@ class ArtifactStore:
         self.database_path = (
             Path(database_path) if database_path is not None else self.root / "kernel.sqlite3"
         )
-        self.blob_root.mkdir(parents=True, exist_ok=True)
+        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self.blob_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(self.root, 0o700)
+        os.chmod(self.blob_root, 0o700)
         initialize_database(self.database_path)
 
     def put_bytes(
@@ -161,13 +164,15 @@ class ArtifactStore:
 
     @staticmethod
     def _write_once(path: Path, data: bytes, digest: str) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path.parent, 0o700)
         if path.exists():
             ArtifactStore._verify_path(path, digest, len(data))
             return
         temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
         try:
             with temporary.open("xb") as handle:
+                os.chmod(temporary, 0o600)
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())

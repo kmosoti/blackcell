@@ -97,9 +97,7 @@ def test_checkpoint_persists_and_resumes_without_refolding_history(tmp_path: Pat
     assert checkpoints.save(checkpoint, expected_position=0) == checkpoint
     loaded = CheckpointStore(path).load(projection.name, projection.version, stream_id="counter:1")
     assert loaded == checkpoint
-    duplicate = checkpoints.save(
-        checkpoint, expected_position=checkpoint.last_global_position
-    )
+    duplicate = checkpoints.save(checkpoint, expected_position=checkpoint.last_global_position)
     assert duplicate == checkpoint
 
     third = append_amount(event_store, 3, 7)

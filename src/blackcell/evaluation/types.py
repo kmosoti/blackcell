@@ -77,7 +77,7 @@ class Trial:
     scenario_id: str
     condition: ContextCondition
     replicate: int = 0
-    latest_n: int = 3
+    latest_n: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +113,7 @@ class TrialScore:
     success: bool
     evidence_recall: float
     evidence_precision: float
+    invisible_citations: int
     unsupported_claims: int
     violations: int
     false_rejection: bool

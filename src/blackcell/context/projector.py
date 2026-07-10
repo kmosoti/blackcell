@@ -37,6 +37,7 @@ class DeterministicContextProjector:
         objective: str,
         constraints: tuple[str, ...] = (),
         available_affordances: tuple[str, ...] = (),
+        affordance_contracts: tuple[str, ...] = (),
         required_claim_ids: tuple[str, ...] = (),
         token_budget: int = 2_000,
         character_budget: int = 8_000,
@@ -61,6 +62,7 @@ class DeterministicContextProjector:
                 objective,
                 constraints,
                 available_affordances,
+                affordance_contracts,
                 tentative_units,
                 omitted_claim_count=tentative_omitted,
             )
@@ -76,6 +78,7 @@ class DeterministicContextProjector:
             objective,
             constraints,
             available_affordances,
+            affordance_contracts,
             selected_units,
             omitted_claim_count=omitted_claim_count,
         )
@@ -89,6 +92,7 @@ class DeterministicContextProjector:
                 objective,
                 constraints,
                 available_affordances,
+                affordance_contracts,
                 selected_units,
                 omitted_claim_count=omitted_claim_count,
             )
@@ -98,9 +102,7 @@ class DeterministicContextProjector:
         selected_claims = tuple(claim for unit in selected_units for claim in unit.claims)
         selected_conflicts = _selected_conflicts(state.conflicts, selected_ids)
         selected_unknowns = tuple(
-            claim
-            for claim in selected_claims
-            if claim.epistemic_status is EpistemicStatus.UNKNOWN
+            claim for claim in selected_claims if claim.epistemic_status is EpistemicStatus.UNKNOWN
         )
         reasons = tuple(
             SelectionReason(claim.claim_id, unit.reason, unit.score)
@@ -130,6 +132,7 @@ class DeterministicContextProjector:
             unknowns=selected_unknowns,
             constraints=tuple(sorted(set(constraints))),
             available_affordances=tuple(sorted(set(available_affordances))),
+            affordance_contracts=tuple(sorted(set(affordance_contracts))),
             token_budget=token_budget,
             character_budget=character_budget,
             selection_reasons=reasons,
@@ -160,9 +163,7 @@ def _candidate_units(
         else:
             reason, score = "conflicting-evidence", 900
         units.append(
-            _SelectionUnit(
-                f"conflict:{conflict.conflict_group}", conflict.claims, reason, score
-            )
+            _SelectionUnit(f"conflict:{conflict.conflict_group}", conflict.claims, reason, score)
         )
         consumed.update(claim_ids)
 
@@ -176,9 +177,7 @@ def _candidate_units(
         elif claim.epistemic_status is EpistemicStatus.UNKNOWN:
             units.append(_SelectionUnit(claim.claim_id, (claim,), "unknown-evidence", 850))
         elif matches:
-            units.append(
-                _SelectionUnit(claim.claim_id, (claim,), "objective-term", 600 + matches)
-            )
+            units.append(_SelectionUnit(claim.claim_id, (claim,), "objective-term", 600 + matches))
         else:
             unrelated.append(claim)
 
@@ -195,6 +194,7 @@ def _render(
     objective: str,
     constraints: tuple[str, ...],
     affordances: tuple[str, ...],
+    affordance_contracts: tuple[str, ...],
     units: tuple[_SelectionUnit, ...] | list[_SelectionUnit],
     *,
     omitted_claim_count: int,
@@ -204,6 +204,7 @@ def _render(
         f"state: {state.state_id} @ sequence {state.as_of_sequence}",
         "constraints: " + ("; ".join(sorted(set(constraints))) or "none"),
         "affordances: " + (", ".join(sorted(set(affordances))) or "none"),
+        "affordance-contracts: " + ("; ".join(sorted(set(affordance_contracts))) or "none"),
         "evidence:",
     ]
     for unit in units:

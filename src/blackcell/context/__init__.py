@@ -13,6 +13,11 @@ from blackcell.context.models import (
     estimate_tokens,
 )
 from blackcell.context.projector import ContextBudgetError, DeterministicContextProjector
+from blackcell.context.signals import (
+    SignalMeasurement,
+    SignalPacket,
+    SignalPacketProjector,
+)
 
 __all__ = [
     "BaselineContext",
@@ -25,7 +30,9 @@ __all__ = [
     "OmissionSummary",
     "RawEventBaselineRenderer",
     "SelectionReason",
+    "SignalMeasurement",
+    "SignalPacket",
+    "SignalPacketProjector",
     "content_digest",
     "estimate_tokens",
 ]
-

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -46,6 +47,17 @@ def test_corrupted_blob_fails_integrity_check(tmp_path: Path) -> None:
         store.get_bytes(reference)
     with pytest.raises(ArtifactIntegrityError):
         store.put_bytes(b"original")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits are not portable on Windows")
+def test_kernel_storage_defaults_to_owner_only_permissions(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "private-artifacts")
+    reference = store.put_text("private context")
+
+    assert (store.root.stat().st_mode & 0o777) == 0o700
+    assert (store.blob_root.stat().st_mode & 0o777) == 0o700
+    assert (store.database_path.stat().st_mode & 0o777) == 0o600
+    assert (store.path_for(reference).stat().st_mode & 0o777) == 0o600
 
 
 @settings(max_examples=40, deadline=None)

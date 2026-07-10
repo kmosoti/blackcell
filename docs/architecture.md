@@ -22,6 +22,7 @@ flowchart TD
     Sources[Observation sources] --> Ledger[Event and artifact ledger]
     Ledger --> Projector[Domain projector]
     Projector --> State[Operational state estimate]
+    State --> Signal[Telemetry SignalPacket]
     State --> Context[ContextFrame]
     Context --> Proposal[Model proposal]
     Proposal --> Gate[Policy and constraint gate]
@@ -30,7 +31,7 @@ flowchart TD
     Outcome --> Ledger
     Outcome --> Evaluation[Evaluation]
     Evaluation --> Ledger
-    State --> Transition[Transition model]
+    State --> Transition[Future transition model]
     Transition --> Gate
 ```
 
@@ -69,9 +70,12 @@ content. Artifact reads verify the digest before returning bytes.
 
 ## Replay modes
 
-Historical replay reads recorded events, model results, tool results, and artifacts. It
-recomputes deterministic projectors, policies, and graders and must reproduce their hashes.
-It never calls a live model or repeats an external side effect.
+Historical replay reads recorded events, model results, tool results, and artifacts. The
+Phase 1 Repository Operator verifies every referenced artifact and independently rebuilds
+the recorded operational-state projections to reproduce their content hashes. It never
+calls an observer, live model, or executor and never repeats a side effect. Policy and grader
+re-execution belongs to a later versioned replay contract; their recorded artifacts are
+integrity-checked now.
 
 Counterfactual rerun applies a current model, projector, policy, or grader to a historical
 ContextFrame. It creates a new experiment and correlation ID. It is not deterministic replay.
@@ -79,13 +83,11 @@ ContextFrame. It creates a new experiment and correlation ID. It is not determin
 ## Action protocol
 
 ```text
-ActionProposed
+ProposalRecorded
   -> PolicyEvaluated(allow | deny | require_approval)
-  -> ActionPrepared(idempotency_key)
-  -> ActionStarted
-  -> ActionSucceeded | ActionFailed | ActionOutcomeUnknown
-  -> OutcomeObserved
+  -> ActionObserved (allowed read-only path only)
   -> EvaluationRecorded
+  -> StateTransitionCommitted
 ```
 
 SQLite and an external side effect cannot share one atomic transaction. After a crash with an
@@ -99,19 +101,23 @@ typed proposal. It has no direct tool access and no ambient authority. Blackcell
 approval, execution, and outcome recording.
 
 `RecordedModel` supports deterministic CI and replay. `CodexExecModel` is an optional local
-adapter that runs in an isolated temporary Git workspace containing only the frame and schema.
+adapter that prepares a temporary Git workspace containing only the frame and schema and asks
+the Codex CLI to use its read-only sandbox. Its process sandbox is provided by the CLI, not by
+Blackcell.
 
 ## Observability boundary
 
 Domain evidence and diagnostic telemetry remain separate. Stable internal spans include:
 
-- `blackcell.run`;
+- `blackcell.observe`;
 - `blackcell.state.project`;
 - `blackcell.context.build`;
-- `blackcell.model.propose`;
+- `blackcell.model.decide`;
 - `blackcell.policy.evaluate`;
 - `blackcell.affordance.execute`;
-- `blackcell.outcome.evaluate`.
+- `blackcell.outcome.observe`;
+- `blackcell.evaluation.grade`;
+- `blackcell.transition.commit`.
 
 Span attributes contain low-cardinality identifiers and versions. Prompt and evidence content
 is artifact data governed by an explicit redaction policy. OpenTelemetry mapping is an

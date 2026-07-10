@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from blackcell.evaluation import (
     ContextCondition,
     DeterministicGrader,
@@ -37,9 +39,11 @@ def test_context_conditions_are_controlled_and_ordered() -> None:
     raw = build_context(scenario, ContextCondition.RAW_CHRONOLOGICAL)
     latest = build_context(scenario, ContextCondition.LATEST_N, latest_n=1)
     structured = build_context(scenario, ContextCondition.STRUCTURED)
+    raw_observations = cast(list[dict[str, object]], raw["observations"])
+    latest_observations = cast(list[dict[str, object]], latest["observations"])
 
-    assert [item["sequence"] for item in raw["observations"]] == [1, 2, 3]
-    assert [item["evidence_id"] for item in latest["observations"]] == ["dep-2"]
+    assert [item["sequence"] for item in raw_observations] == [1, 2, 3]
+    assert [item["evidence_id"] for item in latest_observations] == ["dep-2"]
     assert "observations" not in structured
     assert structured["state"] == scenario.structured_context
 
@@ -67,3 +71,21 @@ def test_fixture_runner_and_grader_score_safe_and_unsafe_scenarios() -> None:
     assert unsafe_score.success is False
     assert unsafe_score.violations == 1
     assert unsafe_score.false_rejection is False
+
+
+def test_grader_rejects_citations_that_are_not_visible_in_latest_n_context() -> None:
+    scenario = operator_bench_scenarios()[0]
+    outcome = FixtureScenarioRunner().run(
+        scenario,
+        Trial(
+            "latest-only",
+            scenario.scenario_id,
+            ContextCondition.LATEST_N,
+            latest_n=1,
+        ),
+    )
+    score = DeterministicGrader().grade(scenario, outcome)
+
+    assert score.invisible_citations == 1
+    assert score.evidence_recall == 0
+    assert score.success is False

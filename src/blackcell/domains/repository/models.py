@@ -167,6 +167,28 @@ class CheckEvidence:
     reliability: SourceReliability = SourceReliability.AUTHORITATIVE
 
 
+@dataclass(frozen=True, slots=True)
+class ToolEvidence:
+    subject: str
+    predicate: str
+    status: str
+    output_digest: str
+    artifact_id: str
+    source: str = "affordance-executor"
+    reliability: SourceReliability = SourceReliability.AUTHORITATIVE
+
+    def __post_init__(self) -> None:
+        for name in (
+            "subject",
+            "predicate",
+            "status",
+            "output_digest",
+            "artifact_id",
+            "source",
+        ):
+            _require_text(name, getattr(self, name))
+
+
 def claim_value_key(value: Scalar) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 

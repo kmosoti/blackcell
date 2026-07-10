@@ -18,7 +18,7 @@ An `OperationalStateEstimate` is a versioned projection of claims supported by i
 possibly stale, and possibly conflicting evidence. It is not a formal POMDP belief state.
 
 Each claim records epistemic status, evidence references, source reliability class,
-observation and effective times, freshness policy, conflict group, and derivation version.
+observation and effective times, optional expiry, conflict group, and derivation version.
 Source reliability, evidence strength, freshness, and forecast probability are separate
 quantities. Numeric forecast probabilities are introduced only where outcomes can be
 observed and calibration can be measured.
@@ -78,12 +78,14 @@ properties of the encoding, not the correctness of an LLM's interpretation.
 ## Context projection
 
 Context projection is deterministic representation engineering in Phase 1. The projector
-selects claims and raw evidence under explicit scope, freshness, sensitivity, relevance,
-redundancy, and budget rules. It records what was selected, what was omitted, and why.
+selects structured claims under explicit scope, freshness, relevance, conflict, and budget
+rules. It records what was selected, what was omitted, and why. Raw-evidence escalation,
+sensitivity policy, and redundancy control are planned interventions rather than current
+capabilities.
 
-Structured keys and SQLite FTS5 are the initial retrieval baseline. Learned embeddings or
-routers are later interventions and must be compared with that baseline at a matched context
-budget.
+Structured keys, deterministic term matching, conflict priority, and a small recent-state
+fallback are the initial retrieval baseline. SQLite FTS5, learned embeddings, or routers are
+later interventions and must be compared with that baseline at a matched context budget.
 
 ## Provenance and causality
 

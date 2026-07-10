@@ -19,6 +19,7 @@ edges:
 - `policy decision`: allow, deny, or require-approval result with structured violations
 - `affordance`: declared, bounded action implemented by Blackcell
 - `execution lineage`: correlated history of context, proposal, policy, action, and outcome
-- `historical replay`: deterministic recomputation using recorded model and tool results
+- `historical replay`: integrity-checking recorded artifacts and rebuilding state projections
+  without rerunning models or tools
 - `counterfactual rerun`: a new experiment applying current components to historical input
 - `transition model`: domain-scoped predictor of action-conditioned outcomes

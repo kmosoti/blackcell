@@ -22,9 +22,7 @@ from blackcell.domains.repository.models import (
 )
 
 _CLAIM_KINDS = frozenset({CLAIMS_RECORDED, "ObservationRecorded", "observation.recorded"})
-_CORRECTION_KINDS = frozenset(
-    {CORRECTION_RECORDED, "CorrectionRecorded", "correction.recorded"}
-)
+_CORRECTION_KINDS = frozenset({CORRECTION_RECORDED, "CorrectionRecorded", "correction.recorded"})
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
@@ -93,16 +91,11 @@ class RepositoryProjector:
             superseded_ids.update(correction.supersedes_claim_ids)
             applied_corrections.append(correction.correction_id)
 
-        claims = tuple(
-            sorted(
-                (
-                    claim
-                    for claim_id, claim in effective_claims.items()
-                    if claim_id not in superseded_ids
-                ),
-                key=_claim_order,
-            )
+        candidates = tuple(
+            claim for claim_id, claim in effective_claims.items() if claim_id not in superseded_ids
         )
+        claims, temporally_superseded = _select_current_claims(candidates)
+        superseded_ids.update(claim.claim_id for claim in temporally_superseded)
         superseded = tuple(
             sorted(
                 (
@@ -233,9 +226,7 @@ def _correction_from(value: Mapping[str, object]) -> ClaimCorrection:
         raise ProjectionError(f"invalid serialized correction: {exc}") from exc
 
 
-def _find_conflicts(
-    claims: tuple[Claim, ...], as_of_time: datetime
-) -> tuple[ClaimConflict, ...]:
+def _find_conflicts(claims: tuple[Claim, ...], as_of_time: datetime) -> tuple[ClaimConflict, ...]:
     grouped: dict[str, list[Claim]] = {}
     for claim in claims:
         if (
@@ -252,8 +243,42 @@ def _find_conflicts(
     return tuple(conflicts)
 
 
+def _select_current_claims(
+    claims: tuple[Claim, ...],
+) -> tuple[tuple[Claim, ...], tuple[Claim, ...]]:
+    """Close older same-source claim versions without erasing event history."""
+
+    grouped: dict[tuple[str, str, tuple[str, ...], str], list[Claim]] = {}
+    for claim in claims:
+        sources = tuple(sorted({evidence.source for evidence in claim.evidence}))
+        key = (claim.subject, claim.predicate, sources, claim.derivation_version)
+        grouped.setdefault(key, []).append(claim)
+
+    current: list[Claim] = []
+    superseded: list[Claim] = []
+    for members in grouped.values():
+        latest = max(_claim_version_key(claim) for claim in members)
+        for claim in members:
+            if _claim_version_key(claim) == latest:
+                current.append(claim)
+            else:
+                superseded.append(claim)
+    return (
+        tuple(sorted(current, key=_claim_order)),
+        tuple(sorted(superseded, key=_claim_order)),
+    )
+
+
 def _claim_order(claim: Claim) -> tuple[datetime, datetime, str]:
     return claim.effective_at, claim.observed_at, claim.claim_id
+
+
+def _claim_version_key(claim: Claim) -> tuple[datetime, datetime, int]:
+    sequence = max(
+        (evidence.sequence for evidence in claim.evidence if evidence.sequence is not None),
+        default=-1,
+    )
+    return claim.effective_at, claim.observed_at, sequence
 
 
 def _event_id(event: SemanticEventLike) -> str:

@@ -48,4 +48,3 @@ def test_raw_and_latest_n_baselines_are_deterministic_and_bounded() -> None:
     assert latest.included_references == ("claim:3", "claim:2")
     assert latest.omitted_count == 1
     assert raw.content_id == RawEventBaselineRenderer().render(events).content_id
-

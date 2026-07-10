@@ -132,6 +132,7 @@ class CodexExecModel[ProposalT]:
             "schema_sha256": hashlib.sha256(schema_bytes).hexdigest(),
             "structured_output": True,
             "jsonl": True,
+            "ignore_rules": True,
         }
         if self._model is not None:
             configuration["model"] = self._model
@@ -182,14 +183,15 @@ class CodexExecModel[ProposalT]:
     ) -> list[str]:
         command = [
             self._executable,
-            "exec",
             "--ask-for-approval",
             "never",
-            "--ignore-user-config",
-            "--json",
-            "--ephemeral",
             "--sandbox",
             "read-only",
+            "exec",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--json",
+            "--ephemeral",
             "--cd",
             str(workspace),
             "--output-schema",
@@ -272,7 +274,7 @@ def _extract_response(
 
 
 def _proposal_candidate(event: Mapping[str, Any]) -> Any:
-    if "action" in event and "arguments" in event:
+    if "affordance" in event and "arguments" in event:
         return event
     for key in ("response", "output", "result", "structured_output"):
         candidate = event.get(key)

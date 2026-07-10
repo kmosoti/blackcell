@@ -74,9 +74,7 @@ class RequiredEvidencePolicy:
             issue
             for requirement in requirements
             if (
-                issue := _evidence_issue(
-                    policy_input.state, requirement, policy_input.evaluated_at
-                )
+                issue := _evidence_issue(policy_input.state, requirement, policy_input.evaluated_at)
             )
         )
         if not issues or policy_input.affordance.evidence_action:
@@ -211,11 +209,7 @@ def _evidence_issue(
     claims = state.find_claims(requirement.subject, requirement.predicate)
     if not claims:
         return requirement, "missing"
-    current = tuple(
-        claim
-        for claim in claims
-        if not _stale(claim, at, requirement.max_age_seconds)
-    )
+    current = tuple(claim for claim in claims if not _stale(claim, at, requirement.max_age_seconds))
     if not current:
         return requirement, "stale"
     if _claims_conflict(state, current):
@@ -233,11 +227,7 @@ def _check_issue(
     claims = state.find_claims(f"check:{requirement.name}", "status")
     if not claims:
         return "missing"
-    current = tuple(
-        claim
-        for claim in claims
-        if not _stale(claim, at, requirement.max_age_seconds)
-    )
+    current = tuple(claim for claim in claims if not _stale(claim, at, requirement.max_age_seconds))
     if not current:
         return "stale"
     if _claims_conflict(state, current):

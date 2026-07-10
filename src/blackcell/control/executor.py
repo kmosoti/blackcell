@@ -12,7 +12,9 @@ from typing import Protocol
 from blackcell.control.models import (
     ActionAttempt,
     ActionProposal,
+    AffordanceArgumentSpec,
     AffordanceDefinition,
+    ArgumentValueType,
     AttemptStatus,
     ExecutionResult,
     OutcomeObservation,
@@ -24,6 +26,11 @@ from blackcell.control.models import (
 _SHELL_EXECUTABLES = frozenset(
     {"sh", "bash", "zsh", "fish", "cmd", "cmd.exe", "powershell", "pwsh"}
 )
+_SENSITIVE_PARTS = frozenset({".git", ".blackcell", ".codex", ".agents"})
+_SENSITIVE_NAMES = frozenset(
+    {".netrc", ".npmrc", "credentials", "credentials.json", "secrets.json"}
+)
+_SENSITIVE_SUFFIXES = (".key", ".pem", ".p12", ".pfx")
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +71,8 @@ class ExecutionRejected(ValueError):
     pass
 
 
-class BoundedReadOnlyExecutor:
-    """Execute three explicit read-only affordances; proposal data never becomes argv."""
+class BoundedExecutor:
+    """Execute explicit bounded affordances; proposal data never becomes arbitrary argv."""
 
     def __init__(
         self,
@@ -76,15 +83,14 @@ class BoundedReadOnlyExecutor:
         runner: ProcessRunner | None = None,
         max_output_bytes: int = 65_536,
         max_timeout_seconds: float = 60.0,
+        allow_sensitive_paths: bool = False,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._root = repo_root.resolve()
-        definitions = affordances or default_read_only_affordances()
+        definitions = affordances or default_affordances(tuple((check_commands or {}).keys()))
         self._affordances = {definition.name: definition for definition in definitions}
         if len(self._affordances) != len(definitions):
             raise ValueError("affordance names must be unique")
-        if any(not definition.read_only or definition.mutates_state for definition in definitions):
-            raise ValueError("bounded executor only accepts read-only affordances")
         self._checks = dict(check_commands or {})
         for name, command in self._checks.items():
             _validate_declared_command(name, command)
@@ -93,11 +99,10 @@ class BoundedReadOnlyExecutor:
         self._runner = runner or SubprocessRunner()
         self._max_output_bytes = max_output_bytes
         self._max_timeout_seconds = max_timeout_seconds
+        self._allow_sensitive_paths = allow_sensitive_paths
         self._clock = clock or (lambda: datetime.now(UTC))
 
-    def execute(
-        self, proposal: ActionProposal, decision: PolicyDecision
-    ) -> ExecutionResult:
+    def execute(self, proposal: ActionProposal, decision: PolicyDecision) -> ExecutionResult:
         if decision.proposal_id != proposal.proposal_id:
             raise ExecutionRejected("policy decision does not belong to this proposal")
         if decision.outcome is not PolicyOutcome.ALLOW:
@@ -140,9 +145,7 @@ class BoundedReadOnlyExecutor:
         )
         return ExecutionResult(attempt, outcome)
 
-    def _inspect_file(
-        self, proposal: ActionProposal
-    ) -> tuple[bool, bytes, str | None, bool]:
+    def _inspect_file(self, proposal: ActionProposal) -> tuple[bool, bytes, str | None, bool]:
         _reject_extra_arguments(proposal, {"path", "max_bytes"})
         requested = proposal.argument("path")
         if not isinstance(requested, str) or not requested:
@@ -152,7 +155,11 @@ class BoundedReadOnlyExecutor:
             raise ExecutionRejected("max_bytes must be an integer")
         if requested_max <= 0 or requested_max > self._max_output_bytes:
             raise ExecutionRejected("max_bytes exceeds the executor bound")
-        target = _contained_file(self._root, requested)
+        target = _contained_file(
+            self._root,
+            requested,
+            allow_sensitive=self._allow_sensitive_paths,
+        )
         try:
             with target.open("rb") as handle:
                 output = handle.read(requested_max + 1)
@@ -190,42 +197,87 @@ class BoundedReadOnlyExecutor:
         return result.returncode == 0, output, error
 
 
-def default_read_only_affordances() -> tuple[AffordanceDefinition, ...]:
-    return (
+def default_affordances(
+    check_names: tuple[str, ...] = (),
+) -> tuple[AffordanceDefinition, ...]:
+    read_only = (
         AffordanceDefinition(
             "inspect_file",
             "Read a bounded file beneath the repository root.",
             read_only=True,
             evidence_action=True,
+            arguments=(
+                AffordanceArgumentSpec("path", ArgumentValueType.STRING),
+                AffordanceArgumentSpec("max_bytes", ArgumentValueType.INTEGER, required=False),
+            ),
+            effect_class="file-inspection",
         ),
         AffordanceDefinition(
             "git_status",
             "Inspect repository status with a fixed git invocation.",
             read_only=True,
             evidence_action=True,
+            effect_class="repository-observation",
         ),
+    )
+    if not check_names:
+        return read_only
+    return (
+        *read_only,
         AffordanceDefinition(
             "run_check",
-            "Run one developer-declared check by name.",
-            read_only=True,
+            "Run one developer-declared check by name with explicit approval.",
+            read_only=False,
+            mutates_state=True,
             evidence_action=True,
             timeout_seconds=60.0,
+            arguments=(
+                AffordanceArgumentSpec(
+                    "check",
+                    ArgumentValueType.STRING,
+                    allowed_values=tuple(sorted(check_names)),
+                ),
+            ),
+            effect_class="check-execution",
         ),
     )
 
 
-def _contained_file(root: Path, requested: str) -> Path:
+def default_read_only_affordances() -> tuple[AffordanceDefinition, ...]:
+    """Compatibility helper containing only genuinely read-only definitions."""
+
+    return default_affordances()
+
+
+BoundedReadOnlyExecutor = BoundedExecutor
+
+
+def _contained_file(root: Path, requested: str, *, allow_sensitive: bool) -> Path:
     path = Path(requested)
     if path.is_absolute() or ".." in PurePath(path).parts:
         raise ExecutionRejected("path must be relative and cannot contain '..'")
     target = (root / path).resolve(strict=False)
     try:
-        target.relative_to(root)
+        relative = target.relative_to(root)
     except ValueError as exc:
         raise ExecutionRejected("path escapes the repository root") from exc
     if not target.is_file():
         raise ExecutionRejected("path does not identify a regular file")
+    if not allow_sensitive and _sensitive(relative):
+        raise ExecutionRejected("path is inside a protected or credential-like location")
     return target
+
+
+def _sensitive(relative: Path) -> bool:
+    folded_parts = tuple(part.casefold() for part in relative.parts)
+    name = relative.name.casefold()
+    return (
+        bool(_SENSITIVE_PARTS.intersection(folded_parts))
+        or name == ".env"
+        or name.startswith(".env.")
+        or name in _SENSITIVE_NAMES
+        or name.endswith(_SENSITIVE_SUFFIXES)
+    )
 
 
 def _reject_extra_arguments(proposal: ActionProposal, allowed: set[str]) -> None:

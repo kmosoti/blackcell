@@ -52,4 +52,3 @@ __all__ = [
     "new_event_id",
     "utc_now",
 ]
-

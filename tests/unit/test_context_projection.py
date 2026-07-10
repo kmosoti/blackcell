@@ -24,6 +24,7 @@ def _claim(
     status: EpistemicStatus = EpistemicStatus.OBSERVED,
     group: str | None = None,
     offset: int = 0,
+    source: str = "test",
 ) -> Claim:
     at = T0 + timedelta(minutes=offset)
     return Claim(
@@ -33,7 +34,7 @@ def _claim(
         value,
         status,
         SourceReliability.AUTHORITATIVE,
-        (EvidenceRef(f"event:{claim_id}", "test"),),
+        (EvidenceRef(f"event:{claim_id}", source),),
         at,
         at,
         conflict_group=group,
@@ -58,7 +59,15 @@ def _state(*claims: Claim):
 def test_context_frame_is_stable_and_preserves_selected_conflict_atomically() -> None:
     state = _state(
         _claim("open", "task:T1", "status", "open", group="task:T1:status"),
-        _claim("closed", "task:T1", "status", "closed", group="task:T1:status", offset=1),
+        _claim(
+            "closed",
+            "task:T1",
+            "status",
+            "closed",
+            group="task:T1:status",
+            offset=1,
+            source="other",
+        ),
         _claim(
             "unknown",
             "task:T1",
@@ -115,4 +124,3 @@ def test_context_projection_enforces_budget_and_records_omissions() -> None:
     assert len(frame.rendered_context) <= 700
     assert frame.estimated_tokens <= 175
     assert frame.omission_summary.omitted_claim_count > 0
-

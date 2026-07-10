@@ -17,9 +17,14 @@ type EventPayload = ClaimBatch | ClaimCorrection | Mapping[str, object]
 class SemanticEventLike(Protocol):
     """Structural boundary implemented by both domain events and kernel envelopes."""
 
-    stream_sequence: int
-    event_type: str
-    payload: object
+    @property
+    def stream_sequence(self) -> int: ...
+
+    @property
+    def event_type(self) -> str: ...
+
+    @property
+    def payload(self) -> object: ...
 
 
 @dataclass(frozen=True, slots=True)

@@ -21,6 +21,13 @@ class AttemptStatus(StrEnum):
     FAILED = "failed"
 
 
+class ArgumentValueType(StrEnum):
+    STRING = "string"
+    INTEGER = "integer"
+    NUMBER = "number"
+    BOOLEAN = "boolean"
+
+
 @dataclass(frozen=True, slots=True)
 class ActionArgument:
     name: str
@@ -83,6 +90,18 @@ class Constraint:
 
 
 @dataclass(frozen=True, slots=True)
+class AffordanceArgumentSpec:
+    name: str
+    value_type: ArgumentValueType
+    required: bool = True
+    allowed_values: tuple[Scalar, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.name.strip():
+            raise ValueError("affordance argument name must be non-empty")
+
+
+@dataclass(frozen=True, slots=True)
 class AffordanceDefinition:
     name: str
     description: str
@@ -91,6 +110,8 @@ class AffordanceDefinition:
     mutates_state: bool = False
     evidence_action: bool = False
     timeout_seconds: float = 10.0
+    arguments: tuple[AffordanceArgumentSpec, ...] = ()
+    effect_class: str = "observation"
 
     def __post_init__(self) -> None:
         if not self.name or not self.description:
@@ -99,6 +120,24 @@ class AffordanceDefinition:
             raise ValueError("affordance timeout must be positive")
         if self.mutates_state and self.read_only:
             raise ValueError("a state-mutating affordance cannot be read-only")
+        names = [argument.name for argument in self.arguments]
+        if len(names) != len(set(names)):
+            raise ValueError("affordance argument names must be unique")
+        if not self.effect_class.strip():
+            raise ValueError("affordance effect class must be non-empty")
+
+    def signature(self) -> str:
+        arguments = ", ".join(
+            f"{item.name}{'' if item.required else '?'}:{item.value_type.value}"
+            + (
+                "=" + "|".join(str(value) for value in item.allowed_values)
+                if item.allowed_values
+                else ""
+            )
+            for item in self.arguments
+        )
+        mode = "read-only" if self.read_only else "approval-required"
+        return f"{self.name}({arguments}) [{mode}; effect={self.effect_class}]"
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +170,37 @@ class ActionProposal:
         return default
 
 
+def validate_affordance_arguments(
+    proposal: ActionProposal, definition: AffordanceDefinition
+) -> tuple[tuple[str, str], ...]:
+    specs = {item.name: item for item in definition.arguments}
+    supplied = {item.name: item.value for item in proposal.arguments}
+    violations: list[tuple[str, str]] = []
+    for name in sorted(supplied.keys() - specs.keys()):
+        violations.append(("unexpected_argument", f"argument {name!r} is not declared"))
+    for name, spec in specs.items():
+        if name not in supplied:
+            if spec.required:
+                violations.append(("missing_argument", f"argument {name!r} is required"))
+            continue
+        value = supplied[name]
+        if not _argument_type_matches(value, spec.value_type):
+            violations.append(
+                (
+                    "invalid_argument_type",
+                    f"argument {name!r} must be {spec.value_type.value}",
+                )
+            )
+        elif spec.allowed_values and value not in spec.allowed_values:
+            violations.append(
+                (
+                    "invalid_argument_value",
+                    f"argument {name!r} is not one of the developer-declared values",
+                )
+            )
+    return tuple(violations)
+
+
 @dataclass(frozen=True, slots=True)
 class PolicyFinding:
     policy: str
@@ -155,8 +225,7 @@ class PolicyDecision:
             "proposal_id": self.proposal_id,
             "outcome": self.outcome.value,
             "findings": [
-                [item.policy, item.outcome.value, item.code, item.message]
-                for item in self.findings
+                [item.policy, item.outcome.value, item.code, item.message] for item in self.findings
             ],
             "evaluated_at": self.evaluated_at.isoformat(),
             "approval_granted": self.approval_granted,
@@ -247,3 +316,15 @@ def _validate_evidence_ids(values: tuple[str, ...]) -> None:
         raise ValueError("evidence ids must be non-empty")
     if len(values) != len(set(values)):
         raise ValueError("evidence ids must be unique")
+
+
+def _argument_type_matches(value: Scalar, expected: ArgumentValueType) -> bool:
+    if expected is ArgumentValueType.STRING:
+        return isinstance(value, str)
+    if expected is ArgumentValueType.INTEGER:
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected is ArgumentValueType.NUMBER:
+        return isinstance(value, int | float) and not isinstance(value, bool)
+    if expected is ArgumentValueType.BOOLEAN:
+        return isinstance(value, bool)
+    return False

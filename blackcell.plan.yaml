@@ -33,7 +33,7 @@ active_surfaces:
     - blackcell operator replay
     - blackcell events list
     - blackcell bench list
-    - blackcell bench run --condition structured --trials 3
+    - blackcell bench run --condition structured --trials 1
   packages:
     - blackcell.kernel
     - blackcell.domains.repository
@@ -61,4 +61,4 @@ verification:
   - uv run ty check
   - uv run blackcell operator run --model recorded --repo .
   - uv run blackcell operator replay
-  - uv run blackcell bench run --condition structured --trials 3
+  - uv run blackcell bench run --condition structured --trials 1

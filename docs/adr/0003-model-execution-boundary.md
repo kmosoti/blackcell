@@ -26,3 +26,8 @@ local subscription-backed adapters.
 
 Affordance schemas and policy decisions become versioned runtime artifacts. Live coding-agent
 or multi-agent orchestration remains an optional adapter, not the kernel.
+
+## References
+
+- [Codex non-interactive mode](https://developers.openai.com/codex/noninteractive)
+- [Codex CLI reference](https://developers.openai.com/codex/cli/reference)

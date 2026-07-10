@@ -42,4 +42,3 @@ class ArtifactIntegrityError(KernelError):
 
 class ProjectionConflict(KernelError):
     """A projection checkpoint was concurrently changed or would regress."""
-

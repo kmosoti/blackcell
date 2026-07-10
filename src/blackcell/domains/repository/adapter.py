@@ -18,6 +18,7 @@ from blackcell.domains.repository.models import (
     EvidenceRef,
     SourceReliability,
     TaskEvidence,
+    ToolEvidence,
 )
 
 
@@ -101,9 +102,7 @@ def observe_git_status(
         cwd=root,
         timeout_seconds=5.0,
     )
-    branch = command_runner.run(
-        ("git", "branch", "--show-current"), cwd=root, timeout_seconds=5.0
-    )
+    branch = command_runner.run(("git", "branch", "--show-current"), cwd=root, timeout_seconds=5.0)
     successful = status.returncode == 0
     branch_successful = branch.returncode == 0 and bool(branch.stdout.strip())
     event_id = _id(
@@ -128,9 +127,7 @@ def observe_git_status(
         predicate="git.clean",
         value=not bool(status.stdout.strip()) if successful else None,
         status=EpistemicStatus.OBSERVED if successful else EpistemicStatus.UNKNOWN,
-        reliability=(
-            SourceReliability.AUTHORITATIVE if successful else SourceReliability.UNKNOWN
-        ),
+        reliability=(SourceReliability.AUTHORITATIVE if successful else SourceReliability.UNKNOWN),
         evidence=evidence,
         observed_at=at,
         expires_at=expiry,
@@ -143,9 +140,7 @@ def observe_git_status(
         value=branch.stdout.strip() if branch_successful else None,
         status=(EpistemicStatus.OBSERVED if branch_successful else EpistemicStatus.UNKNOWN),
         reliability=(
-            SourceReliability.AUTHORITATIVE
-            if branch_successful
-            else SourceReliability.UNKNOWN
+            SourceReliability.AUTHORITATIVE if branch_successful else SourceReliability.UNKNOWN
         ),
         evidence=evidence,
         observed_at=at,
@@ -251,6 +246,59 @@ def adapt_check_evidence(
     return _event(event_id, sequence, at, evidence.source, claims)
 
 
+def adapt_tool_evidence(
+    evidence: ToolEvidence,
+    *,
+    observed_at: datetime,
+    sequence: int,
+    expires_at: datetime | None = None,
+) -> RepositorySemanticEvent:
+    at = _at(observed_at)
+    event_id = _id(
+        "tool-evidence",
+        sequence,
+        at,
+        evidence.subject,
+        evidence.predicate,
+        evidence.status,
+        evidence.output_digest,
+    )
+    ref = EvidenceRef(
+        event_id,
+        evidence.source,
+        sequence=sequence,
+        artifact_id=evidence.artifact_id,
+        digest=evidence.output_digest,
+    )
+    claims = (
+        _claim(
+            event_id=event_id,
+            subject=evidence.subject,
+            predicate=evidence.predicate,
+            value=evidence.status,
+            status=EpistemicStatus.OBSERVED,
+            reliability=evidence.reliability,
+            evidence=ref,
+            observed_at=at,
+            expires_at=expires_at,
+            conflict_group=f"{evidence.subject}:{evidence.predicate}",
+        ),
+        _claim(
+            event_id=event_id,
+            subject=evidence.subject,
+            predicate=f"{evidence.predicate}.output_digest",
+            value=evidence.output_digest,
+            status=EpistemicStatus.OBSERVED,
+            reliability=evidence.reliability,
+            evidence=ref,
+            observed_at=at,
+            expires_at=expires_at,
+            conflict_group=f"{evidence.subject}:{evidence.predicate}.output_digest",
+        ),
+    )
+    return _event(event_id, sequence, at, evidence.source, claims)
+
+
 def observe_repository(
     repo_root: Path,
     *,
@@ -347,4 +395,3 @@ def _id(namespace: str, *parts: object) -> str:
         separators=(",", ":"),
     ).encode()
     return f"{namespace}:{hashlib.sha256(payload).hexdigest()}"
-

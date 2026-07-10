@@ -18,6 +18,7 @@ policy evaluation, one bounded affordance, outcome observation, evaluation, and 
 Acceptance:
 
 - `RecordedModel` supports deterministic CI and replay;
-- `CodexExecModel` is optional, structured, time-bounded, and isolated;
+- `CodexExecModel` is optional, structured, time-bounded, and uses the Codex CLI read-only
+  sandbox from a temporary frame-only workspace;
 - one CLI command completes the loop and emits machine-readable output;
 - the model never gains direct execution authority.

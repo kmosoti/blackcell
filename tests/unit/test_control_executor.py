@@ -22,9 +22,7 @@ class _Runner:
         self.calls: list[tuple[str, ...]] = []
         self.output = output
 
-    def run(
-        self, argv: tuple[str, ...], *, cwd: Path, timeout_seconds: float
-    ) -> ProcessResult:
+    def run(self, argv: tuple[str, ...], *, cwd: Path, timeout_seconds: float) -> ProcessResult:
         self.calls.append(argv)
         return ProcessResult(0, self.output, b"")
 
@@ -65,6 +63,21 @@ def test_inspect_file_rejects_traversal_and_bounds_output(tmp_path: Path) -> Non
     assert result.outcome.output == "0123"
     assert result.outcome.truncated is True
     assert result.outcome.success is True
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    (".env", ".env.local", ".git/config", ".blackcell/kernel.sqlite3", "client.pem"),
+)
+def test_inspect_file_rejects_sensitive_paths(tmp_path: Path, relative_path: str) -> None:
+    target = tmp_path / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("secret", encoding="utf-8")
+    executor = BoundedReadOnlyExecutor(tmp_path)
+    proposal = _proposal("inspect_file", ActionArgument("path", relative_path))
+
+    with pytest.raises(ExecutionRejected, match=r"protected|credential"):
+        executor.execute(proposal, _allow(proposal))
 
 
 def test_run_check_uses_only_declared_argv_and_rejects_injected_command(tmp_path: Path) -> None:
@@ -118,4 +131,3 @@ def test_executor_caps_command_output(tmp_path: Path) -> None:
 
     assert len(result.outcome.output) == 16
     assert result.outcome.truncated is True
-

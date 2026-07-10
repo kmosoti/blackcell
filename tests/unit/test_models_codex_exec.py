@@ -78,10 +78,18 @@ def test_codex_exec_uses_isolated_read_only_structured_invocation() -> None:
     assert result.proposal.evidence_ids == ("e-1",)
     assert runner.workspace_files == {model.FRAME_FILE, model.SCHEMA_FILE}
     assert runner.codex_command is not None
-    assert runner.codex_command[:2] == ["codex", "exec"]
+    assert runner.codex_command[:5] == [
+        "codex",
+        "--ask-for-approval",
+        "never",
+        "--sandbox",
+        "read-only",
+    ]
+    assert runner.codex_command[5] == "exec"
     assert "--json" in runner.codex_command
     assert "--ephemeral" in runner.codex_command
     assert "--ignore-user-config" in runner.codex_command
+    assert "--ignore-rules" in runner.codex_command
     assert runner.codex_command[runner.codex_command.index("--ask-for-approval") + 1] == "never"
     assert runner.codex_command[runner.codex_command.index("--sandbox") + 1] == "read-only"
     assert "--output-schema" in runner.codex_command
@@ -107,6 +115,17 @@ def test_codex_exec_can_parse_structured_jsonl_without_output_file() -> None:
     result = CodexExecModel(runner=runner).decide({"objective": "clarify"})
 
     assert result.proposal.affordance == "request_clarification"
+
+
+def test_codex_exec_can_parse_a_direct_canonical_proposal_event() -> None:
+    def runner(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if command[0] == "git":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 0, json.dumps(_proposal_json()), "")
+
+    result = CodexExecModel(runner=runner).decide({"objective": "inspect"})
+
+    assert result.proposal.affordance == "inspect_file"
 
 
 def test_codex_exec_enforces_timeout() -> None:
