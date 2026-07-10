@@ -61,8 +61,9 @@ Clingo, llama.cpp, OpenTelemetry, Podman, and provider SDKs are replaceable edge
 | WP04a | Operational belief-state projection slice | complete |
 | WP04b | Typed, provenance-aware observation ingestion | complete |
 | WP05a | Telemetry-derived SignalPacket feature slice | complete |
-| WP05b | Deterministic retrieval and task-specific ContextFrame slices | complete on merge of this change |
-| WP06-WP09 | Gateway, control, DAG, compatibility | pending |
+| WP05b | Deterministic retrieval and task-specific ContextFrame slices | complete |
+| WP06a | Capability-based model gateway and recorded adapter | complete on merge of this change |
+| WP06b-WP09 | Gateway config, control, DAG, compatibility | pending |
 | WP10-WP15 | Predictive/NeSy experiments, evaluation, replay, simulations | pending |
 | WP16-WP22 | HTTP runtime, Podman, observability, security, recovery | pending |
 | WP23-WP27 | Benchmarks, migration completion, documentation, release | pending |
