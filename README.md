@@ -1,60 +1,81 @@
-# BlackCell
+# Blackcell
 
-BlackCell is an experimental world-model harness for software work.
+Blackcell is a local-first, event-sourced control runtime for evidence-grounded LLM
+agents.
 
-The core idea is simple: observe a repository, turn evidence into typed facts,
-reason over lightweight symbolic constraints, plan agent work through a runtime-
-agnostic harness, and keep an explicit trace of what happened.
+It turns immutable observations into domain-scoped operational state estimates and
+telemetry-derived SignalPackets, builds inspectable ContextFrames, accepts typed action
+proposals from a model, evaluates symbolic policies, executes approved affordances, and
+records observed outcomes for replay and evaluation.
 
-## What I Am Trying
+## Why
 
-I want a software workflow that behaves less like a pile of prompts and more
-like a small cognitive loop:
+Most agent frameworks focus on model loops and tool access. Blackcell focuses on the state
+and control boundary around the model:
 
-- observe the repo
-- maintain a compact internal model
-- express constraints explicitly
-- dispatch through interchangeable runtimes
-- record traces, surprises, and revisions
+- which evidence supports the current state;
+- which claims conflict, are stale, or remain unknown;
+- why particular context was selected or omitted;
+- which actions are permitted and require approval;
+- what the model predicted before action;
+- what actually changed afterward;
+- whether a historical run can be reconstructed without repeating side effects.
 
-The first slice is intentionally light on ML. BlackCell starts with typed world
-state, NeSy scaffolding, runtime adapters, and traceable planning rather than a
-heavy differentiable stack.
+The LLM is a replaceable proposal mechanism. Blackcell remains the state store, policy gate,
+executor, and evaluator.
 
-## Framework
+## Phase 1
 
-```mermaid
-flowchart TD
-    Repo[Repository] --> Observe[Observe]
-    Observe --> Facts[Typed Facts]
-    Facts --> World[World Model]
-    World --> Expect[Expectations]
-    Facts --> Rules[NeSy Rules]
-    Rules --> Beliefs[Beliefs]
-    Expect --> Plan[Plan]
-    Beliefs --> Plan
-    Plan --> Harness[Harness Runtime]
-    Harness --> Adapter[Runtime Adapter]
-    Adapter --> Trace[Trace]
-    Trace --> World
+The first vertical slice is the Repository Operator:
+
+```text
+observe -> append -> project state -> build context -> propose
+        -> evaluate policy -> execute one bounded action
+        -> re-observe -> evaluate -> append
 ```
 
-## First Experiment
+The deterministic `RecordedModel` makes the complete loop usable in tests and CI without
+credentials. An optional `CodexExecModel` can use a local Codex CLI login while keeping tool
+authority inside Blackcell.
 
 ```bash
-uv run blackcell world observe
-uv run blackcell nesy validate
-uv run blackcell harness plan
-uv run blackcell harness run --runtime dry-run
+uv sync --all-groups
+uv run blackcell operator run --model recorded --repo .
+uv run blackcell operator state
+uv run blackcell operator context
+uv run blackcell operator replay
+uv run blackcell events list
+uv run blackcell bench list
+uv run blackcell bench run --condition structured --trials 1
 ```
 
-## Deeper Docs
+Blackcell emits JSON for successful commands by default. Use `--jsonl` for streaming records
+or `--rich` for operator tables. The current OperatorBench command is a deterministic
+fixture-contract pilot; it validates context visibility and grading contracts but does not
+estimate a model-dependent context effect.
 
-- `docs/index.md`
-- `docs/atlas/graph.md`
-- `docs/concepts/world-model.md`
-- `docs/concepts/nesy.md`
-- `docs/concepts/harness.md`
-- `docs/concepts/custom-agents.md`
-- `docs/targets/opencode.md`
-- `docs/targets/containers.md`
+## Scientific boundary
+
+Phase 1 implements an operational state estimator and neural proposal with symbolic
+validation. It does not claim a POMDP belief state, learned world model, JEPA architecture,
+neuro-symbolic reasoning contribution, or causal understanding.
+
+The runtime records real tuples of state, action, expected effects, observed outcome, and
+residual. Learned transition models become eligible only after those records support
+held-out comparison with persistence, symbolic, empirical, and LLM-only baselines.
+
+## Documentation
+
+- [`docs/charter.md`](docs/charter.md)
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/scientific-basis.md`](docs/scientific-basis.md)
+- [`docs/evaluation-methodology.md`](docs/evaluation-methodology.md)
+- [`docs/adr/`](docs/adr/)
+- [`docs/spec/`](docs/spec/)
+
+## Development
+
+Blackcell targets Python 3.14 and uses uv, Ruff, ty, pytest, Hypothesis, coverage, and mutation
+testing. SQLite is the Phase 1 persistence substrate. Distributed queues, graph/vector
+databases, Kubernetes, multi-agent orchestration, custom neural training, and Rust components
+remain deferred until measurement justifies them.

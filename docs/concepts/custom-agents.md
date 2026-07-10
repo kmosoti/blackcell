@@ -12,6 +12,10 @@ edges:
 
 # Custom Agents
 
+> **Optional legacy adapter:** the OpenCode agent pack is not part of the Phase 1 kernel or
+> research intervention. The model/execution boundary is defined in
+> `../adr/0003-model-execution-boundary.md`.
+
 BlackCell ships a small cosmic/organic agent pack that can be rendered into
 runtime-specific configuration.
 

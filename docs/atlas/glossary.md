@@ -3,16 +3,23 @@ node: atlas/glossary
 kind: atlas
 edges:
   defines:
-    - concepts/world-model
-    - concepts/nesy
-    - concepts/custom-agents
+    - charter
+    - architecture
+    - scientific-basis
 ---
 
 # Glossary
 
-- `world model`: explicit repository state made from observations, facts, beliefs, expectations, and surprises
-- `NeSy`: neuro-symbolic seam; currently symbolic rules with room for learned predicates later
-- `harness`: planner and trace loop that treats runtimes as interchangeable adapters
-- `runtime adapter`: local or remote execution surface behind the harness
-- `agent pack`: shippable set of BlackCell-flavored agents and commands rendered into a target format
-- `scope`: install target for generated config, either repo-local `project` or user-local `global`
+- `observation event`: immutable evidence occurrence received from a source
+- `claim`: typed assertion with provenance, epistemic status, time, freshness, and conflicts
+- `operational state estimate`: rebuildable domain projection of claims at an event sequence
+- `signal packet`: correlated, time-windowed derivative of observations; not another state store
+- `ContextFrame`: immutable task projection with selections, omissions, constraints, and affordances
+- `action proposal`: typed model suggestion with expected effects; it has no execution authority
+- `policy decision`: allow, deny, or require-approval result with structured violations
+- `affordance`: declared, bounded action implemented by Blackcell
+- `execution lineage`: correlated history of context, proposal, policy, action, and outcome
+- `historical replay`: integrity-checking recorded artifacts and rebuilding state projections
+  without rerunning models or tools
+- `counterfactual rerun`: a new experiment applying current components to historical input
+- `transition model`: domain-scoped predictor of action-conditioned outcomes

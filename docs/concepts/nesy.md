@@ -12,6 +12,9 @@ edges:
 
 # NeSy Layer
 
+> **Historical prototype:** the current Phase 1 mechanism is developer-authored symbolic
+> policy applied to a neural proposal. See `../scientific-basis.md` and `../architecture.md`.
+
 The NeSy layer is a lightweight constraint scaffold in the first overhaul slice.
 
 It does not yet attempt differentiable reasoning or training. Instead it gives

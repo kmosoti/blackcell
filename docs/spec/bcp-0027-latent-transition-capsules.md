@@ -10,6 +10,8 @@ edges:
 
 # BCP-0027: Latent Transition Capsules
 
+Status: superseded by BCP-0028 through BCP-0033
+
 Goal: make BlackCell capable of encoding state, predicting next state, measuring
 error, and revising from surprise.
 

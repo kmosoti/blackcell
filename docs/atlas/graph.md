@@ -3,46 +3,32 @@ node: atlas/graph
 kind: atlas
 edges:
   maps:
-    - concepts/world-model
-    - concepts/nesy
-    - concepts/harness
-    - concepts/runtime-adapters
-    - concepts/custom-agents
-    - concepts/agent-operating-model
-    - guides/latent-harness-quickstart
-    - targets/opencode
-    - targets/containers
+    - charter
+    - architecture
+    - scientific-basis
+    - evaluation-methodology
+    - spec/index
 ---
 
 # Documentation Graph
 
 ```mermaid
-graph TD
-    Repo[Repository] --> World[World Model]
-    World --> Facts[Typed Facts]
-    Facts --> NeSy[NeSy Rules]
-    NeSy --> Harness[Harness]
-    Harness --> Runtime[Runtime Adapters]
-    Runtime --> Trace[Run Traces]
-    Trace --> World
-    Trace --> Latent[Latent Prediction]
-    World --> Latent
-    NeSy --> Latent
-    Latent --> Surprise[Surprise / Revision]
-    Surprise --> World
-    Harness --> LatentGuide[Latent Harness Quickstart]
-    LatentGuide --> Latent
-    Harness --> Agents[Custom Agents]
-    Agents --> AgentModel[Agent Operating Model]
-    Agents --> OpenCode[OpenCode Target]
-    Runtime --> Container[Container Runtime]
+flowchart TD
+    Charter[Charter] --> Architecture[Runtime Architecture]
+    Science[Scientific Basis] --> Architecture
+    Architecture --> Specs[BCP-0028 through BCP-0033]
+    Architecture --> Evaluation[Evaluation Methodology]
+    Specs --> Operator[Repository Operator]
+    Evaluation --> Bench[OperatorBench]
+    Operator --> Bench
 ```
 
 ## Node Families
 
-- `atlas`: maps and vocabulary for navigating the graph
-- `concepts`: stable project ideas and internal seams
-- `guides`: user-facing workflows over stable concepts and specs
-- `targets`: generated or runtime-specific integration surfaces
-- `research`: reference notes that inform future design
-- `spec`: durable implementation plans and BCP-sized roadmap nodes
+- `charter`: product identity, scope, claim gates, and acceptance criteria
+- `architecture`: stable event, state, context, policy, execution, and replay boundaries
+- `research-contract`: terminology discipline and promotion rules
+- `evaluation-contract`: scenarios, baselines, metrics, and trial protocol
+- `adr`: accepted trade-offs and their consequences
+- `spec`: bounded implementation slices
+- `concepts`, `guides`, `targets`, and `research`: retained prototype history

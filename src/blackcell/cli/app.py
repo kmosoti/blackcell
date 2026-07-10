@@ -8,6 +8,7 @@ from cyclopts.exceptions import CycloptsError
 from rich.console import Console
 from rich.table import Table
 
+from blackcell import __version__
 from blackcell.agents import (
     OPENCODE_TARGET,
     AgentDoctorReport,
@@ -22,7 +23,20 @@ from blackcell.agents import (
     render_opencode_artifacts,
 )
 from blackcell.cli.output import OutputRenderer
+from blackcell.domains.repository import OperationalStateEstimate
+from blackcell.evaluation import (
+    BenchmarkAggregate,
+    BenchmarkScenario,
+    ContextCondition,
+    DeterministicGrader,
+    FixtureScenarioRunner,
+    Trial,
+    aggregate_scores,
+    operator_bench_scenarios,
+    scenario_digest,
+)
 from blackcell.harness import HarnessPlan, RunTrace, plan_harness, run_harness
+from blackcell.kernel import EventEnvelope, EventStore, KernelError
 from blackcell.latent import (
     LatentLedgerRecordResult,
     LatentLedgerStats,
@@ -46,8 +60,16 @@ from blackcell.ledger import (
     list_events,
     list_runs,
 )
+from blackcell.models import ActionProposal, CodexExecModel
 from blackcell.nesy import ValidationResult as RuleValidationResult
 from blackcell.nesy import build_default_rules, validate_ruleset
+from blackcell.operator import (
+    DEFAULT_OBJECTIVE,
+    HistoricalReplay,
+    OperatorRunResult,
+    RepositoryOperator,
+    StoredContextFrame,
+)
 from blackcell.runtime import DoctorReport, RuntimeAdapter, doctor_report, list_runtime_adapters
 from blackcell.world import Fact, WorldSnapshot, observe_repo
 
@@ -94,7 +116,14 @@ class BlackCellCli(App):
 
 _OUTPUT = OutputRenderer()
 
-app = BlackCellCli(name="blackcell", help="BlackCell world-model harness tooling.")
+app = BlackCellCli(
+    name="blackcell",
+    help="Blackcell event-sourced control runtime for context-guided agents.",
+    version=__version__,
+)
+operator_app = App(name="operator")
+events_app = App(name="events")
+bench_app = App(name="bench")
 world_app = App(name="world")
 nesy_app = App(name="nesy")
 harness_app = App(name="harness")
@@ -103,6 +132,9 @@ ledger_app = App(name="ledger")
 adapters_app = App(name="adapters")
 agents_app = App(name="agents")
 
+app.command(operator_app)
+app.command(events_app)
+app.command(bench_app)
 app.command(world_app)
 app.command(nesy_app)
 app.command(harness_app)
@@ -110,6 +142,248 @@ app.command(latent_app)
 app.command(ledger_app)
 app.command(adapters_app)
 app.command(agents_app)
+
+
+@operator_app.command(name="run")
+def operator_run(
+    repo: Annotated[
+        Path,
+        Parameter("--repo", help="Repository root to observe and operate on."),
+    ] = Path("."),
+    db: Annotated[
+        Path | None,
+        Parameter("--db", help="Kernel database; defaults beneath the repository."),
+    ] = None,
+    artifacts: Annotated[
+        Path | None,
+        Parameter("--artifacts", help="Artifact root; defaults beside the kernel database."),
+    ] = None,
+    model: Annotated[
+        Literal["recorded", "codex"],
+        Parameter("--model", help="Proposal model boundary."),
+    ] = "recorded",
+    codex_model: Annotated[
+        str | None,
+        Parameter("--codex-model", help="Optional model name for the Codex CLI adapter."),
+    ] = None,
+    objective: Annotated[
+        str,
+        Parameter("--objective", help="Task objective for ContextFrame projection."),
+    ] = DEFAULT_OBJECTIVE,
+    approval: Annotated[
+        bool,
+        Parameter("--approval", help="Record explicit approval for eligible actions."),
+    ] = False,
+) -> None:
+    """Run the complete Repository Operator feedback loop once."""
+    resolved_repo = repo.resolve()
+    try:
+        database = _operator_database(resolved_repo, db)
+        proposal_model = (
+            CodexExecModel[ActionProposal](model=codex_model) if model == "codex" else None
+        )
+        operator = RepositoryOperator(
+            resolved_repo,
+            database_path=database,
+            artifact_root=artifacts,
+            model=proposal_model,
+        )
+        result = operator.run(objective=objective, approval_granted=approval)
+    except (KernelError, LookupError, OSError, RuntimeError, ValueError) as error:
+        _fail(str(error))
+    _output().emit(result, rich=_operator_run_table(result))
+    if result.status.value == "failed":
+        raise SystemExit(1)
+
+
+@operator_app.command(name="state")
+def operator_state(
+    repo: Annotated[
+        Path,
+        Parameter("--repo", help="Repository root whose state should be projected."),
+    ] = Path("."),
+    db: Annotated[
+        Path | None,
+        Parameter("--db", help="Kernel database; defaults beneath the repository."),
+    ] = None,
+) -> None:
+    """Project the current repository state from immutable events."""
+    resolved_repo = repo.resolve()
+    try:
+        database = _operator_database(resolved_repo, db)
+        _require_database(database)
+        state = RepositoryOperator(resolved_repo, database_path=database).current_state()
+    except (KernelError, LookupError, OSError, RuntimeError, ValueError) as error:
+        _fail(str(error))
+    _output().emit(state, rich=_operator_state_table(state))
+
+
+@operator_app.command(name="context")
+def operator_context(
+    repo: Annotated[
+        Path,
+        Parameter("--repo", help="Repository root associated with the run."),
+    ] = Path("."),
+    db: Annotated[
+        Path | None,
+        Parameter("--db", help="Kernel database; defaults beneath the repository."),
+    ] = None,
+    artifacts: Annotated[
+        Path | None,
+        Parameter("--artifacts", help="Artifact root; defaults beside the kernel database."),
+    ] = None,
+    run: Annotated[
+        str | None,
+        Parameter("--run", help="Run ID; defaults to the latest recorded run."),
+    ] = None,
+) -> None:
+    """Inspect the exact ContextFrame artifact used by a run."""
+    resolved_repo = repo.resolve()
+    try:
+        database = _operator_database(resolved_repo, db)
+        _require_database(database)
+        frame = RepositoryOperator(
+            resolved_repo,
+            database_path=database,
+            artifact_root=artifacts,
+        ).context(run)
+    except (KernelError, LookupError, OSError, RuntimeError, ValueError) as error:
+        _fail(str(error))
+    _output().emit(frame, rich=_operator_context_table(frame))
+
+
+@operator_app.command(name="replay")
+def operator_replay(
+    repo: Annotated[
+        Path,
+        Parameter("--repo", help="Repository root associated with the run."),
+    ] = Path("."),
+    db: Annotated[
+        Path | None,
+        Parameter("--db", help="Kernel database; defaults beneath the repository."),
+    ] = None,
+    artifacts: Annotated[
+        Path | None,
+        Parameter("--artifacts", help="Artifact root; defaults beside the kernel database."),
+    ] = None,
+    run: Annotated[
+        str | None,
+        Parameter("--run", help="Run ID; defaults to the latest recorded run."),
+    ] = None,
+) -> None:
+    """Historically replay a run without model or tool execution."""
+    resolved_repo = repo.resolve()
+    try:
+        database = _operator_database(resolved_repo, db)
+        _require_database(database)
+        replay = RepositoryOperator(
+            resolved_repo,
+            database_path=database,
+            artifact_root=artifacts,
+        ).replay(run)
+    except (KernelError, LookupError, OSError, RuntimeError, ValueError) as error:
+        _fail(str(error))
+    _output().emit(replay, rich=_operator_replay_table(replay))
+
+
+@events_app.command(name="list")
+def kernel_events_list(
+    db: Annotated[
+        Path | None,
+        Parameter("--db", help="Kernel database; defaults beneath Git metadata."),
+    ] = None,
+    repo: Annotated[
+        Path,
+        Parameter("--repo", help="Repository associated with the kernel ledger."),
+    ] = Path("."),
+    after: Annotated[
+        int,
+        Parameter("--after", help="Read after this global event position."),
+    ] = 0,
+    limit: Annotated[
+        int,
+        Parameter("--limit", help="Maximum number of events to return."),
+    ] = 100,
+) -> None:
+    """List immutable kernel events in global ledger order."""
+    try:
+        database = _operator_database(repo.resolve(), db)
+        _require_database(database)
+        events = EventStore(database).read_all(after_position=after, limit=limit)
+    except (KernelError, LookupError, OSError, ValueError) as error:
+        _fail(str(error))
+    _output().emit_collection("events", events, rich=_kernel_events_table(events))
+
+
+@bench_app.command(name="list")
+def bench_list() -> None:
+    """List the synthetic OperatorBench scenarios."""
+    scenarios = operator_bench_scenarios()
+    summaries = tuple(
+        {
+            "scenario_id": scenario.scenario_id,
+            "task_id": scenario.task.task_id,
+            "description": scenario.description,
+            "tags": scenario.tags,
+        }
+        for scenario in scenarios
+    )
+    _output().emit(
+        {
+            "scenario_digest": scenario_digest(scenarios),
+            "scenarios": summaries,
+        },
+        rich=_bench_scenarios_table(scenarios),
+    )
+
+
+@bench_app.command(name="run")
+def bench_run(
+    condition: Annotated[
+        Literal["raw-chronological", "latest-n", "structured"],
+        Parameter("--condition", help="Context construction condition."),
+    ] = "structured",
+    trials: Annotated[
+        int,
+        Parameter("--trials", help="Must be 1 for the deterministic fixture-contract pilot."),
+    ] = 1,
+    latest_n: Annotated[
+        int,
+        Parameter("--latest-n", help="Observation count for the latest-N condition."),
+    ] = 1,
+) -> None:
+    """Validate deterministic OperatorBench fixture and grading contracts."""
+    if trials != 1:
+        _fail("--trials must be 1 for the deterministic fixture-contract pilot", code=2)
+    if latest_n < 1:
+        _fail("--latest-n must be positive", code=2)
+    selected_condition = ContextCondition(condition)
+    scenarios = operator_bench_scenarios()
+    runner = FixtureScenarioRunner()
+    grader = DeterministicGrader()
+    scores = []
+    for scenario in scenarios:
+        for replicate in range(trials):
+            trial = Trial(
+                trial_id=(f"{scenario.scenario_id}:{selected_condition.value}:{replicate}"),
+                scenario_id=scenario.scenario_id,
+                condition=selected_condition,
+                replicate=replicate,
+                latest_n=latest_n,
+            )
+            scores.append(grader.grade(scenario, runner.run(scenario, trial)))
+    aggregates = aggregate_scores(scores)
+    result = {
+        "mode": "fixture-contract-pilot",
+        "inferential": False,
+        "scenario_digest": scenario_digest(scenarios),
+        "condition": selected_condition,
+        "replicates_per_scenario": trials,
+        "trial_count": len(scores),
+        "scores": tuple(scores),
+        "aggregates": aggregates,
+    }
+    _output().emit(result, rich=_bench_results_table(aggregates))
 
 
 @world_app.command(name="observe")
@@ -418,6 +692,120 @@ def _world_snapshot_table(snapshot: WorldSnapshot) -> Table:
     table.add_row("Beliefs", str(len(snapshot.beliefs)))
     table.add_row("Expectations", str(len(snapshot.expectations)))
     table.add_row("Surprises", str(len(snapshot.surprises)))
+    return table
+
+
+def _kernel_events_table(events: Sequence[EventEnvelope]) -> Table:
+    table = Table(title="Kernel Events")
+    table.add_column("Position")
+    table.add_column("Stream")
+    table.add_column("Sequence")
+    table.add_column("Type")
+    table.add_column("Recorded")
+    for event in events:
+        table.add_row(
+            str(event.global_position or ""),
+            event.stream_id,
+            str(event.stream_sequence),
+            event.event_type,
+            event.recorded_at.isoformat(),
+        )
+    return table
+
+
+def _operator_run_table(result: OperatorRunResult) -> Table:
+    table = Table(title="Repository Operator Run")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Run", result.run_id)
+    table.add_row("Status", result.status.value)
+    table.add_row("State before", result.initial_state_id)
+    table.add_row("SignalPacket", result.signal_packet_id)
+    table.add_row("State after", result.final_state_id or "unchanged")
+    table.add_row("ContextFrame", result.context_frame_id)
+    table.add_row("Proposal", result.proposal.affordance)
+    table.add_row("Policy", result.policy.outcome.value)
+    table.add_row("Action success", str(result.evaluation.execution_success))
+    table.add_row("Evaluation", "passed" if result.evaluation.passed else "failed")
+    table.add_row("Run events", str(result.run_event_count))
+    return table
+
+
+def _operator_state_table(state: OperationalStateEstimate) -> Table:
+    table = Table(title="Operational State Estimate")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("State", state.state_id)
+    table.add_row("Sequence", str(state.as_of_sequence))
+    table.add_row("Claims", str(len(state.claims)))
+    table.add_row("Conflicts", str(len(state.conflicts)))
+    table.add_row("Unknowns", str(len(state.unknowns)))
+    table.add_row("Corrections", str(len(state.applied_corrections)))
+    return table
+
+
+def _operator_context_table(frame: StoredContextFrame) -> Table:
+    table = Table(title="Recorded ContextFrame")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Run", frame.run_id)
+    table.add_row("Frame", frame.frame_id)
+    table.add_row("Artifact", frame.artifact_digest)
+    table.add_row("State", str(frame.payload.get("state_id", "unknown")))
+    table.add_row("Estimated tokens", str(frame.payload.get("estimated_tokens", "unknown")))
+    return table
+
+
+def _operator_replay_table(replay: HistoricalReplay) -> Table:
+    table = Table(title="Historical Operator Replay")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Run", replay.run_id)
+    table.add_row("Status", replay.status)
+    table.add_row("Events", str(replay.event_count))
+    table.add_row("Artifacts", str(len(replay.artifacts)))
+    table.add_row(
+        "Projection replay",
+        "matched" if replay.projection_hash_match else "mismatch",
+    )
+    table.add_row(
+        "Integrity",
+        "verified" if all(item.verified for item in replay.artifacts) else "failed",
+    )
+    return table
+
+
+def _bench_scenarios_table(scenarios: Sequence[BenchmarkScenario]) -> Table:
+    table = Table(title="OperatorBench Scenarios")
+    table.add_column("Scenario")
+    table.add_column("Task")
+    table.add_column("Expected action")
+    table.add_column("Tags")
+    for scenario in scenarios:
+        table.add_row(
+            scenario.scenario_id,
+            scenario.task.task_id,
+            scenario.task.expected_action,
+            ", ".join(scenario.tags),
+        )
+    return table
+
+
+def _bench_results_table(results: Sequence[BenchmarkAggregate]) -> Table:
+    table = Table(title="OperatorBench Results")
+    table.add_column("Condition")
+    table.add_column("Trials")
+    table.add_column("Success")
+    table.add_column("Evidence recall")
+    table.add_column("Violations")
+    for result in results:
+        table.add_row(
+            result.condition.value,
+            str(result.trial_count),
+            f"{result.metric('success').mean:.3f}",
+            f"{result.metric('evidence_recall').mean:.3f}",
+            f"{result.metric('violations').mean:.3f}",
+        )
     return table
 
 
@@ -740,6 +1128,15 @@ def _extract_output_flags(tokens: str | Iterable[str]) -> tuple[list[str], bool,
             parsed.append(token)
         index += 1
     return parsed, rich, jsonl, output_format
+
+
+def _operator_database(repo: Path, database: Path | None) -> Path:
+    return database if database is not None else RepositoryOperator.default_database_path(repo)
+
+
+def _require_database(database: Path) -> None:
+    if not database.is_file():
+        raise LookupError(f"kernel database does not exist: {database}")
 
 
 def _fail(message: str, *, code: int = 1) -> Never:

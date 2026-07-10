@@ -1,12 +1,12 @@
 [project]
 name = "blackcell"
-version = "0.1.0"
-description = "World-model-driven software harness tooling"
+version = "0.2.0"
+description = "Event-sourced control runtime for evidence-grounded LLM agents"
 readme = "README.md"
 authors = [
     { name = "kmosoti", email = "47609243+kmosoti@users.noreply.github.com" }
 ]
-requires-python = ">=3.14.6"
+requires-python = ">=3.14"
 dependencies = [
     "cyclopts>=4.20.0",
     "pyyaml>=6.0.3",

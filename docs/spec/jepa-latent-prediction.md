@@ -12,6 +12,10 @@ edges:
 
 # JEPA-Inspired Latent Prediction
 
+> **Superseded by BCP-0028 through BCP-0033.** This file is retained as prototype history.
+> The deterministic sketch is an experimental baseline and no longer defines product
+> behavior.
+
 BlackCell's intended world-model behavior is latent state-transition prediction:
 
 ```text
