@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,7 +14,11 @@ from blackcell.features.ingest_observation import (
     ObservedClaim,
 )
 from blackcell.features.project_operational_state import OperationalStateProjector
-from blackcell.features.retrieve_evidence import DeterministicEvidenceRetriever, RetrieveEvidence
+from blackcell.features.retrieve_evidence import (
+    DeterministicEvidenceRetriever,
+    EvidenceKey,
+    RetrieveEvidence,
+)
 from blackcell.kernel import EventStore
 
 NOW = datetime(2026, 7, 10, 17, tzinfo=UTC)
@@ -54,14 +59,41 @@ def test_context_frame_is_deterministic_and_enforces_required_budget(tmp_path: P
     assert frame.evidence == ()
     assert frame.omitted_evidence_count == 1
 
-    from blackcell.features.retrieve_evidence import EvidenceKey
-
     required = DeterministicEvidenceRetriever().handle(
         RetrieveEvidence("unrelated", required_keys=(EvidenceKey("project:blackcell", "status"),)),
         packet,
     )
     with pytest.raises(ContextBudgetError):
         builder.handle(tiny, required)
+
+
+def test_context_frame_rejects_when_later_required_evidence_exceeds_budget(
+    tmp_path: Path,
+) -> None:
+    packet = _packet(tmp_path, (("status", "blocked"), ("owner", "kennedy")))
+    required_keys = (
+        EvidenceKey("project:blackcell", "status"),
+        EvidenceKey("project:blackcell", "owner"),
+    )
+    retriever = DeterministicEvidenceRetriever()
+    selection = retriever.handle(RetrieveEvidence("unrelated", required_keys=required_keys), packet)
+    assert len(selection.candidates) == 2
+    first_only = replace(
+        selection,
+        candidates=selection.candidates[:1],
+        omitted_count=selection.omitted_count + 1,
+    )
+
+    builder = ContextFrameBuilder()
+    first_size = builder.handle(
+        BuildContext("task:1", "unrelated", NOW), first_only
+    ).serialized_characters
+
+    with pytest.raises(ContextBudgetError):
+        builder.handle(
+            BuildContext("task:1", "unrelated", NOW, max_characters=first_size),
+            selection,
+        )
 
 
 def _packet(tmp_path: Path, facts: tuple[tuple[str, str], ...]):

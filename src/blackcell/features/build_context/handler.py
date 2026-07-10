@@ -18,7 +18,7 @@ class ContextFrameBuilder:
             evidence = _context_evidence(candidate)
             size = len(canonical_json(_serialized(evidence)))
             if characters + size > command.max_characters:
-                if "required" in candidate.reasons and not included:
+                if "required" in candidate.reasons:
                     raise ContextBudgetError("required evidence exceeds the ContextFrame budget")
                 continue
             included.append(evidence)
