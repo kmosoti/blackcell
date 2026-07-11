@@ -1,8 +1,18 @@
 from __future__ import annotations
 
 from blackcell.features.build_context.command import BuildContext
-from blackcell.features.build_context.models import ContextEvidence, ContextFrame
-from blackcell.features.build_context.ports import EvidenceCandidateLike, EvidenceSelectionLike
+from blackcell.features.build_context.models import (
+    ContextEvidence,
+    ContextFrame,
+    ContextOmission,
+    ContextOmissionReason,
+    ContextOmissionStage,
+)
+from blackcell.features.build_context.ports import (
+    EvidenceCandidateLike,
+    EvidenceOmissionLike,
+    EvidenceSelectionLike,
+)
 from blackcell.kernel._json import canonical_json
 
 
@@ -21,6 +31,7 @@ class ContextFrameBuilder:
                 "evidence selection objective does not match the ContextFrame objective"
             )
         included: list[ContextEvidence] = []
+        omissions = [_retrieval_omission(item) for item in selection.omissions]
         characters = 0
         for candidate in selection.candidates:
             evidence = _context_evidence(candidate)
@@ -28,10 +39,10 @@ class ContextFrameBuilder:
             if characters + size > command.max_characters:
                 if "required" in candidate.reasons:
                     raise ContextBudgetError("required evidence exceeds the ContextFrame budget")
+                omissions.append(_character_budget_omission(candidate, size))
                 continue
             included.append(evidence)
             characters += size
-        omitted = selection.omitted_count + len(selection.candidates) - len(included)
         provenance = tuple(dict.fromkeys(item.source_event_id for item in included))
         return ContextFrame(
             task_id=command.task_id,
@@ -42,7 +53,7 @@ class ContextFrameBuilder:
             source_selection_id=selection.selection_id,
             evidence=tuple(included),
             provenance_event_ids=provenance,
-            omitted_evidence_count=omitted,
+            omissions=tuple(omissions),
             serialized_characters=characters,
         )
 
@@ -60,6 +71,47 @@ def _context_evidence(candidate: EvidenceCandidateLike) -> ContextEvidence:
         candidate.score,
         candidate.reasons,
         candidate.conflicted,
+    )
+
+
+def _retrieval_omission(omission: EvidenceOmissionLike) -> ContextOmission:
+    return ContextOmission(
+        subject=omission.subject,
+        predicate=omission.predicate,
+        value=omission.value,
+        confidence=omission.confidence,
+        effective_at=omission.effective_at,
+        freshness_seconds=omission.freshness_seconds,
+        stale=omission.stale,
+        source_event_id=omission.source_event_id,
+        relevance_score=omission.score,
+        selection_reasons=omission.reasons,
+        conflicted=omission.conflicted,
+        stage=ContextOmissionStage.RETRIEVAL,
+        reason=ContextOmissionReason(omission.reason),
+        source_omission_id=omission.omission_id,
+    )
+
+
+def _character_budget_omission(
+    candidate: EvidenceCandidateLike,
+    serialized_characters: int,
+) -> ContextOmission:
+    return ContextOmission(
+        subject=candidate.subject,
+        predicate=candidate.predicate,
+        value=candidate.value,
+        confidence=candidate.confidence,
+        effective_at=candidate.effective_at,
+        freshness_seconds=candidate.freshness_seconds,
+        stale=candidate.stale,
+        source_event_id=candidate.source_event_id,
+        relevance_score=candidate.score,
+        selection_reasons=candidate.reasons,
+        conflicted=candidate.conflicted,
+        stage=ContextOmissionStage.CONTEXT_PROJECTION,
+        reason=ContextOmissionReason.CHARACTER_BUDGET,
+        serialized_characters=serialized_characters,
     )
 
 

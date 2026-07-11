@@ -5,15 +5,23 @@ from blackcell.features.retrieve_evidence.handler import DeterministicEvidenceRe
 from blackcell.features.retrieve_evidence.models import (
     EvidenceCandidate,
     EvidenceKey,
+    EvidenceOmission,
+    EvidenceOmissionReason,
     EvidenceSelection,
     MissingRequiredEvidenceError,
+    RequiredEvidenceGap,
+    RequiredEvidenceGapReason,
 )
 
 __all__ = [
     "DeterministicEvidenceRetriever",
     "EvidenceCandidate",
     "EvidenceKey",
+    "EvidenceOmission",
+    "EvidenceOmissionReason",
     "EvidenceSelection",
     "MissingRequiredEvidenceError",
+    "RequiredEvidenceGap",
+    "RequiredEvidenceGapReason",
     "RetrieveEvidence",
 ]

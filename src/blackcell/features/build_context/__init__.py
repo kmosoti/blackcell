@@ -6,7 +6,13 @@ from blackcell.features.build_context.handler import (
     ContextFrameBuilder,
     ContextSelectionMismatchError,
 )
-from blackcell.features.build_context.models import ContextEvidence, ContextFrame
+from blackcell.features.build_context.models import (
+    ContextEvidence,
+    ContextFrame,
+    ContextOmission,
+    ContextOmissionReason,
+    ContextOmissionStage,
+)
 
 __all__ = [
     "BuildContext",
@@ -14,5 +20,8 @@ __all__ = [
     "ContextEvidence",
     "ContextFrame",
     "ContextFrameBuilder",
+    "ContextOmission",
+    "ContextOmissionReason",
+    "ContextOmissionStage",
     "ContextSelectionMismatchError",
 ]

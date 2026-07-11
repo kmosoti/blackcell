@@ -8,6 +8,8 @@ from blackcell.features.build_context import (
     BuildContext,
     ContextBudgetError,
     ContextFrameBuilder,
+    ContextOmissionReason,
+    ContextOmissionStage,
     ContextSelectionMismatchError,
 )
 from blackcell.features.derive_signal_packet import DeriveSignalPacket, SignalPacketProjector
@@ -22,7 +24,9 @@ from blackcell.features.project_operational_state import OperationalStateProject
 from blackcell.features.retrieve_evidence import (
     DeterministicEvidenceRetriever,
     EvidenceKey,
+    EvidenceOmissionReason,
     MissingRequiredEvidenceError,
+    RequiredEvidenceGapReason,
     RetrieveEvidence,
 )
 from blackcell.kernel import EventStore
@@ -46,6 +50,9 @@ def test_retrieval_and_context_frame_preserve_task_relevance_and_citations(
     assert frame.provenance_event_ids == (frame.evidence[0].source_event_id,)
     assert frame.source_packet_id == packet.packet_id
     assert frame.omitted_evidence_count == 1
+    assert frame.omissions[0].reason is ContextOmissionReason.IRRELEVANT
+    assert frame.omissions[0].stage is ContextOmissionStage.RETRIEVAL
+    assert frame.omissions[0].source_omission_id == selection.omissions[0].omission_id
     assert frame.frame_id.startswith("sha256:")
 
 
@@ -80,6 +87,8 @@ def test_context_frame_is_deterministic_and_enforces_required_budget(tmp_path: P
     frame = builder.handle(tiny, required_selection)
     assert frame.evidence == ()
     assert frame.omitted_evidence_count == 1
+    assert frame.omissions[0].reason is ContextOmissionReason.CHARACTER_BUDGET
+    assert frame.omissions[0].serialized_characters is not None
 
     required = DeterministicEvidenceRetriever().handle(
         RetrieveEvidence("unrelated", required_keys=(EvidenceKey("project:blackcell", "status"),)),
@@ -148,6 +157,9 @@ def test_retrieval_fails_closed_when_a_required_key_is_missing(tmp_path: Path) -
         )
 
     assert error.value.missing_keys == (missing_key,)
+    assert error.value.gaps[0].key == missing_key
+    assert error.value.gaps[0].reason is RequiredEvidenceGapReason.ABSENT
+    assert error.value.gaps[0].gap_id.startswith("sha256:")
 
 
 def test_retrieval_uses_remaining_capacity_for_ranked_optional_evidence(
@@ -170,6 +182,8 @@ def test_retrieval_uses_remaining_capacity_for_ranked_optional_evidence(
     assert selection.candidates[0].reasons == ("required",)
     assert selection.candidates[1].reasons == ("objective-overlap",)
     assert selection.omitted_count == 1
+    assert selection.omissions[0].reason is EvidenceOmissionReason.RESULT_LIMIT
+    assert selection.omissions[0].predicate == "priority"
 
 
 def test_retrieval_preserves_duplicate_and_conflicting_required_matches(
@@ -216,6 +230,126 @@ def test_evidence_selection_cannot_masquerade_as_required_complete(tmp_path: Pat
 
     with pytest.raises(ValueError, match="every required match"):
         replace(selection, candidates=selection.candidates[:1])
+
+
+def test_retrieval_records_every_nonselected_claim_with_a_precise_reason(
+    tmp_path: Path,
+) -> None:
+    packet = _packet(
+        tmp_path,
+        (
+            ("status", "blocked"),
+            ("status", "ready"),
+            ("owner", "kennedy"),
+            ("priority", "low"),
+        ),
+    )
+    selection = DeterministicEvidenceRetriever().handle(
+        RetrieveEvidence(
+            "owner",
+            required_keys=(EvidenceKey("project:blackcell", "status"),),
+            max_results=2,
+        ),
+        packet,
+    )
+
+    assert tuple(item.value for item in selection.candidates) == ("blocked", "ready")
+    assert all(item.conflicted for item in selection.candidates)
+    assert tuple((item.predicate, item.reason) for item in selection.omissions) == (
+        ("priority", EvidenceOmissionReason.IRRELEVANT),
+        ("owner", EvidenceOmissionReason.RESULT_LIMIT),
+    )
+    assert len(selection.candidates) + selection.omitted_count == len(packet.claims)
+    assert all(item.omission_id.startswith("sha256:") for item in selection.omissions)
+
+
+def test_selection_and_frame_identities_include_typed_omission_content(
+    tmp_path: Path,
+) -> None:
+    packet = _packet(tmp_path, (("status", "blocked"), ("owner", "kennedy")))
+    selection = DeterministicEvidenceRetriever().handle(
+        RetrieveEvidence("status", max_results=1), packet
+    )
+    changed_selection = replace(
+        selection,
+        omissions=(replace(selection.omissions[0], value="someone-else"),),
+    )
+    assert changed_selection.selection_id != selection.selection_id
+
+    builder = ContextFrameBuilder()
+    command = BuildContext("task:1", "status", NOW)
+    frame = builder.handle(command, selection)
+    changed_frame = replace(
+        frame,
+        omissions=(replace(frame.omissions[0], value="someone-else"),),
+    )
+    assert changed_frame.frame_id != frame.frame_id
+
+
+def test_context_character_budget_has_an_exact_inclusive_boundary(tmp_path: Path) -> None:
+    packet = _packet(tmp_path, (("status", "blocked"), ("owner", "kennedy")))
+    query = RetrieveEvidence(
+        "owner",
+        required_keys=(EvidenceKey("project:blackcell", "status"),),
+        max_results=2,
+    )
+    selection = DeterministicEvidenceRetriever().handle(query, packet)
+    builder = ContextFrameBuilder()
+    unconstrained = builder.handle(BuildContext("task:1", "owner", NOW), selection)
+
+    exact = builder.handle(
+        BuildContext(
+            "task:1",
+            "owner",
+            NOW,
+            max_characters=unconstrained.serialized_characters,
+        ),
+        selection,
+    )
+    just_below = builder.handle(
+        BuildContext(
+            "task:1",
+            "owner",
+            NOW,
+            max_characters=unconstrained.serialized_characters - 1,
+        ),
+        selection,
+    )
+
+    assert exact.evidence == unconstrained.evidence
+    assert exact.omissions == ()
+    assert tuple(item.predicate for item in just_below.evidence) == ("status",)
+    assert just_below.omitted_evidence_count == 1
+    assert just_below.omissions[0].predicate == "owner"
+    assert just_below.omissions[0].reason is ContextOmissionReason.CHARACTER_BUDGET
+    assert just_below.omissions[0].stage is ContextOmissionStage.CONTEXT_PROJECTION
+    assert just_below.omissions[0].serialized_characters == (
+        unconstrained.serialized_characters - just_below.serialized_characters
+    )
+
+
+def test_context_artifacts_reject_incoherent_omission_and_provenance_records(
+    tmp_path: Path,
+) -> None:
+    packet = _packet(tmp_path, (("status", "blocked"), ("owner", "kennedy")))
+    selection = DeterministicEvidenceRetriever().handle(
+        RetrieveEvidence("status", max_results=1), packet
+    )
+    builder = ContextFrameBuilder()
+    frame = builder.handle(BuildContext("task:1", "status", NOW), selection)
+    retrieval_omission = frame.omissions[0]
+
+    with pytest.raises(ValueError, match="cannot declare a character size"):
+        replace(retrieval_omission, serialized_characters=1)
+    with pytest.raises(ValueError, match="ordered evidence sources"):
+        replace(frame, provenance_event_ids=())
+
+    tiny = builder.handle(BuildContext("task:1", "status", NOW, max_characters=1), selection)
+    projection_omission = next(
+        item for item in tiny.omissions if item.stage is ContextOmissionStage.CONTEXT_PROJECTION
+    )
+    with pytest.raises(ValueError, match="cannot reference a source omission"):
+        replace(projection_omission, source_omission_id="omission:upstream")
 
 
 def _packet(tmp_path: Path, facts: tuple[tuple[str, str], ...]):

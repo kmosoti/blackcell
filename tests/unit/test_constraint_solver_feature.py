@@ -304,14 +304,14 @@ def _evidence(
 
 def _frame(*evidence: ContextEvidence) -> ContextFrame:
     return ContextFrame(
-        "task:1",
-        "safely update project",
-        NOW,
-        1,
-        "packet:1",
-        "selection:1",
-        evidence,
-        tuple(item.source_event_id for item in evidence),
-        0,
-        100,
+        task_id="task:1",
+        objective="safely update project",
+        generated_at=NOW,
+        state_position=1,
+        source_packet_id="packet:1",
+        source_selection_id="selection:1",
+        evidence=evidence,
+        provenance_event_ids=tuple(item.source_event_id for item in evidence),
+        omissions=(),
+        serialized_characters=100,
     )

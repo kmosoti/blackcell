@@ -5,8 +5,11 @@ import re
 from blackcell.features.retrieve_evidence.command import RetrieveEvidence
 from blackcell.features.retrieve_evidence.models import (
     EvidenceCandidate,
+    EvidenceOmission,
+    EvidenceOmissionReason,
     EvidenceSelection,
     MissingRequiredEvidenceError,
+    RequiredEvidenceGap,
 )
 from blackcell.features.retrieve_evidence.ports import SignalClaimLike, SignalPacketLike
 
@@ -17,43 +20,53 @@ class DeterministicEvidenceRetriever:
     def handle(self, query: RetrieveEvidence, packet: SignalPacketLike) -> EvidenceSelection:
         required = {(key.subject, key.predicate) for key in query.required_keys}
         available = {(claim.subject, claim.predicate) for claim in packet.claims}
-        missing = tuple(
-            key for key in query.required_keys if (key.subject, key.predicate) not in available
+        gaps = tuple(
+            RequiredEvidenceGap(key)
+            for key in query.required_keys
+            if (key.subject, key.predicate) not in available
         )
-        if missing:
-            raise MissingRequiredEvidenceError(missing)
+        if gaps:
+            raise MissingRequiredEvidenceError(gaps)
         required_match_count = sum(
             (claim.subject, claim.predicate) in required for claim in packet.claims
         )
         conflict_keys = {(item.subject, item.predicate) for item in packet.conflicts}
         objective_tokens = _tokens(query.objective)
+        considered = tuple(
+            (claim, _candidate(claim, objective_tokens, required, conflict_keys))
+            for claim in packet.claims
+        )
         ranked = tuple(
             sorted(
-                (
-                    candidate
-                    for claim in packet.claims
-                    if (candidate := _candidate(claim, objective_tokens, required, conflict_keys))
-                    is not None
-                ),
+                (candidate for _, candidate in considered if candidate is not None),
                 key=lambda item: (-item.score, item.freshness_seconds, item.source_event_id),
             )
         )
+        irrelevant_claims = tuple(claim for claim, candidate in considered if candidate is None)
         if not ranked and packet.claims:
             fallback = min(
                 packet.claims,
                 key=lambda item: (item.freshness_seconds, item.source_event_id),
             )
             ranked = (_fallback(fallback, conflict_keys),)
+            irrelevant_claims = _without_identity(irrelevant_claims, fallback)
         required_candidates = tuple(item for item in ranked if "required" in item.reasons)
         optional_candidates = tuple(item for item in ranked if "required" not in item.reasons)
         optional_capacity = max(0, query.max_results - len(required_candidates))
         selected = required_candidates + optional_candidates[:optional_capacity]
+        omissions = tuple(
+            _omission_from_claim(claim, EvidenceOmissionReason.IRRELEVANT, conflict_keys)
+            for claim in sorted(irrelevant_claims, key=lambda item: item.source_event_id)
+        ) + tuple(
+            _omission_from_candidate(candidate, EvidenceOmissionReason.RESULT_LIMIT)
+            for candidate in optional_candidates[optional_capacity:]
+        )
         return EvidenceSelection(
             objective=query.objective,
             source_packet_id=packet.packet_id,
             state_position=packet.state_position,
             candidates=selected,
-            omitted_count=max(0, len(packet.claims) - len(selected)),
+            omissions=omissions,
             required_keys=query.required_keys,
             required_match_count=required_match_count,
         )
@@ -114,6 +127,61 @@ def _copy_candidate(
         reasons,
         conflicted,
     )
+
+
+def _omission_from_claim(
+    claim: SignalClaimLike,
+    reason: EvidenceOmissionReason,
+    conflict_keys: set[tuple[str, str]],
+) -> EvidenceOmission:
+    return EvidenceOmission(
+        claim.subject,
+        claim.predicate,
+        claim.value,
+        claim.confidence,
+        claim.effective_at,
+        claim.freshness_seconds,
+        claim.stale,
+        claim.source_event_id,
+        0,
+        (),
+        (claim.subject, claim.predicate) in conflict_keys,
+        reason,
+    )
+
+
+def _omission_from_candidate(
+    candidate: EvidenceCandidate,
+    reason: EvidenceOmissionReason,
+) -> EvidenceOmission:
+    return EvidenceOmission(
+        candidate.subject,
+        candidate.predicate,
+        candidate.value,
+        candidate.confidence,
+        candidate.effective_at,
+        candidate.freshness_seconds,
+        candidate.stale,
+        candidate.source_event_id,
+        candidate.score,
+        candidate.reasons,
+        candidate.conflicted,
+        reason,
+    )
+
+
+def _without_identity(
+    claims: tuple[SignalClaimLike, ...],
+    excluded: SignalClaimLike,
+) -> tuple[SignalClaimLike, ...]:
+    removed = False
+    remaining: list[SignalClaimLike] = []
+    for claim in claims:
+        if not removed and claim is excluded:
+            removed = True
+            continue
+        remaining.append(claim)
+    return tuple(remaining)
 
 
 def _tokens(value: str) -> frozenset[str]:
