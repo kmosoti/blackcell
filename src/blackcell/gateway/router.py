@@ -32,8 +32,14 @@ class ModelGateway:
     ) -> None:
         if len({profile.profile_id for profile in profiles}) != len(profiles):
             raise ValueError("gateway profile ids must be unique")
+        for registry_key, adapter in adapters.items():
+            if registry_key != adapter.adapter_id:
+                raise ValueError(
+                    f"adapter registry key {registry_key!r} does not match "
+                    f"adapter_id {adapter.adapter_id!r}"
+                )
         self._profiles = profiles
-        self._adapters = adapters
+        self._adapters = dict(adapters)
         self._audit_sink = audit_sink
         self._clock = clock
 
@@ -72,6 +78,10 @@ class ModelGateway:
             raise GatewayAdmissionError("adapter exceeded the cost budget")
         if result.cost_microusd > profile.max_cost_microusd:
             raise GatewayAdmissionError("adapter exceeded the profile cost limit")
+        if profile.deterministic and not result.deterministic:
+            raise GatewayAdmissionError(
+                "adapter returned a non-deterministic result for a deterministic profile"
+            )
         if request.deterministic_required and not result.deterministic:
             raise GatewayAdmissionError("adapter returned a non-deterministic result")
         validate_output(result.output, request.output_schema)

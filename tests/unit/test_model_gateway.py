@@ -14,7 +14,7 @@ from blackcell.gateway import (
     ModelGateway,
     ModelRequest,
 )
-from blackcell.gateway.schema import OutputSchemaError
+from blackcell.gateway.schema import OutputSchemaError, validate_output
 from blackcell.kernel import JsonValue
 
 NOW = datetime(2026, 7, 10, 18, tzinfo=UTC)
@@ -41,11 +41,13 @@ class UsageAdapter(RecordedModelAdapter):
         input_tokens: int = 10,
         output_tokens: int = 1,
         cost_microusd: int = 0,
+        result_deterministic: bool = True,
     ) -> None:
         super().__init__("recorded", {}, capabilities={ModelCapability.REASON})
         self._input_tokens = input_tokens
         self._output_tokens = output_tokens
         self._cost_microusd = cost_microusd
+        self._result_deterministic = result_deterministic
         self.seen_budget: GatewayBudget | None = None
 
     def invoke(self, request: ModelRequest, *, model_id: str) -> AdapterResult:
@@ -57,7 +59,7 @@ class UsageAdapter(RecordedModelAdapter):
             output_tokens=self._output_tokens,
             latency_ms=0,
             cost_microusd=self._cost_microusd,
-            deterministic=True,
+            deterministic=self._result_deterministic,
         )
 
 
@@ -235,6 +237,173 @@ def test_gateway_refuses_direct_tool_authority() -> None:
         _request(tools_allowed=True)
 
 
+def test_gateway_rejects_adapter_registry_identity_mismatch() -> None:
+    adapter = RecordedModelAdapter(
+        "actual-id",
+        {},
+        capabilities={ModelCapability.REASON},
+    )
+
+    with pytest.raises(ValueError, match=r"registry key.*does not match adapter_id"):
+        ModelGateway(
+            (_profile("reason", ModelCapability.REASON),),
+            {"recorded": adapter},
+        )
+
+
+def test_gateway_rejects_determinism_downgrade_from_advertised_profile() -> None:
+    adapter = UsageAdapter(result_deterministic=False)
+    gateway = ModelGateway(
+        (_profile("reason", ModelCapability.REASON),),
+        {"recorded": adapter},
+    )
+
+    with pytest.raises(GatewayAdmissionError, match="deterministic profile"):
+        gateway.invoke(_request(deterministic_required=False))
+
+
+def test_output_schema_recursively_validates_objects_arrays_and_const() -> None:
+    schema: dict[str, JsonValue] = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": False,
+        "required": ("payload",),
+        "properties": {
+            "payload": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ("version", "items"),
+                "properties": {
+                    "version": {"type": "string", "const": "v1"},
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ("name", "score"),
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "minLength": 2,
+                                    "maxLength": 8,
+                                },
+                                "score": {
+                                    "type": "number",
+                                    "exclusiveMinimum": 0,
+                                    "exclusiveMaximum": 1,
+                                },
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    }
+
+    validate_output(
+        {"payload": {"version": "v1", "items": ({"name": "ready", "score": 0.5},)}},
+        schema,
+    )
+
+    invalid_outputs: tuple[tuple[dict[str, JsonValue], str], ...] = (
+        (
+            {"payload": {"version": "v1", "items": ({"score": 0.5},)}},
+            "missing required fields",
+        ),
+        (
+            {
+                "payload": {
+                    "version": "v1",
+                    "items": ({"name": "ready", "score": 0.5, "extra": True},),
+                }
+            },
+            "undeclared fields",
+        ),
+        (
+            {"payload": {"version": "v2", "items": ()}},
+            "const value",
+        ),
+        (
+            {"payload": {"version": "v1", "items": ({"name": 1, "score": 0.5},)}},
+            "does not match type",
+        ),
+    )
+    for output, message in invalid_outputs:
+        with pytest.raises(OutputSchemaError, match=message):
+            validate_output(output, schema)
+
+
+@pytest.mark.parametrize(
+    ("keyword", "boundary", "value", "expected_message"),
+    (
+        ("minimum", 1, 0, "less than minimum"),
+        ("maximum", 1, 2, "exceeds maximum"),
+        ("exclusiveMinimum", 1, 1, "greater than exclusiveMinimum"),
+        ("exclusiveMaximum", 1, 1, "less than exclusiveMaximum"),
+    ),
+)
+def test_output_schema_enforces_numeric_boundaries(
+    keyword: str,
+    boundary: int,
+    value: int,
+    expected_message: str,
+) -> None:
+    schema: dict[str, JsonValue] = {
+        "type": "object",
+        "properties": {"value": {"type": "number", keyword: boundary}},
+    }
+
+    with pytest.raises(OutputSchemaError, match=expected_message):
+        validate_output({"value": value}, schema)
+
+
+@pytest.mark.parametrize(
+    ("keyword", "boundary", "value", "expected_message"),
+    (
+        ("minLength", 2, "x", "shorter than minLength"),
+        ("maxLength", 2, "xxx", "longer than maxLength"),
+    ),
+)
+def test_output_schema_enforces_string_boundaries(
+    keyword: str,
+    boundary: int,
+    value: str,
+    expected_message: str,
+) -> None:
+    schema: dict[str, JsonValue] = {
+        "type": "object",
+        "properties": {"value": {"type": "string", keyword: boundary}},
+    }
+
+    with pytest.raises(OutputSchemaError, match=expected_message):
+        validate_output({"value": value}, schema)
+
+
+def test_output_schema_rejects_unknown_keyword_in_unvisited_branch() -> None:
+    schema: dict[str, JsonValue] = {
+        "type": "object",
+        "properties": {
+            "optional": {
+                "type": "string",
+                "pattern": "unsupported-regex",
+            }
+        },
+    }
+
+    with pytest.raises(OutputSchemaError, match="unsupported output schema keywords"):
+        validate_output({}, schema)
+
+
+def test_output_schema_rejects_schema_valued_additional_properties() -> None:
+    schema: dict[str, JsonValue] = {
+        "type": "object",
+        "additionalProperties": {"type": "string"},
+    }
+
+    with pytest.raises(OutputSchemaError, match="additionalProperties must be a boolean"):
+        validate_output({}, schema)
+
+
 def _request(
     *,
     capability: ModelCapability = ModelCapability.REASON,
@@ -243,6 +412,7 @@ def _request(
     estimated_input_tokens: int = 10,
     tools_allowed: bool = False,
     budget: GatewayBudget | None = None,
+    deterministic_required: bool = True,
 ) -> ModelRequest:
     return ModelRequest(
         "request:1",
@@ -256,7 +426,7 @@ def _request(
         "correlation:1",
         "run:1",
         "node:1",
-        deterministic_required=True,
+        deterministic_required=deterministic_required,
         tools_allowed=tools_allowed,
     )
 
