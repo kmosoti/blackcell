@@ -10,10 +10,14 @@ edges:
 
 # BCP-0032: Repository Operator Loop
 
-Status: implemented
+Status: legacy product accepted — canonical Daily Operator delegation remains pending
 
 Connect observation ingestion, state projection, ContextFrame construction, model proposal,
 policy evaluation, one bounded affordance, outcome observation, evaluation, and event append.
+
+The current implementation proves the product behavior through `RepositoryOperator`. Runtime-v1
+must characterize that behavior, make the facade delegate to the new vertical slices and gateway,
+and retain historical replay compatibility before deleting the legacy coordination path.
 
 Acceptance:
 

@@ -12,8 +12,9 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — scoped state/context and bounded durable run recording are integrated through the
-Daily Operator; gateway, feedback-loop, replay, and product acceptance remain incomplete
+Status: active — PR #40 established scoped state/context, artifact-first execution, and bounded
+durable Daily Operator runs. Runtime-v1 now executes as one continuous dependency DAG on one
+integration branch and one pull request.
 
 The current `DailyOperatorWorkflow` is a deterministic control-path skeleton. It proves that the
 new feature contracts can compose through observation, scoped state projection, bounded context,
@@ -177,52 +178,95 @@ configuration committed to Git. The same image runs API and worker entry points.
 | 26 | legacy retirement | no dual stores or obsolete coordination paths |
 | 27 | release evidence | docs, examples, SBOM, reproducible verification |
 
-## Re-baselined execution order
+## Runtime-v1 continuous execution DAG
 
-The work-package identifiers remain stable, but implementation order follows dependency and
-evidence boundaries rather than their numeric order.
+Work-package identifiers remain stable. Lettered suffixes split broad packages into reviewable
+commits without inventing new product taxonomies. Dependencies control execution; joins trigger
+automated verification and independent review, not a user approval pause.
 
-1. **Completed — harden and merge the current contracts.** Resolve PR #39 review findings, run
-   the full suite, and merge only when execution identity, asymmetric gateway budgets, and
-   required-evidence boundaries have regression coverage.
-2. **Completed — correct state and context semantics.** Add domain/stream scope, characterize
-   parity with the legacy repository projector, distinguish missing required evidence from trimmed
-   or irrelevant evidence, and persist inspectable ContextFrames.
-3. **Completed — make the bounded run protocol durable.** Record context, proposal, proof,
-   authorization, execution, and trace artifacts in the kernel; bind the complete request identity;
-   and prepare exact affordance inputs in a restart-safe SQLite journal. Gateway events are
-   deliberately absent until a real gateway-backed decision path exists.
-4. **Next — integrate the gateway.** Implement a decision-port adapter that maps a ContextFrame to a
-   `ModelRequest`, validates the returned `ActionProposal`, and records successful and failed
-   routing decisions. The workflow keeps the port; bootstrap owns the concrete gateway.
-5. **Close the feedback loop (WP16 before WP10).** Re-observe after execution, implement
-   `evaluate_outcome`, compare expected and actual effects, and append accepted outcome and
-   transition events. Transition prediction cannot be evaluated before this data exists.
-6. **Prove live-free replay (WP17).** Implement `replay_run` with exploding model and execution
-   adapters that prove replay has no live dependency path.
-7. **Complete compatibility and composition (WP09b).** Make the existing Repository Operator and
-   CLI delegate to the new use cases, expose context and replay inspection, and retire duplicate
-   behavior only after characterization tests pass.
-8. **Establish predictive and symbolic baselines (WP10, WP12).** Score deterministic transition
-   predictors against recorded outcomes and add Clingo only behind solver parity and explanation
-   tests. Add a local-model predictor (WP11) only after the deterministic baseline is measurable.
-9. **Design and simulate DAG failure semantics (WP14-WP15 before WP13).** Freeze typed node I/O,
-   identity, retries, approvals, budgets, and side-effect classes; exercise duplicate delivery,
-   worker loss, stale leases, and self-approval attempts in deterministic simulations.
-10. **Implement durable orchestration (WP13).** Add SQLite attempts, leases, fencing tokens,
-    restart recovery, and atomic result commits, then bind planner, executor, reviewer, verifier,
-    and synthesizer profiles through gateway policy.
-11. **Build the operator platform (WP18-WP22).** Establish the auth, secrets, and data-directory
-    boundary before exposing Litestar/msgspec APIs; then add Granian lifecycle, OTel correlation and
-    redaction, rootless Podman API/worker images, backup/restore, quotas, and recovery tests.
-12. **Run comparative research and release work (WP23-WP27).** Evaluate retrieval interventions,
-    transition prediction, and hybrid symbolic validation under matched budgets before profiling,
-    legacy retirement, SBOM generation, and release evidence.
+```mermaid
+flowchart TD
+    M[PR 40 foundation] --> P[protocol-v2]
+    M --> S04a[WP04c corrections and effective time]
+    S04a --> S04b[WP04d expiry unknowns checkpoints]
+    S04b --> S05[WP05c context parity and inspection]
+    M --> E08[WP08b bounded process adapter]
+
+    P --> G06a[WP06c request-decision slice]
+    G06a --> G06b[WP06d durable gateway attempts]
+    G06b --> G06c[WP06e gateway decision adapter]
+    G06b --> G06d[WP06f bounded host-model adapter]
+
+    P --> O16a[WP16a outcome observation]
+    O16a --> O16b[WP16b outcome evaluation]
+    O16b --> O16c[WP16c transition commit]
+
+    S05 --> I09[WP09c closed-loop integration]
+    E08 --> I09
+    G06c --> I09
+    O16c --> I09
+    I09 --> R17[WP17 live-free replay]
+    R17 --> C09[WP09b compatibility and product acceptance]
+    G06d --> C09
+
+    C09 --> T10[WP10 deterministic transition baseline]
+    T10 --> T11[WP11 local-model promote-or-defer]
+    C09 --> N12[WP12 Clingo promote-or-defer]
+    C09 --> F23[WP23a FTS5 baseline]
+
+    C09 --> D14[WP14 DAG contracts and role policy]
+    D14 --> D15[WP15 deterministic failure simulation]
+    D15 --> D13a[WP13a transactional kernel session]
+    D13a --> D13b[WP13b durable SQLite scheduler]
+    D13b --> D16[reviewed Daily Operator role DAG]
+
+    C09 --> SEC22[WP22a security and data boundary]
+    SEC22 --> A18[WP18 Litestar and msgspec API]
+    D13b --> A18
+    A18 --> G19[WP19 Granian lifecycle]
+    D13b --> O21[WP21 OpenTelemetry adapter]
+    G19 --> P20[WP20 rootless Podman deployment]
+    O21 --> P20
+    D16 --> P20
+    P20 --> REC22[WP22b backup restore and recovery]
+
+    F23 --> X23[WP23 matched context retrieval experiments]
+    T10 --> X24[WP24 prediction NeSy experiments]
+    T11 --> X24
+    N12 --> X24
+    P20 --> PERF25[WP25 reliability performance]
+    D16 --> PERF25
+    C09 --> RET26[WP26 legacy retirement]
+    R17 --> RET26
+    X23 --> RET26
+    X24 --> RET26
+    REC22 --> REL27[WP27 runtime-v1 release evidence]
+    PERF25 --> REL27
+    RET26 --> REL27
+```
+
+### Remaining bounded nodes
+
+| Node | Deliverable | Acceptance evidence |
+| --- | --- | --- |
+| protocol-v2 | backward-compatible gateway and feedback run grammar | v1 streams remain readable; strict v2 artifact/event grammar |
+| WP04c-WP05c | corrections, effective time, expiry, unknowns, checkpoints, inspection | no history rewrite; complete replay and context parity |
+| WP06c-WP06f | request-decision slice, durable gateway attempts, workflow adapter, host adapter | pre-call request record, success/failure/usage artifacts, enforced deadlines, no direct authority |
+| WP08b | real allowlisted process affordance | argv/cwd/path/output/time bounds and UNKNOWN reconciliation |
+| WP16a-WP16c | independent outcome evidence, evaluation, accepted transition | developer-authored success criteria; inconclusive outcomes never commit state |
+| WP09c/WP17/WP09b | canonical closed loop, live-free replay, delegating facade and CLI | one public command, exploding live ports, context/replay inspection |
+| WP10-WP12/WP23a | deterministic prediction, optional local predictor, Clingo decision, FTS5 | matched baselines and explicit promote-or-defer records |
+| WP14-WP15/WP13 | typed DAG, failure simulation, transaction seam, scheduler, role graph | cycle/self-approval rejection, leases/fencing, atomic accepted results |
+| WP18-WP22 | security, API, Granian, OTel, Podman, recovery | strict edge contracts, non-root image, durable restore |
+| WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |
 
 ## Delivery and review protocol
 
-- Use one active integration branch and one PR based directly on current `main`. Keep each work
-  package or review repair as a logically isolated commit; do not stack PRs on unmerged branches.
+- Use `agent/runtime-v1` and one draft PR based directly on merged `main`. Keep each bounded node
+  or review repair as a logically isolated commit; do not create stacked branches or PRs.
+- Publish every completed node. Never rebase or force-push the published integration branch.
+- The root integrator alone owns commits and shared hotspots. Parallel executors receive disjoint
+  paths; reviewers and verifiers are read-only.
 - Track maturity as **contract complete**, **integrated**, or **product accepted**. Unit tests alone
   establish a contract, not an integrated runtime or accepted product slice.
 - Every high-consequence boundary declares its invariant and adversarial matrix before merge. At a
@@ -234,14 +278,21 @@ evidence boundaries rather than their numeric order.
   still wrong.
 - Update this specification and the migration ledger in the same PR as behavior. Publish the branch
   after every isolated commit so review never depends on unpublished local ancestry.
+- A confidence drop holds only the affected node. An independent subagent reviews the diff against
+  this specification, an adversarial verifier checks the relevant invariants, repairs are committed,
+  and unaffected DAG nodes continue. Routine dependency joins never request user confirmation.
 
-## Global acceptance
+## Phase 1 product acceptance
 
-- one command executes the full Daily Operator loop;
-- every material claim has inspectable provenance;
-- the ContextFrame is independently inspectable;
-- replay performs no live model call or side effect;
-- one symbolic constraint demonstrably rejects a neural proposal;
+- one command executes the gateway-backed observe-to-transition Repository Operator loop;
+- every material claim and ContextFrame decision has inspectable provenance;
+- replay verifies artifacts and performs no live model call, observation, or side effect;
+- a developer-authored symbolic constraint rejects at least one neural proposal;
+- human correction appends evidence instead of rewriting history;
+- expected and independently observed effects produce a typed evaluation.
+
+## Runtime-v1 program acceptance
+
 - model selection is gateway policy rather than agent-owned configuration;
 - a multi-agent DAG survives worker restart without duplicate committed effects;
 - prediction quality is measured and described without a learned-world-model claim;
