@@ -30,6 +30,21 @@ class LocalityPolicy(StrEnum):
     REMOTE_ALLOWED = "remote-allowed"
 
 
+class GatewayFailureCode(StrEnum):
+    REQUEST_INPUT_BUDGET_EXCEEDED = "request_input_budget_exceeded"
+    NO_PROFILE = "no_profile"
+    PREPARED_CALL_INVALID = "prepared_call_invalid"
+    ADAPTER_INPUT_BUDGET_EXCEEDED = "adapter_input_budget_exceeded"
+    PROFILE_INPUT_LIMIT_EXCEEDED = "profile_input_limit_exceeded"
+    ADAPTER_OUTPUT_BUDGET_EXCEEDED = "adapter_output_budget_exceeded"
+    PROFILE_OUTPUT_LIMIT_EXCEEDED = "profile_output_limit_exceeded"
+    ADAPTER_LATENCY_BUDGET_EXCEEDED = "adapter_latency_budget_exceeded"
+    ADAPTER_COST_BUDGET_EXCEEDED = "adapter_cost_budget_exceeded"
+    PROFILE_COST_LIMIT_EXCEEDED = "profile_cost_limit_exceeded"
+    PROFILE_DETERMINISM_VIOLATED = "profile_determinism_violated"
+    REQUEST_DETERMINISM_VIOLATED = "request_determinism_violated"
+
+
 @dataclass(frozen=True, slots=True)
 class GatewayBudget:
     max_input_tokens: int
@@ -154,3 +169,28 @@ class GatewayAuditRecord:
 class GatewayResult:
     decision: RoutingDecision
     response: ModelResponse
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedGatewayCall:
+    """Exact, policy-admitted route prepared without invoking a model adapter."""
+
+    request: ModelRequest
+    decision: RoutingDecision
+    effective_budget: GatewayBudget
+
+    def __post_init__(self) -> None:
+        if self.decision.capability is not self.request.capability:
+            raise ValueError("prepared route capability does not match its request")
+        if self.request.locality is LocalityPolicy.LOCAL_ONLY and not self.decision.local:
+            raise ValueError("a local-only request cannot prepare a remote route")
+        if self.request.deterministic_required and not self.decision.deterministic:
+            raise ValueError("a deterministic request cannot prepare a non-deterministic route")
+        if self.effective_budget.max_input_tokens > self.request.budget.max_input_tokens:
+            raise ValueError("prepared input budget exceeds the request budget")
+        if self.effective_budget.max_output_tokens > self.request.budget.max_output_tokens:
+            raise ValueError("prepared output budget exceeds the request budget")
+        if self.effective_budget.max_latency_ms > self.request.budget.max_latency_ms:
+            raise ValueError("prepared latency budget exceeds the request budget")
+        if self.effective_budget.max_cost_microusd > self.request.budget.max_cost_microusd:
+            raise ValueError("prepared cost budget exceeds the request budget")

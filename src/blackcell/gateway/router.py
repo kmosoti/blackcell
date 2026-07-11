@@ -6,10 +6,12 @@ from datetime import UTC, datetime
 from blackcell.gateway.models import (
     GatewayAuditRecord,
     GatewayBudget,
+    GatewayFailureCode,
     GatewayResult,
     LocalityPolicy,
     ModelRequest,
     ModelResponse,
+    PreparedGatewayCall,
     RoutingDecision,
 )
 from blackcell.gateway.ports import AdapterRegistry, Clock, GatewayAuditSink, ModelAdapter
@@ -18,7 +20,13 @@ from blackcell.gateway.schema import validate_output
 
 
 class GatewayAdmissionError(RuntimeError):
-    pass
+    def __init__(self, code: GatewayFailureCode, message: str) -> None:
+        if not isinstance(code, GatewayFailureCode):
+            raise TypeError("gateway admission failures require a stable failure code")
+        if not message.strip():
+            raise ValueError("gateway admission failure message must not be empty")
+        super().__init__(message)
+        self.code = code
 
 
 class ModelGateway:
@@ -44,55 +52,79 @@ class ModelGateway:
         self._clock = clock
 
     def invoke(self, request: ModelRequest) -> GatewayResult:
+        """Compatibility entry point for one-shot callers."""
+
+        return self.invoke_prepared(self.prepare(request))
+
+    def prepare(self, request: ModelRequest) -> PreparedGatewayCall:
+        """Select and freeze an exact route without invoking a model adapter."""
+
         profile, adapter = self._select(request)
-        adapter_request = replace(
-            request,
-            budget=GatewayBudget(
-                max_input_tokens=min(
-                    request.budget.max_input_tokens,
-                    profile.max_input_tokens,
-                ),
-                max_output_tokens=min(
-                    request.budget.max_output_tokens,
-                    profile.max_output_tokens,
-                ),
-                max_latency_ms=request.budget.max_latency_ms,
-                max_cost_microusd=min(
-                    request.budget.max_cost_microusd,
-                    profile.max_cost_microusd,
-                ),
-            ),
+        return PreparedGatewayCall(
+            request=request,
+            decision=self._decision(request, profile, adapter),
+            effective_budget=self._effective_budget(request, profile),
         )
+
+    def invoke_prepared(self, call: PreparedGatewayCall) -> GatewayResult:
+        """Invoke only the exact route admitted by :meth:`prepare`."""
+
+        expected = self.prepare(call.request)
+        if call != expected:
+            raise GatewayAdmissionError(
+                GatewayFailureCode.PREPARED_CALL_INVALID,
+                "prepared gateway call no longer matches gateway policy",
+            )
+        profile, adapter = self._profile_adapter(expected.decision)
+        adapter_request = replace(call.request, budget=call.effective_budget)
         result = adapter.invoke(adapter_request, model_id=profile.model_id)
+        request = call.request
         if result.input_tokens > request.budget.max_input_tokens:
-            raise GatewayAdmissionError("adapter exceeded the input-token budget")
+            raise GatewayAdmissionError(
+                GatewayFailureCode.ADAPTER_INPUT_BUDGET_EXCEEDED,
+                "adapter exceeded the input-token budget",
+            )
         if result.input_tokens > profile.max_input_tokens:
-            raise GatewayAdmissionError("adapter exceeded the profile input-token limit")
+            raise GatewayAdmissionError(
+                GatewayFailureCode.PROFILE_INPUT_LIMIT_EXCEEDED,
+                "adapter exceeded the profile input-token limit",
+            )
         if result.output_tokens > request.budget.max_output_tokens:
-            raise GatewayAdmissionError("adapter exceeded the output-token budget")
+            raise GatewayAdmissionError(
+                GatewayFailureCode.ADAPTER_OUTPUT_BUDGET_EXCEEDED,
+                "adapter exceeded the output-token budget",
+            )
         if result.output_tokens > profile.max_output_tokens:
-            raise GatewayAdmissionError("adapter exceeded the profile output-token limit")
+            raise GatewayAdmissionError(
+                GatewayFailureCode.PROFILE_OUTPUT_LIMIT_EXCEEDED,
+                "adapter exceeded the profile output-token limit",
+            )
         if result.latency_ms > request.budget.max_latency_ms:
-            raise GatewayAdmissionError("adapter exceeded the latency budget")
+            raise GatewayAdmissionError(
+                GatewayFailureCode.ADAPTER_LATENCY_BUDGET_EXCEEDED,
+                "adapter exceeded the latency budget",
+            )
         if result.cost_microusd > request.budget.max_cost_microusd:
-            raise GatewayAdmissionError("adapter exceeded the cost budget")
+            raise GatewayAdmissionError(
+                GatewayFailureCode.ADAPTER_COST_BUDGET_EXCEEDED,
+                "adapter exceeded the cost budget",
+            )
         if result.cost_microusd > profile.max_cost_microusd:
-            raise GatewayAdmissionError("adapter exceeded the profile cost limit")
+            raise GatewayAdmissionError(
+                GatewayFailureCode.PROFILE_COST_LIMIT_EXCEEDED,
+                "adapter exceeded the profile cost limit",
+            )
         if profile.deterministic and not result.deterministic:
             raise GatewayAdmissionError(
-                "adapter returned a non-deterministic result for a deterministic profile"
+                GatewayFailureCode.PROFILE_DETERMINISM_VIOLATED,
+                "adapter returned a non-deterministic result for a deterministic profile",
             )
         if request.deterministic_required and not result.deterministic:
-            raise GatewayAdmissionError("adapter returned a non-deterministic result")
+            raise GatewayAdmissionError(
+                GatewayFailureCode.REQUEST_DETERMINISM_VIOLATED,
+                "adapter returned a non-deterministic result",
+            )
         validate_output(result.output, request.output_schema)
-        decision = RoutingDecision(
-            profile.profile_id,
-            adapter.adapter_id,
-            profile.model_id,
-            request.capability,
-            adapter.local,
-            adapter.deterministic,
-        )
         response = ModelResponse(
             request.request_id,
             result.output,
@@ -107,11 +139,14 @@ class ModelGateway:
             self._clock(),
         )
         self._audit(request, response)
-        return GatewayResult(decision, response)
+        return GatewayResult(call.decision, response)
 
     def _select(self, request: ModelRequest) -> tuple[GatewayProfile, ModelAdapter]:
         if request.estimated_input_tokens > request.budget.max_input_tokens:
-            raise GatewayAdmissionError("request exceeds its input-token budget")
+            raise GatewayAdmissionError(
+                GatewayFailureCode.REQUEST_INPUT_BUDGET_EXCEEDED,
+                "request exceeds its input-token budget",
+            )
         candidates: list[tuple[GatewayProfile, ModelAdapter]] = []
         for profile in self._profiles:
             adapter = self._adapters.get(profile.adapter_id)
@@ -131,9 +166,64 @@ class ModelGateway:
                 continue
             candidates.append((profile, adapter))
         if not candidates:
-            raise GatewayAdmissionError("no model profile satisfies the request policy")
+            raise GatewayAdmissionError(
+                GatewayFailureCode.NO_PROFILE,
+                "no model profile satisfies the request policy",
+            )
         candidates.sort(key=lambda item: (item[0].priority, item[0].profile_id))
         return candidates[0]
+
+    @staticmethod
+    def _decision(
+        request: ModelRequest,
+        profile: GatewayProfile,
+        adapter: ModelAdapter,
+    ) -> RoutingDecision:
+        return RoutingDecision(
+            profile.profile_id,
+            adapter.adapter_id,
+            profile.model_id,
+            request.capability,
+            adapter.local,
+            adapter.deterministic,
+        )
+
+    @staticmethod
+    def _effective_budget(
+        request: ModelRequest,
+        profile: GatewayProfile,
+    ) -> GatewayBudget:
+        return GatewayBudget(
+            max_input_tokens=min(
+                request.budget.max_input_tokens,
+                profile.max_input_tokens,
+            ),
+            max_output_tokens=min(
+                request.budget.max_output_tokens,
+                profile.max_output_tokens,
+            ),
+            max_latency_ms=request.budget.max_latency_ms,
+            max_cost_microusd=min(
+                request.budget.max_cost_microusd,
+                profile.max_cost_microusd,
+            ),
+        )
+
+    def _profile_adapter(
+        self,
+        decision: RoutingDecision,
+    ) -> tuple[GatewayProfile, ModelAdapter]:
+        profile = next(
+            (item for item in self._profiles if item.profile_id == decision.profile_id),
+            None,
+        )
+        adapter = self._adapters.get(decision.adapter_id)
+        if profile is None or adapter is None:
+            raise GatewayAdmissionError(
+                GatewayFailureCode.PREPARED_CALL_INVALID,
+                "prepared gateway route is no longer registered",
+            )
+        return profile, adapter
 
     def _audit(self, request: ModelRequest, response: ModelResponse) -> None:
         if self._audit_sink is None:
