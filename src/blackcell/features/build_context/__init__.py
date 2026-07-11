@@ -16,6 +16,13 @@ from blackcell.features.build_context.models import (
     serialize_context_evidence,
     serialize_context_frame,
 )
+from blackcell.features.build_context.storage import (
+    ContextFrameConflictError,
+    ContextFrameIntegrityError,
+    ContextFrameSchemaError,
+    ContextFrameStorage,
+    ContextFrameStorageError,
+)
 
 __all__ = [
     "BuildContext",
@@ -24,6 +31,11 @@ __all__ = [
     "ContextEvidence",
     "ContextFrame",
     "ContextFrameBuilder",
+    "ContextFrameConflictError",
+    "ContextFrameIntegrityError",
+    "ContextFrameSchemaError",
+    "ContextFrameStorage",
+    "ContextFrameStorageError",
     "ContextOmission",
     "ContextOmissionReason",
     "ContextOmissionStage",
