@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -98,15 +100,21 @@ def test_recorder_persists_verified_executed_chain_and_causal_trace(tmp_path: Pa
         item.event_id for item in stored[:-1]
     )
     assert terminal.terminal_event == stored[-1]
-    trace_digest = terminal.trace_event.payload["artifact"]["digest"]
-    trace = artifacts.get_json(str(trace_digest))
+    trace_digest = _artifact_digest(terminal.trace_event)
+    trace_value = artifacts.get_json(trace_digest)
+    assert isinstance(trace_value, dict)
+    trace = cast("dict[str, object]", trace_value)
     assert trace["schema_version"] == "run-trace/v1"
     assert trace["outcome"] == "executed"
-    assert len(trace["entries"]) == 6
-    assert trace["entries"][-1]["artifact_digest"] == result.result_id
+    entries = trace["entries"]
+    assert isinstance(entries, list)
+    assert len(entries) == 6
+    final_entry = entries[-1]
+    assert isinstance(final_entry, dict)
+    final_entry = cast("dict[str, object]", final_entry)
+    assert final_entry["artifact_digest"] == result.result_id
     for event in stored[1:-1]:
-        link = event.payload["artifact"]
-        assert artifacts.verify(str(link["digest"]))
+        assert artifacts.verify(_artifact_digest(event))
 
 
 def test_denial_is_a_completed_safety_outcome_without_execution(tmp_path: Path) -> None:
@@ -135,8 +143,8 @@ def test_failure_records_trace_then_terminal_without_raw_error_message(tmp_path:
     )
     assert terminal.terminal_event.payload["phase"] == "decision"
     assert "message" not in terminal.terminal_event.payload
-    failure_digest = terminal.terminal_event.payload["artifact"]["digest"]
-    assert artifacts.get_json(str(failure_digest)) == {
+    failure_digest = _artifact_digest(terminal.terminal_event)
+    assert artifacts.get_json(failure_digest) == {
         "schema_version": "run-failure/v1",
         "run_id": "run:1",
         "phase": "decision",
@@ -193,7 +201,7 @@ def test_artifact_must_exist_before_context_event_and_corruption_blocks_progress
     recorder.record_context("run:1", frame)
     proposal = _proposal(frame)
     proposal_event = recorder.record_proposal("run:1", proposal)
-    proposal_path = artifacts.path_for(str(proposal_event.payload["artifact"]["digest"]))
+    proposal_path = artifacts.path_for(_artifact_digest(proposal_event))
     proposal_path.write_bytes(proposal_path.read_bytes() + b"\n")
 
     with pytest.raises(RunProtocolIntegrityError, match="missing or corrupt"):
@@ -392,3 +400,12 @@ def _execution(
         error_code=None,
         reconciled=False,
     )
+
+
+def _artifact_digest(event: EventEnvelope) -> str:
+    artifact = event.payload["artifact"]
+    assert isinstance(artifact, Mapping)
+    artifact = cast("Mapping[str, object]", artifact)
+    digest = artifact["digest"]
+    assert isinstance(digest, str)
+    return digest
