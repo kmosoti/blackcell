@@ -1,9 +1,19 @@
 """Typed, journaled affordance execution."""
 
+from blackcell.features.execute_affordance.errors import (
+    AuthorizationBindingConflict,
+    ExecutionIdentityConflict,
+    ExecutionInProgress,
+    ExecutionJournalError,
+    ExecutionJournalIntegrityError,
+    ExecutionJournalSchemaError,
+    ExecutionRecoveryError,
+    IdempotencyKeyConflict,
+    StaleExecutionClaim,
+)
 from blackcell.features.execute_affordance.handler import (
     AffordanceExecutionHandler,
     ExecutionDenied,
-    IdempotencyKeyConflict,
     UncertainExecutionError,
 )
 from blackcell.features.execute_affordance.models import (
@@ -12,11 +22,24 @@ from blackcell.features.execute_affordance.models import (
     AffordanceArgumentSpec,
     AffordanceDefinition,
     AffordanceInvocation,
+    ExecutionBinding,
+    ExecutionClaim,
+    ExecutionJournalEntry,
+    ExecutionJournalStatus,
+    ExecutionOperation,
+    ExecutionPreparation,
+    ExecutionRecovery,
+    ExecutionRecoveryAuthorization,
     ExecutionResult,
     ExecutionStatus,
     ObservedEffect,
     SideEffectClass,
+    deserialize_execution_preparation,
+    deserialize_execution_result,
+    serialize_execution_preparation,
+    serialize_execution_result,
 )
+from blackcell.features.execute_affordance.recovery import ManualAffordanceRecovery
 
 __all__ = [
     "AdapterOutcome",
@@ -25,11 +48,32 @@ __all__ = [
     "AffordanceDefinition",
     "AffordanceExecutionHandler",
     "AffordanceInvocation",
+    "AuthorizationBindingConflict",
+    "ExecutionBinding",
+    "ExecutionClaim",
     "ExecutionDenied",
+    "ExecutionIdentityConflict",
+    "ExecutionInProgress",
+    "ExecutionJournalEntry",
+    "ExecutionJournalError",
+    "ExecutionJournalIntegrityError",
+    "ExecutionJournalSchemaError",
+    "ExecutionJournalStatus",
+    "ExecutionOperation",
+    "ExecutionPreparation",
+    "ExecutionRecovery",
+    "ExecutionRecoveryAuthorization",
+    "ExecutionRecoveryError",
     "ExecutionResult",
     "ExecutionStatus",
     "IdempotencyKeyConflict",
+    "ManualAffordanceRecovery",
     "ObservedEffect",
     "SideEffectClass",
+    "StaleExecutionClaim",
     "UncertainExecutionError",
+    "deserialize_execution_preparation",
+    "deserialize_execution_result",
+    "serialize_execution_preparation",
+    "serialize_execution_result",
 ]

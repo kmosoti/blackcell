@@ -173,6 +173,7 @@ class DailyOperatorWorkflow:
                 invocation,
                 request.execution_affordance,
                 authorization,
+                run_id=request.run_id,
             )
         return DailyOperatorResult(
             request.run_id,

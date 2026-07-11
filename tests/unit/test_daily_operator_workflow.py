@@ -4,7 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from blackcell.adapters.persistence.sqlite import ArtifactContextFrameStore
+from blackcell.adapters.persistence.sqlite import (
+    ArtifactContextFrameStore,
+    SQLiteExecutionJournal,
+)
 from blackcell.features.authorize_action import (
     ActionArgument,
     ActionProposal,
@@ -23,7 +26,6 @@ from blackcell.features.execute_affordance import (
     AffordanceArgumentSpec,
     AffordanceDefinition,
     AffordanceExecutionHandler,
-    ExecutionResult,
     ExecutionStatus,
     SideEffectClass,
 )
@@ -104,6 +106,7 @@ class ContextFrames:
 
 class Adapter:
     adapter_id = "fixture"
+    contract_version = "fixture/v1"
 
     def __init__(self) -> None:
         self.calls = 0
@@ -114,27 +117,6 @@ class Adapter:
 
     def reconcile(self, invocation, definition, previous):
         raise AssertionError("read-only fixture should not reconcile")
-
-
-class Journal:
-    def __init__(self) -> None:
-        self.results: dict[str, ExecutionResult] = {}
-
-    def get(self, idempotency_key: str):
-        return self.results.get(idempotency_key)
-
-    def get_by_authorization(self, decision_id: str):
-        return next(
-            (
-                result
-                for result in self.results.values()
-                if result.authorization_decision_id == decision_id
-            ),
-            None,
-        )
-
-    def save(self, result):
-        self.results[result.idempotency_key] = result
 
 
 def test_daily_operator_runs_the_complete_allowed_control_loop(tmp_path: Path) -> None:
@@ -286,7 +268,11 @@ def test_daily_operator_composes_with_the_kernel_artifact_store(tmp_path: Path) 
             IngestObservationHandler(event_store, clock=lambda: NOW),
             context_frames,
             decision,
-            AffordanceExecutionHandler({"fixture": adapter}, Journal()),
+            AffordanceExecutionHandler(
+                {"fixture": adapter},
+                SQLiteExecutionJournal(artifact_root, database_path=database_path),
+                clock=lambda: NOW,
+            ),
         )
 
         result = workflow.run(_request("ready", ConstraintOperator.EQUALS, ("ready",)))
@@ -322,7 +308,14 @@ def _workflow(
         IngestObservationHandler(store, clock=lambda: NOW),
         context_frames,
         decision,
-        AffordanceExecutionHandler({"fixture": adapter}, Journal()),
+        AffordanceExecutionHandler(
+            {"fixture": adapter},
+            SQLiteExecutionJournal(
+                tmp_path / "artifacts",
+                database_path=store.path,
+            ),
+            clock=lambda: NOW,
+        ),
     )
     return workflow, adapter, decision, context_frames, events
 
