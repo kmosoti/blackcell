@@ -7,6 +7,7 @@ edges:
     - targets/containers
     - concepts/custom-agents
     - adr/0004-evolutionary-runtime-architecture
+    - adr/0005-durable-run-and-execution-protocol
 ---
 
 # Decisions
@@ -23,3 +24,5 @@ edges:
 - Route model capabilities through a gateway; models propose while Blackcell authorizes and acts.
 - Treat durable multi-agent DAG orchestration as a ledger-backed workflow consumer, not a second
   runtime or authority boundary.
+- Record runs artifact-first in one causal kernel stream, and durably prepare an affordance before
+  calling its adapter. Recover abandoned preparations explicitly through reconciliation.

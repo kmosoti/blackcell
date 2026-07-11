@@ -18,6 +18,7 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/adr/0002-domain-scoped-state.md",
         "docs/adr/0003-model-execution-boundary.md",
         "docs/adr/0004-evolutionary-runtime-architecture.md",
+        "docs/adr/0005-durable-run-and-execution-protocol.md",
         "docs/spec/index.md",
         "docs/spec/bcp-0028-charter-reset.md",
         "docs/spec/bcp-0029-event-kernel.md",
