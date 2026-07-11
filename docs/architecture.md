@@ -9,6 +9,7 @@ edges:
   decided-by:
     - adr/0004-evolutionary-runtime-architecture
     - adr/0005-durable-run-and-execution-protocol
+    - adr/0006-versioned-run-feedback-protocol
 ---
 
 # Runtime Architecture
@@ -64,7 +65,7 @@ Projections are rebuildable views. Artifacts are immutable, content-addressed pa
 | Command | `IngestObservation`, `BuildContext`, `RequestDecision`, `ExecuteAction` |
 | Event | `ObservationRecorded`, `PolicyEvaluated`, `ActionSucceeded`, `OutcomeObserved` |
 | Projection | `OperationalStateEstimate`, `SignalPacket`, `RunTrace` |
-| Artifact | ContextFrame, model request/response, tool result, evaluation report |
+| Artifact | ContextFrame, state snapshot, model request/attempt/response/failure, tool result, outcome-observer result, evaluation, transition |
 | Definition | `AffordanceDefinition`, `ConstraintDefinition`, `EvaluationSpec` |
 | Runtime instance | `ActionProposal`, `PolicyDecision`, `ActionAttempt`, `EvaluationResult` |
 
@@ -131,6 +132,8 @@ ContextFrame. It creates a new experiment and correlation ID. It is not determin
 
 ## Action protocol
 
+The integrated `daily-operator/v1` grammar remains:
+
 ```text
 run.started
   -> run.context-recorded
@@ -144,8 +147,14 @@ run.started
 
 SQLite and an external side effect cannot share one atomic transaction. The prepared-action
 journal prevents blind re-execution and preserves uncertainty for reconciliation; it does not make
-the external effect atomic. Outcome observation, evaluation, and accepted state-transition events
-are the next feedback-loop gate and are not fabricated by the current run trace.
+the external effect atomic.
+
+Runtime-v1 adds a separate `daily-operator/v2` grammar defined by ADR 0006. It records the
+developer-owned EvaluationSpec and initial state before context, inserts real model
+request/attempt/response evidence before the proposal, and records `run.outcome-observed`, the
+outcome-state snapshot, evaluation, and optional observed transition after authorization/execution.
+Version-one history is never reinterpreted. Version-two writing activates only after the complete
+composer and replay verifier exist; the public facade switches after compatibility characterization.
 
 ## Model boundary
 
