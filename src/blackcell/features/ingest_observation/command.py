@@ -76,9 +76,10 @@ class IngestObservation:
     correlation_id: str
     observations: tuple[ObservationInput, ...]
     causation_id: str | None = None
+    domain: str = "repository"
 
     def __post_init__(self) -> None:
-        for name in ("stream_id", "actor", "source", "correlation_id"):
+        for name in ("stream_id", "actor", "source", "correlation_id", "domain"):
             if not getattr(self, name).strip():
                 raise ValueError(f"{name} must not be empty")
         if self.causation_id is not None and not self.causation_id.strip():

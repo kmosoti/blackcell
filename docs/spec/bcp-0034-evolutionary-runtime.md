@@ -12,16 +12,19 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — PR #39 implements the WP05b-WP09a contracts; integration and product
-acceptance remain incomplete
+Status: active — scoped state/context and bounded durable run recording are integrated through the
+Daily Operator; gateway, feedback-loop, replay, and product acceptance remain incomplete
 
 The current `DailyOperatorWorkflow` is a deterministic control-path skeleton. It proves that the
-new feature contracts can compose through observation, projection, context, proposal, symbolic
-authorization, and typed execution. It does not yet satisfy the charter's closed-loop acceptance:
-the workflow bypasses the model gateway, records no durable run trace, performs no post-action
-observation or outcome evaluation, commits no resulting transition, and has no live-free replay or
-new CLI/bootstrap path. The Repository Operator remains the Phase 1 public product slice; the
-Daily Operator is the generic application workflow it will eventually delegate to.
+new feature contracts can compose through observation, scoped state projection, bounded context,
+proposal, symbolic authorization, and typed execution. It persists and verifies material artifacts,
+records one create-only causal run stream, rejects duplicate delivery before live work, and uses a
+prepared-action SQLite journal with explicit manual reconciliation after worker loss. It does not
+yet satisfy the charter's closed-loop acceptance: the workflow bypasses the model gateway,
+performs no post-action observation or outcome evaluation, commits no resulting transition, and
+has no live-free replay or new CLI/bootstrap path. The Repository Operator remains the Phase 1
+public product slice; the Daily Operator is the generic application workflow it will eventually
+delegate to.
 
 ## Outcome
 
@@ -179,16 +182,17 @@ configuration committed to Git. The same image runs API and worker entry points.
 The work-package identifiers remain stable, but implementation order follows dependency and
 evidence boundaries rather than their numeric order.
 
-1. **Harden and merge the current contracts.** Resolve PR #39 review findings, run the full suite,
-   and merge only when execution identity, asymmetric gateway budgets, and required-evidence
-   boundaries have regression coverage.
-2. **Correct state and context semantics.** Add domain/stream scope, characterize parity with the
-   legacy repository projector, distinguish missing required evidence from trimmed or irrelevant
-   evidence, and persist inspectable ContextFrames.
-3. **Make the run protocol durable.** Record context, gateway request and response, proposal,
-   proof, authorization, execution, and trace artifacts in the kernel. Add a SQLite execution
-   journal using the WP08 execution-identity invariant.
-4. **Integrate the gateway.** Implement a decision-port adapter that maps a ContextFrame to a
+1. **Completed — harden and merge the current contracts.** Resolve PR #39 review findings, run
+   the full suite, and merge only when execution identity, asymmetric gateway budgets, and
+   required-evidence boundaries have regression coverage.
+2. **Completed — correct state and context semantics.** Add domain/stream scope, characterize
+   parity with the legacy repository projector, distinguish missing required evidence from trimmed
+   or irrelevant evidence, and persist inspectable ContextFrames.
+3. **Completed — make the bounded run protocol durable.** Record context, proposal, proof,
+   authorization, execution, and trace artifacts in the kernel; bind the complete request identity;
+   and prepare exact affordance inputs in a restart-safe SQLite journal. Gateway events are
+   deliberately absent until a real gateway-backed decision path exists.
+4. **Next — integrate the gateway.** Implement a decision-port adapter that maps a ContextFrame to a
    `ModelRequest`, validates the returned `ActionProposal`, and records successful and failed
    routing decisions. The workflow keeps the port; bootstrap owns the concrete gateway.
 5. **Close the feedback loop (WP16 before WP10).** Re-observe after execution, implement

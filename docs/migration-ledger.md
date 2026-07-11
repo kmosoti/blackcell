@@ -61,13 +61,13 @@ Status uses three evidence levels:
 | Package | Current evidence | Remaining acceptance |
 | --- | --- | --- |
 | WP00-WP02 | accepted support deliverables; no product maturity claim | Keep the debt and status records current. |
-| WP03 | integrated kernel append/replay baseline | Durable run, execution-journal, and DAG records remain. |
-| WP04a-WP04b | contract complete; ingestion feeds the new projector | Add domain scope, explicit missing-state semantics, and legacy-projector parity tests. |
-| WP05a-WP05b | contract complete; composed in memory | Persist/inspect frames and distinguish missing required evidence from other omissions; FTS5 remains pending. |
+| WP03 | integrated kernel append/replay baseline plus one causal Daily Operator run stream | DAG scheduler records and live-free replay remain. |
+| WP04a-WP04b | integrated for current observed claims: ingestion, explicit domain/stream scope, source-aware conflicts, cutoff replay, and characterized legacy overlap | Corrections, expiry, epistemic unknowns, independent effective-time cutoff, and incremental checkpoints remain before legacy retirement. |
+| WP05a-WP05b | integrated in `DailyOperatorWorkflow`: scoped claim lineage, complete typed dispositions, bounded model payload, artifact-backed ContextFrame persistence, and run-linked context events | Expose the target inspection surface and evaluate FTS5 or other retrieval adapters against this baseline. |
 | WP06a-WP06b | contract complete | Route the workflow through the gateway and durably record requests, responses, failures, retries, and usage. |
-| WP07a-WP07b | contract complete; composed in memory | Persist proof/authorization artifacts; Clingo parity is pending. |
-| WP08 | contract complete with execution-identity collision checks | Add SQLite journal, real bounded adapter, timeout/isolation, and kernel events. |
-| WP09a | control-path skeleton only | Add gateway composition, trace, re-observation, evaluation, transition commit, replay, and acceptance scenarios. |
+| WP07a-WP07b | integrated deterministic proof and authorization artifacts in the causal run | Clingo parity is pending. |
+| WP08 | integrated prepared-action SQLite journal with exact-input artifacts, collision checks, restart reconstruction, fencing, and explicit manual reconciliation | Add a real bounded process adapter, timeout/isolation, and later lease-backed worker recovery. |
+| WP09a | bounded durable control path: complete request identity, run-linked material artifacts, causal trace, terminal safety outcomes, and failure prefixes | Add gateway composition, re-observation, evaluation, transition commit, live-free replay, and product acceptance scenarios. |
 | WP09b | pending | Make Repository Operator and CLI delegate after characterization. |
 | WP10-WP12 | pending | Begin only after recorded outcome/transition data and replay exist. |
 | WP13-WP15 | pending | Simulate DAG invariants before durable leases/fencing and role binding. |
@@ -87,4 +87,5 @@ The dependency-correct execution sequence and branch/review protocol are canonic
 5. Predicted state is never silently committed as observed state.
 6. Symbolic denial dominates a neural proposal unless an explicit, audited human approval policy
    applies.
-7. Each work package is one reviewable commit and leaves the full verification suite green.
+7. Each bounded work-package increment or review repair is one reviewable commit and leaves the
+   full verification suite green.

@@ -18,7 +18,14 @@ from blackcell.features.execute_affordance import (
     AffordanceDefinition,
     AffordanceExecutionHandler,
     AffordanceInvocation,
+    AuthorizationBindingConflict,
+    ExecutionBinding,
+    ExecutionClaim,
     ExecutionDenied,
+    ExecutionIdentityConflict,
+    ExecutionInProgress,
+    ExecutionJournalEntry,
+    ExecutionOperation,
     ExecutionResult,
     ExecutionStatus,
     IdempotencyKeyConflict,
@@ -32,6 +39,78 @@ NOW = datetime(2026, 7, 10, 21, tzinfo=UTC)
 class Journal:
     def __init__(self) -> None:
         self.results: dict[str, ExecutionResult] = {}
+        self.bindings: dict[str, ExecutionBinding] = {}
+        self.claims: dict[str, ExecutionClaim] = {}
+        self.revisions: dict[str, int] = {}
+
+    def acquire(self, preparation, *, acquired_at):
+        binding = preparation.binding
+        matches = tuple(
+            stored
+            for stored in self.bindings.values()
+            if stored.idempotency_key == binding.idempotency_key
+            or stored.invocation_id == binding.invocation_id
+            or stored.authorization_decision_id == binding.authorization_decision_id
+        )
+        if matches:
+            stored = matches[0]
+            fields = tuple(
+                name
+                for name in (
+                    "run_id",
+                    "invocation_id",
+                    "authorization_decision_id",
+                    "idempotency_key",
+                    "execution_identity_digest",
+                )
+                if getattr(stored, name) != getattr(binding, name)
+            )
+            if fields:
+                error = (
+                    IdempotencyKeyConflict
+                    if stored.idempotency_key == binding.idempotency_key
+                    else (
+                        AuthorizationBindingConflict
+                        if stored.authorization_decision_id == binding.authorization_decision_id
+                        else ExecutionIdentityConflict
+                    )
+                )
+                raise error(
+                    "execution identity collision; mismatched fields: " + ", ".join(fields),
+                    fields=fields,
+                )
+            if binding.idempotency_key in self.claims:
+                raise ExecutionInProgress("execution has an active claim")
+            previous = self.results.get(binding.idempotency_key)
+            if previous is not None and previous.status is not ExecutionStatus.UNKNOWN:
+                return previous
+            operation = ExecutionOperation.RECONCILE
+        else:
+            self.bindings[binding.idempotency_key] = binding
+            previous = None
+            operation = ExecutionOperation.EXECUTE
+        revision = self.revisions.get(binding.idempotency_key, 0) + 1
+        self.revisions[binding.idempotency_key] = revision
+        claim = ExecutionClaim(
+            len(self.bindings),
+            binding,
+            revision,
+            f"claim:{revision}",
+            operation,
+            acquired_at,
+            previous,
+        )
+        self.claims[binding.idempotency_key] = claim
+        return claim
+
+    def recover(self, authorization, *, recovered_at):
+        raise AssertionError("manual recovery is outside this handler fixture")
+
+    def complete(self, claim, result, *, recorded_at):
+        assert self.claims[claim.binding.idempotency_key] == claim
+        self.results[claim.binding.idempotency_key] = result
+        del self.claims[claim.binding.idempotency_key]
+        return result
 
     def get(self, idempotency_key: str) -> ExecutionResult | None:
         return self.results.get(idempotency_key)
@@ -46,12 +125,22 @@ class Journal:
             None,
         )
 
-    def save(self, result: ExecutionResult) -> None:
-        self.results[result.idempotency_key] = result
+    def get_by_invocation(self, invocation_id: str) -> ExecutionResult | None:
+        return next(
+            (result for result in self.results.values() if result.invocation_id == invocation_id),
+            None,
+        )
+
+    def get_preparation(self, execution_identity_digest):
+        return None
+
+    def list_entries(self, **kwargs) -> tuple[ExecutionJournalEntry, ...]:
+        return ()
 
 
 class Adapter:
     adapter_id = "fixture"
+    contract_version = "fixture/v1"
 
     def __init__(self, *, uncertain: bool = False) -> None:
         self.uncertain = uncertain
@@ -75,7 +164,12 @@ def test_denied_authorization_never_calls_adapter() -> None:
     handler = AffordanceExecutionHandler({"fixture": adapter}, Journal())
 
     with pytest.raises(ExecutionDenied):
-        handler.handle(_invocation(), _definition(), _decision(AuthorizationOutcome.DENY))
+        handler.handle(
+            _invocation(),
+            _definition(),
+            _decision(AuthorizationOutcome.DENY),
+            run_id="run:1",
+        )
 
     assert adapter.execute_calls == 0
 
@@ -85,8 +179,8 @@ def test_allowed_execution_is_journaled_and_exact_retry_does_not_repeat() -> Non
     journal = Journal()
     handler = AffordanceExecutionHandler({"fixture": adapter}, journal)
 
-    first = handler.handle(_invocation(), _definition(), _decision())
-    second = handler.handle(_invocation(), _definition(), _decision())
+    first = handler.handle(_invocation(), _definition(), _decision(), run_id="run:1")
+    second = handler.handle(_invocation(), _definition(), _decision(), run_id="run:1")
 
     assert first == second
     assert first.status is ExecutionStatus.SUCCEEDED
@@ -100,13 +194,14 @@ def test_completed_result_rejects_key_reused_by_another_invocation() -> None:
     adapter = Adapter()
     journal = Journal()
     handler = AffordanceExecutionHandler({"fixture": adapter}, journal)
-    first = handler.handle(_invocation(), _definition(), _decision())
+    first = handler.handle(_invocation(), _definition(), _decision(), run_id="run:1")
 
     with pytest.raises(IdempotencyKeyConflict, match="invocation_id"):
         handler.handle(
             replace(_invocation(), invocation_id="invocation:2"),
             _definition(),
             _decision(),
+            run_id="run:1",
         )
 
     assert adapter.execute_calls == 1
@@ -118,7 +213,7 @@ def test_authorization_decision_cannot_be_replayed_as_a_fresh_invocation() -> No
     journal = Journal()
     handler = AffordanceExecutionHandler({"fixture": adapter}, journal)
     authorization = _decision()
-    first = handler.handle(_invocation(), _definition(), authorization)
+    first = handler.handle(_invocation(), _definition(), authorization, run_id="run:1")
     replay = replace(
         _invocation(),
         invocation_id="invocation:2",
@@ -126,7 +221,7 @@ def test_authorization_decision_cannot_be_replayed_as_a_fresh_invocation() -> No
     )
 
     with pytest.raises(ExecutionDenied, match="already bound"):
-        handler.handle(replay, _definition(), authorization)
+        handler.handle(replay, _definition(), authorization, run_id="run:1")
 
     assert adapter.execute_calls == 1
     assert journal.results == {"invoke-once": first}
@@ -136,11 +231,16 @@ def test_completed_result_rejects_changed_payload_under_the_same_identity() -> N
     adapter = Adapter()
     journal = Journal()
     handler = AffordanceExecutionHandler({"fixture": adapter}, journal)
-    first = handler.handle(_invocation(), _definition(), _decision())
+    first = handler.handle(_invocation(), _definition(), _decision(), run_id="run:1")
     changed = replace(_invocation(), arguments=(AffordanceArgument("path", "pyproject.toml"),))
 
     with pytest.raises(IdempotencyKeyConflict, match="execution_identity_digest"):
-        handler.handle(changed, _definition(), _decision(invocation=changed))
+        handler.handle(
+            changed,
+            _definition(),
+            _decision(invocation=changed),
+            run_id="run:1",
+        )
 
     assert adapter.execute_calls == 1
     assert journal.results["invoke-once"] == first
@@ -162,7 +262,12 @@ def test_authorization_for_same_proposal_id_rejects_changed_action_payload(
     )
 
     with pytest.raises(ExecutionDenied, match="authorized action"):
-        handler.handle(changed, replace(_definition(), name=changed.affordance), _decision())
+        handler.handle(
+            changed,
+            replace(_definition(), name=changed.affordance),
+            _decision(),
+            run_id="run:1",
+        )
 
     assert adapter.execute_calls == 0
 
@@ -186,7 +291,7 @@ def test_read_only_authorization_rejects_same_name_mutating_definition() -> None
     mutating = replace(_definition(), side_effect_class=SideEffectClass.REVERSIBLE)
 
     with pytest.raises(ExecutionDenied, match="side-effect class"):
-        handler.handle(_invocation(), mutating, _decision())
+        handler.handle(_invocation(), mutating, _decision(), run_id="run:1")
 
     assert adapter.execute_calls == 0
 
@@ -195,8 +300,8 @@ def test_unknown_side_effect_is_reconciled_before_retry() -> None:
     adapter = Adapter(uncertain=True)
     handler = AffordanceExecutionHandler({"fixture": adapter}, Journal())
 
-    unknown = handler.handle(_invocation(), _definition(), _decision())
-    reconciled = handler.handle(_invocation(), _definition(), _decision())
+    unknown = handler.handle(_invocation(), _definition(), _decision(), run_id="run:1")
+    reconciled = handler.handle(_invocation(), _definition(), _decision(), run_id="run:1")
 
     assert unknown.status is ExecutionStatus.UNKNOWN
     assert reconciled.status is ExecutionStatus.SUCCEEDED
@@ -208,13 +313,14 @@ def test_unknown_result_rejects_changed_definition_before_reconciliation() -> No
     adapter = Adapter(uncertain=True)
     journal = Journal()
     handler = AffordanceExecutionHandler({"fixture": adapter}, journal)
-    unknown = handler.handle(_invocation(), _definition(), _decision())
+    unknown = handler.handle(_invocation(), _definition(), _decision(), run_id="run:1")
 
     with pytest.raises(IdempotencyKeyConflict, match="execution_identity_digest"):
         handler.handle(
             _invocation(),
             replace(_definition(), timeout_seconds=20.0),
             _decision(),
+            run_id="run:1",
         )
 
     assert adapter.execute_calls == 1
@@ -227,11 +333,11 @@ def test_unknown_result_rejects_a_different_authorization_before_reconciliation(
     journal = Journal()
     handler = AffordanceExecutionHandler({"fixture": adapter}, journal)
     original = _decision()
-    unknown = handler.handle(_invocation(), _definition(), original)
+    unknown = handler.handle(_invocation(), _definition(), original, run_id="run:1")
     replacement = _decision(constraint_evaluation_id="constraints:replacement")
 
     with pytest.raises(IdempotencyKeyConflict, match="authorization_decision_id"):
-        handler.handle(_invocation(), _definition(), replacement)
+        handler.handle(_invocation(), _definition(), replacement, run_id="run:1")
 
     assert adapter.execute_calls == 1
     assert adapter.reconcile_calls == 0
@@ -251,7 +357,10 @@ def test_arguments_are_validated_before_adapter_call() -> None:
 
     with pytest.raises(ValueError, match="invalid affordance arguments"):
         AffordanceExecutionHandler({"fixture": adapter}, Journal()).handle(
-            invocation, _definition(), _decision(invocation=invocation)
+            invocation,
+            _definition(),
+            _decision(invocation=invocation),
+            run_id="run:1",
         )
     assert adapter.execute_calls == 0
 

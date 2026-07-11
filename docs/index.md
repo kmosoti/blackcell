@@ -26,6 +26,10 @@ edges:
 - `migration-ledger.md`: strangler map from current packages to target feature ownership
 - `adr/`: accepted architectural decisions
 
+The current durability boundary is defined by
+`adr/0005-durable-run-and-execution-protocol.md`: artifact-first causal run records and explicit
+prepared-action recovery without whole-workflow or distributed exactly-once claims.
+
 ## Phase 1 specifications
 
 - `spec/bcp-0028-charter-reset.md`

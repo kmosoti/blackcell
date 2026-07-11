@@ -54,7 +54,8 @@ def test_handler_records_an_atomic_provenance_rich_batch(tmp_path: Path) -> None
 
     assert tuple(event.stream_sequence for event in stored) == (1, 2)
     assert tuple(event.global_position for event in stored) == (1, 2)
-    assert stored[0].payload["observation_schema_version"] == "observation/v1"
+    assert stored[0].payload["observation_schema_version"] == "observation/v2"
+    assert stored[0].payload["domain"] == "repository"
     evidence = stored[0].payload["evidence"]
     assert isinstance(evidence, tuple)
     pointer = evidence[0]
@@ -116,3 +117,14 @@ def test_inputs_require_evidence_unique_ids_and_finite_confidence() -> None:
         )
     with pytest.raises(ValueError, match="finite"):
         ObservedClaim("claim:2", "project", "status", "ready", float("nan"))
+
+    with pytest.raises(ValueError, match="domain"):
+        IngestObservation(
+            "observations:daily",
+            0,
+            "operator",
+            "fixture",
+            "run:daily",
+            (observation("obs:2", "ready"),),
+            domain=" ",
+        )
