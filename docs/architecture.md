@@ -86,6 +86,12 @@ Large or sensitive ContextFrames, prompts, responses, tool output, and reports a
 content-addressed artifacts. Events contain hashes and metadata rather than duplicating
 content. Artifact reads verify the digest before returning bytes.
 
+The target ContextFrame codec serializes the exact identity payload, so its kernel artifact digest
+is also its `frame_id`. A rebuildable SQLite index stores discovery metadata only; it never stores a
+second JSON payload. `DailyOperatorWorkflow` persists and verifies this artifact before model
+reasoning. Linking that artifact to a durable run event belongs to the run-protocol work and remains
+required for causal replay.
+
 ## Replay modes
 
 Historical replay reads recorded events, model results, tool results, and artifacts. The

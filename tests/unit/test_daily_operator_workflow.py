@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from blackcell.adapters.persistence.sqlite import ArtifactContextFrameStore
 from blackcell.features.authorize_action import (
     ActionArgument,
     ActionProposal,
@@ -260,6 +261,45 @@ def test_changed_context_returned_by_storage_prevents_reasoning_and_execution(
     assert len(context_frames.persisted) == 1
     assert adapter.calls == 0
     assert events == [("persisted", context_frames.persisted[0])]
+
+
+def test_daily_operator_composes_with_the_kernel_artifact_store(tmp_path: Path) -> None:
+    database_path = tmp_path / "kernel.sqlite3"
+    artifact_root = tmp_path / "artifacts"
+    event_store = EventStore(database_path)
+    adapter = Adapter()
+    events: list[tuple[str, ContextFrame]] = []
+
+    with ArtifactContextFrameStore(
+        artifact_root,
+        database_path=database_path,
+    ) as context_frames:
+
+        class PersistedDecision(Decision):
+            def propose(self, frame: ContextFrame) -> ActionProposal:
+                assert context_frames.get(frame.frame_id) == frame
+                return super().propose(frame)
+
+        decision = PersistedDecision(events)
+        workflow = DailyOperatorWorkflow(
+            event_store,
+            IngestObservationHandler(event_store, clock=lambda: NOW),
+            context_frames,
+            decision,
+            AffordanceExecutionHandler({"fixture": adapter}, Journal()),
+        )
+
+        result = workflow.run(_request("ready", ConstraintOperator.EQUALS, ("ready",)))
+        assert context_frames.get(result.context_frame.frame_id) == result.context_frame
+
+    with ArtifactContextFrameStore(
+        artifact_root,
+        database_path=database_path,
+    ) as reopened:
+        assert reopened.get(result.context_frame.frame_id) == result.context_frame
+
+    assert decision.frames == [result.context_frame]
+    assert adapter.calls == 1
 
 
 def _workflow(
