@@ -11,19 +11,35 @@ from blackcell.features.solve_constraints import ConstraintEvaluation
 from blackcell.kernel import EventEnvelope, JsonInput
 
 RUN_STARTED = "run.started"
+EVALUATION_SPECIFIED = "run.evaluation-specified"
+INITIAL_STATE_RECORDED = "run.initial-state-recorded"
 CONTEXT_RECORDED = "run.context-recorded"
+MODEL_REQUESTED = "run.model-requested"
+MODEL_ATTEMPT_RECORDED = "run.model-attempt-recorded"
+MODEL_RESPONDED = "run.model-responded"
+MODEL_FAILED = "run.model-failed"
 PROPOSAL_RECORDED = "run.proposal-recorded"
 CONSTRAINTS_EVALUATED = "run.constraints-evaluated"
 AUTHORIZATION_DECIDED = "run.authorization-decided"
 EXECUTION_RECORDED = "run.execution-recorded"
+OUTCOME_OBSERVED = "run.outcome-observed"
+OUTCOME_STATE_RECORDED = "run.outcome-state-recorded"
+EVALUATION_RECORDED = "run.evaluation-recorded"
+STATE_TRANSITION_RECORDED = "run.state-transition-recorded"
 TRACE_RECORDED = "run.trace-recorded"
 RUN_COMPLETED = "run.completed"
 RUN_FAILED = "run.failed"
 
-RUN_EVENT_SCHEMA_VERSION = 1
+RUN_EVENT_SCHEMA_VERSION_V1 = 1
+RUN_EVENT_SCHEMA_VERSION_V2 = 2
+RUN_EVENT_SCHEMA_VERSION = RUN_EVENT_SCHEMA_VERSION_V1
 RUN_WORKFLOW = "daily-operator"
-RUN_WORKFLOW_VERSION = "daily-operator/v1"
-RUN_TRACE_SCHEMA_VERSION = "run-trace/v1"
+RUN_WORKFLOW_VERSION_V1 = "daily-operator/v1"
+RUN_WORKFLOW_VERSION_V2 = "daily-operator/v2"
+RUN_WORKFLOW_VERSION = RUN_WORKFLOW_VERSION_V1
+RUN_TRACE_SCHEMA_VERSION_V1 = "run-trace/v1"
+RUN_TRACE_SCHEMA_VERSION_V2 = "run-trace/v2"
+RUN_TRACE_SCHEMA_VERSION = RUN_TRACE_SCHEMA_VERSION_V1
 RUN_FAILURE_SCHEMA_VERSION = "run-failure/v1"
 RUN_TRACE_MEDIA_TYPE = "application/vnd.blackcell.run-trace+json"
 RUN_FAILURE_MEDIA_TYPE = "application/vnd.blackcell.run-failure+json"
@@ -38,6 +54,18 @@ class RunOutcome(StrEnum):
     EXECUTION_FAILED = "execution-failed"
     REQUIRES_RECONCILIATION = "requires-reconciliation"
     FAILED = "failed"
+
+
+class RunProtocolVersion(StrEnum):
+    V1 = RUN_WORKFLOW_VERSION_V1
+    V2 = RUN_WORKFLOW_VERSION_V2
+
+    @property
+    def event_schema_version(self) -> int:
+        return {
+            RunProtocolVersion.V1: RUN_EVENT_SCHEMA_VERSION_V1,
+            RunProtocolVersion.V2: RUN_EVENT_SCHEMA_VERSION_V2,
+        }[self]
 
 
 class RunProtocolError(RuntimeError):
@@ -69,8 +97,11 @@ class RunStart:
     objective: str
     domain: str
     observation_stream_id: str
+    protocol_version: RunProtocolVersion = RunProtocolVersion.V1
 
     def __post_init__(self) -> None:
+        if not isinstance(self.protocol_version, RunProtocolVersion):
+            raise TypeError("protocol_version must be a RunProtocolVersion")
         for name in (
             "run_id",
             "actor",
