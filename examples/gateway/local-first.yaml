@@ -1,0 +1,37 @@
+schema_version: gateway-config/v1
+profiles:
+  - profile_id: recorded-reason-ci
+    capability: reason
+    adapter_id: recorded
+    model_id: reason-fixture-v1
+    priority: 0
+    local: true
+    deterministic: true
+    maximum_classification: secret
+    max_input_tokens: 8192
+    max_output_tokens: 2048
+    max_cost_microusd: 0
+
+  - profile_id: local-embed
+    capability: embed
+    adapter_id: llama-cpp
+    model_id: deployment-selected-embedding-model
+    priority: 10
+    local: true
+    deterministic: false
+    maximum_classification: private
+    max_input_tokens: 4096
+    max_output_tokens: 4096
+    max_cost_microusd: 0
+
+  - profile_id: remote-review
+    capability: review
+    adapter_id: remote
+    model_id: deployment-selected-review-model
+    priority: 20
+    local: false
+    deterministic: false
+    maximum_classification: internal
+    max_input_tokens: 32768
+    max_output_tokens: 8192
+    max_cost_microusd: 100000

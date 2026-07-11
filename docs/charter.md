@@ -60,6 +60,11 @@ state, stale and conflicting evidence, distractors, corrections, unsafe proposal
 partial failures. A private Daily Operator can reuse the kernel after the public slice
 establishes replay and evaluation integrity.
 
+`DailyOperatorWorkflow` is currently the generic application-level control-path skeleton used to
+extract those capabilities from the legacy operator. Its name does not change the Phase 1 product:
+the Repository Operator remains the first public adapter and acceptance surface until it delegates
+to a traced, evaluated, replayable closed loop.
+
 ## Phase 1 acceptance criteria
 
 - One command completes the observe, project, propose, gate, act, re-observe, evaluate,

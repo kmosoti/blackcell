@@ -52,19 +52,31 @@ Clingo, llama.cpp, OpenTelemetry, Podman, and provider SDKs are replaceable edge
 
 ## Work-package states
 
-| Package | Outcome | State |
+Status uses three evidence levels:
+
+- **contract complete**: typed behavior and its focused invariants exist;
+- **integrated**: production composition, persistence, and adjacent feature behavior are verified;
+- **product accepted**: the public workflow satisfies its end-to-end acceptance evidence.
+
+| Package | Current evidence | Remaining acceptance |
 | --- | --- | --- |
-| WP00 | Baseline, branch, migration ledger, preservation boundaries | complete |
-| WP01 | Architecture decision record and package contracts | complete |
-| WP02 | Executable dependency rules and shrinking debt manifest | complete |
-| WP03 | Transactional kernel event store and replay contracts | complete |
-| WP04a | Operational belief-state projection slice | complete |
-| WP04b | Typed, provenance-aware observation ingestion | complete |
-| WP05a | Telemetry-derived SignalPacket feature slice | complete on merge of this change |
-| WP05b-WP09 | Retrieval, ContextFrame, gateway, control, DAG, compatibility | pending |
-| WP10-WP15 | Predictive/NeSy experiments, evaluation, replay, simulations | pending |
-| WP16-WP22 | HTTP runtime, Podman, observability, security, recovery | pending |
-| WP23-WP27 | Benchmarks, migration completion, documentation, release | pending |
+| WP00-WP02 | accepted support deliverables; no product maturity claim | Keep the debt and status records current. |
+| WP03 | integrated kernel append/replay baseline | Durable run, execution-journal, and DAG records remain. |
+| WP04a-WP04b | contract complete; ingestion feeds the new projector | Add domain scope, explicit missing-state semantics, and legacy-projector parity tests. |
+| WP05a-WP05b | contract complete; composed in memory | Persist/inspect frames and distinguish missing required evidence from other omissions; FTS5 remains pending. |
+| WP06a-WP06b | contract complete | Route the workflow through the gateway and durably record requests, responses, failures, retries, and usage. |
+| WP07a-WP07b | contract complete; composed in memory | Persist proof/authorization artifacts; Clingo parity is pending. |
+| WP08 | contract complete with execution-identity collision checks | Add SQLite journal, real bounded adapter, timeout/isolation, and kernel events. |
+| WP09a | control-path skeleton only | Add gateway composition, trace, re-observation, evaluation, transition commit, replay, and acceptance scenarios. |
+| WP09b | pending | Make Repository Operator and CLI delegate after characterization. |
+| WP10-WP12 | pending | Begin only after recorded outcome/transition data and replay exist. |
+| WP13-WP15 | pending | Simulate DAG invariants before durable leases/fencing and role binding. |
+| WP16-WP17 | pending; promoted ahead of WP10 | Close outcome evaluation and live-free replay first. |
+| WP18-WP22 | pending | Define security boundary, then API, Granian, OTel, Podman, and recovery. |
+| WP23-WP27 | pending | Run matched experiments, reliability work, retirement, and release evidence last. |
+
+The dependency-correct execution sequence and branch/review protocol are canonical in
+`docs/spec/bcp-0034-evolutionary-runtime.md`.
 
 ## Non-negotiable migration rules
 
