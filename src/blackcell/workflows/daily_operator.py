@@ -12,7 +12,13 @@ from blackcell.features.authorize_action import (
     AuthorizationOutcome,
     AuthorizeAction,
 )
-from blackcell.features.build_context import BuildContext, ContextFrame, ContextFrameBuilder
+from blackcell.features.build_context import (
+    BuildContext,
+    ContextFrame,
+    ContextFrameBuilder,
+    ContextFrameIntegrityError,
+    ContextFrameStorage,
+)
 from blackcell.features.derive_signal_packet import (
     DeriveSignalPacket,
     SignalPacket,
@@ -106,11 +112,13 @@ class DailyOperatorWorkflow:
         self,
         event_reader: EventReader,
         ingestion: IngestObservationHandler,
+        context_frames: ContextFrameStorage,
         decision: DecisionPort,
         execution: AffordanceExecutionHandler,
     ) -> None:
         self._events = event_reader
         self._ingestion = ingestion
+        self._context_frames = context_frames
         self._decision = decision
         self._execution = execution
         self._state = OperationalStateProjector()
@@ -131,7 +139,12 @@ class DailyOperatorWorkflow:
         )
         signal = self._signals.handle(request.signal, state)
         selection = self._retrieval.handle(request.retrieval, signal)
-        frame = self._contexts.handle(request.context, selection)
+        built_frame = self._contexts.handle(request.context, selection)
+        frame = self._context_frames.put(built_frame)
+        if frame != built_frame:
+            raise ContextFrameIntegrityError(
+                "ContextFrame storage returned content different from the frame it was given"
+            )
         proposal = self._decision.propose(frame)
         if proposal.context_frame_id != frame.frame_id:
             raise ValueError("decision proposal belongs to a different ContextFrame")

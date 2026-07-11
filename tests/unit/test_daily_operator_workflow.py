@@ -1,5 +1,8 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+
+import pytest
 
 from blackcell.features.authorize_action import (
     ActionArgument,
@@ -7,7 +10,12 @@ from blackcell.features.authorize_action import (
     AffordancePolicy,
     AuthorizationOutcome,
 )
-from blackcell.features.build_context import BuildContext
+from blackcell.features.build_context import (
+    BuildContext,
+    ContextFrame,
+    ContextFrameIntegrityError,
+    ContextFrameStorageError,
+)
 from blackcell.features.derive_signal_packet import DeriveSignalPacket
 from blackcell.features.execute_affordance import (
     AdapterOutcome,
@@ -38,11 +46,13 @@ NOW = datetime(2026, 7, 10, 22, tzinfo=UTC)
 
 
 class Decision:
-    def __init__(self) -> None:
-        self.frames = []
+    def __init__(self, events: list[tuple[str, ContextFrame]]) -> None:
+        self.frames: list[ContextFrame] = []
+        self.events = events
 
-    def propose(self, frame):
+    def propose(self, frame: ContextFrame) -> ActionProposal:
         self.frames.append(frame)
+        self.events.append(("decision", frame))
         return ActionProposal(
             "proposal:1",
             frame.frame_id,
@@ -50,6 +60,44 @@ class Decision:
             (ActionArgument("path", "README.md"),),
             "inspect the cited repository evidence",
             frame.provenance_event_ids,
+        )
+
+
+class ContextFrames:
+    def __init__(
+        self,
+        events: list[tuple[str, ContextFrame]],
+        *,
+        failure: ContextFrameStorageError | None = None,
+        return_different: bool = False,
+    ) -> None:
+        self.events = events
+        self.failure = failure
+        self.return_different = return_different
+        self.frames: dict[str, ContextFrame] = {}
+        self.persisted: list[ContextFrame] = []
+
+    def put(self, frame: ContextFrame) -> ContextFrame:
+        if self.failure is not None:
+            self.events.append(("persistence-failed", frame))
+            raise self.failure
+        stored = (
+            replace(frame, task_id="task:different") if self.return_different else replace(frame)
+        )
+        self.frames[stored.frame_id] = stored
+        self.persisted.append(stored)
+        self.events.append(("persisted", stored))
+        return stored
+
+    def get(self, frame_id: str) -> ContextFrame | None:
+        return self.frames.get(frame_id)
+
+    def list_frames(self) -> tuple[ContextFrame, ...]:
+        return tuple(
+            sorted(
+                self.frames.values(),
+                key=lambda frame: (frame.generated_at, frame.frame_id),
+            )
         )
 
 
@@ -89,7 +137,7 @@ class Journal:
 
 
 def test_daily_operator_runs_the_complete_allowed_control_loop(tmp_path: Path) -> None:
-    workflow, adapter, decision = _workflow(tmp_path)
+    workflow, adapter, decision, context_frames, events = _workflow(tmp_path)
 
     result = workflow.run(_request("ready", ConstraintOperator.EQUALS, ("ready",)))
 
@@ -124,10 +172,16 @@ def test_daily_operator_runs_the_complete_allowed_control_loop(tmp_path: Path) -
     assert result.execution.status is ExecutionStatus.SUCCEEDED
     assert adapter.calls == 1
     assert decision.frames == [result.context_frame]
+    assert events == [
+        ("persisted", result.context_frame),
+        ("decision", result.context_frame),
+    ]
+    assert context_frames.persisted[0] is decision.frames[0]
+    assert decision.frames[0] is result.context_frame
 
 
 def test_symbolic_violation_stops_daily_operator_before_execution(tmp_path: Path) -> None:
-    workflow, adapter, _ = _workflow(tmp_path)
+    workflow, adapter, _, _, _ = _workflow(tmp_path)
 
     result = workflow.run(_request("blocked", ConstraintOperator.NOT_EQUALS, ("blocked",)))
 
@@ -163,7 +217,7 @@ def test_daily_operator_projects_only_the_requested_observation_scope(tmp_path: 
             domain="personal-planning",
         )
     )
-    workflow, _, _ = _workflow(tmp_path)
+    workflow, _, _, _, _ = _workflow(tmp_path)
 
     result = workflow.run(_request("ready", ConstraintOperator.EQUALS, ("ready",)))
 
@@ -174,17 +228,63 @@ def test_daily_operator_projects_only_the_requested_observation_scope(tmp_path: 
     assert result.state.last_source_stream_sequence == 1
 
 
-def _workflow(tmp_path: Path):
+def test_context_persistence_failure_prevents_reasoning_and_execution(tmp_path: Path) -> None:
+    failure = ContextFrameStorageError("storage unavailable")
+    workflow, adapter, decision, context_frames, events = _workflow(
+        tmp_path,
+        storage_failure=failure,
+    )
+
+    with pytest.raises(ContextFrameStorageError, match="storage unavailable"):
+        workflow.run(_request("ready", ConstraintOperator.EQUALS, ("ready",)))
+
+    assert decision.frames == []
+    assert context_frames.persisted == []
+    assert adapter.calls == 0
+    assert len(events) == 1
+    assert events[0][0] == "persistence-failed"
+
+
+def test_changed_context_returned_by_storage_prevents_reasoning_and_execution(
+    tmp_path: Path,
+) -> None:
+    workflow, adapter, decision, context_frames, events = _workflow(
+        tmp_path,
+        return_different=True,
+    )
+
+    with pytest.raises(ContextFrameIntegrityError, match="returned content different"):
+        workflow.run(_request("ready", ConstraintOperator.EQUALS, ("ready",)))
+
+    assert decision.frames == []
+    assert len(context_frames.persisted) == 1
+    assert adapter.calls == 0
+    assert events == [("persisted", context_frames.persisted[0])]
+
+
+def _workflow(
+    tmp_path: Path,
+    *,
+    storage_failure: ContextFrameStorageError | None = None,
+    return_different: bool = False,
+):
     store = EventStore(tmp_path / "kernel.sqlite3")
     adapter = Adapter()
-    decision = Decision()
+    events: list[tuple[str, ContextFrame]] = []
+    decision = Decision(events)
+    context_frames = ContextFrames(
+        events,
+        failure=storage_failure,
+        return_different=return_different,
+    )
     workflow = DailyOperatorWorkflow(
         store,
         IngestObservationHandler(store, clock=lambda: NOW),
+        context_frames,
         decision,
         AffordanceExecutionHandler({"fixture": adapter}, Journal()),
     )
-    return workflow, adapter, decision
+    return workflow, adapter, decision, context_frames, events
 
 
 def _request(
