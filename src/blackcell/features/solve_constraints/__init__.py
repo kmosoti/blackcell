@@ -1,5 +1,11 @@
 """Deterministic symbolic constraint evaluation with proof artifacts."""
 
+from blackcell.features.solve_constraints.artifacts import (
+    CONSTRAINT_EVALUATION_MEDIA_TYPE,
+    ConstraintArtifactCodecError,
+    decode_constraint_evaluation,
+    encode_constraint_evaluation,
+)
 from blackcell.features.solve_constraints.command import SolveConstraints
 from blackcell.features.solve_constraints.handler import DeterministicConstraintSolver
 from blackcell.features.solve_constraints.models import (
@@ -11,6 +17,8 @@ from blackcell.features.solve_constraints.models import (
 )
 
 __all__ = [
+    "CONSTRAINT_EVALUATION_MEDIA_TYPE",
+    "ConstraintArtifactCodecError",
     "ConstraintDefinition",
     "ConstraintEvaluation",
     "ConstraintOperator",
@@ -18,4 +26,6 @@ __all__ = [
     "ConstraintProof",
     "DeterministicConstraintSolver",
     "SolveConstraints",
+    "decode_constraint_evaluation",
+    "encode_constraint_evaluation",
 ]
