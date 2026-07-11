@@ -6,6 +6,7 @@ from blackcell.features.execute_affordance.models import (
     AffordanceInvocation,
     ExecutionResult,
     ExecutionStatus,
+    SideEffectClass,
 )
 from blackcell.features.execute_affordance.ports import (
     AdapterRegistry,
@@ -42,8 +43,15 @@ class AffordanceExecutionHandler:
             raise ExecutionDenied("authorization belongs to a different proposal")
         if str(authorization.outcome) != "allow":
             raise ExecutionDenied("only an allowed authorization decision may execute")
+        if authorization.authorized_action_digest != invocation.action_digest:
+            raise ExecutionDenied("invocation payload does not match the authorized action")
         if definition.name != invocation.affordance:
             raise ValueError("invocation affordance does not match its definition")
+        definition_is_read_only = definition.side_effect_class is SideEffectClass.READ_ONLY
+        if authorization.authorized_read_only != definition_is_read_only:
+            raise ExecutionDenied(
+                "affordance side-effect class does not match the authorized policy"
+            )
         _validate_arguments(invocation, definition)
         try:
             adapter = self._adapters[definition.adapter_id]
@@ -54,12 +62,24 @@ class AffordanceExecutionHandler:
         if adapter.adapter_id != definition.adapter_id:
             raise ValueError("affordance adapter identity does not match the registry key")
         previous = self._journal.get(invocation.idempotency_key)
-        identity_digest = _execution_identity_digest(invocation, definition)
+        authorized_previous = self._journal.get_by_authorization(authorization.decision_id)
+        if authorized_previous is not None and (
+            previous is None or authorized_previous.result_id != previous.result_id
+        ):
+            raise ExecutionDenied(
+                "authorization decision is already bound to a different invocation"
+            )
+        identity_digest = _execution_identity_digest(
+            invocation,
+            definition,
+            authorization_decision_id=authorization.decision_id,
+        )
         if previous is not None:
             _validate_previous_identity(
                 previous,
                 invocation,
                 definition,
+                authorization_decision_id=authorization.decision_id,
                 identity_digest=identity_digest,
             )
         if previous is not None and previous.status is not ExecutionStatus.UNKNOWN:
@@ -75,6 +95,7 @@ class AffordanceExecutionHandler:
                 invocation,
                 definition,
                 outcome,
+                authorization_decision_id=authorization.decision_id,
                 identity_digest=identity_digest,
                 reconciled=reconciled,
             )
@@ -82,9 +103,11 @@ class AffordanceExecutionHandler:
             result = ExecutionResult(
                 invocation_id=invocation.invocation_id,
                 proposal_id=invocation.proposal_id,
+                authorization_decision_id=authorization.decision_id,
                 affordance=invocation.affordance,
                 adapter_id=definition.adapter_id,
                 idempotency_key=invocation.idempotency_key,
+                authorized_action_digest=invocation.action_digest,
                 execution_identity_digest=identity_digest,
                 status=ExecutionStatus.UNKNOWN,
                 started_at=invocation.requested_at,
@@ -123,6 +146,7 @@ def _result(
     definition: AffordanceDefinition,
     outcome: AdapterOutcome,
     *,
+    authorization_decision_id: str,
     identity_digest: str,
     reconciled: bool,
 ) -> ExecutionResult:
@@ -130,9 +154,11 @@ def _result(
     return ExecutionResult(
         invocation_id=invocation.invocation_id,
         proposal_id=invocation.proposal_id,
+        authorization_decision_id=authorization_decision_id,
         affordance=invocation.affordance,
         adapter_id=definition.adapter_id,
         idempotency_key=invocation.idempotency_key,
+        authorized_action_digest=invocation.action_digest,
         execution_identity_digest=identity_digest,
         status=status,
         started_at=invocation.requested_at,
@@ -149,14 +175,17 @@ def _validate_previous_identity(
     invocation: AffordanceInvocation,
     definition: AffordanceDefinition,
     *,
+    authorization_decision_id: str,
     identity_digest: str,
 ) -> None:
     expected = {
         "invocation_id": invocation.invocation_id,
         "proposal_id": invocation.proposal_id,
+        "authorization_decision_id": authorization_decision_id,
         "affordance": invocation.affordance,
         "adapter_id": definition.adapter_id,
         "idempotency_key": invocation.idempotency_key,
+        "authorized_action_digest": invocation.action_digest,
         "execution_identity_digest": identity_digest,
     }
     mismatches = tuple(name for name, value in expected.items() if getattr(previous, name) != value)
@@ -171,9 +200,12 @@ def _validate_previous_identity(
 def _execution_identity_digest(
     invocation: AffordanceInvocation,
     definition: AffordanceDefinition,
+    *,
+    authorization_decision_id: str,
 ) -> str:
     return json_digest(
         {
+            "authorization_decision_id": authorization_decision_id,
             "invocation": {
                 "invocation_id": invocation.invocation_id,
                 "proposal_id": invocation.proposal_id,

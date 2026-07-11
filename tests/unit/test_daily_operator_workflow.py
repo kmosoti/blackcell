@@ -74,6 +74,16 @@ class Journal:
     def get(self, idempotency_key: str):
         return self.results.get(idempotency_key)
 
+    def get_by_authorization(self, decision_id: str):
+        return next(
+            (
+                result
+                for result in self.results.values()
+                if result.authorization_decision_id == decision_id
+            ),
+            None,
+        )
+
     def save(self, result):
         self.results[result.idempotency_key] = result
 

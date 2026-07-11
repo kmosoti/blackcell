@@ -62,6 +62,7 @@ class AffordanceInvocation:
     arguments: tuple[AffordanceArgument, ...]
     idempotency_key: str
     requested_at: datetime
+    action_digest: str = field(init=False)
 
     def __post_init__(self) -> None:
         for name in ("invocation_id", "proposal_id", "affordance", "idempotency_key"):
@@ -72,6 +73,21 @@ class AffordanceInvocation:
         names = tuple(item.name for item in self.arguments)
         if len(names) != len(set(names)):
             raise ValueError("invocation argument names must be unique")
+        object.__setattr__(
+            self,
+            "action_digest",
+            json_digest(
+                {
+                    "schema_version": "authorized-action/v1",
+                    "proposal_id": self.proposal_id,
+                    "affordance": self.affordance,
+                    "arguments": [
+                        {"name": item.name, "value": item.value}
+                        for item in sorted(self.arguments, key=lambda item: item.name)
+                    ],
+                }
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,9 +116,11 @@ class AdapterOutcome:
 class ExecutionResult:
     invocation_id: str
     proposal_id: str
+    authorization_decision_id: str
     affordance: str
     adapter_id: str
     idempotency_key: str
+    authorized_action_digest: str
     execution_identity_digest: str
     status: ExecutionStatus
     started_at: datetime
@@ -111,10 +129,26 @@ class ExecutionResult:
     observed_effects: tuple[ObservedEffect, ...]
     error_code: str | None
     reconciled: bool
-    schema_version: str = "execution-result/v2"
+    schema_version: str = "execution-result/v3"
     result_id: str = field(init=False)
 
     def __post_init__(self) -> None:
+        for name in (
+            "invocation_id",
+            "proposal_id",
+            "authorization_decision_id",
+            "affordance",
+            "adapter_id",
+            "idempotency_key",
+            "authorized_action_digest",
+            "execution_identity_digest",
+        ):
+            if not getattr(self, name).strip():
+                raise ValueError(f"{name} must not be empty")
+        for name in ("started_at", "completed_at"):
+            value = getattr(self, name)
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise ValueError(f"{name} must be timezone-aware")
         object.__setattr__(
             self,
             "result_id",
@@ -123,14 +157,24 @@ class ExecutionResult:
                     "schema_version": self.schema_version,
                     "invocation_id": self.invocation_id,
                     "proposal_id": self.proposal_id,
+                    "authorization_decision_id": self.authorization_decision_id,
                     "affordance": self.affordance,
                     "adapter_id": self.adapter_id,
                     "idempotency_key": self.idempotency_key,
+                    "authorized_action_digest": self.authorized_action_digest,
                     "execution_identity_digest": self.execution_identity_digest,
                     "status": self.status.value,
                     "started_at": self.started_at.isoformat(),
                     "completed_at": self.completed_at.isoformat(),
                     "output_digest": self.output_digest,
+                    "observed_effects": [
+                        {
+                            "subject": item.subject,
+                            "predicate": item.predicate,
+                            "value": item.value,
+                        }
+                        for item in self.observed_effects
+                    ],
                     "error_code": self.error_code,
                     "reconciled": self.reconciled,
                 }
