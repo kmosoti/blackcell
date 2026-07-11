@@ -7,6 +7,9 @@ from blackcell.kernel import JsonScalar
 
 class EvidenceCandidateLike(Protocol):
     @property
+    def claim_id(self) -> str: ...
+
+    @property
     def subject(self) -> str: ...
 
     @property
@@ -31,6 +34,18 @@ class EvidenceCandidateLike(Protocol):
     def source_event_id(self) -> str: ...
 
     @property
+    def domain(self) -> str: ...
+
+    @property
+    def stream_id(self) -> str: ...
+
+    @property
+    def stream_sequence(self) -> int: ...
+
+    @property
+    def global_position(self) -> int: ...
+
+    @property
     def score(self) -> int: ...
 
     @property
@@ -47,6 +62,17 @@ class EvidenceOmissionLike(EvidenceCandidateLike, Protocol):
     @property
     def omission_id(self) -> str: ...
 
+    @property
+    def schema_version(self) -> str: ...
+
+
+class EvidenceClaimIdentityLike(Protocol):
+    @property
+    def source_event_id(self) -> str: ...
+
+    @property
+    def claim_id(self) -> str: ...
+
 
 class EvidenceSelectionLike(Protocol):
     @property
@@ -59,7 +85,22 @@ class EvidenceSelectionLike(Protocol):
     def source_packet_id(self) -> str: ...
 
     @property
-    def state_position(self) -> int: ...
+    def source_packet_purpose(self) -> str: ...
+
+    @property
+    def state_domain(self) -> str: ...
+
+    @property
+    def state_stream_id(self) -> str | None: ...
+
+    @property
+    def state_global_position(self) -> int: ...
+
+    @property
+    def state_stream_position(self) -> int: ...
+
+    @property
+    def source_claim_identities(self) -> Sequence[EvidenceClaimIdentityLike]: ...
 
     @property
     def candidates(self) -> Sequence[EvidenceCandidateLike]: ...

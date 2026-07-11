@@ -4,6 +4,12 @@ from datetime import datetime
 
 @dataclass(frozen=True, slots=True)
 class BuildContext:
+    """Build a frame whose model-facing JSONL evidence fits ``max_characters``.
+
+    Audit metadata and omission bodies are retained on the frame but are not part
+    of this evidence-payload budget.
+    """
+
     task_id: str
     objective: str
     generated_at: datetime

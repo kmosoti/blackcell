@@ -2,7 +2,12 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from blackcell.features.build_context import ContextEvidence, ContextFrame
+from blackcell.features.build_context import (
+    ContextClaimIdentity,
+    ContextEvidence,
+    ContextFrame,
+    serialize_context_evidence,
+)
 from blackcell.features.solve_constraints import (
     ConstraintDefinition,
     ConstraintEvaluation,
@@ -288,30 +293,45 @@ def _evidence(
 ):
     observed_at = effective_at or (NOW - timedelta(seconds=7_200) if stale else NOW)
     return ContextEvidence(
-        "project:blackcell",
-        predicate,
-        value,
-        0.9,
-        observed_at,
-        freshness_seconds if freshness_seconds is not None else (7_200 if stale else 0),
-        stale,
-        source_event_id or f"event:{predicate}",
-        100,
-        ("required",),
-        conflicted,
+        claim_id=f"claim:{predicate}",
+        subject="project:blackcell",
+        predicate=predicate,
+        value=value,
+        confidence=0.9,
+        effective_at=observed_at,
+        freshness_seconds=freshness_seconds
+        if freshness_seconds is not None
+        else (7_200 if stale else 0),
+        stale=stale,
+        source_event_id=source_event_id or f"event:{predicate}",
+        domain="repository",
+        stream_id="observations:test",
+        stream_sequence=1,
+        global_position=1,
+        relevance_score=100,
+        selection_reasons=("required",),
+        conflicted=conflicted,
     )
 
 
 def _frame(*evidence: ContextEvidence) -> ContextFrame:
+    payload = "\n".join(serialize_context_evidence(item) for item in evidence)
     return ContextFrame(
         task_id="task:1",
         objective="safely update project",
         generated_at=NOW,
-        state_position=1,
         source_packet_id="packet:1",
+        source_packet_purpose="test",
         source_selection_id="selection:1",
+        state_domain="repository",
+        state_stream_id="observations:test",
+        state_global_position=1,
+        state_stream_position=1,
+        source_claim_identities=tuple(
+            sorted(ContextClaimIdentity(item.source_event_id, item.claim_id) for item in evidence)
+        ),
         evidence=evidence,
         provenance_event_ids=tuple(item.source_event_id for item in evidence),
         omissions=(),
-        serialized_characters=100,
+        model_payload_characters=len(payload),
     )

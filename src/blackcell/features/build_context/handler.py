@@ -2,18 +2,19 @@ from __future__ import annotations
 
 from blackcell.features.build_context.command import BuildContext
 from blackcell.features.build_context.models import (
+    ContextClaimIdentity,
     ContextEvidence,
     ContextFrame,
     ContextOmission,
     ContextOmissionReason,
     ContextOmissionStage,
+    serialize_context_evidence,
 )
 from blackcell.features.build_context.ports import (
     EvidenceCandidateLike,
     EvidenceOmissionLike,
     EvidenceSelectionLike,
 )
-from blackcell.kernel._json import canonical_json
 
 
 class ContextBudgetError(ValueError):
@@ -35,10 +36,12 @@ class ContextFrameBuilder:
         characters = 0
         for candidate in selection.candidates:
             evidence = _context_evidence(candidate)
-            size = len(canonical_json(_serialized(evidence)))
+            size = len(serialize_context_evidence(evidence)) + int(bool(included))
             if characters + size > command.max_characters:
                 if "required" in candidate.reasons:
-                    raise ContextBudgetError("required evidence exceeds the ContextFrame budget")
+                    raise ContextBudgetError(
+                        "required evidence exceeds the model-facing evidence-payload budget"
+                    )
                 omissions.append(_character_budget_omission(candidate, size))
                 continue
             included.append(evidence)
@@ -48,18 +51,27 @@ class ContextFrameBuilder:
             task_id=command.task_id,
             objective=command.objective,
             generated_at=command.generated_at,
-            state_position=selection.state_position,
             source_packet_id=selection.source_packet_id,
+            source_packet_purpose=selection.source_packet_purpose,
             source_selection_id=selection.selection_id,
+            state_domain=selection.state_domain,
+            state_stream_id=selection.state_stream_id,
+            state_global_position=selection.state_global_position,
+            state_stream_position=selection.state_stream_position,
+            source_claim_identities=tuple(
+                ContextClaimIdentity(item.source_event_id, item.claim_id)
+                for item in selection.source_claim_identities
+            ),
             evidence=tuple(included),
             provenance_event_ids=provenance,
             omissions=tuple(omissions),
-            serialized_characters=characters,
+            model_payload_characters=characters,
         )
 
 
 def _context_evidence(candidate: EvidenceCandidateLike) -> ContextEvidence:
     return ContextEvidence(
+        candidate.claim_id,
         candidate.subject,
         candidate.predicate,
         candidate.value,
@@ -68,6 +80,10 @@ def _context_evidence(candidate: EvidenceCandidateLike) -> ContextEvidence:
         candidate.freshness_seconds,
         candidate.stale,
         candidate.source_event_id,
+        candidate.domain,
+        candidate.stream_id,
+        candidate.stream_sequence,
+        candidate.global_position,
         candidate.score,
         candidate.reasons,
         candidate.conflicted,
@@ -77,6 +93,7 @@ def _context_evidence(candidate: EvidenceCandidateLike) -> ContextEvidence:
 def _retrieval_omission(omission: EvidenceOmissionLike) -> ContextOmission:
     return ContextOmission(
         subject=omission.subject,
+        claim_id=omission.claim_id,
         predicate=omission.predicate,
         value=omission.value,
         confidence=omission.confidence,
@@ -84,12 +101,17 @@ def _retrieval_omission(omission: EvidenceOmissionLike) -> ContextOmission:
         freshness_seconds=omission.freshness_seconds,
         stale=omission.stale,
         source_event_id=omission.source_event_id,
+        domain=omission.domain,
+        stream_id=omission.stream_id,
+        stream_sequence=omission.stream_sequence,
+        global_position=omission.global_position,
         relevance_score=omission.score,
         selection_reasons=omission.reasons,
         conflicted=omission.conflicted,
         stage=ContextOmissionStage.RETRIEVAL,
         reason=ContextOmissionReason(omission.reason),
         source_omission_id=omission.omission_id,
+        source_omission_schema_version=omission.schema_version,
     )
 
 
@@ -99,6 +121,7 @@ def _character_budget_omission(
 ) -> ContextOmission:
     return ContextOmission(
         subject=candidate.subject,
+        claim_id=candidate.claim_id,
         predicate=candidate.predicate,
         value=candidate.value,
         confidence=candidate.confidence,
@@ -106,26 +129,14 @@ def _character_budget_omission(
         freshness_seconds=candidate.freshness_seconds,
         stale=candidate.stale,
         source_event_id=candidate.source_event_id,
+        domain=candidate.domain,
+        stream_id=candidate.stream_id,
+        stream_sequence=candidate.stream_sequence,
+        global_position=candidate.global_position,
         relevance_score=candidate.score,
         selection_reasons=candidate.reasons,
         conflicted=candidate.conflicted,
         stage=ContextOmissionStage.CONTEXT_PROJECTION,
         reason=ContextOmissionReason.CHARACTER_BUDGET,
-        serialized_characters=serialized_characters,
+        model_payload_characters=serialized_characters,
     )
-
-
-def _serialized(evidence: ContextEvidence) -> dict[str, object]:
-    return {
-        "subject": evidence.subject,
-        "predicate": evidence.predicate,
-        "value": evidence.value,
-        "confidence": evidence.confidence,
-        "effective_at": evidence.effective_at.isoformat(),
-        "freshness_seconds": evidence.freshness_seconds,
-        "stale": evidence.stale,
-        "source_event_id": evidence.source_event_id,
-        "relevance_score": evidence.relevance_score,
-        "selection_reasons": list(evidence.selection_reasons),
-        "conflicted": evidence.conflicted,
-    }

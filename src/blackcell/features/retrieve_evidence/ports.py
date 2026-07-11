@@ -7,6 +7,9 @@ from blackcell.kernel import JsonScalar
 
 class SignalClaimLike(Protocol):
     @property
+    def claim_id(self) -> str: ...
+
+    @property
     def subject(self) -> str: ...
 
     @property
@@ -30,6 +33,18 @@ class SignalClaimLike(Protocol):
     @property
     def source_event_id(self) -> str: ...
 
+    @property
+    def domain(self) -> str: ...
+
+    @property
+    def stream_id(self) -> str: ...
+
+    @property
+    def stream_sequence(self) -> int: ...
+
+    @property
+    def global_position(self) -> int: ...
+
 
 class SignalConflictLike(Protocol):
     @property
@@ -44,7 +59,19 @@ class SignalPacketLike(Protocol):
     def packet_id(self) -> str: ...
 
     @property
-    def state_position(self) -> int: ...
+    def purpose(self) -> str: ...
+
+    @property
+    def state_domain(self) -> str: ...
+
+    @property
+    def state_stream_id(self) -> str | None: ...
+
+    @property
+    def state_global_position(self) -> int: ...
+
+    @property
+    def state_stream_position(self) -> int: ...
 
     @property
     def claims(self) -> Sequence[SignalClaimLike]: ...

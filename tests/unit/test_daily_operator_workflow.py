@@ -95,6 +95,29 @@ def test_daily_operator_runs_the_complete_allowed_control_loop(tmp_path: Path) -
 
     assert result.state.claims[0].value == "ready"
     assert result.signal_packet.provenance_event_ids == result.context_frame.provenance_event_ids
+    assert result.signal_packet.purpose == result.context_frame.source_packet_purpose == "daily"
+    assert (
+        (
+            result.state.scope.domain,
+            result.state.scope.stream_id,
+        )
+        == (
+            result.signal_packet.state_domain,
+            result.signal_packet.state_stream_id,
+        )
+        == (
+            result.evidence_selection.state_domain,
+            result.evidence_selection.state_stream_id,
+        )
+        == (
+            result.context_frame.state_domain,
+            result.context_frame.state_stream_id,
+        )
+    )
+    assert result.context_frame.evidence[0].claim_id == result.state.claims[0].claim_id
+    assert (
+        result.context_frame.evidence[0].global_position == result.state.claims[0].global_position
+    )
     assert result.constraint_evaluation.safe
     assert result.authorization.outcome is AuthorizationOutcome.ALLOW
     assert result.execution is not None

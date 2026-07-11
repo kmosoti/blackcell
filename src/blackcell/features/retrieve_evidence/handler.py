@@ -5,6 +5,7 @@ import re
 from blackcell.features.retrieve_evidence.command import RetrieveEvidence
 from blackcell.features.retrieve_evidence.models import (
     EvidenceCandidate,
+    EvidenceClaimIdentity,
     EvidenceOmission,
     EvidenceOmissionReason,
     EvidenceSelection,
@@ -21,7 +22,14 @@ class DeterministicEvidenceRetriever:
         required = {(key.subject, key.predicate) for key in query.required_keys}
         available = {(claim.subject, claim.predicate) for claim in packet.claims}
         gaps = tuple(
-            RequiredEvidenceGap(key)
+            RequiredEvidenceGap(
+                key=key,
+                source_packet_id=packet.packet_id,
+                state_domain=packet.state_domain,
+                state_stream_id=packet.state_stream_id,
+                state_global_position=packet.state_global_position,
+                state_stream_position=packet.state_stream_position,
+            )
             for key in query.required_keys
             if (key.subject, key.predicate) not in available
         )
@@ -64,7 +72,17 @@ class DeterministicEvidenceRetriever:
         return EvidenceSelection(
             objective=query.objective,
             source_packet_id=packet.packet_id,
-            state_position=packet.state_position,
+            source_packet_purpose=packet.purpose,
+            state_domain=packet.state_domain,
+            state_stream_id=packet.state_stream_id,
+            state_global_position=packet.state_global_position,
+            state_stream_position=packet.state_stream_position,
+            source_claim_identities=tuple(
+                sorted(
+                    EvidenceClaimIdentity(claim.source_event_id, claim.claim_id)
+                    for claim in packet.claims
+                )
+            ),
             candidates=selected,
             omissions=omissions,
             required_keys=query.required_keys,
@@ -115,6 +133,7 @@ def _copy_candidate(
     conflicted: bool,
 ) -> EvidenceCandidate:
     return EvidenceCandidate(
+        claim.claim_id,
         claim.subject,
         claim.predicate,
         claim.value,
@@ -123,6 +142,10 @@ def _copy_candidate(
         claim.freshness_seconds,
         claim.stale,
         claim.source_event_id,
+        claim.domain,
+        claim.stream_id,
+        claim.stream_sequence,
+        claim.global_position,
         score,
         reasons,
         conflicted,
@@ -135,6 +158,7 @@ def _omission_from_claim(
     conflict_keys: set[tuple[str, str]],
 ) -> EvidenceOmission:
     return EvidenceOmission(
+        claim.claim_id,
         claim.subject,
         claim.predicate,
         claim.value,
@@ -143,6 +167,10 @@ def _omission_from_claim(
         claim.freshness_seconds,
         claim.stale,
         claim.source_event_id,
+        claim.domain,
+        claim.stream_id,
+        claim.stream_sequence,
+        claim.global_position,
         0,
         (),
         (claim.subject, claim.predicate) in conflict_keys,
@@ -155,6 +183,7 @@ def _omission_from_candidate(
     reason: EvidenceOmissionReason,
 ) -> EvidenceOmission:
     return EvidenceOmission(
+        candidate.claim_id,
         candidate.subject,
         candidate.predicate,
         candidate.value,
@@ -163,6 +192,10 @@ def _omission_from_candidate(
         candidate.freshness_seconds,
         candidate.stale,
         candidate.source_event_id,
+        candidate.domain,
+        candidate.stream_id,
+        candidate.stream_sequence,
+        candidate.global_position,
         candidate.score,
         candidate.reasons,
         candidate.conflicted,
