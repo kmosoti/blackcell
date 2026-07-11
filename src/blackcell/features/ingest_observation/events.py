@@ -77,13 +77,17 @@ def correction_events(
 
 
 def _claim_payload(claim: ObservedClaim) -> dict[str, JsonInput]:
-    return {
+    payload: dict[str, JsonInput] = {
         "claim_id": claim.claim_id,
         "subject": claim.subject,
         "predicate": claim.predicate,
         "value": claim.value,
         "confidence": claim.confidence,
     }
+    # Preserve the canonical bytes of existing observation/v2 events.
+    if claim.expires_at is not None:
+        payload["expires_at"] = claim.expires_at.isoformat()
+    return payload
 
 
 def _evidence_payload(pointer: EvidencePointer) -> dict[str, JsonInput]:

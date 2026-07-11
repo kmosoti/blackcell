@@ -1,9 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, replace
 from datetime import datetime
+from enum import StrEnum
 
 from blackcell.kernel import JsonScalar
+
+
+class EpistemicStatus(StrEnum):
+    OBSERVED = "observed"
+    UNKNOWN = "unknown"
+
+
+class UnknownReason(StrEnum):
+    EXPIRED = "expired"
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +59,9 @@ class BeliefClaim:
     global_position: int
     correction_id: str | None = None
     supersedes_claim_ids: tuple[str, ...] = ()
+    expires_at: datetime | None = None
+    epistemic_status: EpistemicStatus = EpistemicStatus.OBSERVED
+    unknown_reason: UnknownReason | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -65,8 +79,30 @@ class BeliefClaim:
                 raise ValueError(f"{name} must not be empty")
         _require_aware(self.effective_at, "effective_at")
         _require_aware(self.recorded_at, "recorded_at")
+        if isinstance(self.confidence, bool) or not math.isfinite(self.confidence):
+            raise ValueError("confidence must be a finite number")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("confidence must be between zero and one")
         if self.stream_sequence < 1 or self.global_position < 1:
             raise ValueError("claim ledger positions must be positive")
+        if self.expires_at is not None:
+            _require_aware(self.expires_at, "expires_at")
+            if self.expires_at < self.effective_at:
+                raise ValueError("expires_at cannot precede effective_at")
+        if not isinstance(self.epistemic_status, EpistemicStatus):
+            raise TypeError("epistemic_status must be recognized")
+        if self.unknown_reason is not None and not isinstance(self.unknown_reason, UnknownReason):
+            raise TypeError("unknown_reason must be recognized")
+        if self.epistemic_status is EpistemicStatus.OBSERVED:
+            if self.unknown_reason is not None:
+                raise ValueError("observed claims cannot have an unknown reason")
+        else:
+            if self.value is not None or self.confidence != 0.0:
+                raise ValueError("unknown claims require a null value and zero confidence")
+            if self.unknown_reason is not UnknownReason.EXPIRED:
+                raise ValueError("unknown claims require a supported reason")
+            if self.expires_at is None:
+                raise ValueError("expired unknown claims require expires_at")
         if self.correction_id is None:
             if self.supersedes_claim_ids:
                 raise ValueError("ordinary claims cannot supersede other claims")
@@ -149,6 +185,7 @@ class OperationalBeliefState:
     superseded_claims: tuple[BeliefClaim, ...] = ()
     applied_corrections: tuple[BeliefCorrection, ...] = ()
     effective_time_cutoff: datetime | None = None
+    expired_claims: tuple[BeliefClaim, ...] = ()
 
     def __post_init__(self) -> None:
         if self.cutoff_global_position < 0:
@@ -162,13 +199,14 @@ class OperationalBeliefState:
             or self.conflicts
             or self.superseded_claims
             or self.applied_corrections
+            or self.expired_claims
             or self.last_source_stream_sequence
         ):
             raise ValueError("an unbound operational state must be empty")
         if self.scope.stream_id is not None:
             outside_scope = tuple(
                 claim
-                for claim in (*self.claims, *self.superseded_claims)
+                for claim in (*self.claims, *self.superseded_claims, *self.expired_claims)
                 if claim.domain != self.scope.domain or claim.stream_id != self.scope.stream_id
             )
             outside_corrections = tuple(
@@ -179,27 +217,45 @@ class OperationalBeliefState:
             )
             if outside_scope or outside_corrections:
                 raise ValueError("operational state claims must belong to its declared scope")
-        all_claims = (*self.claims, *self.superseded_claims)
-        if any(claim.global_position > self.cutoff_global_position for claim in all_claims):
+        scoped_claims = (*self.claims, *self.superseded_claims, *self.expired_claims)
+        if any(claim.global_position > self.cutoff_global_position for claim in scoped_claims):
             raise ValueError("operational state claims cannot exceed its ledger cutoff")
         if any(
             correction.global_position > self.cutoff_global_position
             for correction in self.applied_corrections
         ):
             raise ValueError("operational state corrections cannot exceed its ledger cutoff")
-        if any(claim.stream_sequence > self.last_source_stream_sequence for claim in all_claims):
+        if any(claim.stream_sequence > self.last_source_stream_sequence for claim in scoped_claims):
             raise ValueError("operational state claims cannot exceed its source stream position")
         if any(
             correction.stream_sequence > self.last_source_stream_sequence
             for correction in self.applied_corrections
         ):
             raise ValueError("operational state corrections cannot exceed its stream position")
-        claim_ids = tuple(claim.claim_id for claim in all_claims)
+        claim_ids = tuple(claim.claim_id for claim in (*self.claims, *self.superseded_claims))
         if len(claim_ids) != len(set(claim_ids)):
             raise ValueError("current and superseded claim ids must be disjoint")
         correction_ids = tuple(item.correction_id for item in self.applied_corrections)
         if len(correction_ids) != len(set(correction_ids)):
             raise ValueError("applied correction ids must be unique")
+        unknown_by_id = {claim.claim_id: claim for claim in self.unknowns}
+        expired_ids = tuple(claim.claim_id for claim in self.expired_claims)
+        if len(expired_ids) != len(set(expired_ids)):
+            raise ValueError("expired claim ids must be unique")
+        if set(expired_ids) != set(unknown_by_id):
+            raise ValueError("expired claims must exactly back current expired unknowns")
+        expected_unknowns = {
+            expired.claim_id: replace(
+                expired,
+                value=None,
+                confidence=0.0,
+                epistemic_status=EpistemicStatus.UNKNOWN,
+                unknown_reason=UnknownReason.EXPIRED,
+            )
+            for expired in self.expired_claims
+        }
+        if unknown_by_id != expected_unknowns:
+            raise ValueError("expired unknowns must preserve exact claim provenance")
 
     @property
     def last_global_position(self) -> int:
@@ -209,6 +265,18 @@ class OperationalBeliefState:
 
     def claims_for(self, subject: str, predicate: str) -> tuple[BeliefClaim, ...]:
         return tuple(claim for claim in self.claims if claim.key == (subject, predicate))
+
+    @property
+    def unknowns(self) -> tuple[BeliefClaim, ...]:
+        return tuple(
+            claim for claim in self.claims if claim.epistemic_status is EpistemicStatus.UNKNOWN
+        )
+
+    @property
+    def observed_claims(self) -> tuple[BeliefClaim, ...]:
+        return tuple(
+            claim for claim in self.claims if claim.epistemic_status is EpistemicStatus.OBSERVED
+        )
 
 
 def _require_aware(value: datetime, field: str) -> None:

@@ -30,6 +30,7 @@ class ObservedClaim:
     predicate: str
     value: JsonScalar
     confidence: float = 1.0
+    expires_at: datetime | None = None
 
     def __post_init__(self) -> None:
         for name in ("claim_id", "subject", "predicate"):
@@ -41,6 +42,10 @@ class ObservedClaim:
             raise ValueError("confidence must be between zero and one")
         if isinstance(self.value, float) and not math.isfinite(self.value):
             raise ValueError("claim values must be finite")
+        if self.expires_at is not None and (
+            self.expires_at.tzinfo is None or self.expires_at.utcoffset() is None
+        ):
+            raise ValueError("expires_at must be timezone-aware")
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +70,11 @@ class ObservationInput:
         claim_ids = tuple(claim.claim_id for claim in self.claims)
         if len(claim_ids) != len(set(claim_ids)):
             raise ValueError("claim ids must be unique within an observation")
+        if any(
+            claim.expires_at is not None and claim.expires_at < self.effective_at
+            for claim in self.claims
+        ):
+            raise ValueError("claim expires_at cannot precede observation effective_at")
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +102,11 @@ class CorrectionInput:
             raise ValueError("superseded claim ids must be unique within a correction")
         if self.replacement.claim_id in self.supersedes_claim_ids:
             raise ValueError("a correction replacement requires a new claim id")
+        if (
+            self.replacement.expires_at is not None
+            and self.replacement.expires_at < self.effective_at
+        ):
+            raise ValueError("replacement expires_at cannot precede correction effective_at")
         if not self.reason.strip():
             raise ValueError("a correction requires a reason")
         if not self.evidence:
