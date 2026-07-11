@@ -27,5 +27,6 @@ ContextFrame v3 separates its bounded model-facing JSONL evidence payload from a
 bodies. Required gaps, retrieval omissions, and context-budget omissions are typed and
 content-addressed; their composite claim identities form a complete, disjoint partition of the
 source SignalPacket. The canonical frame encoding is stored once in the kernel ArtifactStore, with
-`frame_id` equal to the artifact digest, before reasoning begins. A run-linked `ContextBuilt` event
-and the target CLI/API inspection path remain part of the durable run protocol.
+`frame_id` equal to the artifact digest, before reasoning begins. The Daily Operator links that
+artifact through `run.context-recorded` before model reasoning. The target CLI/API inspection path
+remains pending.

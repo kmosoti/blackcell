@@ -8,6 +8,7 @@ edges:
     - scientific-basis
   decided-by:
     - adr/0004-evolutionary-runtime-architecture
+    - adr/0005-durable-run-and-execution-protocol
 ---
 
 # Runtime Architecture
@@ -89,8 +90,32 @@ content. Artifact reads verify the digest before returning bytes.
 The target ContextFrame codec serializes the exact identity payload, so its kernel artifact digest
 is also its `frame_id`. A rebuildable SQLite index stores discovery metadata only; it never stores a
 second JSON payload. `DailyOperatorWorkflow` persists and verifies this artifact before model
-reasoning. Linking that artifact to a durable run event belongs to the run-protocol work and remains
-required for causal replay.
+reasoning. The bounded durable-run protocol links that exact artifact, proposal, proof bundle,
+authorization, execution result, and causal trace into one create-only run stream. Proposal, proof,
+and authorization artifacts use explicit feature-owned codecs; the execution journal remains the
+single owner of execution-result bytes.
+
+Artifact bytes and metadata commit before the event that references them. The file-backed artifact
+store and event append do not share one transaction, so a process interruption may leave an inert
+orphan artifact. It must never create an event whose artifact was not committed and verified.
+
+## Durable run and execution protocol
+
+One `DailyOperatorRequest.run_id` owns one `daily-operator-run:{run_id}` stream and one canonical
+request digest. A terminal duplicate, an interrupted duplicate, and changed input under the same
+run ID all fail before ingestion, reasoning, or execution. Run events share the run correlation ID
+and form one immediate-predecessor causation chain. Observation events are caused by `run.started`;
+the ContextFrame carries their additional provenance dependency.
+
+The execution journal commits a content-addressed preparation and a `PREPARED` claim before an
+adapter call. The preparation binds the run, invocation, authorization, action, affordance
+definition, adapter ID, and adapter contract version. Terminal retries return the stored result;
+`UNKNOWN` retries reconcile. A stranded preparation is fenced only through an explicit manual
+recovery authorization that attests the original worker stopped, and recovery reconstructs the
+exact preparation from the artifact rather than caller memory.
+
+This is process-crash recovery, not distributed exactly-once execution. Automatic leases,
+gateway-call recovery, power-loss guarantees, and whole-workflow resume remain separate gates.
 
 ## Replay modes
 
@@ -107,16 +132,20 @@ ContextFrame. It creates a new experiment and correlation ID. It is not determin
 ## Action protocol
 
 ```text
-ProposalRecorded
-  -> PolicyEvaluated(allow | deny | require_approval)
-  -> ActionObserved (allowed read-only path only)
-  -> EvaluationRecorded
-  -> StateTransitionCommitted
+run.started
+  -> run.context-recorded
+  -> run.proposal-recorded
+  -> run.constraints-evaluated
+  -> run.authorization-decided(allow | deny | require-approval)
+  -> run.execution-recorded?  # allowed actions only
+  -> run.trace-recorded
+  -> run.completed | run.failed
 ```
 
-SQLite and an external side effect cannot share one atomic transaction. After a crash with an
-unknown outcome, the executor reconciles the side effect before retrying. Phase 1 avoids most
-of this complexity by exposing only read-only affordances.
+SQLite and an external side effect cannot share one atomic transaction. The prepared-action
+journal prevents blind re-execution and preserves uncertainty for reconciliation; it does not make
+the external effect atomic. Outcome observation, evaluation, and accepted state-transition events
+are the next feedback-loop gate and are not fabricated by the current run trace.
 
 ## Model boundary
 
