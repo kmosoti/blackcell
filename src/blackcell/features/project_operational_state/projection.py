@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 
 from blackcell.features.project_operational_state.models import (
     BeliefClaim,
@@ -27,10 +28,15 @@ class OperationalStateProjector:
     ``scope`` should be supplied by production workflows.  Omitting it is a
     compatibility path: exactly one observation domain/stream pair is inferred,
     and ambiguous input is rejected rather than merged.
+
+    Version 3 closes older claims only within the same provenance source and
+    preserves independent sources as concurrent candidates. Claim identifiers
+    are immutable within a projected scope. Explicit corrections, expiry, and
+    epistemic-unknown semantics remain deferred to a later state contract.
     """
 
     name = "operational-belief-state"
-    version = 2
+    version = 3
 
     def replay(
         self,
@@ -39,9 +45,12 @@ class OperationalStateProjector:
         scope: OperationalStateScope | None = None,
         as_of_position: int | None = None,
     ) -> OperationalBeliefState:
+        if scope is not None and not scope.bound:
+            raise ValueError("an explicitly supplied operational-state scope must be bound")
         ordered, cutoff = _ledger_prefix(events, as_of_position)
         resolved_scope = scope or _infer_scope(ordered, cutoff)
-        candidates: dict[tuple[str, str], list[BeliefClaim]] = {}
+        candidates: dict[tuple[str, str], dict[str, list[BeliefClaim]]] = {}
+        claim_ids: set[str] = set()
         last_source_sequence = 0
 
         for event in ordered:
@@ -56,19 +65,27 @@ class OperationalStateProjector:
                 continue
             last_source_sequence = event.stream_sequence
             for claim in _claims(event, resolved_scope.domain):
-                current = candidates.get(claim.key, [])
+                if claim.claim_id in claim_ids:
+                    raise ValueError(
+                        f"claim id {claim.claim_id!r} was reused within the projection scope"
+                    )
+                claim_ids.add(claim.claim_id)
+
+                # A source is a version lineage. Newer evidence closes only an
+                # older claim from that same lineage; independent sources stay
+                # concurrent so their agreement or disagreement remains visible.
+                by_source = candidates.setdefault(claim.key, {})
+                current = by_source.get(claim.source, [])
                 if not current or claim.effective_at > current[0].effective_at:
-                    candidates[claim.key] = [claim]
+                    by_source[claim.source] = [claim]
                 elif claim.effective_at == current[0].effective_at:
                     current.append(claim)
 
         claims = tuple(
             claim
             for key in sorted(candidates)
-            for claim in sorted(
-                candidates[key],
-                key=lambda item: (item.source_event_id, item.claim_id),
-            )
+            for source in sorted(candidates[key])
+            for claim in sorted(candidates[key][source], key=_claim_order)
         )
         conflicts = tuple(
             BeliefConflict(
@@ -79,7 +96,14 @@ class OperationalStateProjector:
                 values=tuple(claim.value for claim in group),
             )
             for key in sorted(candidates)
-            if (group := candidates[key]) and len({_value_key(claim) for claim in group}) > 1
+            if (
+                group := [
+                    claim
+                    for source in sorted(candidates[key])
+                    for claim in sorted(candidates[key][source], key=_claim_order)
+                ]
+            )
+            and len({_value_key(claim) for claim in group}) > 1
         )
         return OperationalBeliefState(
             scope=resolved_scope,
@@ -213,3 +237,13 @@ def _value_key(claim: BeliefClaim) -> str:
     """Preserve JSON distinctions Python equality otherwise erases, such as true and 1."""
 
     return canonical_json({"value": claim.value})
+
+
+def _claim_order(claim: BeliefClaim) -> tuple[datetime, datetime, int, str, str]:
+    return (
+        claim.effective_at,
+        claim.recorded_at,
+        claim.stream_sequence,
+        claim.source_event_id,
+        claim.claim_id,
+    )

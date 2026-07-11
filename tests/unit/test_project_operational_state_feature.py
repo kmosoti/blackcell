@@ -51,6 +51,7 @@ def scoped_observation(
     domain: str = "repository",
     effective_at: datetime = NOW,
     source: str = "fixture",
+    claim_id: str | None = None,
 ) -> EventEnvelope:
     return EventEnvelope.create(
         stream_id=stream_id,
@@ -62,7 +63,7 @@ def scoped_observation(
             "domain": domain,
             "claims": [
                 {
-                    "claim_id": f"claim:{domain}:{stream_id}:{sequence}",
+                    "claim_id": claim_id or f"claim:{domain}:{stream_id}:{sequence}",
                     "subject": "project:blackcell",
                     "predicate": "status",
                     "value": value,
@@ -168,6 +169,76 @@ def test_newer_evidence_supersedes_candidates_and_older_evidence_is_ignored(
     assert state.conflicts == ()
 
 
+def test_newer_same_source_supersedes_while_independent_sources_stay_concurrent(
+    tmp_path: Path,
+) -> None:
+    store = EventStore(tmp_path / "kernel.sqlite3")
+    stream_id = "observations:repository"
+    store.append_many(
+        (
+            scoped_observation(
+                stream_id,
+                1,
+                "ready",
+                source="repository-scan",
+                effective_at=NOW,
+            ),
+            scoped_observation(
+                stream_id,
+                2,
+                "blocked",
+                source="operator-report",
+                effective_at=NOW + timedelta(minutes=1),
+            ),
+            scoped_observation(
+                stream_id,
+                3,
+                "running",
+                source="repository-scan",
+                effective_at=NOW + timedelta(minutes=2),
+            ),
+        ),
+        expected_sequences={stream_id: 0},
+    )
+
+    state = OperationalStateProjector().replay(
+        store.read_all(),
+        scope=OperationalStateScope("repository", stream_id),
+    )
+
+    assert {(claim.source, claim.value) for claim in state.claims} == {
+        ("operator-report", "blocked"),
+        ("repository-scan", "running"),
+    }
+    assert "ready" not in {claim.value for claim in state.claims}
+    assert len(state.conflicts) == 1
+    assert set(state.conflicts[0].values) == {"blocked", "running"}
+
+
+def test_projection_rejects_claim_id_reuse_across_event_provenance(tmp_path: Path) -> None:
+    store = EventStore(tmp_path / "kernel.sqlite3")
+    stream_id = "observations:repository"
+    store.append_many(
+        (
+            scoped_observation(stream_id, 1, "ready", claim_id="claim:stable"),
+            scoped_observation(
+                stream_id,
+                2,
+                "ready",
+                effective_at=NOW + timedelta(minutes=1),
+                claim_id="claim:stable",
+            ),
+        ),
+        expected_sequences={stream_id: 0},
+    )
+
+    with pytest.raises(ValueError, match="claim id 'claim:stable' was reused"):
+        OperationalStateProjector().replay(
+            store.read_all(),
+            scope=OperationalStateScope("repository", stream_id),
+        )
+
+
 def test_projection_requires_stored_globally_ordered_events(tmp_path: Path) -> None:
     unstored = observation(1, "ready")
     with pytest.raises(ValueError, match="stored"):
@@ -244,6 +315,17 @@ def test_compatibility_scope_inference_fails_closed_when_input_is_ambiguous(
 
     with pytest.raises(ValueError, match="scope is ambiguous"):
         OperationalStateProjector().replay(store.read_all())
+
+
+def test_explicit_unbound_scope_is_rejected_but_empty_replay_can_infer_one() -> None:
+    projector = OperationalStateProjector()
+
+    inferred = projector.replay(())
+
+    assert inferred.scope == OperationalStateScope("repository", None)
+    assert inferred.claims == inferred.conflicts == ()
+    with pytest.raises(ValueError, match=r"explicitly supplied.*must be bound"):
+        projector.replay((), scope=OperationalStateScope("repository", None))
 
 
 def test_observation_v2_cannot_fall_back_to_the_legacy_repository_domain(
