@@ -113,6 +113,44 @@ def test_symbolic_violation_stops_daily_operator_before_execution(tmp_path: Path
     assert adapter.calls == 0
 
 
+def test_daily_operator_projects_only_the_requested_observation_scope(tmp_path: Path) -> None:
+    store = EventStore(tmp_path / "kernel.sqlite3")
+    IngestObservationHandler(store, clock=lambda: NOW).handle(
+        IngestObservation(
+            "observations:personal",
+            0,
+            "operator",
+            "fixture",
+            "run:personal",
+            (
+                ObservationInput(
+                    "obs:personal",
+                    NOW,
+                    (
+                        ObservedClaim(
+                            "claim:personal",
+                            "project:blackcell",
+                            "status",
+                            "blocked",
+                        ),
+                    ),
+                    (EvidencePointer(locator="fixture://personal"),),
+                ),
+            ),
+            domain="personal-planning",
+        )
+    )
+    workflow, _, _ = _workflow(tmp_path)
+
+    result = workflow.run(_request("ready", ConstraintOperator.EQUALS, ("ready",)))
+
+    assert result.state.scope.domain == "repository"
+    assert result.state.scope.stream_id == "observations:daily"
+    assert tuple(claim.value for claim in result.state.claims) == ("ready",)
+    assert result.state.cutoff_global_position == 2
+    assert result.state.last_source_stream_sequence == 1
+
+
 def _workflow(tmp_path: Path):
     store = EventStore(tmp_path / "kernel.sqlite3")
     adapter = Adapter()

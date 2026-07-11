@@ -30,6 +30,7 @@ from blackcell.features.ingest_observation import IngestObservation, IngestObser
 from blackcell.features.project_operational_state import (
     OperationalBeliefState,
     OperationalStateProjector,
+    OperationalStateScope,
 )
 from blackcell.features.retrieve_evidence import (
     DeterministicEvidenceRetriever,
@@ -121,7 +122,13 @@ class DailyOperatorWorkflow:
 
     def run(self, request: DailyOperatorRequest) -> DailyOperatorResult:
         observations = self._ingestion.handle(request.ingestion)
-        state = self._state.replay(tuple(self._events.read_all()))
+        state = self._state.replay(
+            tuple(self._events.read_all()),
+            scope=OperationalStateScope(
+                request.ingestion.domain,
+                request.ingestion.stream_id,
+            ),
+        )
         signal = self._signals.handle(request.signal, state)
         selection = self._retrieval.handle(request.retrieval, signal)
         frame = self._contexts.handle(request.context, selection)

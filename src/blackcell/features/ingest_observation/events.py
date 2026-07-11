@@ -6,7 +6,7 @@ from blackcell.features.ingest_observation.command import IngestObservation
 from blackcell.kernel import EventEnvelope
 
 OBSERVATION_RECORDED = "observation.recorded"
-OBSERVATION_SCHEMA_VERSION = "observation/v1"
+OBSERVATION_SCHEMA_VERSION = "observation/v2"
 
 
 def observation_events(
@@ -22,6 +22,7 @@ def observation_events(
             actor=command.actor,
             source=command.source,
             payload={
+                "domain": command.domain,
                 "observation_id": observation.observation_id,
                 "observation_schema_version": OBSERVATION_SCHEMA_VERSION,
                 "claims": [
