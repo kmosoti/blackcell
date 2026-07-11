@@ -3,7 +3,11 @@ from __future__ import annotations
 import re
 
 from blackcell.features.retrieve_evidence.command import RetrieveEvidence
-from blackcell.features.retrieve_evidence.models import EvidenceCandidate, EvidenceSelection
+from blackcell.features.retrieve_evidence.models import (
+    EvidenceCandidate,
+    EvidenceSelection,
+    MissingRequiredEvidenceError,
+)
 from blackcell.features.retrieve_evidence.ports import SignalClaimLike, SignalPacketLike
 
 _TOKEN = re.compile(r"[a-z0-9_./:-]+")
@@ -12,6 +16,15 @@ _TOKEN = re.compile(r"[a-z0-9_./:-]+")
 class DeterministicEvidenceRetriever:
     def handle(self, query: RetrieveEvidence, packet: SignalPacketLike) -> EvidenceSelection:
         required = {(key.subject, key.predicate) for key in query.required_keys}
+        available = {(claim.subject, claim.predicate) for claim in packet.claims}
+        missing = tuple(
+            key for key in query.required_keys if (key.subject, key.predicate) not in available
+        )
+        if missing:
+            raise MissingRequiredEvidenceError(missing)
+        required_match_count = sum(
+            (claim.subject, claim.predicate) in required for claim in packet.claims
+        )
         conflict_keys = {(item.subject, item.predicate) for item in packet.conflicts}
         objective_tokens = _tokens(query.objective)
         ranked = tuple(
@@ -31,13 +44,18 @@ class DeterministicEvidenceRetriever:
                 key=lambda item: (item.freshness_seconds, item.source_event_id),
             )
             ranked = (_fallback(fallback, conflict_keys),)
-        selected = ranked[: query.max_results]
+        required_candidates = tuple(item for item in ranked if "required" in item.reasons)
+        optional_candidates = tuple(item for item in ranked if "required" not in item.reasons)
+        optional_capacity = max(0, query.max_results - len(required_candidates))
+        selected = required_candidates + optional_candidates[:optional_capacity]
         return EvidenceSelection(
             objective=query.objective,
             source_packet_id=packet.packet_id,
             state_position=packet.state_position,
             candidates=selected,
             omitted_count=max(0, len(packet.claims) - len(selected)),
+            required_keys=query.required_keys,
+            required_match_count=required_match_count,
         )
 
 

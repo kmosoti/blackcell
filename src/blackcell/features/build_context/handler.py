@@ -10,8 +10,16 @@ class ContextBudgetError(ValueError):
     pass
 
 
+class ContextSelectionMismatchError(ValueError):
+    pass
+
+
 class ContextFrameBuilder:
     def handle(self, command: BuildContext, selection: EvidenceSelectionLike) -> ContextFrame:
+        if selection.objective != command.objective:
+            raise ContextSelectionMismatchError(
+                "evidence selection objective does not match the ContextFrame objective"
+            )
         included: list[ContextEvidence] = []
         characters = 0
         for candidate in selection.candidates:

@@ -42,6 +42,9 @@ class EvidenceCandidateLike(Protocol):
 
 class EvidenceSelectionLike(Protocol):
     @property
+    def objective(self) -> str: ...
+
+    @property
     def selection_id(self) -> str: ...
 
     @property
