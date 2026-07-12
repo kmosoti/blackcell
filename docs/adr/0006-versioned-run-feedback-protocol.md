@@ -42,7 +42,7 @@ run.started
   -> run.initial-state-recorded
   -> run.context-recorded
   -> run.model-requested
-  -> run.model-attempt-recorded{1..N}
+  -> run.model-attempt-recorded
   -> run.model-responded
   -> run.proposal-recorded
   -> run.constraints-evaluated
@@ -51,17 +51,19 @@ run.started
 
 The alternatives after `run.model-requested` are:
 
-- one through N completed bounded attempt artifacts followed by `run.model-responded`;
+- exactly one fenced attempt followed by `run.model-responded`;
 - `run.model-failed` with no attempt for pre-attempt admission or routing rejection;
-- zero through N completed attempt artifacts followed by `run.model-failed` for terminal gateway
+- zero or one completed attempt followed by `run.model-failed` for terminal gateway
   failure.
 
-Each attempt records exact route identity, status, latency, known usage or failure, and no secret
-content. Admission rejection, missing route, adapter failure, enforced timeout, output-schema
-rejection, budget overrun, and uncertain interruption are distinct typed failure categories. A
-post-call latency measurement is evidence, not a deadline; concrete adapters enforce their own
-timeout. A request-only interrupted prefix may represent a call that started and is never
-automatically retried.
+Version two deliberately supports one attempt because its journal fails closed after an uncertain
+interruption. Retries require a new run or future protocol version. The attempt and terminal events
+together link exact route identity, status, latency, known usage or failure, and no secret content.
+Admission rejection, missing route, adapter failure, enforced timeout, output-schema rejection,
+budget overrun, and uncertain interruption are distinct typed failure categories. A post-call
+latency measurement is evidence, not a deadline; concrete adapters enforce their own timeout. An
+attempt-only prefix is uncertain and cannot be converted into a clean generic run failure without
+durable gateway reconciliation.
 
 Authorization branches continue as follows:
 
@@ -98,10 +100,12 @@ causation. Domain outcome events are caused by `run.execution-recorded`;
 `run.outcome-observed` carries their event IDs as provenance
 without breaking the run-stream chain.
 
-`run.evaluation-specified` is required exactly once on every v2 branch, including eventual model
-failure or denial. Its verified EvaluationSpec artifact and payload bind the spec ID and digest to
-the complete request digest before reasoning. `run.initial-state-recorded` is also required once
-before context and its state scope/cutoffs must equal the ContextFrame source-state identity.
+`run.started` and `run.evaluation-specified` are appended atomically from one verified, immutable
+Daily Operator request. The start event links that complete request artifact, and the evaluation
+event links its nested EvaluationSpec. This makes the specification structurally mandatory on every
+v2 branch, including eventual model failure or denial. `run.initial-state-recorded` is required once
+before context and its state scope/cutoffs must equal the request and ContextFrame source-state
+identity.
 
 `run.outcome-state-recorded` exists only after independent observation for SUCCEEDED or FAILED
 execution. Its cutoff includes every cited outcome observation. A transition binds the initial and
@@ -121,7 +125,8 @@ Decision preparation is separate from invocation:
 2. Commit and verify its artifact.
 3. Append `run.model-requested`.
 4. Invoke the gateway through the feature port.
-5. Record each bounded attempt and the terminal response or failure.
+5. Link the journal-owned route and attempt evidence before invocation, then link the durable
+   terminal response or failure and any known usage evidence.
 6. Decode and validate the ActionProposal before recording it.
 
 The gateway may select a provider profile but cannot grant tools or affordances. Provider and model
@@ -140,7 +145,10 @@ observation criterion. Denied, approval-required, and UNKNOWN executions do not 
 
 ### Artifact ownership
 
-- `request_decision` owns model request, attempt, response, and failure codecs.
+- `request_decision` owns model request, route, attempt, response, failure, and usage codecs and
+  durably persists those artifacts in its attempt journal.
+- `execute_affordance` owns execution preparation/result codecs and durably persists those
+  artifacts in its execution journal.
 - `project_operational_state` owns initial and outcome state artifacts.
 - `observe_outcome` owns the observer result artifact.
 - `evaluate_outcome` owns EvaluationSpec and evaluation artifacts.

@@ -188,7 +188,16 @@ def _validate_v2(events: Sequence[EventEnvelope]) -> None:
             if state == "trace":
                 raise RunProtocolIntegrityError("v2 trace event is duplicated")
             outcome = _outcome(event)
-            if outcome is not RunOutcome.FAILED:
+            if outcome is RunOutcome.FAILED:
+                if state == "start":
+                    raise RunProtocolIntegrityError(
+                        "v2 failed trace requires the mandatory evaluation specification"
+                    )
+                if state == "model-attempt":
+                    raise RunProtocolIntegrityError(
+                        "v2 uncertain model attempt requires durable gateway reconciliation"
+                    )
+            else:
                 if state not in {"evaluation", "transition"}:
                     raise RunProtocolIntegrityError("v2 successful trace requires evaluation")
                 _validate_v2_outcome(outcome, authorization, execution)
@@ -219,9 +228,7 @@ def _validate_v2(events: Sequence[EventEnvelope]) -> None:
             else:
                 _unexpected_v2(event)
         elif state == "model-attempt":
-            if event.event_type == MODEL_ATTEMPT_RECORDED:
-                attempts += 1
-            elif event.event_type == MODEL_RESPONDED:
+            if event.event_type == MODEL_RESPONDED:
                 if attempts < 1:  # pragma: no cover - state establishes this
                     raise RunProtocolIntegrityError("model response requires an attempt")
                 state = "model-response"
