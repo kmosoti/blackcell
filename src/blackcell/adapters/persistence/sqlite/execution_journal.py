@@ -18,6 +18,8 @@ from blackcell.features.execute_affordance.errors import (
     StaleExecutionClaim,
 )
 from blackcell.features.execute_affordance.models import (
+    EXECUTION_PREPARATION_MEDIA_TYPE,
+    EXECUTION_RESULT_MEDIA_TYPE,
     ExecutionBinding,
     ExecutionClaim,
     ExecutionJournalEntry,
@@ -37,9 +39,6 @@ from blackcell.kernel.database import connect
 
 _JOURNAL_SCHEMA_VERSION = 1
 _MIGRATION_TABLE = "execution_journal_schema_migrations"
-_RESULT_MEDIA_TYPE = "application/vnd.blackcell.execution-result+json"
-_PREPARATION_MEDIA_TYPE = "application/vnd.blackcell.execution-preparation+json"
-
 _MIGRATION_SCHEMA = f"""
 create table if not exists {_MIGRATION_TABLE} (
     version integer primary key,
@@ -417,7 +416,7 @@ class SQLiteExecutionJournal:
         try:
             artifact = self._artifacts.put_bytes(
                 data,
-                media_type=_RESULT_MEDIA_TYPE,
+                media_type=EXECUTION_RESULT_MEDIA_TYPE,
                 encoding="utf-8",
             )
         except ArtifactIntegrityError as error:
@@ -704,7 +703,7 @@ class SQLiteExecutionJournal:
         try:
             artifact = self._artifacts.put_bytes(
                 data,
-                media_type=_PREPARATION_MEDIA_TYPE,
+                media_type=EXECUTION_PREPARATION_MEDIA_TYPE,
                 encoding="utf-8",
             )
         except ArtifactIntegrityError as error:
@@ -720,7 +719,10 @@ class SQLiteExecutionJournal:
     def _load_preparation(self, preparation_id: str) -> ExecutionPreparation:
         try:
             reference = self._artifacts.stat(preparation_id)
-            if reference.media_type != _PREPARATION_MEDIA_TYPE or reference.encoding != "utf-8":
+            if (
+                reference.media_type != EXECUTION_PREPARATION_MEDIA_TYPE
+                or reference.encoding != "utf-8"
+            ):
                 raise ExecutionJournalIntegrityError(
                     f"execution preparation artifact {preparation_id!r} has incompatible metadata"
                 )
@@ -740,7 +742,7 @@ class SQLiteExecutionJournal:
     def _load_result(self, result_id: str) -> ExecutionResult:
         try:
             reference = self._artifacts.stat(result_id)
-            if reference.media_type != _RESULT_MEDIA_TYPE or reference.encoding != "utf-8":
+            if reference.media_type != EXECUTION_RESULT_MEDIA_TYPE or reference.encoding != "utf-8":
                 raise ExecutionJournalIntegrityError(
                     f"execution result artifact {result_id!r} has incompatible metadata"
                 )

@@ -17,6 +17,10 @@ from blackcell.features.execute_affordance.handler import (
     UncertainExecutionError,
 )
 from blackcell.features.execute_affordance.models import (
+    EXECUTION_PREPARATION_MEDIA_TYPE,
+    EXECUTION_PREPARATION_SCHEMA_VERSION,
+    EXECUTION_RESULT_MEDIA_TYPE,
+    EXECUTION_RESULT_SCHEMA_VERSION,
     AdapterOutcome,
     AffordanceArgument,
     AffordanceArgumentSpec,
@@ -42,6 +46,10 @@ from blackcell.features.execute_affordance.models import (
 from blackcell.features.execute_affordance.recovery import ManualAffordanceRecovery
 
 __all__ = [
+    "EXECUTION_PREPARATION_MEDIA_TYPE",
+    "EXECUTION_PREPARATION_SCHEMA_VERSION",
+    "EXECUTION_RESULT_MEDIA_TYPE",
+    "EXECUTION_RESULT_SCHEMA_VERSION",
     "AdapterOutcome",
     "AffordanceArgument",
     "AffordanceArgumentSpec",
