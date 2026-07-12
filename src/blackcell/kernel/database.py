@@ -5,10 +5,13 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from time import monotonic, sleep
 
 from blackcell.kernel.errors import SchemaVersionError
 
 SCHEMA_VERSION = 1
+_BUSY_TIMEOUT_MILLISECONDS = 30_000
+_WAL_RETRY_INTERVAL_SECONDS = 0.01
 
 _SCHEMA_V1 = """
 create table if not exists kernel_schema_migrations (
@@ -119,18 +122,22 @@ def _execute_schema(connection: sqlite3.Connection, script: str) -> None:
 
 @contextmanager
 def connect(path: Path) -> Iterator[sqlite3.Connection]:
-    connection = sqlite3.connect(path, timeout=30.0, isolation_level=None)
-    _owner_only_file(path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("pragma foreign_keys = on")
-    connection.execute("pragma busy_timeout = 30000")
-    connection.execute("pragma journal_mode = wal")
-    connection.execute("pragma synchronous = normal")
-    for suffix in ("-wal", "-shm"):
-        auxiliary = Path(f"{path}{suffix}")
-        if auxiliary.exists():
-            _owner_only_file(auxiliary)
+    connection = sqlite3.connect(
+        path,
+        timeout=_BUSY_TIMEOUT_MILLISECONDS / 1_000,
+        isolation_level=None,
+    )
     try:
+        _owner_only_file(path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("pragma foreign_keys = on")
+        connection.execute(f"pragma busy_timeout = {_BUSY_TIMEOUT_MILLISECONDS}")
+        _enable_wal(connection)
+        connection.execute("pragma synchronous = normal")
+        for suffix in ("-wal", "-shm"):
+            auxiliary = Path(f"{path}{suffix}")
+            if auxiliary.exists():
+                _owner_only_file(auxiliary)
         yield connection
     finally:
         connection.close()
@@ -138,6 +145,22 @@ def connect(path: Path) -> Iterator[sqlite3.Connection]:
             auxiliary = Path(f"{path}{suffix}")
             if auxiliary.exists():
                 _owner_only_file(auxiliary)
+
+
+def _enable_wal(connection: sqlite3.Connection) -> None:
+    """Negotiate persistent WAL mode across concurrent first-open callers."""
+
+    deadline = monotonic() + (_BUSY_TIMEOUT_MILLISECONDS / 1_000)
+    while True:
+        try:
+            row = connection.execute("pragma journal_mode = wal").fetchone()
+            if row is None or str(row[0]).casefold() != "wal":
+                raise RuntimeError("kernel database did not enter WAL journal mode")
+            return
+        except sqlite3.OperationalError as error:
+            if "locked" not in str(error).casefold() or monotonic() >= deadline:
+                raise
+            sleep(_WAL_RETRY_INTERVAL_SECONDS)
 
 
 def _owner_only_file(path: Path) -> None:
