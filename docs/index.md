@@ -30,6 +30,12 @@ The current durability boundary is defined by
 `adr/0005-durable-run-and-execution-protocol.md`: artifact-first causal run records and explicit
 prepared-action recovery without whole-workflow or distributed exactly-once claims.
 
+## Proposed developer-workflow research
+
+- `research/spark-repository-perception.md`: matched Terra-versus-Spark repository-perception
+  experiment using ephemeral, schema-validated, no-history worker packets. It is not a runtime
+  contract.
+
 ## Phase 1 specifications
 
 - `spec/bcp-0028-charter-reset.md`
@@ -42,6 +48,6 @@ prepared-action recovery without whole-workflow or distributed exactly-once clai
 
 ## Prototype archive
 
-Documents under `concepts/`, `guides/latent-harness-quickstart.md`, `research/`, and the older
-BCP-0026/0027 specifications describe the July 6 prototype. They are retained temporarily
+Other documents under `concepts/`, `guides/latent-harness-quickstart.md`, `research/`, and the
+older BCP-0026/0027 specifications describe the July 6 prototype. They are retained temporarily
 for migration history and are not the current architecture contract.

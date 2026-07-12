@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://blackcell.dev/schemas/worker-packet-v1.json",
+  "title": "BlackCell Worker Packet v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "work_id",
+    "worker_id",
+    "mode",
+    "change_spec_path",
+    "task",
+    "allowed_paths",
+    "forbidden_paths",
+    "required_reads",
+    "verification_commands",
+    "result_schema_path",
+    "limits"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "blackcell-worker-packet/v1"
+    },
+    "work_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+    },
+    "worker_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["evidence", "micro_edit", "review", "verify"]
+    },
+    "change_spec_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "allowed_paths": {
+      "type": "array",
+      "maxItems": 200,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    },
+    "forbidden_paths": {
+      "type": "array",
+      "maxItems": 200,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 512
+      }
+    },
+    "required_reads": {
+      "type": "array",
+      "maxItems": 200,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "reason"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        }
+      }
+    },
+    "verification_commands": {
+      "type": "array",
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["argv", "reason"],
+        "properties": {
+          "argv": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        }
+      }
+    },
+    "result_schema_path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_findings", "max_summary_chars", "include_raw_command_output"],
+      "properties": {
+        "max_findings": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50
+        },
+        "max_summary_chars": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4000
+        },
+        "include_raw_command_output": {
+          "type": "boolean",
+          "const": false
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,332 @@
+# Reversible Git inspection and synchronization.
+prefix_rule(
+    pattern = ["git", ["status", "diff", "log", "show", "grep", "blame", "rev-parse", "merge-base", "ls-files"]],
+    decision = "allow",
+    justification = "Repository inspection is reversible and part of normal BlackCell work.",
+)
+prefix_rule(
+    pattern = ["git", "fetch"],
+    decision = "allow",
+    justification = "Fetching and pruning remote-tracking state are normal delivery operations.",
+)
+prefix_rule(
+    pattern = ["git", "pull", "--ff-only"],
+    decision = "allow",
+    justification = "Fast-forward-only pulls do not create an implicit merge.",
+)
+
+# Reversible local Git delivery and normal publication.
+prefix_rule(
+    pattern = ["git", ["add", "commit", "merge", "rebase", "cherry-pick", "revert"]],
+    decision = "allow",
+    justification = "These operations are recoverable through normal Git history and reflogs.",
+)
+prefix_rule(
+    pattern = ["git", "branch"],
+    decision = "allow",
+    justification = "Normal branch inspection and creation are reversible.",
+)
+prefix_rule(
+    pattern = ["git", "switch"],
+    decision = "allow",
+    justification = "Normal branch switching is reversible when local work is preserved.",
+)
+prefix_rule(
+    pattern = ["git", "stash", ["push", "apply", "list", "show"]],
+    decision = "allow",
+    justification = "Creating, inspecting, and applying stashes preserve the stash record.",
+)
+prefix_rule(
+    pattern = ["git", "tag"],
+    decision = "allow",
+    justification = "Normal tag inspection and creation are reversible.",
+)
+prefix_rule(
+    pattern = ["git", "reset"],
+    decision = "allow",
+    justification = "Non-hard local reset modes remain recoverable.",
+)
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "allow",
+    justification = "Normal non-force branch publication and upstream setup are preauthorized.",
+    match = [
+        "git push",
+        "git push -u origin feature/codex-routing",
+    ],
+)
+
+# Destructive or history-rewriting Git operations always return to the user.
+prefix_rule(
+    pattern = ["git", "reset", ["--hard", "--merge", "--keep"]],
+    decision = "prompt",
+    justification = "These reset modes can discard uncommitted work.",
+)
+prefix_rule(
+    pattern = ["git", "clean"],
+    decision = "prompt",
+    justification = "Git clean deletes untracked user data.",
+)
+prefix_rule(
+    pattern = ["git", ["checkout", "restore"]],
+    decision = "prompt",
+    justification = "Checkout or restore can overwrite uncommitted work; use git switch for branches.",
+)
+prefix_rule(
+    pattern = ["git", "switch", ["-C", "--force", "--discard-changes"]],
+    decision = "prompt",
+    justification = "Forced switching can overwrite uncommitted work or reset a branch.",
+)
+prefix_rule(
+    pattern = ["git", "branch", ["-d", "-D", "--delete"]],
+    decision = "prompt",
+    justification = "Deleting a branch removes a named recovery point.",
+)
+prefix_rule(
+    pattern = ["git", "branch", ["-f", "--force"]],
+    decision = "prompt",
+    justification = "Force-moving a branch can discard its named recovery point.",
+)
+prefix_rule(
+    pattern = ["git", "tag", ["-d", "--delete"]],
+    decision = "prompt",
+    justification = "Deleting a tag removes a named recovery point.",
+)
+prefix_rule(
+    pattern = ["git", "tag", ["-f", "--force"]],
+    decision = "prompt",
+    justification = "Force-moving a tag can discard its named recovery point.",
+)
+prefix_rule(
+    pattern = ["git", "stash", ["pop", "drop", "clear", "branch"]],
+    decision = "prompt",
+    justification = "These stash operations delete one or more stash records on success.",
+)
+prefix_rule(
+    pattern = ["git", "push", ["--force", "-f", "--force-with-lease", "--delete", "-d", "--mirror", "--prune"]],
+    decision = "prompt",
+    justification = "Force-pushing or deleting a remote ref rewrites shared remote state.",
+)
+prefix_rule(
+    pattern = ["git", "push", ["origin", "upstream"], ["--force", "-f", "--force-with-lease", "--delete", "-d", "--mirror", "--prune"]],
+    decision = "prompt",
+    justification = "Force-pushing or deleting a remote ref rewrites shared remote state.",
+)
+prefix_rule(
+    pattern = ["git", "update-ref", "-d"],
+    decision = "prompt",
+    justification = "Deleting a ref removes a recovery point.",
+)
+prefix_rule(
+    pattern = ["git", "reflog", ["delete", "expire"]],
+    decision = "prompt",
+    justification = "Deleting reflog history removes recovery information.",
+)
+prefix_rule(
+    pattern = ["git", ["gc", "prune", "repack", "filter-branch", "filter-repo"]],
+    decision = "prompt",
+    justification = "History rewriting or pruning can make repository data irrecoverable.",
+)
+prefix_rule(
+    pattern = ["git", "remote", ["remove", "rm"]],
+    decision = "prompt",
+    justification = "Removing a remote deletes repository delivery configuration.",
+)
+prefix_rule(
+    pattern = ["git", "worktree", ["remove", "prune"]],
+    decision = "prompt",
+    justification = "Removing or pruning worktrees can delete user-owned worktree data.",
+)
+prefix_rule(
+    pattern = ["git", "config"],
+    decision = "prompt",
+    justification = "Git configuration can contain credentials, signing, or access settings.",
+)
+
+# GitHub reads and ordinary collaboration workflows.
+prefix_rule(
+    pattern = ["gh", "repo", ["view", "list"]],
+    decision = "allow",
+    justification = "Repository metadata reads are normal completion work.",
+)
+prefix_rule(
+    pattern = ["gh", "pr", ["view", "list", "status", "checks", "diff"]],
+    decision = "allow",
+    justification = "Pull request inspection is read-only.",
+)
+prefix_rule(
+    pattern = ["gh", "issue", ["view", "list", "status"]],
+    decision = "allow",
+    justification = "Issue inspection is read-only.",
+)
+prefix_rule(
+    pattern = ["gh", "run", ["view", "list", "watch"]],
+    decision = "allow",
+    justification = "Workflow run inspection is read-only.",
+)
+prefix_rule(
+    pattern = ["gh", "workflow", ["view", "list"]],
+    decision = "allow",
+    justification = "Workflow inspection is read-only.",
+)
+prefix_rule(
+    pattern = ["gh", "pr", ["create", "edit", "comment", "ready"]],
+    decision = "allow",
+    justification = "Normal PR creation, metadata, comments, reviewers, and draft transitions are authorized.",
+)
+prefix_rule(
+    pattern = ["gh", "issue", ["create", "edit", "comment"]],
+    decision = "allow",
+    justification = "Normal issue creation, metadata, labels, assignments, and comments are authorized.",
+)
+prefix_rule(
+    pattern = ["gh", "run", "rerun"],
+    decision = "allow",
+    justification = "Rerunning a failed check is a normal completion operation.",
+)
+prefix_rule(
+    pattern = ["gh", "workflow", "run"],
+    decision = "allow",
+    justification = "Explicit workflow dispatch is a normal verification operation.",
+)
+prefix_rule(
+    pattern = ["gh", "api", ["-X", "--method"], "GET"],
+    decision = "allow",
+    justification = "Explicit GET requests are read-only.",
+)
+
+# GitHub merge, publication, deletion, credentials, and access changes require the user.
+prefix_rule(
+    pattern = ["gh", "pr", "merge"],
+    decision = "prompt",
+    justification = "Merging a PR changes shared repository history.",
+)
+prefix_rule(
+    pattern = ["gh", "release", ["create", "delete", "upload"]],
+    decision = "prompt",
+    justification = "Release publication, replacement, or deletion is an external publication action.",
+)
+prefix_rule(
+    pattern = ["gh", "repo", ["delete", "archive", "edit"]],
+    decision = "prompt",
+    justification = "Repository deletion, archival, visibility, or security settings need user review.",
+)
+prefix_rule(
+    pattern = ["gh", "run", "delete"],
+    decision = "prompt",
+    justification = "Deleting a workflow run destroys shared audit evidence.",
+)
+prefix_rule(
+    pattern = ["gh", "cache", "delete"],
+    decision = "prompt",
+    justification = "Deleting an Actions cache removes shared build artifacts.",
+)
+prefix_rule(
+    pattern = ["gh", "gist", "delete"],
+    decision = "prompt",
+    justification = "Deleting a gist destroys externally published content.",
+)
+prefix_rule(
+    pattern = ["gh", "issue", "delete"],
+    decision = "prompt",
+    justification = "Deleting an issue destroys shared project history.",
+)
+prefix_rule(
+    pattern = ["gh", ["pr", "issue"], "comment", "--delete-last"],
+    decision = "prompt",
+    justification = "Deleting a comment destroys shared review history.",
+)
+prefix_rule(
+    pattern = ["gh", "api", ["-X", "--method"], ["DELETE", "PATCH", "POST", "PUT"]],
+    decision = "prompt",
+    justification = "Mutating REST API calls can bypass higher-level irreversible-action gates.",
+)
+prefix_rule(
+    pattern = ["gh", "api", ["--method=DELETE", "--method=PATCH", "--method=POST", "--method=PUT"]],
+    decision = "prompt",
+    justification = "Mutating REST API calls can bypass higher-level irreversible-action gates.",
+)
+prefix_rule(
+    pattern = ["gh", "api", "graphql"],
+    decision = "prompt",
+    justification = "GraphQL requests may contain mutations that prefix rules cannot inspect.",
+)
+prefix_rule(
+    pattern = ["gh", ["auth", "secret", "variable", "key", "ssh-key", "gpg-key"]],
+    decision = "prompt",
+    justification = "Credentials, secrets, keys, and access configuration require the user.",
+)
+
+# Python, UV, and repository verification workflows.
+prefix_rule(
+    pattern = ["uv", ["sync", "lock", "add", "remove", "run", "build", "export", "tree", "tool", "venv", "cache", "pip"]],
+    decision = "allow",
+    justification = "Normal UV environment, dependency, build, and verification work is reversible.",
+)
+prefix_rule(
+    pattern = [["pytest", "ruff", "ty", "hypothesis", "mutmut", "coverage"]],
+    decision = "allow",
+    justification = "Repository verification tools are preauthorized.",
+)
+prefix_rule(
+    pattern = [["python", "python3"], ".codex/orchestration/validate_contract.py"],
+    decision = "allow",
+    justification = "The repository-owned contract validator is a read-only verification script.",
+)
+prefix_rule(
+    pattern = ["uv", "publish"],
+    decision = "prompt",
+    justification = "Package publication is an external irreversible action.",
+)
+prefix_rule(
+    pattern = [["twine", "npm", "cargo"], "publish"],
+    decision = "prompt",
+    justification = "Package publication is an external irreversible action.",
+)
+
+# General deletion, deployment, and production-state gates.
+prefix_rule(
+    pattern = [["rm", "rmdir", "shred"]],
+    decision = "prompt",
+    justification = "Deletion commands can remove user-owned data outside task-created temporary state.",
+)
+prefix_rule(
+    pattern = ["docker", ["rm", "rmi", "push"]],
+    decision = "prompt",
+    justification = "Container/image deletion or publication requires user review.",
+)
+prefix_rule(
+    pattern = ["docker", ["system", "container", "image", "volume", "network"], ["prune", "rm"]],
+    decision = "prompt",
+    justification = "Container and volume cleanup can delete user-owned state.",
+)
+prefix_rule(
+    pattern = ["docker", "compose", "down"],
+    decision = "prompt",
+    justification = "Compose teardown can remove containers, networks, and volumes.",
+)
+prefix_rule(
+    pattern = ["kubectl", ["apply", "create", "delete", "replace", "scale", "rollout"]],
+    decision = "prompt",
+    justification = "Cluster mutations are deployment or production-state changes.",
+)
+prefix_rule(
+    pattern = ["helm", ["install", "upgrade", "rollback", "uninstall"]],
+    decision = "prompt",
+    justification = "Helm mutations are deployment or production-state changes.",
+)
+prefix_rule(
+    pattern = ["terraform", ["apply", "destroy", "import", "state"]],
+    decision = "prompt",
+    justification = "Infrastructure and state mutations require explicit user review.",
+)
+prefix_rule(
+    pattern = ["pulumi", ["up", "destroy", "import", "state"]],
+    decision = "prompt",
+    justification = "Infrastructure and state mutations require explicit user review.",
+)
+prefix_rule(
+    pattern = [["dropdb", "createdb", "alembic"]],
+    decision = "prompt",
+    justification = "Database creation, deletion, and migrations require a reviewed rollback boundary.",
+)
