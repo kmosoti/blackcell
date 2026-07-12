@@ -83,6 +83,11 @@ class ExecutionJournal(Protocol):
 
     def get_by_invocation(self, invocation_id: str) -> ExecutionResult | None: ...
 
+    def get_entry_by_invocation(
+        self,
+        invocation_id: str,
+    ) -> ExecutionJournalEntry | None: ...
+
     def get_preparation(
         self,
         execution_identity_digest: str,

@@ -20,6 +20,7 @@ from blackcell.features.execute_affordance import (
     ExecutionClaim,
     ExecutionIdentityConflict,
     ExecutionInProgress,
+    ExecutionJournalIntegrityError,
     ExecutionJournalSchemaError,
     ExecutionOperation,
     ExecutionPreparation,
@@ -37,6 +38,55 @@ from blackcell.features.execute_affordance import (
 from blackcell.kernel import ArtifactStore
 
 NOW = datetime(2026, 7, 11, 8, tzinfo=UTC)
+
+
+def test_entry_lookup_by_invocation_reconstructs_verified_terminal_evidence(
+    tmp_path: Path,
+) -> None:
+    journal = SQLiteExecutionJournal(tmp_path / "artifacts")
+    preparation = _preparation()
+    claim = journal.acquire(preparation, acquired_at=NOW)
+    assert isinstance(claim, ExecutionClaim)
+    result = journal.complete(claim, _result(preparation.binding), recorded_at=NOW)
+
+    entry = journal.get_entry_by_invocation(preparation.invocation.invocation_id)
+
+    assert entry is not None
+    assert entry == journal.list_entries()[0]
+    assert entry.binding == preparation.binding
+    assert entry.current_result == result
+
+
+def test_entry_lookup_by_invocation_returns_none_when_absent(tmp_path: Path) -> None:
+    journal = SQLiteExecutionJournal(tmp_path / "artifacts")
+
+    assert journal.get_entry_by_invocation("invocation:absent") is None
+
+
+@pytest.mark.parametrize("invocation_id", ("", " "))
+def test_entry_lookup_by_invocation_rejects_blank_identity(
+    tmp_path: Path,
+    invocation_id: str,
+) -> None:
+    journal = SQLiteExecutionJournal(tmp_path / "artifacts")
+
+    with pytest.raises(ValueError, match="invocation_id must not be empty"):
+        journal.get_entry_by_invocation(invocation_id)
+
+
+def test_entry_lookup_by_invocation_rejects_corrupt_row(tmp_path: Path) -> None:
+    journal = SQLiteExecutionJournal(tmp_path / "artifacts")
+    preparation = _preparation()
+    claim = journal.acquire(preparation, acquired_at=NOW)
+    assert isinstance(claim, ExecutionClaim)
+    with sqlite3.connect(journal.database_path) as connection:
+        connection.execute(
+            "update execution_journal set run_id = ' ' where invocation_id = ?",
+            (preparation.invocation.invocation_id,),
+        )
+
+    with pytest.raises(ExecutionJournalIntegrityError, match="stored execution binding is invalid"):
+        journal.get_entry_by_invocation(preparation.invocation.invocation_id)
 
 
 def test_terminal_result_round_trips_as_the_canonical_artifact_across_restart(

@@ -518,6 +518,20 @@ class SQLiteExecutionJournal:
     def get_by_invocation(self, invocation_id: str) -> ExecutionResult | None:
         return self._get_by("invocation_id", invocation_id)
 
+    def get_entry_by_invocation(
+        self,
+        invocation_id: str,
+    ) -> ExecutionJournalEntry | None:
+        self._require_open()
+        if not invocation_id.strip():
+            raise ValueError("invocation_id must not be empty")
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                "select * from execution_journal where invocation_id = ?",
+                (invocation_id,),
+            ).fetchone()
+        return None if row is None else self._entry_from_row(row)
+
     def get_preparation(
         self,
         execution_identity_digest: str,

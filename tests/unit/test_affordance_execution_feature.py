@@ -145,6 +145,13 @@ class Journal:
             None,
         )
 
+    def get_entry_by_invocation(
+        self,
+        invocation_id: str,
+    ) -> ExecutionJournalEntry | None:
+        del invocation_id
+        return None
+
     def get_preparation(self, execution_identity_digest):
         return None
 
