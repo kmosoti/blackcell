@@ -7,6 +7,7 @@ from blackcell.features.request_decision.command import RequestDecision
 from blackcell.features.request_decision.models import (
     DecisionAdapterResult,
     DecisionAttemptClaim,
+    DecisionAttemptRecord,
     DecisionFailure,
     DecisionFailureRecord,
     DecisionPreparation,
@@ -96,8 +97,25 @@ class DecisionAttemptJournal(Protocol):
     ) -> DecisionFailureRecord: ...
 
 
+class DecisionEvidenceJournal(Protocol):
+    """Read-only access to exact evidence durably owned by a decision journal."""
+
+    def get_request(self, request_id: str) -> DecisionRequestRecord | None: ...
+
+    def get_preparation(self, request_id: str) -> DecisionPreparation | None: ...
+
+    def get_attempt(self, request_id: str) -> DecisionAttemptRecord | None: ...
+
+    def get_terminal(self, request_id: str) -> DecisionTerminalRecord | None: ...
+
+
 class Clock(Protocol):
     def __call__(self) -> datetime: ...
 
 
-__all__ = ["Clock", "DecisionAttemptJournal", "DecisionGatewayPort"]
+__all__ = [
+    "Clock",
+    "DecisionAttemptJournal",
+    "DecisionEvidenceJournal",
+    "DecisionGatewayPort",
+]

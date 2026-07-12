@@ -62,6 +62,7 @@ from blackcell.features.request_decision.models import (
 )
 from blackcell.features.request_decision.ports import (
     DecisionAttemptJournal,
+    DecisionEvidenceJournal,
     DecisionGatewayPort,
 )
 
@@ -85,6 +86,7 @@ __all__ = [
     "DecisionBudget",
     "DecisionCapability",
     "DecisionClassification",
+    "DecisionEvidenceJournal",
     "DecisionFailure",
     "DecisionFailureKind",
     "DecisionFailureRecord",
