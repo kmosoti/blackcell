@@ -71,11 +71,13 @@ def test_pass_and_fail_both_accept_independently_observed_facts() -> None:
 )
 def test_nondefinitive_evaluations_are_typed_not_accepted(verdict, code: str) -> None:
     command = _command()
-    command = replace(
-        command,
-        evaluation=_nondefinitive_evaluation(verdict, command.evaluation),
-    )
-    if verdict is TransitionEvaluationVerdict.NOT_EVALUATED:
+    if verdict is TransitionEvaluationVerdict.INCONCLUSIVE:
+        command = _fold_shaped_inconclusive_command()
+    else:
+        command = replace(
+            command,
+            evaluation=_nondefinitive_evaluation(verdict, command.evaluation),
+        )
         command = replace(
             command,
             authorization=replace(
@@ -252,12 +254,9 @@ def test_execution_result_digest_and_canonical_binding_are_independently_fenced(
 
 
 def test_terminal_inconclusive_retains_owner_and_exact_source_evidence() -> None:
-    command = _command()
-    evaluation = _nondefinitive_evaluation(
-        TransitionEvaluationVerdict.INCONCLUSIVE,
-        command.evaluation,
-    )
-    result = StateTransitionAcceptor().handle(replace(command, evaluation=evaluation))
+    command = _fold_shaped_inconclusive_command()
+    evaluation = command.evaluation
+    result = StateTransitionAcceptor().handle(command)
 
     assert result.status is TransitionAcceptanceStatus.NOT_ACCEPTED
     assert evaluation.execution_status is TransitionExecutionStatus.SUCCEEDED
@@ -266,6 +265,62 @@ def test_terminal_inconclusive_retains_owner_and_exact_source_evidence() -> None
     assert evaluation.owner_observation_artifact_digest is not None
     assert evaluation.evidence_binding_id is not None
     assert evaluation.findings[0].source_event_ids == ("event:outcome",)
+
+
+def test_claim_free_terminal_inconclusive_allows_unchanged_state_stream_position() -> None:
+    command = _fold_shaped_inconclusive_command()
+
+    result = StateTransitionAcceptor().handle(command)
+
+    assert result.status is TransitionAcceptanceStatus.NOT_ACCEPTED
+    assert result.code == "evaluation-inconclusive"
+    assert result.transition is None
+    assert (
+        command.outcome_state is not None
+        and command.outcome_state.reference.last_source_stream_sequence
+        == command.initial_state.reference.last_source_stream_sequence
+    )
+    assert (
+        command.triggering_events[0].stream_sequence
+        > command.outcome_state.reference.last_source_stream_sequence
+    )
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    ("event-type", "stream", "correlation", "causation", "global", "sequence", "regression"),
+)
+def test_claim_free_terminal_inconclusive_still_rejects_corrupt_evidence(
+    corruption: str,
+) -> None:
+    command = _fold_shaped_inconclusive_command()
+    event = command.triggering_events[0]
+    if corruption == "event-type":
+        event = replace(event, event_type="observation.recorded")
+    elif corruption == "stream":
+        event = replace(event, stream_id="observation:other")
+    elif corruption == "correlation":
+        event = replace(event, correlation_id="run:other")
+    elif corruption == "causation":
+        event = replace(event, causation_id="event:other")
+    elif corruption == "global":
+        event = replace(event, global_position=14)
+    elif corruption == "sequence":
+        event = replace(event, stream_sequence=2)
+    else:
+        outcome = command.outcome_state
+        assert outcome is not None
+        command = replace(
+            command,
+            outcome_state=TransitionStateView(
+                replace(outcome.reference, last_source_stream_sequence=1),
+                (),
+            ),
+        )
+    if corruption != "regression":
+        command = replace(command, triggering_events=(event,))
+    with pytest.raises(StateTransitionIntegrityError, match="integrity-mismatch"):
+        StateTransitionAcceptor().handle(command)
 
 
 def test_canonical_finding_rejects_value_confidence_code_and_evidence_forgeries() -> None:
@@ -858,6 +913,38 @@ def _two_target_command() -> AcceptStateTransition:
         outcome_state=outcome,
         evaluation=evaluation,
         triggering_events=(*command.triggering_events, second_event),
+    )
+
+
+def _fold_shaped_inconclusive_command() -> AcceptStateTransition:
+    command = _command()
+    initial_claims = command.initial_state.claims
+    outcome = TransitionStateView(
+        StateSnapshotReference(
+            snapshot_digest=_digest("claim-free-outcome-snapshot"),
+            domain="repository",
+            stream_id=STREAM_ID,
+            cutoff_global_position=13,
+            last_source_stream_sequence=2,
+            effective_time_cutoff=NOW + timedelta(minutes=4),
+        ),
+        initial_claims,
+    )
+    evaluation = _nondefinitive_evaluation(
+        TransitionEvaluationVerdict.INCONCLUSIVE,
+        command.evaluation,
+    )
+    event = replace(
+        command.triggering_events[0],
+        event_type="outcome.observation-inconclusive",
+        global_position=13,
+        stream_sequence=3,
+    )
+    return replace(
+        command,
+        outcome_state=outcome,
+        evaluation=evaluation,
+        triggering_events=(event,),
     )
 
 
