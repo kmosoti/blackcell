@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
@@ -49,6 +50,8 @@ from blackcell.kernel.database import connect
 _SCHEMA_VERSION = 1
 _ROW_SCHEMA_VERSION = "decision-attempt-journal/v1"
 _MIGRATION_TABLE = "decision_attempt_journal_schema_migrations"
+_ACQUIRED_FENCING_REVISION = 1
+_INVOKING_FENCING_REVISION = 2
 
 _MIGRATION_SCHEMA = f"""
 create table if not exists {_MIGRATION_TABLE} (
@@ -387,7 +390,7 @@ class SQLiteDecisionAttemptJournal:
         token = f"claim:{uuid4()}"
         claim = DecisionAttemptClaim(
             DecisionAttemptRecord(attempt, attempt_digest),
-            1,
+            _ACQUIRED_FENCING_REVISION,
             token,
         )
         with connect(self.database_path) as connection:
@@ -407,7 +410,7 @@ class SQLiteDecisionAttemptJournal:
                 changed = connection.execute(
                     """
                     update decision_attempt_journal
-                    set attempt_id = ?, attempt_artifact_digest = ?, fencing_revision = 1,
+                    set attempt_id = ?, attempt_artifact_digest = ?, fencing_revision = ?,
                         active_claim_token = ?, claim_acquired_at = ?, updated_at = ?
                     where journal_position = ? and status = 'prepared'
                       and attempt_id is null and active_claim_token is null
@@ -415,6 +418,7 @@ class SQLiteDecisionAttemptJournal:
                     (
                         attempt.attempt_id,
                         attempt_digest,
+                        _ACQUIRED_FENCING_REVISION,
                         token,
                         acquired_at.isoformat(),
                         acquired_at.isoformat(),
@@ -427,6 +431,58 @@ class SQLiteDecisionAttemptJournal:
                     )
                 connection.commit()
                 return claim
+            except Exception:
+                connection.rollback()
+                raise
+
+    def begin_invoke(
+        self,
+        preparation: DecisionPreparation,
+        claim: DecisionAttemptClaim,
+        *,
+        invoked_at: datetime,
+    ) -> DecisionAttemptClaim | DecisionTerminalRecord:
+        """Consume an acquired fence exactly once before crossing into live inference."""
+
+        self._require_open()
+        invoked_at = _timestamp(invoked_at, "invoked_at")
+        with connect(self.database_path) as connection:
+            connection.execute("begin immediate")
+            try:
+                row = self._exact_request_row(connection, preparation.request_record)
+                if _is_terminal(row):
+                    terminal = self._terminal_record(row)
+                    connection.commit()
+                    return terminal
+                self._validate_active_claim(row, preparation, claim)
+                if claim.fencing_revision != _ACQUIRED_FENCING_REVISION:
+                    raise DecisionJournalError("decision claim was already admitted for invocation")
+                _require_not_before(invoked_at, _updated_at(row), "invoked_at")
+                changed = connection.execute(
+                    """
+                    update decision_attempt_journal
+                    set fencing_revision = ?, updated_at = ?
+                    where journal_position = ? and status = 'prepared'
+                      and active_claim_token = ? and fencing_revision = ?
+                    """,
+                    (
+                        _INVOKING_FENCING_REVISION,
+                        invoked_at.isoformat(),
+                        int(row["journal_position"]),
+                        claim.claim_token,
+                        _ACQUIRED_FENCING_REVISION,
+                    ),
+                ).rowcount
+                if changed != 1:
+                    raise DecisionJournalError(
+                        "decision invocation admission was fenced by another caller"
+                    )
+                connection.commit()
+                return replace(
+                    claim,
+                    fencing_revision=_INVOKING_FENCING_REVISION,
+                    invoked_at=invoked_at,
+                )
             except Exception:
                 connection.rollback()
                 raise
@@ -474,12 +530,14 @@ class SQLiteDecisionAttemptJournal:
                     raise DecisionIdentityConflict(
                         "decision attempt already has a different terminal record"
                     )
-                self._validate_active_claim(row, preparation, claim)
+                self._validate_invocation_claim(row, preparation, claim)
                 _require_not_before(recorded_at, _updated_at(row), "recorded_at")
                 _require_not_before(recorded_at, response.completed_at, "recorded_at")
-                if response.completed_at < claim.attempt_record.attempt.started_at:
+                if claim.invoked_at is None:  # pragma: no cover - validation guard
+                    raise DecisionJournalError("decision invocation time is missing")
+                if response.completed_at < claim.invoked_at:
                     raise DecisionIdentityConflict(
-                        "decision response completion precedes its attempt"
+                        "decision response completion precedes invocation admission"
                     )
                 changed = connection.execute(
                     """
@@ -551,6 +609,9 @@ class SQLiteDecisionAttemptJournal:
                 claim.attempt_record.attempt.started_at,
                 "failed_at",
             )
+            if claim.invoked_at is None:
+                raise DecisionJournalError("decision invocation time is missing")
+            _require_not_before(failure.failed_at, claim.invoked_at, "failed_at")
         with connect(self.database_path) as connection:
             connection.execute("begin immediate")
             try:
@@ -582,7 +643,7 @@ class SQLiteDecisionAttemptJournal:
                                 "unattempted failure does not match durable decision state"
                             )
                     else:
-                        self._validate_active_claim(row, preparation, claim)
+                        self._validate_invocation_claim(row, preparation, claim)
                 self._write_failure(
                     connection,
                     row,
@@ -808,6 +869,20 @@ class SQLiteDecisionAttemptJournal:
             raise DecisionJournalError("decision claim is stale or fenced")
         if _stored_datetime(row, "claim_acquired_at") != claim.attempt_record.attempt.started_at:
             raise DecisionJournalError("stored decision claim time is inconsistent")
+
+    def _validate_invocation_claim(
+        self,
+        row: sqlite3.Row,
+        preparation: DecisionPreparation,
+        claim: DecisionAttemptClaim,
+    ) -> None:
+        self._validate_active_claim(row, preparation, claim)
+        if claim.fencing_revision != _INVOKING_FENCING_REVISION:
+            raise DecisionJournalError("decision claim was not admitted for invocation")
+        if claim.invoked_at is None:
+            raise DecisionJournalError("decision invocation time is missing")
+        if _updated_at(row) != claim.invoked_at:
+            raise DecisionJournalError("decision invocation time is inconsistent")
 
     def _validate_row(self, row: sqlite3.Row) -> None:
         if str(row["schema_version"]) != _ROW_SCHEMA_VERSION:

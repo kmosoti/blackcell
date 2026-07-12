@@ -23,6 +23,7 @@ from blackcell.features.request_decision import (
     DecisionFailureKind,
     DecisionFailureRecord,
     DecisionGatewayError,
+    DecisionJournalError,
     DecisionLocality,
     DecisionPreparation,
     DecisionProposal,
@@ -49,6 +50,7 @@ from blackcell.features.request_decision import (
     encode_decision_usage,
 )
 from blackcell.kernel import JsonValue
+from blackcell.kernel._json import json_digest
 
 NOW = datetime(2026, 7, 11, 18, tzinfo=UTC)
 
@@ -92,6 +94,8 @@ class Journal:
     def __init__(self, events: list[str]) -> None:
         self.events = events
         self.terminal: DecisionSuccessRecord | DecisionFailureRecord | None = None
+        self.claim: DecisionAttemptClaim | None = None
+        self.invocation_started = False
 
     def register(
         self,
@@ -144,11 +148,29 @@ class Journal:
             1,
             acquired_at,
         )
-        return DecisionAttemptClaim(
+        self.claim = DecisionAttemptClaim(
             DecisionAttemptRecord(attempt, attempt.attempt_id),
             1,
             "claim:1",
         )
+        return self.claim
+
+    def begin_invoke(
+        self,
+        preparation: DecisionPreparation,
+        claim: DecisionAttemptClaim,
+        *,
+        invoked_at: datetime,
+    ) -> DecisionAttemptClaim | DecisionSuccessRecord | DecisionFailureRecord:
+        del preparation
+        self.events.append("begin-invoke")
+        if self.terminal is not None:
+            return self.terminal
+        if self.claim != claim or self.invocation_started:
+            raise DecisionJournalError("decision claim is stale or fenced")
+        self.invocation_started = True
+        self.claim = replace(claim, fencing_revision=2, invoked_at=invoked_at)
+        return self.claim
 
     def succeed(
         self,
@@ -413,6 +435,24 @@ def test_feature_models_fail_closed_on_invalid_boundary_values() -> None:
             "claim_token",
         ),
         (
+            lambda: DecisionAttemptClaim(
+                attempt_record,
+                2,
+                "claim",
+                datetime(2026, 7, 11),
+            ),
+            "timezone-aware",
+        ),
+        (
+            lambda: DecisionAttemptClaim(
+                attempt_record,
+                2,
+                "claim",
+                NOW - timedelta(microseconds=1),
+            ),
+            "cannot precede",
+        ),
+        (
             lambda: DecisionAdapterResult(
                 cast("Mapping[str, JsonValue]", ()), 0, 0, 0, 0, True, NOW
             ),
@@ -619,9 +659,104 @@ def test_two_phase_handler_records_request_before_live_inference() -> None:
     assert result.response.proposal.evidence_event_ids == ("event:1",)
     assert events[3:] == [
         "acquire:reason-local",
+        "begin-invoke",
         "invoke:decision:1:reason-local",
         "succeed:proposal:1",
     ]
+
+
+def test_staged_attempt_can_be_recorded_before_live_inference() -> None:
+    events: list[str] = []
+    gateway = Gateway(events)
+    handler = RequestDecisionHandler(gateway, Journal(events), clock=lambda: NOW)
+    prepared = handler.prepare(_request())
+    assert isinstance(prepared, DecisionPreparation)
+
+    claim = handler.acquire(prepared)
+
+    assert isinstance(claim, DecisionAttemptClaim)
+    assert gateway.invocations == 0
+    assert events[-1] == "acquire:reason-local"
+
+    result = handler.invoke(prepared, claim)
+
+    assert isinstance(result, DecisionSuccessRecord)
+    assert gateway.invocations == 1
+    assert events[-2:] == [
+        "invoke:decision:1:reason-local",
+        "succeed:proposal:1",
+    ]
+
+
+@pytest.mark.parametrize(
+    "mismatch",
+    ("request", "digest", "route", "time", "attempt", "token", "revision"),
+)
+def test_staged_invoke_rejects_a_foreign_claim_before_gateway_call(mismatch: str) -> None:
+    events: list[str] = []
+    gateway = Gateway(events)
+    handler = RequestDecisionHandler(gateway, Journal(events), clock=lambda: NOW)
+    prepared = handler.prepare(_request())
+    assert isinstance(prepared, DecisionPreparation)
+    claim = handler.acquire(prepared)
+    assert isinstance(claim, DecisionAttemptClaim)
+    attempt = claim.attempt_record.attempt
+    if mismatch == "token":
+        forged_claim = replace(claim, claim_token="claim:forged")
+    elif mismatch == "revision":
+        forged_claim = replace(claim, fencing_revision=2)
+    else:
+        changes = {
+            "request": {"request_id": "decision:other"},
+            "digest": {"request_digest": json_digest("other-request")},
+            "route": {"route_id": json_digest("other-route")},
+            "time": {"started_at": prepared.prepared_at - timedelta(microseconds=1)},
+            "attempt": {"attempt_number": 2},
+        }[mismatch]
+        forged_attempt = replace(attempt, **changes)
+        forged_claim = replace(
+            claim,
+            attempt_record=replace(
+                claim.attempt_record,
+                attempt=forged_attempt,
+                attempt_artifact_digest=forged_attempt.attempt_id,
+            ),
+        )
+
+    with pytest.raises(
+        ValueError if mismatch in {"request", "digest", "route", "time"} else DecisionJournalError
+    ):
+        handler.invoke(prepared, forged_claim)
+
+    assert gateway.invocations == 0
+
+
+@pytest.mark.parametrize("terminal_kind", ("success", "failure"))
+def test_staged_claim_reuse_returns_terminal_without_duplicate_inference(
+    terminal_kind: str,
+) -> None:
+    events: list[str] = []
+    error = (
+        None
+        if terminal_kind == "success"
+        else DecisionGatewayError(
+            DecisionFailureKind.ADAPTER,
+            "adapter_failed",
+            retryable=False,
+        )
+    )
+    gateway = Gateway(events, invoke_error=error)
+    handler = RequestDecisionHandler(gateway, Journal(events), clock=lambda: NOW)
+    prepared = handler.prepare(_request())
+    assert isinstance(prepared, DecisionPreparation)
+    claim = handler.acquire(prepared)
+    assert isinstance(claim, DecisionAttemptClaim)
+
+    first = handler.invoke(prepared, claim)
+    second = handler.invoke(prepared, claim)
+
+    assert second is first
+    assert gateway.invocations == 1
 
 
 def test_route_rejection_is_terminal_without_an_attempt_or_model_call() -> None:

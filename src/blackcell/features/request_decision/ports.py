@@ -64,6 +64,16 @@ class DecisionAttemptJournal(Protocol):
         acquired_at: datetime,
     ) -> DecisionAttemptClaim | DecisionTerminalRecord: ...
 
+    def begin_invoke(
+        self,
+        preparation: DecisionPreparation,
+        claim: DecisionAttemptClaim,
+        *,
+        invoked_at: datetime,
+    ) -> DecisionAttemptClaim | DecisionTerminalRecord:
+        """Atomically admit one exact fenced claim across the live-call boundary."""
+        ...
+
     def succeed(
         self,
         preparation: DecisionPreparation,

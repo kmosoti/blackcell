@@ -42,14 +42,22 @@ NOW = datetime(2026, 7, 12, 14, tzinfo=UTC)
 
 
 class Gateway:
-    def __init__(self, *, crash: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        crash: bool = False,
+        completed_at: datetime | None = None,
+        selected_at: datetime | None = None,
+    ) -> None:
         self.crash = crash
+        self.completed_at = completed_at or NOW + timedelta(seconds=2)
+        self.selected_at = selected_at or NOW
         self.route_calls = 0
         self.invoke_calls = 0
 
     def route(self, request: RequestDecision) -> DecisionRoute:
         self.route_calls += 1
-        return _route()
+        return _route(selected_at=self.selected_at)
 
     def invoke(
         self,
@@ -66,7 +74,7 @@ class Gateway:
             latency_ms=10,
             cost_microusd=2,
             deterministic=True,
-            completed_at=NOW + timedelta(seconds=2),
+            completed_at=self.completed_at,
         )
 
 
@@ -86,6 +94,13 @@ def test_success_is_artifact_first_restart_safe_and_terminal_reentry_is_typed(
         assert isinstance(preparation, DecisionPreparation)
         claim = journal.acquire(preparation, acquired_at=NOW + timedelta(seconds=2))
         assert isinstance(claim, DecisionAttemptClaim)
+        admitted = journal.begin_invoke(
+            preparation,
+            claim,
+            invoked_at=NOW + timedelta(seconds=2),
+        )
+        assert isinstance(admitted, DecisionAttemptClaim)
+        claim = admitted
         response = _response(preparation, claim, completed_at=NOW + timedelta(seconds=3))
         usage = _usage(request, claim)
         terminal = journal.succeed(
@@ -145,8 +160,9 @@ def test_real_handler_retry_returns_terminal_without_reinvoking_gateway(tmp_path
             NOW,
             NOW,
             NOW + timedelta(seconds=1),
-            NOW + timedelta(seconds=3),
+            NOW + timedelta(seconds=1),
             NOW + timedelta(seconds=4),
+            NOW + timedelta(minutes=1),
         )
     )
     handler = RequestDecisionHandler(gateway, journal, clock=lambda: next(moments))
@@ -159,6 +175,85 @@ def test_real_handler_retry_returns_terminal_without_reinvoking_gateway(tmp_path
     assert isinstance(first, DecisionSuccessRecord)
     assert second == first
     assert gateway.invoke_calls == 1
+
+
+def test_handler_classifies_completion_before_invocation_admission(tmp_path: Path) -> None:
+    gateway = Gateway(completed_at=NOW + timedelta(seconds=2))
+    journal = SQLiteDecisionAttemptJournal(tmp_path / "artifacts")
+    moments = iter(
+        (
+            NOW,
+            NOW,
+            NOW + timedelta(seconds=1),
+            NOW + timedelta(seconds=3),
+            NOW + timedelta(seconds=4),
+        )
+    )
+    handler = RequestDecisionHandler(gateway, journal, clock=lambda: next(moments))
+    preparation = handler.prepare(_request())
+    assert isinstance(preparation, DecisionPreparation)
+
+    result = handler.handle(preparation)
+
+    assert isinstance(result, DecisionFailureRecord)
+    assert result.failure.kind is DecisionFailureKind.INTEGRITY
+    assert result.failure.code == "decision_completion_precedes_invocation"
+    assert result.failure.failed_at == NOW + timedelta(seconds=3)
+    assert gateway.invoke_calls == 1
+
+
+def test_real_staged_claim_reuse_returns_terminal_before_gateway(tmp_path: Path) -> None:
+    gateway = Gateway(
+        completed_at=NOW + timedelta(seconds=3),
+        selected_at=NOW + timedelta(seconds=3),
+    )
+    journal = SQLiteDecisionAttemptJournal(tmp_path / "artifacts")
+    handler = RequestDecisionHandler(
+        gateway,
+        journal,
+        clock=lambda: NOW + timedelta(seconds=3),
+    )
+    preparation = handler.prepare(_request())
+    assert isinstance(preparation, DecisionPreparation)
+    claim = handler.acquire(preparation)
+    assert isinstance(claim, DecisionAttemptClaim)
+
+    first = handler.invoke(preparation, claim)
+    second = handler.invoke(preparation, claim)
+
+    assert isinstance(first, DecisionSuccessRecord)
+    assert second == first
+    assert gateway.invoke_calls == 1
+
+
+def test_concurrent_real_invoke_crosses_gateway_once(tmp_path: Path) -> None:
+    gateway = Gateway(
+        completed_at=NOW + timedelta(seconds=3),
+        selected_at=NOW + timedelta(seconds=3),
+    )
+    journal = SQLiteDecisionAttemptJournal(tmp_path / "artifacts")
+    handler = RequestDecisionHandler(
+        gateway,
+        journal,
+        clock=lambda: NOW + timedelta(seconds=3),
+    )
+    preparation = handler.prepare(_request())
+    assert isinstance(preparation, DecisionPreparation)
+    claim = handler.acquire(preparation)
+    assert isinstance(claim, DecisionAttemptClaim)
+
+    def invoke() -> object:
+        try:
+            return handler.invoke(preparation, claim)
+        except Exception as error:
+            return error
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = tuple(pool.map(lambda _: invoke(), range(2)))
+
+    assert gateway.invoke_calls == 1
+    assert any(isinstance(item, DecisionSuccessRecord) for item in results)
+    assert all(isinstance(item, DecisionSuccessRecord | DecisionJournalError) for item in results)
 
 
 def test_process_interruption_leaves_an_active_uncertain_attempt_that_never_reinvokes(
@@ -250,6 +345,149 @@ def test_concurrent_acquire_commits_one_claim_and_fails_the_other_closed(
             "select fencing_revision, active_claim_token from decision_attempt_journal"
         ).fetchone()
     assert row is not None and row[0] == 1 and str(row[1]).startswith("claim:")
+
+
+@pytest.mark.parametrize("mismatch", ("token", "revision", "attempt"))
+def test_begin_invoke_rejects_forged_claim_without_consuming_the_fence(
+    tmp_path: Path,
+    mismatch: str,
+) -> None:
+    journal = SQLiteDecisionAttemptJournal(tmp_path / "artifacts")
+    registered = journal.register(_request(), registered_at=NOW)
+    preparation = journal.record_route(registered, _route(), recorded_at=NOW)
+    assert isinstance(preparation, DecisionPreparation)
+    claim = journal.acquire(preparation, acquired_at=NOW + timedelta(seconds=1))
+    assert isinstance(claim, DecisionAttemptClaim)
+    if mismatch == "token":
+        forged = replace(claim, claim_token="claim:forged")
+        expected_error = DecisionJournalError
+    elif mismatch == "revision":
+        forged = replace(claim, fencing_revision=2)
+        expected_error = DecisionJournalError
+    else:
+        attempt = replace(claim.attempt_record.attempt, attempt_number=2)
+        forged = replace(
+            claim,
+            attempt_record=replace(
+                claim.attempt_record,
+                attempt=attempt,
+                attempt_artifact_digest=attempt.attempt_id,
+            ),
+        )
+        expected_error = DecisionIdentityConflict
+
+    with pytest.raises(expected_error):
+        journal.begin_invoke(
+            preparation,
+            forged,
+            invoked_at=NOW + timedelta(seconds=2),
+        )
+
+    admitted = journal.begin_invoke(
+        preparation,
+        claim,
+        invoked_at=NOW + timedelta(seconds=2),
+    )
+    assert isinstance(admitted, DecisionAttemptClaim)
+    assert admitted.fencing_revision == 2
+    assert admitted.invoked_at == NOW + timedelta(seconds=2)
+
+
+def test_concurrent_begin_invoke_admits_exactly_one_caller(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    journal = SQLiteDecisionAttemptJournal(root)
+    registered = journal.register(_request(), registered_at=NOW)
+    preparation = journal.record_route(registered, _route(), recorded_at=NOW)
+    assert isinstance(preparation, DecisionPreparation)
+    claim = journal.acquire(preparation, acquired_at=NOW + timedelta(seconds=1))
+    assert isinstance(claim, DecisionAttemptClaim)
+    journal.close()
+
+    def begin() -> object:
+        with SQLiteDecisionAttemptJournal(root) as contender:
+            try:
+                return contender.begin_invoke(
+                    preparation,
+                    claim,
+                    invoked_at=NOW + timedelta(seconds=2),
+                )
+            except Exception as error:
+                return error
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = tuple(pool.map(lambda _: begin(), range(2)))
+
+    assert sum(isinstance(item, DecisionAttemptClaim) for item in results) == 1
+    assert sum(isinstance(item, DecisionJournalError) for item in results) == 1
+    with closing(sqlite3.connect(root / "kernel.sqlite3")) as connection:
+        row = connection.execute(
+            "select fencing_revision, active_claim_token from decision_attempt_journal"
+        ).fetchone()
+    assert row is not None and row[0] == 2 and str(row[1]).startswith("claim:")
+
+
+def test_unadmitted_claim_cannot_finalize_an_inference(tmp_path: Path) -> None:
+    journal = SQLiteDecisionAttemptJournal(tmp_path / "artifacts")
+    registered = journal.register(_request(), registered_at=NOW)
+    preparation = journal.record_route(registered, _route(), recorded_at=NOW)
+    assert isinstance(preparation, DecisionPreparation)
+    claim = journal.acquire(preparation, acquired_at=NOW + timedelta(seconds=1))
+    assert isinstance(claim, DecisionAttemptClaim)
+    response = _response(preparation, claim, completed_at=NOW + timedelta(seconds=2))
+
+    with pytest.raises(DecisionJournalError, match="not admitted"):
+        journal.succeed(
+            preparation,
+            claim,
+            response,
+            _usage(preparation.request_record.request, claim),
+            recorded_at=NOW + timedelta(seconds=3),
+        )
+
+
+def test_response_and_failure_cannot_predate_invocation_admission(tmp_path: Path) -> None:
+    journal = SQLiteDecisionAttemptJournal(tmp_path / "artifacts")
+    registered = journal.register(_request(), registered_at=NOW)
+    preparation = journal.record_route(registered, _route(), recorded_at=NOW)
+    assert isinstance(preparation, DecisionPreparation)
+    acquired = journal.acquire(preparation, acquired_at=NOW + timedelta(seconds=1))
+    assert isinstance(acquired, DecisionAttemptClaim)
+    claim = journal.begin_invoke(
+        preparation,
+        acquired,
+        invoked_at=NOW + timedelta(seconds=3),
+    )
+    assert isinstance(claim, DecisionAttemptClaim)
+    response = _response(preparation, claim, completed_at=NOW + timedelta(seconds=2))
+
+    with pytest.raises(DecisionIdentityConflict, match="precedes invocation"):
+        journal.succeed(
+            preparation,
+            claim,
+            response,
+            _usage(preparation.request_record.request, claim),
+            recorded_at=NOW + timedelta(seconds=4),
+        )
+
+    failure = DecisionFailure(
+        preparation.request_record.request.request_id,
+        preparation.request_record.request.request_digest,
+        DecisionFailureKind.ADAPTER,
+        "retrograde_failure",
+        False,
+        NOW + timedelta(seconds=2),
+        preparation.route.route_id,
+        claim.attempt_record.attempt.attempt_id,
+    )
+    with pytest.raises(ValueError, match="failed_at cannot precede"):
+        journal.fail(
+            preparation.request_record,
+            failure,
+            preparation=preparation,
+            claim=claim,
+            usage=None,
+            recorded_at=NOW + timedelta(seconds=4),
+        )
 
 
 def test_stale_claim_cannot_commit_and_does_not_clear_the_active_attempt(tmp_path: Path) -> None:
@@ -499,7 +737,13 @@ def _claimed_journal(
     assert isinstance(preparation, DecisionPreparation)
     claim = journal.acquire(preparation, acquired_at=NOW + timedelta(seconds=1))
     assert isinstance(claim, DecisionAttemptClaim)
-    return journal, preparation, claim
+    admitted = journal.begin_invoke(
+        preparation,
+        claim,
+        invoked_at=NOW + timedelta(seconds=1),
+    )
+    assert isinstance(admitted, DecisionAttemptClaim)
+    return journal, preparation, admitted
 
 
 def _request() -> RequestDecision:

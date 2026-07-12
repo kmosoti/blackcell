@@ -31,9 +31,9 @@ from blackcell.kernel import utc_now
 class RequestDecisionHandler:
     """Prepare, durably bracket, and validate one gateway-owned model decision.
 
-    ``prepare`` never invokes a model. A workflow can therefore record the
-    request and selected route before calling ``handle``, which acquires the
-    durable attempt claim immediately before live inference.
+    ``prepare`` and ``acquire`` never invoke a model. A workflow can therefore
+    durably record the request, route, and fenced attempt before calling
+    ``invoke``. ``handle`` preserves the original combined compatibility path.
     """
 
     def __init__(
@@ -89,18 +89,46 @@ class RequestDecisionHandler:
         self,
         preparation: DecisionPreparation,
     ) -> DecisionSuccessRecord | DecisionFailureRecord:
-        acquired = self._journal.acquire(preparation, acquired_at=self._now())
+        acquired = self.acquire(preparation)
         if isinstance(acquired, DecisionSuccessRecord | DecisionFailureRecord):
             return acquired
-        claim = acquired
+        return self.invoke(preparation, acquired)
+
+    def acquire(
+        self,
+        preparation: DecisionPreparation,
+    ) -> DecisionAttemptClaim | DecisionTerminalRecord:
+        """Durably fence an attempt without crossing the live gateway boundary."""
+
+        return self._journal.acquire(preparation, acquired_at=self._now())
+
+    def invoke(
+        self,
+        preparation: DecisionPreparation,
+        claim: DecisionAttemptClaim,
+    ) -> DecisionSuccessRecord | DecisionFailureRecord:
+        """Invoke only the exact request, route, and attempt already durably claimed."""
+
+        _validate_claim(preparation, claim)
+        admitted = self._journal.begin_invoke(
+            preparation,
+            claim,
+            invoked_at=self._now(),
+        )
+        if isinstance(admitted, DecisionSuccessRecord | DecisionFailureRecord):
+            return admitted
+        claim = admitted
         request = _request(preparation.request_record)
         try:
             adapter_result = self._gateway.invoke(request, preparation.route)
         except DecisionGatewayError as error:
+            failed_at = self._now()
+            if claim.invoked_at is not None:
+                failed_at = max(failed_at, claim.invoked_at)
             failure = _gateway_failure(
                 request,
                 error,
-                failed_at=self._now(),
+                failed_at=failed_at,
                 route_id=preparation.route.route_id,
                 attempt_id=claim.attempt_record.attempt.attempt_id,
             )
@@ -177,6 +205,21 @@ def _validate_route(request: RequestDecision, route: DecisionRoute) -> None:
         raise ValueError("gateway selected a non-deterministic route for a deterministic request")
 
 
+def _validate_claim(
+    preparation: DecisionPreparation,
+    claim: DecisionAttemptClaim,
+) -> None:
+    request = preparation.request_record.request
+    attempt = claim.attempt_record.attempt
+    if (
+        attempt.request_id != request.request_id
+        or attempt.request_digest != request.request_digest
+        or attempt.route_id != preparation.route.route_id
+        or attempt.started_at < preparation.prepared_at
+    ):
+        raise ValueError("decision attempt claim does not match its preparation")
+
+
 def _result_failure(
     request: RequestDecision,
     preparation: DecisionPreparation,
@@ -189,6 +232,12 @@ def _result_failure(
     if result.completed_at < attempt.started_at:
         kind = DecisionFailureKind.INTEGRITY
         code = "decision_completion_precedes_attempt"
+    elif claim.invoked_at is None:
+        kind = DecisionFailureKind.INTEGRITY
+        code = "decision_invocation_admission_missing"
+    elif result.completed_at < claim.invoked_at:
+        kind = DecisionFailureKind.INTEGRITY
+        code = "decision_completion_precedes_invocation"
     elif result.input_tokens > request.budget.max_input_tokens:
         kind = DecisionFailureKind.BUDGET
         code = "input_token_budget_exceeded"
@@ -215,7 +264,11 @@ def _result_failure(
         kind=kind,
         code=code,
         retryable=False,
-        failed_at=max(result.completed_at, attempt.started_at),
+        failed_at=max(
+            result.completed_at,
+            attempt.started_at,
+            claim.invoked_at or attempt.started_at,
+        ),
         route_id=preparation.route.route_id,
         attempt_id=attempt.attempt_id,
     )
