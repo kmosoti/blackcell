@@ -141,8 +141,7 @@ def _common_integrity_error(command: AcceptStateTransition) -> str | None:
         and execution.status
         in {TransitionExecutionStatus.SUCCEEDED, TransitionExecutionStatus.FAILED}
         and all(
-            finding.code == "outcome-observation-inconclusive"
-            for finding in evaluation.findings
+            finding.code == "outcome-observation-inconclusive" for finding in evaluation.findings
         )
     )
     if (
