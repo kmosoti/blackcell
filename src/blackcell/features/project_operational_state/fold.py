@@ -244,6 +244,10 @@ class OperationalStateFold:
             for correction in raw.corrections
             if _effective_by(correction.effective_at, as_of_time)
         )
+        eligible_by_id = {claim.claim_id: claim for claim in eligible_claims}
+        correction_replacements = tuple(
+            eligible_by_id[correction.replacement_claim_id] for correction in applied_corrections
+        )
         applied_superseded_ids = {
             claim_id
             for correction in applied_corrections
@@ -296,6 +300,7 @@ class OperationalStateFold:
             applied_corrections=applied_corrections,
             effective_time_cutoff=as_of_time,
             expired_claims=tuple(expired),
+            correction_replacement_claims=correction_replacements,
         )
 
 
