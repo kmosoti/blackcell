@@ -78,21 +78,43 @@ create table if not exists projection_checkpoints (
 def initialize_database(path: Path) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with connect(path) as connection:
-        current = int(connection.execute("pragma user_version").fetchone()[0])
-        if current > SCHEMA_VERSION:
-            raise SchemaVersionError(
-                f"kernel database schema {current} is newer than supported schema {SCHEMA_VERSION}"
-            )
-        if current < 1:
-            connection.executescript(
-                "begin immediate;\n"
-                f"{_SCHEMA_V1}\n"
-                "insert into kernel_schema_migrations(version, applied_at) "
-                "values (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));\n"
-                "pragma user_version = 1;\n"
-                "commit;"
-            )
+        connection.execute("begin immediate")
+        try:
+            # Read the version only after taking the write lock. Concurrent
+            # first-open callers may all observe a new database before this
+            # point; the lock holder initializes it and later callers then see
+            # the committed version instead of replaying migration 1.
+            current = int(connection.execute("pragma user_version").fetchone()[0])
+            if current > SCHEMA_VERSION:
+                raise SchemaVersionError(
+                    f"kernel database schema {current} is newer than supported schema "
+                    f"{SCHEMA_VERSION}"
+                )
+            if current < 1:
+                _execute_schema(connection, _SCHEMA_V1)
+                connection.execute(
+                    "insert into kernel_schema_migrations(version, applied_at) "
+                    "values (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+                )
+                connection.execute("pragma user_version = 1")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
     _owner_only_file(path)
+
+
+def _execute_schema(connection: sqlite3.Connection, script: str) -> None:
+    """Execute a schema script without leaving the caller's transaction."""
+
+    pending = ""
+    for line in script.splitlines(keepends=True):
+        pending += line
+        if sqlite3.complete_statement(pending):
+            connection.execute(pending)
+            pending = ""
+    if pending.strip():  # pragma: no cover - static schema authoring invariant
+        raise RuntimeError("kernel schema contains an incomplete SQL statement")
 
 
 @contextmanager
