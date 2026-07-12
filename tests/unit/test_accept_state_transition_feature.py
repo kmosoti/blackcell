@@ -286,6 +286,50 @@ def test_claim_free_terminal_inconclusive_allows_unchanged_state_stream_position
     )
 
 
+@pytest.mark.parametrize("shape", ("low-confidence", "conflicting"))
+def test_observed_inconclusive_evidence_retains_state_stream_bounds(shape: str) -> None:
+    command = _observed_inconclusive_command(shape)
+
+    result = StateTransitionAcceptor().handle(command)
+
+    assert result.status is TransitionAcceptanceStatus.NOT_ACCEPTED
+    assert result.code == "evaluation-inconclusive"
+    assert command.outcome_state is not None
+    assert (
+        command.outcome_state.reference.last_source_stream_sequence
+        > command.initial_state.reference.last_source_stream_sequence
+    )
+    assert all(event.event_type == "observation.recorded" for event in command.triggering_events)
+
+
+@pytest.mark.parametrize("shape", ("low-confidence", "conflicting"))
+def test_observed_inconclusive_evidence_cannot_use_claim_free_stream_position(
+    shape: str,
+) -> None:
+    command = _observed_inconclusive_command(shape)
+    assert command.outcome_state is not None
+    command = replace(
+        command,
+        outcome_state=TransitionStateView(
+            replace(
+                command.outcome_state.reference,
+                last_source_stream_sequence=(
+                    command.initial_state.reference.last_source_stream_sequence
+                ),
+            ),
+            tuple(
+                claim
+                for claim in command.outcome_state.claims
+                if claim.stream_sequence
+                <= command.initial_state.reference.last_source_stream_sequence
+            ),
+        ),
+    )
+
+    with pytest.raises(StateTransitionIntegrityError, match="integrity-mismatch"):
+        StateTransitionAcceptor().handle(command)
+
+
 @pytest.mark.parametrize(
     "corruption",
     ("event-type", "stream", "correlation", "causation", "global", "sequence", "regression"),
@@ -948,6 +992,68 @@ def _fold_shaped_inconclusive_command() -> AcceptStateTransition:
     )
 
 
+def _observed_inconclusive_command(shape: str) -> AcceptStateTransition:
+    command = _command()
+    base_finding = command.evaluation.findings[0]
+    if shape == "low-confidence":
+        finding = replace(
+            base_finding,
+            verdict=TransitionEvaluationVerdict.INCONCLUSIVE,
+            code="outcome-confidence-below-threshold",
+            actual_confidence=0.25,
+        )
+        events = command.triggering_events
+        outcome_state = command.outcome_state
+    elif shape == "conflicting":
+        assert command.outcome_state is not None
+        conflicting_claim = _claim(
+            "claim:conflicting-outcome",
+            "event:conflicting-outcome",
+            value=False,
+            position=14,
+            sequence=4,
+            effective_at=NOW + timedelta(minutes=5),
+        )
+        outcome_state = replace(
+            command.outcome_state,
+            claims=(*command.outcome_state.claims, conflicting_claim),
+        )
+        conflicting_event = TransitionEventReference(
+            "event:conflicting-outcome",
+            14,
+            4,
+            "observation.recorded",
+            STREAM_ID,
+            RUN_ID,
+            EXECUTION_EVENT_ID,
+            _digest("conflicting-outcome-event-payload"),
+        )
+        finding = replace(
+            base_finding,
+            verdict=TransitionEvaluationVerdict.INCONCLUSIVE,
+            code="conflicting-fresh-outcome-evidence",
+            actual_present=False,
+            actual_value=None,
+            actual_confidence=None,
+            observed_claim_ids=("claim:outcome", "claim:conflicting-outcome"),
+            source_event_ids=("event:outcome", "event:conflicting-outcome"),
+        )
+        events = (*command.triggering_events, conflicting_event)
+    else:  # pragma: no cover - test helper contract
+        raise ValueError(f"unsupported observed inconclusive shape {shape!r}")
+    evaluation = _rebuild_evaluation(
+        command.evaluation,
+        verdict=TransitionEvaluationVerdict.INCONCLUSIVE,
+        findings=(finding,),
+    )
+    return replace(
+        command,
+        outcome_state=outcome_state,
+        evaluation=evaluation,
+        triggering_events=events,
+    )
+
+
 def _proposal() -> ProposalReference:
     arguments = (TransitionActionArgument("path", "README.md"),)
     action_digest = json_digest(
@@ -1072,6 +1178,7 @@ def _rebuild_evaluation(
     base: EvaluationReference,
     *,
     findings: tuple[TransitionEvaluationFinding, ...] | None = None,
+    verdict: TransitionEvaluationVerdict | None = None,
     run_id: str | None = None,
     evaluation_spec_id: str | None = None,
     execution_binding_id: str | None = None,
@@ -1086,6 +1193,7 @@ def _rebuild_evaluation(
     evaluation_id_override: str | None = None,
 ) -> EvaluationReference:
     selected_findings = base.findings if findings is None else findings
+    selected_verdict = base.verdict if verdict is None else verdict
     selected_run = base.run_id if run_id is None else run_id
     selected_spec = base.evaluation_spec_id if evaluation_spec_id is None else evaluation_spec_id
     selected_binding = (
@@ -1122,7 +1230,7 @@ def _rebuild_evaluation(
         owner_observation_digest=selected_owner_digest,
         evidence_binding_id=selected_evidence,
         initial_state_position=selected_position,
-        verdict=base.verdict,
+        verdict=selected_verdict,
         findings=selected_findings,
         evaluated_at=selected_time,
     )
@@ -1134,7 +1242,7 @@ def _rebuild_evaluation(
         run_id=selected_run,
         authorization_outcome=base.authorization_outcome,
         execution_status=base.execution_status,
-        verdict=base.verdict,
+        verdict=selected_verdict,
         execution_event_id=base.execution_event_id,
         execution_binding_id=selected_binding,
         evidence_binding_id=selected_evidence,

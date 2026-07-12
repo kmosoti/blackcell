@@ -136,20 +136,24 @@ def _common_integrity_error(command: AcceptStateTransition) -> str | None:
         return "integrity-mismatch"
     initial_ref = command.initial_state.reference
     outcome_ref = outcome.reference
-    terminal_inconclusive = (
+    claim_free_terminal_inconclusive = (
         evaluation.verdict is TransitionEvaluationVerdict.INCONCLUSIVE
         and execution.status
         in {TransitionExecutionStatus.SUCCEEDED, TransitionExecutionStatus.FAILED}
+        and all(
+            finding.code == "outcome-observation-inconclusive"
+            for finding in evaluation.findings
+        )
     )
     if (
         initial_ref.scope != outcome_ref.scope
         or outcome_ref.cutoff_global_position <= initial_ref.cutoff_global_position
         or (
-            terminal_inconclusive
+            claim_free_terminal_inconclusive
             and outcome_ref.last_source_stream_sequence < initial_ref.last_source_stream_sequence
         )
         or (
-            not terminal_inconclusive
+            not claim_free_terminal_inconclusive
             and outcome_ref.last_source_stream_sequence <= initial_ref.last_source_stream_sequence
         )
         or (
@@ -167,11 +171,11 @@ def _common_integrity_error(command: AcceptStateTransition) -> str | None:
             or event.global_position <= initial_ref.cutoff_global_position
             or event.global_position > outcome_ref.cutoff_global_position
         )
-        inconclusive_event_mismatch = terminal_inconclusive and (
+        inconclusive_event_mismatch = claim_free_terminal_inconclusive and (
             event.event_type != "outcome.observation-inconclusive"
             or event.stream_sequence <= initial_ref.last_source_stream_sequence
         )
-        state_event_mismatch = not terminal_inconclusive and (
+        state_event_mismatch = not claim_free_terminal_inconclusive and (
             event.event_type != "observation.recorded"
             or event.stream_sequence <= initial_ref.last_source_stream_sequence
             or event.stream_sequence > outcome_ref.last_source_stream_sequence
