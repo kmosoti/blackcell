@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
@@ -49,6 +50,8 @@ from blackcell.kernel.database import connect
 _SCHEMA_VERSION = 1
 _ROW_SCHEMA_VERSION = "decision-attempt-journal/v1"
 _MIGRATION_TABLE = "decision_attempt_journal_schema_migrations"
+_ACQUIRED_FENCING_REVISION = 1
+_INVOKING_FENCING_REVISION = 2
 
 _MIGRATION_SCHEMA = f"""
 create table if not exists {_MIGRATION_TABLE} (
@@ -171,6 +174,22 @@ class SQLiteDecisionAttemptJournal:
 
     def close(self) -> None:
         self._closed = True
+
+    def get_request(self, request_id: str) -> DecisionRequestRecord | None:
+        evidence = self._read_evidence(request_id)
+        return None if evidence is None else evidence[0]
+
+    def get_preparation(self, request_id: str) -> DecisionPreparation | None:
+        evidence = self._read_evidence(request_id)
+        return None if evidence is None else evidence[1]
+
+    def get_attempt(self, request_id: str) -> DecisionAttemptRecord | None:
+        evidence = self._read_evidence(request_id)
+        return None if evidence is None else evidence[2]
+
+    def get_terminal(self, request_id: str) -> DecisionTerminalRecord | None:
+        evidence = self._read_evidence(request_id)
+        return None if evidence is None else evidence[3]
 
     def register(
         self,
@@ -387,7 +406,7 @@ class SQLiteDecisionAttemptJournal:
         token = f"claim:{uuid4()}"
         claim = DecisionAttemptClaim(
             DecisionAttemptRecord(attempt, attempt_digest),
-            1,
+            _ACQUIRED_FENCING_REVISION,
             token,
         )
         with connect(self.database_path) as connection:
@@ -407,7 +426,7 @@ class SQLiteDecisionAttemptJournal:
                 changed = connection.execute(
                     """
                     update decision_attempt_journal
-                    set attempt_id = ?, attempt_artifact_digest = ?, fencing_revision = 1,
+                    set attempt_id = ?, attempt_artifact_digest = ?, fencing_revision = ?,
                         active_claim_token = ?, claim_acquired_at = ?, updated_at = ?
                     where journal_position = ? and status = 'prepared'
                       and attempt_id is null and active_claim_token is null
@@ -415,6 +434,7 @@ class SQLiteDecisionAttemptJournal:
                     (
                         attempt.attempt_id,
                         attempt_digest,
+                        _ACQUIRED_FENCING_REVISION,
                         token,
                         acquired_at.isoformat(),
                         acquired_at.isoformat(),
@@ -427,6 +447,58 @@ class SQLiteDecisionAttemptJournal:
                     )
                 connection.commit()
                 return claim
+            except Exception:
+                connection.rollback()
+                raise
+
+    def begin_invoke(
+        self,
+        preparation: DecisionPreparation,
+        claim: DecisionAttemptClaim,
+        *,
+        invoked_at: datetime,
+    ) -> DecisionAttemptClaim | DecisionTerminalRecord:
+        """Consume an acquired fence exactly once before crossing into live inference."""
+
+        self._require_open()
+        invoked_at = _timestamp(invoked_at, "invoked_at")
+        with connect(self.database_path) as connection:
+            connection.execute("begin immediate")
+            try:
+                row = self._exact_request_row(connection, preparation.request_record)
+                if _is_terminal(row):
+                    terminal = self._terminal_record(row)
+                    connection.commit()
+                    return terminal
+                self._validate_active_claim(row, preparation, claim)
+                if claim.fencing_revision != _ACQUIRED_FENCING_REVISION:
+                    raise DecisionJournalError("decision claim was already admitted for invocation")
+                _require_not_before(invoked_at, _updated_at(row), "invoked_at")
+                changed = connection.execute(
+                    """
+                    update decision_attempt_journal
+                    set fencing_revision = ?, updated_at = ?
+                    where journal_position = ? and status = 'prepared'
+                      and active_claim_token = ? and fencing_revision = ?
+                    """,
+                    (
+                        _INVOKING_FENCING_REVISION,
+                        invoked_at.isoformat(),
+                        int(row["journal_position"]),
+                        claim.claim_token,
+                        _ACQUIRED_FENCING_REVISION,
+                    ),
+                ).rowcount
+                if changed != 1:
+                    raise DecisionJournalError(
+                        "decision invocation admission was fenced by another caller"
+                    )
+                connection.commit()
+                return replace(
+                    claim,
+                    fencing_revision=_INVOKING_FENCING_REVISION,
+                    invoked_at=invoked_at,
+                )
             except Exception:
                 connection.rollback()
                 raise
@@ -474,12 +546,14 @@ class SQLiteDecisionAttemptJournal:
                     raise DecisionIdentityConflict(
                         "decision attempt already has a different terminal record"
                     )
-                self._validate_active_claim(row, preparation, claim)
+                self._validate_invocation_claim(row, preparation, claim)
                 _require_not_before(recorded_at, _updated_at(row), "recorded_at")
                 _require_not_before(recorded_at, response.completed_at, "recorded_at")
-                if response.completed_at < claim.attempt_record.attempt.started_at:
+                if claim.invoked_at is None:  # pragma: no cover - validation guard
+                    raise DecisionJournalError("decision invocation time is missing")
+                if response.completed_at < claim.invoked_at:
                     raise DecisionIdentityConflict(
-                        "decision response completion precedes its attempt"
+                        "decision response completion precedes invocation admission"
                     )
                 changed = connection.execute(
                     """
@@ -551,6 +625,9 @@ class SQLiteDecisionAttemptJournal:
                 claim.attempt_record.attempt.started_at,
                 "failed_at",
             )
+            if claim.invoked_at is None:
+                raise DecisionJournalError("decision invocation time is missing")
+            _require_not_before(failure.failed_at, claim.invoked_at, "failed_at")
         with connect(self.database_path) as connection:
             connection.execute("begin immediate")
             try:
@@ -582,7 +659,7 @@ class SQLiteDecisionAttemptJournal:
                                 "unattempted failure does not match durable decision state"
                             )
                     else:
-                        self._validate_active_claim(row, preparation, claim)
+                        self._validate_invocation_claim(row, preparation, claim)
                 self._write_failure(
                     connection,
                     row,
@@ -631,6 +708,89 @@ class SQLiteDecisionAttemptJournal:
         ).rowcount
         if changed != 1:
             raise DecisionJournalError("decision failure completion was fenced")
+
+    def _read_evidence(
+        self,
+        request_id: str,
+    ) -> (
+        tuple[
+            DecisionRequestRecord,
+            DecisionPreparation | None,
+            DecisionAttemptRecord | None,
+            DecisionTerminalRecord | None,
+        ]
+        | None
+    ):
+        self._require_open()
+        if not request_id.strip():
+            raise ValueError("request_id must not be empty")
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                "select * from decision_attempt_journal where request_id = ?",
+                (request_id,),
+            ).fetchone()
+        if row is None:
+            return None
+
+        request = self._request_record(row)
+        preparation = None if row["route_id"] is None else self._preparation(row, request)
+        attempt = None if row["attempt_id"] is None else self._attempt_record(row)
+        if attempt is not None:
+            if preparation is None:
+                raise DecisionJournalError("stored decision attempt has no prepared route")
+            model = attempt.attempt
+            if (
+                model.request_id != request.request.request_id
+                or model.request_digest != request.request.request_digest
+                or model.route_id != preparation.route.route_id
+            ):
+                raise DecisionJournalError(
+                    "stored decision attempt differs from its request or route"
+                )
+            if _stored_datetime(row, "claim_acquired_at") != model.started_at:
+                raise DecisionJournalError("stored decision attempt time is inconsistent")
+
+        terminal = self._terminal_record(row) if _is_terminal(row) else None
+        self._validate_evidence_timeline(row, request, preparation, attempt, terminal)
+        return request, preparation, attempt, terminal
+
+    def _validate_evidence_timeline(
+        self,
+        row: sqlite3.Row,
+        request: DecisionRequestRecord,
+        preparation: DecisionPreparation | None,
+        attempt: DecisionAttemptRecord | None,
+        terminal: DecisionTerminalRecord | None,
+    ) -> None:
+        registered_at = request.registered_at
+        updated_at = _updated_at(row)
+        if registered_at < request.request.requested_at or updated_at < registered_at:
+            raise DecisionJournalError("stored decision request timeline is inconsistent")
+        if preparation is not None and updated_at < preparation.prepared_at:
+            raise DecisionJournalError("stored decision preparation timeline is inconsistent")
+        if attempt is not None:
+            started_at = attempt.attempt.started_at
+            if (
+                preparation is None
+                or started_at < preparation.prepared_at
+                or updated_at < started_at
+            ):
+                raise DecisionJournalError("stored decision attempt timeline is inconsistent")
+        if isinstance(terminal, DecisionSuccessRecord):
+            if attempt is None or terminal.response.completed_at < attempt.attempt.started_at:
+                raise DecisionJournalError("stored decision response timeline is inconsistent")
+            if updated_at < terminal.response.completed_at:
+                raise DecisionJournalError("stored decision completion timeline is inconsistent")
+        elif isinstance(terminal, DecisionFailureRecord):
+            boundaries = [registered_at]
+            if preparation is not None:
+                boundaries.append(preparation.prepared_at)
+            if attempt is not None:
+                boundaries.append(attempt.attempt.started_at)
+            if terminal.failure.failed_at < max(boundaries):
+                raise DecisionJournalError("stored decision failure timeline is inconsistent")
+            if updated_at < terminal.failure.failed_at:
+                raise DecisionJournalError("stored decision completion timeline is inconsistent")
 
     def _request_identity_row(
         self,
@@ -809,6 +969,20 @@ class SQLiteDecisionAttemptJournal:
         if _stored_datetime(row, "claim_acquired_at") != claim.attempt_record.attempt.started_at:
             raise DecisionJournalError("stored decision claim time is inconsistent")
 
+    def _validate_invocation_claim(
+        self,
+        row: sqlite3.Row,
+        preparation: DecisionPreparation,
+        claim: DecisionAttemptClaim,
+    ) -> None:
+        self._validate_active_claim(row, preparation, claim)
+        if claim.fencing_revision != _INVOKING_FENCING_REVISION:
+            raise DecisionJournalError("decision claim was not admitted for invocation")
+        if claim.invoked_at is None:
+            raise DecisionJournalError("decision invocation time is missing")
+        if _updated_at(row) != claim.invoked_at:
+            raise DecisionJournalError("decision invocation time is inconsistent")
+
     def _validate_row(self, row: sqlite3.Row) -> None:
         if str(row["schema_version"]) != _ROW_SCHEMA_VERSION:
             raise DecisionJournalError(
@@ -817,6 +991,93 @@ class SQLiteDecisionAttemptJournal:
         status = str(row["status"])
         if status not in {"registered", "prepared", "succeeded", "failed"}:
             raise DecisionJournalError(f"stored decision status {status!r} is invalid")
+        for field in (
+            "request_id",
+            "request_digest",
+            "run_id",
+            "node_id",
+            "request_artifact_digest",
+        ):
+            _required_row_text(row, field)
+        position = row["journal_position"]
+        fencing_revision = row["fencing_revision"]
+        if (
+            isinstance(position, bool)
+            or not isinstance(position, int)
+            or position < 1
+            or isinstance(fencing_revision, bool)
+            or not isinstance(fencing_revision, int)
+        ):
+            raise DecisionJournalError("stored decision journal position or fence is invalid")
+
+        route_values = (
+            row["route_id"],
+            row["route_artifact_digest"],
+            row["prepared_at"],
+        )
+        route_present = all(value is not None for value in route_values)
+        if route_present != any(value is not None for value in route_values):
+            raise DecisionJournalError("stored decision route fields are incomplete")
+        attempt_values = (
+            row["attempt_id"],
+            row["attempt_artifact_digest"],
+            row["claim_acquired_at"],
+        )
+        attempt_present = all(value is not None for value in attempt_values)
+        if attempt_present != any(value is not None for value in attempt_values):
+            raise DecisionJournalError("stored decision attempt fields are incomplete")
+        if attempt_present:
+            if not route_present or fencing_revision not in {
+                _ACQUIRED_FENCING_REVISION,
+                _INVOKING_FENCING_REVISION,
+            }:
+                raise DecisionJournalError("stored decision attempt fence is invalid")
+        elif fencing_revision != 0:
+            raise DecisionJournalError("unattempted decision has a nonzero fence")
+
+        active_claim = row["active_claim_token"]
+        if active_claim is not None and (
+            not isinstance(active_claim, str) or not active_claim.strip()
+        ):
+            raise DecisionJournalError("stored decision active claim is invalid")
+        response = row["response_artifact_digest"]
+        failure = row["failure_artifact_digest"]
+        usage = row["usage_artifact_digest"]
+        if status == "registered" and (
+            route_present
+            or attempt_present
+            or active_claim is not None
+            or response is not None
+            or failure is not None
+            or usage is not None
+        ):
+            raise DecisionJournalError("registered decision row contains later-stage evidence")
+        if status == "prepared" and (
+            not route_present
+            or (attempt_present != (active_claim is not None))
+            or response is not None
+            or failure is not None
+            or usage is not None
+        ):
+            raise DecisionJournalError("prepared decision row has an invalid evidence shape")
+        if status == "succeeded" and (
+            not route_present
+            or not attempt_present
+            or active_claim is not None
+            or response is None
+            or failure is not None
+            or usage is None
+            or fencing_revision != _INVOKING_FENCING_REVISION
+        ):
+            raise DecisionJournalError("successful decision row has an invalid evidence shape")
+        if status == "failed" and (
+            active_claim is not None
+            or response is not None
+            or failure is None
+            or (usage is not None and not attempt_present)
+            or (attempt_present and fencing_revision != _INVOKING_FENCING_REVISION)
+        ):
+            raise DecisionJournalError("failed decision row has an invalid evidence shape")
 
     def _put_artifact(
         self,

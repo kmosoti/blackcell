@@ -7,7 +7,7 @@ from blackcell.features.project_operational_state.ports import (
     EventHistory,
     ProjectionCheckpoints,
 )
-from blackcell.kernel import ProjectionCheckpoint, ProjectionRunner
+from blackcell.kernel import EventEnvelope, ProjectionCheckpoint, ProjectionRunner
 
 
 class ProjectOperationalStateHandler:
@@ -24,13 +24,19 @@ class ProjectOperationalStateHandler:
 
     def handle(self, command: ProjectOperationalState) -> OperationalBeliefState:
         fold = OperationalStateFold(command.scope)
-        checkpoint = self._checkpoints.load(fold.name, fold.version)
-        if checkpoint is not None:
-            self._validate_ledger_anchor(checkpoint)
-        after_position = checkpoint.last_global_position if checkpoint is not None else 0
+        if command.as_of_position is not None:
+            return self._rebuild_historical(fold, command)
+
+        stored_checkpoint = self._checkpoints.load(fold.name, fold.version)
+        if stored_checkpoint is not None:
+            self._validate_ledger_anchor(stored_checkpoint)
+
+        after_position = (
+            stored_checkpoint.last_global_position if stored_checkpoint is not None else 0
+        )
         suffix = tuple(self._events.read_all(after_position=after_position))
-        result = self._runner.replay(fold, suffix, checkpoint=checkpoint)
-        if checkpoint is None or result.processed_events:
+        result = self._runner.replay(fold, suffix, checkpoint=stored_checkpoint)
+        if stored_checkpoint is None or result.processed_events:
             self._checkpoints.save(
                 result.checkpoint(fold),
                 expected_position=after_position,
@@ -38,6 +44,30 @@ class ProjectOperationalStateHandler:
         return fold.materialize(
             result.state,
             cutoff_global_position=result.last_global_position,
+            as_of_time=command.as_of_time,
+        )
+
+    def _rebuild_historical(
+        self,
+        fold: OperationalStateFold,
+        command: ProjectOperationalState,
+    ) -> OperationalBeliefState:
+        cutoff = command.as_of_position
+        if cutoff is None:  # pragma: no cover - private call contract
+            raise ValueError("historical projection requires as_of_position")
+        prefix: tuple[EventEnvelope, ...] = (
+            () if cutoff == 0 else tuple(self._events.read_all(after_position=0, limit=cutoff))
+        )
+        actual_positions = tuple(event.global_position for event in prefix)
+        expected_positions = tuple(range(1, cutoff + 1))
+        if actual_positions != expected_positions:
+            raise ValueError("as_of_position requires an exact, complete event-ledger prefix")
+        result = self._runner.replay(fold, prefix)
+        if result.last_global_position != cutoff:
+            raise ValueError("operational-state replay did not reach the requested ledger cutoff")
+        return fold.materialize(
+            result.state,
+            cutoff_global_position=cutoff,
             as_of_time=command.as_of_time,
         )
 

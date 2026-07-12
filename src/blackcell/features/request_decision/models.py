@@ -277,6 +277,7 @@ class DecisionAttemptClaim:
     attempt_record: DecisionAttemptRecord
     fencing_revision: int
     claim_token: str
+    invoked_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.fencing_revision, bool) or not isinstance(self.fencing_revision, int):
@@ -285,6 +286,11 @@ class DecisionAttemptClaim:
             raise ValueError("fencing_revision must be positive")
         if not self.claim_token.strip():
             raise ValueError("claim_token must not be empty")
+        if self.invoked_at is not None:
+            invoked_at = _timestamp(self.invoked_at, "invoked_at")
+            if invoked_at < self.attempt_record.attempt.started_at:
+                raise ValueError("invoked_at cannot precede attempt acquisition")
+            object.__setattr__(self, "invoked_at", invoked_at)
 
 
 @dataclass(frozen=True, slots=True)

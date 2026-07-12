@@ -12,6 +12,10 @@ from blackcell.features.authorize_action import (
     AuthorizationOutcome,
 )
 from blackcell.features.execute_affordance import (
+    EXECUTION_PREPARATION_MEDIA_TYPE,
+    EXECUTION_PREPARATION_SCHEMA_VERSION,
+    EXECUTION_RESULT_MEDIA_TYPE,
+    EXECUTION_RESULT_SCHEMA_VERSION,
     AdapterOutcome,
     AffordanceArgument,
     AffordanceArgumentSpec,
@@ -32,6 +36,16 @@ from blackcell.features.execute_affordance import (
     SideEffectClass,
     UncertainExecutionError,
 )
+
+
+def test_execution_artifact_contract_constants_are_public_and_stable() -> None:
+    assert EXECUTION_PREPARATION_SCHEMA_VERSION == "execution-preparation/v1"
+    assert EXECUTION_RESULT_SCHEMA_VERSION == "execution-result/v3"
+    assert (
+        EXECUTION_PREPARATION_MEDIA_TYPE == "application/vnd.blackcell.execution-preparation+json"
+    )
+    assert EXECUTION_RESULT_MEDIA_TYPE == "application/vnd.blackcell.execution-result+json"
+
 
 NOW = datetime(2026, 7, 10, 21, tzinfo=UTC)
 
@@ -130,6 +144,13 @@ class Journal:
             (result for result in self.results.values() if result.invocation_id == invocation_id),
             None,
         )
+
+    def get_entry_by_invocation(
+        self,
+        invocation_id: str,
+    ) -> ExecutionJournalEntry | None:
+        del invocation_id
+        return None
 
     def get_preparation(self, execution_identity_digest):
         return None

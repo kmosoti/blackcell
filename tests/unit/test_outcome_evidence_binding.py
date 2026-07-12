@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -31,9 +33,19 @@ from blackcell.features.observe_outcome import (
     OutcomeObservation,
     OutcomeObservationStatus,
 )
-from blackcell.kernel import ArtifactNotFoundError, EventEnvelope, JsonInput
+from blackcell.kernel import (
+    ArtifactNotFoundError,
+    ConcurrencyError,
+    EventEnvelope,
+    EventStore,
+    IdempotencyConflict,
+    JsonInput,
+)
 from blackcell.workflows.outcome_evidence import (
     OutcomeEvidenceBindingError,
+    OutcomeEvidenceWriteError,
+    OutcomeEvidenceWriter,
+    WriteOutcomeEvidence,
     bind_evaluation_observation,
     inconclusive_outcome_event,
     outcome_observation_input,
@@ -309,6 +321,202 @@ def test_inconclusive_owner_artifact_has_a_claim_free_bound_event() -> None:
     assert bound.sources[0].event_type == "outcome.observation-inconclusive"
     with pytest.raises(OutcomeEvidenceBindingError, match="only observed"):
         outcome_observation_input(outcome)
+
+
+@pytest.mark.parametrize(
+    ("status", "event_type"),
+    (
+        (OutcomeObservationStatus.OBSERVED, "observation.recorded"),
+        (OutcomeObservationStatus.INCONCLUSIVE, "outcome.observation-inconclusive"),
+    ),
+)
+def test_writer_commits_one_causal_domain_occurrence(
+    tmp_path: Path,
+    status: OutcomeObservationStatus,
+    event_type: str,
+) -> None:
+    store = _store_with_execution(tmp_path / f"{status}.sqlite3")
+    outcome = _outcome_with_status(status)
+    clock_calls = 0
+
+    def clock() -> datetime:
+        nonlocal clock_calls
+        clock_calls += 1
+        return NOW + timedelta(seconds=2)
+
+    stored = OutcomeEvidenceWriter(store, clock=clock).handle(_write_command(outcome))
+
+    assert store.read_stream(STREAM_ID) == (stored,)
+    assert stored.event_type == event_type
+    assert stored.stream_sequence == 1
+    assert stored.actor == "operator"
+    assert stored.source == outcome.observer_id
+    assert stored.correlation_id == outcome.binding.run_id
+    assert stored.causation_id == EXECUTION_EVENT_ID
+    assert stored.recorded_at == NOW + timedelta(seconds=2)
+    assert stored.effective_at == outcome.observed_at
+    assert stored.idempotency_key == outcome.observation_digest
+    assert clock_calls == 1
+
+
+@pytest.mark.parametrize(
+    "status",
+    (OutcomeObservationStatus.OBSERVED, OutcomeObservationStatus.INCONCLUSIVE),
+)
+def test_writer_exact_redelivery_returns_original_and_collision_propagates(
+    tmp_path: Path,
+    status: OutcomeObservationStatus,
+) -> None:
+    store = _store_with_execution(tmp_path / f"{status}.sqlite3")
+    outcome = _outcome_with_status(status)
+    ticks = iter(
+        (
+            NOW + timedelta(seconds=2),
+            NOW + timedelta(seconds=3),
+            NOW + timedelta(seconds=4),
+        )
+    )
+    writer = OutcomeEvidenceWriter(store, clock=lambda: next(ticks))
+    command = _write_command(outcome)
+
+    original = writer.handle(command)
+
+    assert writer.handle(command) == original
+    assert original.recorded_at == NOW + timedelta(seconds=2)
+    assert store.read_stream(STREAM_ID) == (original,)
+    with pytest.raises(IdempotencyConflict):
+        writer.handle(replace(command, actor="different-actor"))
+    assert store.read_stream(STREAM_ID) == (original,)
+
+
+@pytest.mark.parametrize(
+    "status",
+    (OutcomeObservationStatus.OBSERVED, OutcomeObservationStatus.INCONCLUSIVE),
+)
+def test_writer_preserves_stale_sequence_errors_without_partial_evidence(
+    tmp_path: Path,
+    status: OutcomeObservationStatus,
+) -> None:
+    store = _store_with_execution(tmp_path / f"{status}.sqlite3")
+    unrelated = EventEnvelope.create(
+        stream_id=STREAM_ID,
+        stream_sequence=1,
+        event_type="fixture.unrelated",
+        actor="fixture",
+        source="fixture",
+        payload={"value": "already-present"},
+        recorded_at=NOW,
+        correlation_id="run:unrelated",
+        idempotency_key="fixture:unrelated",
+    )
+    unrelated = store.append(unrelated, expected_sequence=0)
+
+    with pytest.raises(ConcurrencyError):
+        OutcomeEvidenceWriter(store, clock=lambda: NOW + timedelta(seconds=2)).handle(
+            _write_command(_outcome_with_status(status))
+        )
+
+    assert store.read_stream(STREAM_ID) == (unrelated,)
+
+
+@pytest.mark.parametrize(
+    "clock",
+    (
+        lambda: datetime(2026, 7, 12, 20, 0),
+        lambda: NOW,
+    ),
+)
+def test_writer_rejects_invalid_recorded_clocks_before_append(clock) -> None:
+    ledger = _NeverAppendLedger()
+    writer = OutcomeEvidenceWriter(ledger, clock=clock)
+
+    with pytest.raises(OutcomeEvidenceWriteError, match="recorded clock"):
+        writer.handle(_write_command(_outcome_with_status(OutcomeObservationStatus.OBSERVED)))
+
+    assert ledger.calls == 0
+
+
+@pytest.mark.parametrize(
+    ("expected_sequence", "actor", "execution_event_id", "message"),
+    (
+        (-1, "operator", EXECUTION_EVENT_ID, "expected_sequence"),
+        (True, "operator", EXECUTION_EVENT_ID, "expected_sequence"),
+        ("0", "operator", EXECUTION_EVENT_ID, "expected_sequence"),
+        (0, " ", EXECUTION_EVENT_ID, "actor"),
+        (0, "operator", " ", "execution_event_id"),
+    ),
+)
+def test_write_command_rejects_invalid_coordination_values(
+    expected_sequence: Any,
+    actor: str,
+    execution_event_id: str,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        WriteOutcomeEvidence(
+            _outcome(spec=_spec()),
+            expected_sequence,
+            actor,
+            execution_event_id,
+        )
+
+
+def test_write_command_rejects_non_observation_owner() -> None:
+    invalid: Any = object()
+
+    with pytest.raises(TypeError, match="OutcomeObservation"):
+        WriteOutcomeEvidence(invalid, 0, "operator", EXECUTION_EVENT_ID)
+
+
+class _NeverAppendLedger:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def append(self, event: EventEnvelope, *, expected_sequence: int) -> EventEnvelope:
+        self.calls += 1
+        raise AssertionError((event, expected_sequence))
+
+    def append_many(self, events, *, expected_sequences):
+        self.calls += 1
+        raise AssertionError((events, expected_sequences))
+
+
+def _store_with_execution(path: Path) -> EventStore:
+    store = EventStore(path)
+    execution = EventEnvelope.create(
+        stream_id="daily-operator-run:run:1",
+        stream_sequence=1,
+        event_type="fixture.execution",
+        actor="operator",
+        source="fixture",
+        payload={"run_id": "run:1"},
+        recorded_at=NOW,
+        correlation_id="run:1",
+        event_id=EXECUTION_EVENT_ID,
+    )
+    store.append(execution, expected_sequence=0)
+    return store
+
+
+def _outcome_with_status(status: OutcomeObservationStatus) -> OutcomeObservation:
+    outcome = _outcome(spec=_spec())
+    if status is OutcomeObservationStatus.OBSERVED:
+        return outcome
+    return replace(
+        outcome,
+        observation_id="outcome:inconclusive",
+        status=status,
+        claims=(),
+    )
+
+
+def _write_command(outcome: OutcomeObservation) -> WriteOutcomeEvidence:
+    return WriteOutcomeEvidence(
+        outcome=outcome,
+        expected_sequence=0,
+        actor="operator",
+        execution_event_id=EXECUTION_EVENT_ID,
+    )
 
 
 def _spec() -> EvaluationSpec:

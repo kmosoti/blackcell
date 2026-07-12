@@ -10,6 +10,8 @@ import pytest
 
 from blackcell.adapters.persistence.sqlite import ArtifactContextFrameStore
 from blackcell.features.build_context import (
+    CONTEXT_FRAME_MEDIA_TYPE,
+    CONTEXT_FRAME_SCHEMA_VERSIONS,
     ContextClaimIdentity,
     ContextEvidence,
     ContextFrame,
@@ -19,6 +21,8 @@ from blackcell.features.build_context import (
     ContextOmission,
     ContextOmissionReason,
     ContextOmissionStage,
+    decode_context_frame,
+    encode_context_frame,
     serialize_context_evidence,
     serialize_context_frame,
 )
@@ -28,6 +32,26 @@ from blackcell.kernel._json import bytes_digest, canonical_json_bytes
 
 NOW = datetime(2026, 7, 10, 17, tzinfo=UTC)
 DOMAIN = "project"
+
+
+def test_feature_owned_context_codec_preserves_golden_bytes_and_identity() -> None:
+    frame = _frame("task:daily", value="blocked")
+    encoded = encode_context_frame(frame)
+
+    assert encoded == serialize_context_frame(frame).encode("utf-8")
+    assert decode_context_frame(encoded, expected_frame_id=frame.frame_id) == frame
+    assert CONTEXT_FRAME_MEDIA_TYPE == "application/vnd.blackcell.context-frame+json"
+    assert frame.schema_version in CONTEXT_FRAME_SCHEMA_VERSIONS
+
+
+def test_feature_owned_context_decoder_rejects_noncanonical_and_wrong_identity() -> None:
+    frame = _frame("task:daily", value="blocked")
+    encoded = encode_context_frame(frame)
+
+    with pytest.raises(ContextFrameIntegrityError, match="canonical JSON"):
+        decode_context_frame(b" " + encoded)
+    with pytest.raises(ContextFrameIntegrityError, match="digest mismatch"):
+        decode_context_frame(encoded, expected_frame_id="sha256:" + "0" * 64)
 
 
 def test_store_round_trips_complete_frame_lineage_and_exact_retry(tmp_path: Path) -> None:

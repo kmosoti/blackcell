@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
@@ -15,6 +16,7 @@ from blackcell.features.execute_affordance import deserialize_execution_result
 from blackcell.features.ingest_observation import (
     EvidencePointer,
     IngestObservation,
+    IngestObservationHandler,
     ObservationInput,
     ObservedClaim,
 )
@@ -28,6 +30,7 @@ from blackcell.kernel import (
     ArtifactNotFoundError,
     EventEnvelope,
     JsonInput,
+    utc_now,
 )
 from blackcell.workflows.run_protocol import RunProtocolVersion, run_stream_id
 
@@ -39,12 +42,110 @@ class OutcomeEvidenceBindingError(ValueError):
     """Stored domain evidence does not exactly match its owner outcome artifact."""
 
 
+class OutcomeEvidenceWriteError(RuntimeError):
+    """Outcome evidence could not be written as one canonical domain occurrence."""
+
+
 class OutcomeEvidenceHistory(Protocol):
     def get(self, event_id: str) -> EventEnvelope | None: ...
 
 
 class OutcomeEvidenceArtifacts(Protocol):
     def get_bytes(self, digest: str, *, verify: bool = True) -> bytes: ...
+
+
+class OutcomeEvidenceLedger(Protocol):
+    """Narrow append boundary shared by canonical and inconclusive evidence writes."""
+
+    def append(self, event: EventEnvelope, *, expected_sequence: int) -> EventEnvelope: ...
+
+    def append_many(
+        self,
+        events: Sequence[EventEnvelope],
+        *,
+        expected_sequences: Mapping[str, int],
+    ) -> tuple[EventEnvelope, ...]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class WriteOutcomeEvidence:
+    """Commit one observer result to its operational-state domain stream."""
+
+    outcome: OutcomeObservation
+    expected_sequence: int
+    actor: str
+    execution_event_id: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.outcome, OutcomeObservation):
+            raise TypeError("outcome must be an OutcomeObservation")
+        if (
+            isinstance(self.expected_sequence, bool)
+            or not isinstance(self.expected_sequence, int)
+            or self.expected_sequence < 0
+        ):
+            raise ValueError("expected_sequence must be a non-negative integer")
+        if not isinstance(self.actor, str) or not self.actor.strip():
+            raise ValueError("actor must not be empty")
+        if not isinstance(self.execution_event_id, str) or not self.execution_event_id.strip():
+            raise ValueError("execution_event_id must not be empty")
+
+
+class OutcomeEvidenceWriter:
+    """Write observed or inconclusive outcome evidence through one typed seam."""
+
+    def __init__(
+        self,
+        ledger: OutcomeEvidenceLedger,
+        *,
+        clock: Callable[[], datetime] = utc_now,
+    ) -> None:
+        self._ledger = ledger
+        self._clock = clock
+
+    def handle(self, command: WriteOutcomeEvidence) -> EventEnvelope:
+        recorded_at = self._recorded_at(command.outcome)
+        if command.outcome.status is OutcomeObservationStatus.OBSERVED:
+            stored = IngestObservationHandler(
+                self._ledger,
+                clock=lambda: recorded_at,
+            ).handle(
+                IngestObservation(
+                    stream_id=command.outcome.stream_id,
+                    expected_sequence=command.expected_sequence,
+                    actor=command.actor,
+                    source=command.outcome.observer_id,
+                    correlation_id=command.outcome.binding.run_id,
+                    observations=(outcome_observation_input(command.outcome),),
+                    causation_id=command.execution_event_id,
+                    domain=command.outcome.domain,
+                )
+            )
+            if len(stored) != 1:
+                raise OutcomeEvidenceWriteError(
+                    "observed outcome ingestion must return exactly one stored occurrence"
+                )
+            return stored[0]
+
+        candidate = inconclusive_outcome_event(
+            command.outcome,
+            stream_sequence=command.expected_sequence + 1,
+            actor=command.actor,
+            recorded_at=recorded_at,
+            execution_event_id=command.execution_event_id,
+        )
+        return self._ledger.append(
+            candidate,
+            expected_sequence=command.expected_sequence,
+        )
+
+    def _recorded_at(self, outcome: OutcomeObservation) -> datetime:
+        recorded_at = self._clock()
+        if recorded_at.tzinfo is None or recorded_at.utcoffset() is None:
+            raise OutcomeEvidenceWriteError("recorded clock must be timezone-aware")
+        if recorded_at < outcome.observed_at:
+            raise OutcomeEvidenceWriteError("recorded clock cannot precede the outcome observation")
+        return recorded_at
 
 
 def outcome_observation_input(outcome: OutcomeObservation) -> ObservationInput:
@@ -384,6 +485,10 @@ __all__ = [
     "OutcomeEvidenceArtifacts",
     "OutcomeEvidenceBindingError",
     "OutcomeEvidenceHistory",
+    "OutcomeEvidenceLedger",
+    "OutcomeEvidenceWriteError",
+    "OutcomeEvidenceWriter",
+    "WriteOutcomeEvidence",
     "bind_evaluation_observation",
     "inconclusive_outcome_event",
     "outcome_observation_input",

@@ -155,8 +155,8 @@ def test_v2_completed_branches_are_valid(
     assert not grammar.failed
 
 
-@pytest.mark.parametrize("attempts", (0, 2))
-def test_v2_model_failure_allows_zero_or_multiple_completed_attempts(attempts: int) -> None:
+@pytest.mark.parametrize("attempts", (0, 1))
+def test_v2_model_failure_allows_zero_or_one_completed_attempt(attempts: int) -> None:
     events = (
         RUN_STARTED,
         EVALUATION_SPECIFIED,
@@ -179,6 +179,52 @@ def test_v2_model_failure_allows_zero_or_multiple_completed_attempts(attempts: i
 
     assert grammar.terminal
     assert grammar.failed
+
+
+def test_v2_rejects_multiple_attempts_and_uncertain_attempt_terminalization() -> None:
+    repeated = _history(
+        RunProtocolVersion.V2,
+        (
+            RUN_STARTED,
+            EVALUATION_SPECIFIED,
+            INITIAL_STATE_RECORDED,
+            CONTEXT_RECORDED,
+            MODEL_REQUESTED,
+            MODEL_ATTEMPT_RECORDED,
+            MODEL_ATTEMPT_RECORDED,
+        ),
+        outcome=RunOutcome.FAILED,
+    )
+    uncertain = _history(
+        RunProtocolVersion.V2,
+        (
+            RUN_STARTED,
+            EVALUATION_SPECIFIED,
+            INITIAL_STATE_RECORDED,
+            CONTEXT_RECORDED,
+            MODEL_REQUESTED,
+            MODEL_ATTEMPT_RECORDED,
+            TRACE_RECORDED,
+            RUN_FAILED,
+        ),
+        outcome=RunOutcome.FAILED,
+    )
+
+    with pytest.raises(RunProtocolIntegrityError, match="out of order"):
+        validate_run_grammar(repeated)
+    with pytest.raises(RunProtocolIntegrityError, match="gateway reconciliation"):
+        validate_run_grammar(uncertain)
+
+
+def test_v2_failed_trace_requires_evaluation_specification() -> None:
+    history = _history(
+        RunProtocolVersion.V2,
+        (RUN_STARTED, TRACE_RECORDED, RUN_FAILED),
+        outcome=RunOutcome.FAILED,
+    )
+
+    with pytest.raises(RunProtocolIntegrityError, match="evaluation specification"):
+        validate_run_grammar(history)
 
 
 @pytest.mark.parametrize(
