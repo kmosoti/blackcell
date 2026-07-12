@@ -11,20 +11,30 @@ from typing import cast
 
 import pytest
 
-from blackcell.features.accept_state_transition import TransitionAcceptanceStatus
+from blackcell.features.accept_state_transition import (
+    ACCEPTED_STATE_TRANSITION_MEDIA_TYPE,
+    TransitionAcceptance,
+    TransitionAcceptanceStatus,
+    encode_accepted_state_transition,
+)
 from blackcell.features.authorize_action import (
     ACTION_PROPOSAL_MEDIA_TYPE,
     AUTHORIZATION_DECISION_MEDIA_TYPE,
+    ActionAuthorizer,
     ActionProposal,
-    AuthorizationDecision,
-    AuthorizationFinding,
+    AffordancePolicy,
     AuthorizationOutcome,
+    AuthorizeAction,
     decode_action_proposal,
     decode_authorization_decision,
     encode_action_proposal,
     encode_authorization_decision,
 )
-from blackcell.features.build_context import ContextFrame, serialize_context_frame
+from blackcell.features.build_context import (
+    BuildContext,
+    serialize_context_frame,
+)
+from blackcell.features.derive_signal_packet import DeriveSignalPacket
 from blackcell.features.evaluate_outcome import (
     EVALUATION_SPEC_MEDIA_TYPE,
     OUTCOME_EVALUATION_MEDIA_TYPE,
@@ -79,29 +89,41 @@ from blackcell.features.project_operational_state import (
 )
 from blackcell.features.request_decision import (
     DECISION_ATTEMPT_MEDIA_TYPE,
+    DECISION_FAILURE_MEDIA_TYPE,
     DECISION_REQUEST_MEDIA_TYPE,
     DECISION_RESPONSE_MEDIA_TYPE,
+    DECISION_ROUTE_MEDIA_TYPE,
+    DECISION_USAGE_MEDIA_TYPE,
     DecisionAffordance,
     DecisionAttempt,
     DecisionBudget,
     DecisionCapability,
     DecisionClassification,
+    DecisionFailure,
+    DecisionFailureKind,
     DecisionLocality,
     DecisionProposal,
     DecisionRequirements,
     DecisionResponse,
     DecisionRoute,
+    DecisionUsage,
     RequestDecision,
     decode_decision_request,
     encode_decision_attempt,
+    encode_decision_failure,
     encode_decision_request,
     encode_decision_response,
+    encode_decision_route,
+    encode_decision_usage,
 )
+from blackcell.features.retrieve_evidence import EvidenceKey, RetrieveEvidence
 from blackcell.features.solve_constraints import (
     CONSTRAINT_EVALUATION_MEDIA_TYPE,
+    ConstraintDefinition,
     ConstraintEvaluation,
-    ConstraintOutcome,
-    ConstraintProof,
+    ConstraintOperator,
+    DeterministicConstraintSolver,
+    SolveConstraints,
     decode_constraint_evaluation,
     encode_constraint_evaluation,
 )
@@ -113,7 +135,20 @@ from blackcell.kernel import (
     JsonInput,
     ProjectionCheckpoint,
 )
-from blackcell.kernel._json import canonical_json_bytes, json_digest
+from blackcell.kernel._json import canonical_json_bytes
+from blackcell.workflows.daily_operator_v2_evidence import (
+    DailyOperatorV2EvidenceError,
+    rebuild_requested_context,
+    verify_requested_ingestion,
+)
+from blackcell.workflows.daily_operator_v2_identity import (
+    DAILY_OPERATOR_REQUEST_V2_MEDIA_TYPE,
+    DAILY_OPERATOR_REQUEST_V2_SCHEMA_VERSION,
+    daily_operator_v2_request_digest,
+    decode_daily_operator_v2_request,
+    encode_daily_operator_v2_request,
+)
+from blackcell.workflows.daily_operator_v2_request import DailyOperatorV2Request
 from blackcell.workflows.outcome_evidence import (
     bind_evaluation_observation,
     inconclusive_outcome_event,
@@ -128,12 +163,18 @@ from blackcell.workflows.run_protocol import (
     EXECUTION_RECORDED,
     INITIAL_STATE_RECORDED,
     MODEL_ATTEMPT_RECORDED,
+    MODEL_FAILED,
     MODEL_REQUESTED,
     MODEL_RESPONDED,
     OUTCOME_OBSERVED,
     OUTCOME_STATE_RECORDED,
     PROPOSAL_RECORDED,
+    RUN_COMPLETED,
     RUN_STARTED,
+    RUN_TRACE_MEDIA_TYPE,
+    RUN_TRACE_SCHEMA_VERSION_V2,
+    STATE_TRANSITION_RECORDED,
+    TRACE_RECORDED,
     run_stream_id,
 )
 from blackcell.workflows.state_transition import (
@@ -374,6 +415,87 @@ def test_incomplete_valid_prefix_is_not_ready_and_empty_run_is_not_ready(tmp_pat
         bind_and_accept_state_transition("run:absent", other, scenario.artifacts)
 
 
+def test_valid_model_failure_with_nullable_route_and_usage_is_not_corrupt(
+    tmp_path: Path,
+) -> None:
+    scenario = _scenario(tmp_path, branch="pass")
+    model_request_event = scenario.run_events[MODEL_REQUESTED]
+    request_link = cast("Mapping[str, object]", model_request_event.payload["artifact"])
+    request = decode_decision_request(
+        scenario.artifacts.get_bytes(cast("str", request_link["digest"])),
+        expected_request_digest=cast("str", request_link["digest"]),
+    )
+    failure = DecisionFailure(
+        request.request_id,
+        request.request_digest,
+        DecisionFailureKind.ADMISSION,
+        "route_missing",
+        False,
+        NOW,
+    )
+    failure_ref = _put(
+        scenario.artifacts,
+        encode_decision_failure(failure),
+        DECISION_FAILURE_MEDIA_TYPE,
+    )
+    replaced = scenario.run_events[MODEL_ATTEMPT_RECORDED]
+    failure_event = EventEnvelope.create(
+        stream_id=replaced.stream_id,
+        stream_sequence=replaced.stream_sequence,
+        event_type=MODEL_FAILED,
+        schema_version=replaced.schema_version,
+        actor=replaced.actor,
+        source=replaced.source,
+        payload={
+            "run_id": RUN_ID,
+            "failure_id": failure.failure_id,
+            "request_id": failure.request_id,
+            "request_digest": failure.request_digest,
+            "kind": failure.kind.value,
+            "code": failure.code,
+            "retryable": failure.retryable,
+            "route_id": None,
+            "attempt_id": None,
+            "usage_id": None,
+            "input_tokens": None,
+            "output_tokens": None,
+            "latency_ms": None,
+            "cost_microusd": None,
+            "deterministic": None,
+            "route_artifact": None,
+            "artifact": _link(failure_ref, failure.schema_version, failure.failure_id),
+            "usage_artifact": None,
+        },
+        recorded_at=replaced.recorded_at,
+        effective_at=replaced.effective_at,
+        correlation_id=replaced.correlation_id,
+        causation_id=replaced.causation_id,
+        event_id=replaced.event_id,
+    )
+    failure_event = replace(failure_event, global_position=replaced.global_position)
+    history = HistoryView(
+        scenario.events,
+        {replaced.event_id: failure_event},
+        prefix_length=replaced.stream_sequence,
+    )
+
+    with pytest.raises(StateTransitionNotReady, match="not recorded"):
+        bind_and_accept_state_transition(RUN_ID, history, scenario.artifacts)
+
+
+def test_every_v2_event_uses_the_shared_exact_payload_contract(tmp_path: Path) -> None:
+    scenario = _scenario(tmp_path, branch="pass")
+    original = scenario.run_events[PROPOSAL_RECORDED]
+    forged = _rehash(original, payload={**original.payload, "unexpected": True})
+
+    with pytest.raises(StateTransitionBindingError, match="payload fields are not exact"):
+        bind_and_accept_state_transition(
+            RUN_ID,
+            HistoryView(scenario.events, {original.event_id: forged}),
+            scenario.artifacts,
+        )
+
+
 def test_stream_history_must_prove_the_same_global_occurrence(tmp_path: Path) -> None:
     scenario = _scenario(tmp_path, branch="pass")
     original = scenario.run_events[PROPOSAL_RECORDED]
@@ -455,7 +577,37 @@ def test_exact_artifact_metadata_rejects_rehashed_logical_identity(tmp_path: Pat
 @pytest.mark.parametrize(
     ("mutation", "message"),
     (
-        ("missing", "lacks its owner artifact"),
+        ("missing", "payload fields are not exact"),
+        ("logical-id", "DailyOperatorV2Request logical identity"),
+    ),
+)
+def test_run_start_requires_its_complete_request_artifact(
+    tmp_path: Path,
+    mutation: str,
+    message: str,
+) -> None:
+    scenario = _scenario(tmp_path, branch="pass")
+    original = scenario.run_events[RUN_STARTED]
+    payload = cast("dict[str, JsonInput]", dict(original.payload))
+    if mutation == "missing":
+        del payload["artifact"]
+    else:
+        artifact = cast("Mapping[str, JsonInput]", payload["artifact"])
+        payload["artifact"] = {**artifact, "logical_id": DIGEST}
+    forged = _rehash(original, payload=payload)
+
+    with pytest.raises(StateTransitionBindingError, match=message):
+        bind_and_accept_state_transition(
+            RUN_ID,
+            HistoryView(scenario.events, {original.event_id: forged}),
+            scenario.artifacts,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("missing", "payload fields are not exact"),
         ("scalar", "artifact is not an object"),
         ("extra-field", "fields are not exact"),
         ("encoding", "encoding is invalid"),
@@ -574,6 +726,42 @@ def test_snapshot_must_equal_exact_ledger_replay_not_only_decode(tmp_path: Path)
         )
 
 
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("before-start", "must follow run start"),
+        ("split-history", "lookup does not prove"),
+    ),
+)
+def test_requested_ingestion_proves_causal_ledger_occurrences(
+    tmp_path: Path,
+    mutation: str,
+    message: str,
+) -> None:
+    scenario = _scenario(tmp_path, branch="pass")
+    request = _workflow_request(scenario)
+    start = scenario.run_events[RUN_STARTED]
+    observed = scenario.events.read_stream(OBSERVATION_STREAM)[0]
+    if mutation == "before-start":
+        forged = replace(observed, global_position=start.global_position)
+        history = HistoryView(scenario.events, {observed.event_id: forged})
+    else:
+        forged = replace(observed, event_id="event:split-ingestion")
+        history = HistoryView(
+            scenario.events,
+            {observed.event_id: forged},
+            stream_only=True,
+        )
+
+    with pytest.raises(DailyOperatorV2EvidenceError, match=message):
+        verify_requested_ingestion(
+            request,
+            start,
+            scenario.initial_state,
+            history,
+        )
+
+
 def test_spec_and_state_owner_logical_ids_are_not_interchangeable(tmp_path: Path) -> None:
     scenario = _scenario(tmp_path, branch="pass")
     for event_type, message in (
@@ -620,7 +808,7 @@ def test_evaluation_spec_objective_is_bound_to_run_start(tmp_path: Path) -> None
         },
     )
 
-    with pytest.raises(StateTransitionBindingError, match="objective differs"):
+    with pytest.raises(StateTransitionBindingError, match="immutable request"):
         bind_and_accept_state_transition(
             RUN_ID,
             HistoryView(scenario.events, {original.event_id: forged}),
@@ -671,11 +859,58 @@ def test_model_request_uses_exact_owner_context_projection(
         )
 
 
+@pytest.mark.parametrize(
+    ("branch", "mutation", "message"),
+    (
+        ("pass", "authorization-policy", "immutable policy replay"),
+        ("approval", "approval", "immutable policy replay"),
+        ("pass", "execution-definition", "ExecutionPreparation differs"),
+        ("pass", "invocation", "ExecutionPreparation differs"),
+    ),
+)
+def test_immutable_request_controls_authorization_and_execution(
+    tmp_path: Path,
+    branch: str,
+    mutation: str,
+    message: str,
+) -> None:
+    scenario = _scenario(tmp_path, branch=branch)
+    request = _workflow_request(scenario)
+    if mutation == "authorization-policy":
+        changed = replace(
+            request,
+            authorization_affordance=replace(
+                request.authorization_affordance,
+                external=True,
+            ),
+        )
+    elif mutation == "approval":
+        changed = replace(request, approval_granted=True)
+    elif mutation == "execution-definition":
+        changed = replace(
+            request,
+            execution_affordance=replace(
+                request.execution_affordance,
+                adapter_id="adapter:forged",
+            ),
+        )
+    else:
+        changed = replace(request, invocation_id="invocation:forged")
+    replacements = _replace_workflow_request(scenario, changed)
+
+    with pytest.raises(StateTransitionBindingError, match=message):
+        bind_and_accept_state_transition(
+            RUN_ID,
+            HistoryView(scenario.events, replacements),
+            scenario.artifacts,
+        )
+
+
 def test_initial_snapshot_scope_and_cutoff_are_bound_to_run(tmp_path: Path) -> None:
     scenario = _scenario(tmp_path, branch="pass")
     start = scenario.run_events[RUN_STARTED]
     wrong_domain = _rehash(start, payload={**start.payload, "domain": "other-domain"})
-    with pytest.raises(StateTransitionBindingError, match="scope differs"):
+    with pytest.raises(StateTransitionBindingError, match="owner evidence"):
         bind_and_accept_state_transition(
             RUN_ID,
             HistoryView(scenario.events, {start.event_id: wrong_domain}),
@@ -716,7 +951,7 @@ def test_initial_snapshot_scope_and_cutoff_are_bound_to_run(tmp_path: Path) -> N
     (
         ("link", "ContextFrame link"),
         ("schema", "unsupported ContextFrame schema"),
-        ("content", "content differs"),
+        ("content", "ContextFrame contract"),
         ("effective", "effective-time identity"),
     ),
 )
@@ -796,6 +1031,75 @@ def test_every_owner_artifact_has_an_exact_logical_identity(
     )
 
     with pytest.raises(StateTransitionBindingError, match=message):
+        bind_and_accept_state_transition(
+            RUN_ID,
+            HistoryView(scenario.events, {original.event_id: forged}),
+            scenario.artifacts,
+        )
+
+
+@pytest.mark.parametrize(
+    ("event_type", "field", "message"),
+    (
+        (MODEL_ATTEMPT_RECORDED, "route_artifact", "decision route link identity"),
+        (MODEL_RESPONDED, "usage_artifact", "decision usage link identity"),
+    ),
+)
+def test_gateway_route_and_usage_artifacts_have_exact_owner_identity(
+    tmp_path: Path,
+    event_type: str,
+    field: str,
+    message: str,
+) -> None:
+    scenario = _scenario(tmp_path, branch="pass")
+    original = scenario.run_events[event_type]
+    artifact = cast("Mapping[str, JsonInput]", original.payload[field])
+    forged = _rehash(
+        original,
+        payload={
+            **original.payload,
+            field: {**artifact, "logical_id": DIGEST},
+        },
+    )
+
+    with pytest.raises(StateTransitionBindingError, match=message):
+        bind_and_accept_state_transition(
+            RUN_ID,
+            HistoryView(scenario.events, {original.event_id: forged}),
+            scenario.artifacts,
+        )
+
+
+def test_gateway_usage_is_bound_to_its_attempt_and_request_budget(tmp_path: Path) -> None:
+    scenario = _scenario(tmp_path, branch="pass")
+    original = scenario.run_events[MODEL_RESPONDED]
+    link = cast("Mapping[str, object]", original.payload["usage_artifact"])
+    usage = DecisionUsage(
+        cast("str", original.payload["request_id"]),
+        cast("str", original.payload["attempt_id"]),
+        1,
+        21,
+        1,
+        1,
+        True,
+    )
+    reference = _put(
+        scenario.artifacts,
+        encode_decision_usage(usage),
+        DECISION_USAGE_MEDIA_TYPE,
+    )
+    forged = _rehash(
+        original,
+        payload={
+            **original.payload,
+            "usage_id": usage.usage_id,
+            "output_tokens": usage.output_tokens,
+            "usage_artifact": _link(reference, usage.schema_version, usage.usage_id),
+        },
+    )
+    assert link["digest"] != reference.digest
+
+    with pytest.raises(StateTransitionBindingError, match="response or usage"):
         bind_and_accept_state_transition(
             RUN_ID,
             HistoryView(scenario.events, {original.event_id: forged}),
@@ -1072,7 +1376,7 @@ def test_execution_event_requires_both_preparation_owner_fields(
     del payload[field]
     forged = _rehash(original, payload=payload)
 
-    with pytest.raises(StateTransitionBindingError, match="preparation"):
+    with pytest.raises(StateTransitionBindingError, match="payload fields are not exact"):
         bind_and_accept_state_transition(
             RUN_ID,
             HistoryView(scenario.events, {original.event_id: forged}),
@@ -1207,6 +1511,37 @@ def test_owner_observation_artifact_is_bound_to_run_event_identity(tmp_path: Pat
         )
 
 
+def test_outcome_observer_identity_is_bound_to_the_immutable_request(tmp_path: Path) -> None:
+    scenario = _scenario(tmp_path, branch="pass")
+    original = scenario.run_events[OUTCOME_OBSERVED]
+    owner = cast("OutcomeObservation", scenario.owner_observation)
+    forged_owner = replace(owner, observer_id="observer:forged")
+    reference = _put(
+        scenario.artifacts,
+        encode_outcome_observation(forged_owner),
+        OUTCOME_OBSERVATION_MEDIA_TYPE,
+    )
+    forged = _rehash(
+        original,
+        payload={
+            **original.payload,
+            "observation_digest": forged_owner.observation_digest,
+            "artifact": _link(
+                reference,
+                forged_owner.schema_version,
+                forged_owner.observation_digest,
+            ),
+        },
+    )
+
+    with pytest.raises(StateTransitionBindingError, match="cross-identity"):
+        bind_and_accept_state_transition(
+            RUN_ID,
+            HistoryView(scenario.events, {original.event_id: forged}),
+            scenario.artifacts,
+        )
+
+
 def test_noncanonical_source_and_v1_history_fail_closed(tmp_path: Path) -> None:
     scenario = _scenario(tmp_path, branch="pass")
     original = scenario.run_events[CONTEXT_RECORDED]
@@ -1243,6 +1578,96 @@ def test_decoder_sees_stored_evaluation_before_binder_recomputes_it(tmp_path: Pa
     assert stored == scenario.evaluation
 
 
+def test_recorded_transition_trace_and_terminal_suffix_rebinds_exactly(tmp_path: Path) -> None:
+    scenario = _scenario(tmp_path, branch="pass")
+    suffix, expected = _append_verified_suffix(scenario)
+
+    rebound = bind_and_accept_state_transition(RUN_ID, scenario.events, scenario.artifacts)
+
+    assert rebound == expected
+    assert rebound.transition is not None
+    assert (
+        suffix[STATE_TRANSITION_RECORDED].payload["transition_id"]
+        == rebound.transition.transition_id
+    )
+
+
+@pytest.mark.parametrize(
+    ("boundary", "message"),
+    (
+        ("transition", "derived accepted evidence"),
+        ("trace", "exact run prefix"),
+        ("terminal", "payload differs from owner evidence"),
+    ),
+)
+def test_recorded_suffix_tampering_is_rejected(
+    tmp_path: Path,
+    boundary: str,
+    message: str,
+) -> None:
+    scenario = _scenario(tmp_path, branch="pass")
+    suffix, acceptance = _append_verified_suffix(scenario)
+    original = suffix[
+        {
+            "transition": STATE_TRANSITION_RECORDED,
+            "trace": TRACE_RECORDED,
+            "terminal": RUN_COMPLETED,
+        }[boundary]
+    ]
+    payload = cast("dict[str, JsonInput]", dict(original.payload))
+    if boundary == "transition":
+        transition = acceptance.transition
+        assert transition is not None
+        forged_transition = replace(
+            transition,
+            proposal=replace(
+                transition.proposal,
+                proposal_artifact_digest=DIGEST,
+            ),
+        )
+        reference = _put(
+            scenario.artifacts,
+            encode_accepted_state_transition(forged_transition),
+            ACCEPTED_STATE_TRANSITION_MEDIA_TYPE,
+        )
+        payload.update(
+            transition_id=forged_transition.transition_id,
+            artifact=_link(
+                reference,
+                forged_transition.schema_version,
+                forged_transition.transition_id,
+            ),
+        )
+    elif boundary == "trace":
+        artifact = cast("Mapping[str, object]", original.payload["artifact"])
+        trace = cast(
+            "dict[str, object]",
+            scenario.artifacts.get_json(cast("str", artifact["digest"])),
+        )
+        entries = cast("list[dict[str, object]]", trace["entries"])
+        forged_trace = {**trace, "entries": [{**entries[0], "event_type": "forged"}, *entries[1:]]}
+        reference = _put(
+            scenario.artifacts,
+            canonical_json_bytes(forged_trace),
+            RUN_TRACE_MEDIA_TYPE,
+        )
+        payload["artifact"] = _link(
+            reference,
+            RUN_TRACE_SCHEMA_VERSION_V2,
+            f"trace:{RUN_ID}",
+        )
+    else:
+        payload["authorization_outcome"] = "deny"
+    forged = _rehash(original, payload=payload)
+
+    with pytest.raises(StateTransitionBindingError, match=message):
+        bind_and_accept_state_transition(
+            RUN_ID,
+            HistoryView(scenario.events, {original.event_id: forged}),
+            scenario.artifacts,
+        )
+
+
 def _scenario(
     tmp_path: Path,
     *,
@@ -1254,7 +1679,75 @@ def _scenario(
     artifacts = ArtifactStore(tmp_path / "artifacts", database_path=database)
     writer = RunWriter(events)
     recorded: dict[str, EventEnvelope] = {}
-    request_digest = json_digest({"run_id": RUN_ID, "request": "daily"})
+    spec = _spec(low_confidence=branch == "low-confidence")
+    objective = "verify repository readiness"
+    initial_observation = ObservationInput(
+        "observation:initial",
+        NOW,
+        (ObservedClaim("claim:initial", "project:blackcell", "ready", False),),
+        (EvidencePointer(locator="fixture://initial"),),
+    )
+    constraint = ConstraintDefinition(
+        "constraint:bounded",
+        "repository readiness must be known",
+        "project:blackcell",
+        "ready",
+        ConstraintOperator.EQUALS if branch == "deny" else ConstraintOperator.EXISTS,
+        (True,) if branch == "deny" else (),
+    )
+    constraint_command = SolveConstraints(NOW, (constraint,))
+    requirements = DecisionRequirements(
+        "decision:transition",
+        "node:planner",
+        DecisionCapability.REASON,
+        DecisionClassification.PRIVATE,
+        DecisionLocality.LOCAL_ONLY,
+        DecisionBudget(100, 20, 1_000, 100),
+        1,
+        True,
+        NOW,
+    )
+    policy = AffordancePolicy("inspect", branch != "approval")
+    execution_definition = AffordanceDefinition(
+        "inspect",
+        "adapter:fixture",
+        (SideEffectClass.REVERSIBLE if branch == "approval" else SideEffectClass.READ_ONLY),
+        5.0,
+    )
+    workflow_request = DailyOperatorV2Request(
+        run_id=RUN_ID,
+        ingestion=IngestObservation(
+            OBSERVATION_STREAM,
+            0,
+            ACTOR,
+            "fixture.initial",
+            RUN_ID,
+            (initial_observation,),
+            domain=DOMAIN,
+        ),
+        initial_effective_time_cutoff=NOW,
+        signal=DeriveSignalPacket("daily-operator", NOW),
+        retrieval=RetrieveEvidence(
+            objective,
+            (EvidenceKey("project:blackcell", "ready"),),
+        ),
+        context=BuildContext("task:daily", objective, NOW),
+        constraints=constraint_command,
+        evaluation_spec=spec,
+        gateway_requirements=requirements,
+        authorization_affordance=policy,
+        execution_affordance=execution_definition,
+        invocation_id="invocation:transition",
+        idempotency_key="execute:transition",
+        expected_observer_id="observer:fixture",
+        expected_observer_contract_version="observer/v1",
+    )
+    request_digest = daily_operator_v2_request_digest(workflow_request)
+    request_ref = _put(
+        artifacts,
+        encode_daily_operator_v2_request(workflow_request),
+        DAILY_OPERATOR_REQUEST_V2_MEDIA_TYPE,
+    )
     recorded[RUN_STARTED] = writer.append(
         RUN_STARTED,
         {
@@ -1265,9 +1758,13 @@ def _scenario(
             "objective": "verify repository readiness",
             "domain": DOMAIN,
             "observation_stream_id": OBSERVATION_STREAM,
+            "artifact": _link(
+                request_ref,
+                DAILY_OPERATOR_REQUEST_V2_SCHEMA_VERSION,
+                request_digest,
+            ),
         },
     )
-    spec = _spec(low_confidence=branch == "low-confidence")
     spec_ref = _put(
         artifacts,
         encode_evaluation_spec(spec),
@@ -1284,22 +1781,9 @@ def _scenario(
     )
 
     initial_event = observation_events(
-        IngestObservation(
-            OBSERVATION_STREAM,
-            0,
-            ACTOR,
-            "fixture.initial",
-            RUN_ID,
-            (
-                ObservationInput(
-                    "observation:initial",
-                    NOW,
-                    (ObservedClaim("claim:initial", "project:blackcell", "ready", False),),
-                    (EvidencePointer(locator="fixture://initial"),),
-                ),
-            ),
-            recorded[RUN_STARTED].event_id,
-            DOMAIN,
+        replace(
+            workflow_request.ingestion,
+            causation_id=recorded[RUN_STARTED].event_id,
         ),
         recorded_at=NOW,
     )[0]
@@ -1319,25 +1803,7 @@ def _scenario(
         },
     )
 
-    frame = ContextFrame(
-        task_id="task:daily",
-        objective="verify repository readiness",
-        generated_at=NOW,
-        source_packet_id="packet:transition",
-        source_packet_purpose="daily-operator",
-        source_selection_id="selection:transition",
-        state_domain=DOMAIN,
-        state_stream_id=OBSERVATION_STREAM,
-        state_global_position=initial_state.cutoff_global_position,
-        state_stream_position=initial_state.last_source_stream_sequence,
-        source_claim_identities=(),
-        evidence=(),
-        provenance_event_ids=(),
-        omissions=(),
-        model_payload_characters=0,
-        schema_version="context-frame/v4",
-        state_effective_time=NOW,
-    )
+    frame = rebuild_requested_context(workflow_request, initial_state)
     frame_ref = _put(
         artifacts,
         serialize_context_frame(frame).encode(),
@@ -1359,24 +1825,14 @@ def _scenario(
     )
 
     request = RequestDecision(
-        DecisionRequirements(
-            "decision:transition",
-            "node:planner",
-            DecisionCapability.REASON,
-            DecisionClassification.PRIVATE,
-            DecisionLocality.LOCAL_ONLY,
-            DecisionBudget(100, 20, 1_000, 100),
-            1,
-            True,
-            NOW,
-        ),
+        requirements,
         RUN_ID,
         RUN_ID,
         recorded[CONTEXT_RECORDED].event_id,
         frame.frame_id,
         frame.objective,
         frame.model_payload,
-        (),
+        frame.provenance_event_ids,
         (DecisionAffordance("inspect"),),
     )
     request_ref = _put(artifacts, encode_decision_request(request), DECISION_REQUEST_MEDIA_TYPE)
@@ -1405,6 +1861,7 @@ def _scenario(
         1,
         NOW,
     )
+    route_ref = _put(artifacts, encode_decision_route(route), DECISION_ROUTE_MEDIA_TYPE)
     attempt_ref = _put(artifacts, encode_decision_attempt(attempt), DECISION_ATTEMPT_MEDIA_TYPE)
     recorded[MODEL_ATTEMPT_RECORDED] = writer.append(
         MODEL_ATTEMPT_RECORDED,
@@ -1414,6 +1871,7 @@ def _scenario(
             "request_digest": attempt.request_digest,
             "route_id": attempt.route_id,
             "attempt_number": attempt.attempt_number,
+            "route_artifact": _link(route_ref, route.schema_version, route.route_id),
             "artifact": _link(attempt_ref, attempt.schema_version, attempt.attempt_id),
         },
     )
@@ -1438,6 +1896,20 @@ def _scenario(
         encode_decision_response(response),
         DECISION_RESPONSE_MEDIA_TYPE,
     )
+    usage = DecisionUsage(
+        request.request_id,
+        attempt.attempt_id,
+        1,
+        1,
+        1,
+        1,
+        True,
+    )
+    usage_ref = _put(
+        artifacts,
+        encode_decision_usage(usage),
+        DECISION_USAGE_MEDIA_TYPE,
+    )
     recorded[MODEL_RESPONDED] = writer.append(
         MODEL_RESPONDED,
         {
@@ -1445,8 +1917,16 @@ def _scenario(
             "request_id": response.request_id,
             "request_digest": response.request_digest,
             "attempt_id": response.attempt_id,
+            "route_id": response.route_id,
             "proposal_id": response.proposal.proposal_id,
+            "usage_id": usage.usage_id,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "latency_ms": usage.latency_ms,
+            "cost_microusd": usage.cost_microusd,
+            "deterministic": usage.deterministic,
             "artifact": _link(response_ref, response.schema_version, response.response_id),
+            "usage_artifact": _link(usage_ref, usage.schema_version, usage.usage_id),
         },
     )
     proposal = ActionProposal(
@@ -1468,16 +1948,7 @@ def _scenario(
             "artifact": _link(proposal_ref, proposal.schema_version, proposal.proposal_digest),
         },
     )
-    proof = ConstraintProof(
-        "constraint:bounded",
-        DIGEST,
-        ConstraintOutcome.SATISFIED,
-        "satisfied",
-        "bounded fixture is safe",
-        (),
-        NOW,
-    )
-    constraints = ConstraintEvaluation(frame.frame_id, (proof,), NOW)
+    constraints = DeterministicConstraintSolver().handle(constraint_command, frame)
     constraints_ref = _put(
         artifacts,
         encode_constraint_evaluation(constraints),
@@ -1488,8 +1959,8 @@ def _scenario(
         {
             "evaluation_id": constraints.evaluation_id,
             "context_frame_id": frame.frame_id,
-            "proof_ids": (proof.proof_id,),
-            "safe": True,
+            "proof_ids": tuple(item.proof_id for item in constraints.proofs),
+            "safe": constraints.safe,
             "artifact": _link(
                 constraints_ref,
                 constraints.schema_version,
@@ -1497,31 +1968,15 @@ def _scenario(
             ),
         },
     )
-    authorization_outcome = {
-        "deny": AuthorizationOutcome.DENY,
-        "approval": AuthorizationOutcome.REQUIRE_APPROVAL,
-    }.get(branch, AuthorizationOutcome.ALLOW)
-    authorization = AuthorizationDecision(
-        proposal_id=proposal.proposal_id,
-        proposal_digest=proposal.proposal_digest,
-        context_frame_id=frame.frame_id,
-        constraint_evaluation_id=constraints.evaluation_id,
-        authorized_action_digest=proposal.action_digest,
-        affordance_policy_digest=DIGEST,
-        authorized_read_only=True,
-        authorized_external=False,
-        authorized_mutates_state=False,
-        outcome=authorization_outcome,
-        findings=(
-            AuthorizationFinding(
-                authorization_outcome,
-                authorization_outcome.value,
-                "fixture authorization",
-                (proof.proof_id,),
-            ),
+    authorization = ActionAuthorizer().handle(
+        AuthorizeAction(
+            proposal,
+            policy,
+            constraint_command.evaluated_at,
+            frame.provenance_event_ids,
+            False,
         ),
-        evaluated_at=NOW,
-        approval_granted=False,
+        constraints,
     )
     authorization_ref = _put(
         artifacts,
@@ -1565,19 +2020,14 @@ def _scenario(
 
     execution_status = ExecutionStatus.UNKNOWN if branch == "unknown" else ExecutionStatus.SUCCEEDED
     invocation = AffordanceInvocation(
-        "invocation:transition",
+        workflow_request.invocation_id,
         proposal.proposal_id,
         proposal.affordance,
         (),
-        "execute:transition",
+        workflow_request.idempotency_key,
         NOW,
     )
-    definition = AffordanceDefinition(
-        proposal.affordance,
-        "adapter:fixture",
-        SideEffectClass.READ_ONLY,
-        5.0,
-    )
+    definition = execution_definition
     preparation = ExecutionPreparation(
         RUN_ID,
         invocation,
@@ -1628,6 +2078,7 @@ def _scenario(
             "affordance": proposal.affordance,
             "adapter_id": result.adapter_id,
             "adapter_contract_version": "adapter/v1",
+            "journal_position": 1,
             "completed_at": result.completed_at.isoformat(),
             "arguments": (),
             "preparation_artifact": _link(
@@ -1813,6 +2264,48 @@ def _scenario(
     return Scenario(events, artifacts, recorded, initial_state, outcome_state, evaluation, owner)
 
 
+def _workflow_request(scenario: Scenario) -> DailyOperatorV2Request:
+    start = scenario.run_events[RUN_STARTED]
+    artifact = cast("Mapping[str, object]", start.payload["artifact"])
+    return decode_daily_operator_v2_request(
+        scenario.artifacts.get_bytes(cast("str", artifact["digest"]))
+    )
+
+
+def _replace_workflow_request(
+    scenario: Scenario,
+    request: DailyOperatorV2Request,
+) -> dict[str, EventEnvelope]:
+    request_digest = daily_operator_v2_request_digest(request)
+    reference = _put(
+        scenario.artifacts,
+        encode_daily_operator_v2_request(request),
+        DAILY_OPERATOR_REQUEST_V2_MEDIA_TYPE,
+    )
+    start = scenario.run_events[RUN_STARTED]
+    forged_start = _rehash(
+        start,
+        payload={
+            **start.payload,
+            "request_digest": request_digest,
+            "artifact": _link(
+                reference,
+                DAILY_OPERATOR_REQUEST_V2_SCHEMA_VERSION,
+                request_digest,
+            ),
+        },
+    )
+    spec = scenario.run_events[EVALUATION_SPECIFIED]
+    forged_spec = _rehash(
+        spec,
+        payload={**spec.payload, "request_digest": request_digest},
+    )
+    return {
+        start.event_id: forged_start,
+        spec.event_id: forged_spec,
+    }
+
+
 def _record_evaluation(
     writer: RunWriter,
     artifacts: ArtifactStore,
@@ -1837,6 +2330,128 @@ def _record_evaluation(
         },
         recorded_at=EVALUATED_AT,
     )
+
+
+def _append_verified_suffix(
+    scenario: Scenario,
+) -> tuple[dict[str, EventEnvelope], TransitionAcceptance]:
+    acceptance = bind_and_accept_state_transition(RUN_ID, scenario.events, scenario.artifacts)
+    transition = acceptance.transition
+    assert transition is not None
+    transition_ref = _put(
+        scenario.artifacts,
+        encode_accepted_state_transition(transition),
+        ACCEPTED_STATE_TRANSITION_MEDIA_TYPE,
+    )
+    transition_event = _append_run_event(
+        scenario.events,
+        STATE_TRANSITION_RECORDED,
+        {
+            "transition_id": transition.transition_id,
+            "initial_snapshot_digest": transition.initial_state.snapshot_digest,
+            "outcome_snapshot_digest": transition.outcome_state.snapshot_digest,
+            "evaluation_id": transition.evaluation.evaluation_id,
+            "accepted_claim_ids": transition.accepted_claim_ids,
+            "accepted_source_event_ids": transition.accepted_source_event_ids,
+            "artifact": _link(
+                transition_ref,
+                transition.schema_version,
+                transition.transition_id,
+            ),
+        },
+    )
+    prior = scenario.events.read_stream(RUN_STREAM)
+    trace_document = {
+        "schema_version": RUN_TRACE_SCHEMA_VERSION_V2,
+        "run_id": RUN_ID,
+        "run_stream_id": RUN_STREAM,
+        "outcome": "executed",
+        "entries": _run_trace_entries(prior),
+    }
+    trace_ref = _put(
+        scenario.artifacts,
+        canonical_json_bytes(trace_document),
+        RUN_TRACE_MEDIA_TYPE,
+    )
+    trace_event = _append_run_event(
+        scenario.events,
+        TRACE_RECORDED,
+        {
+            "outcome": "executed",
+            "entry_count": len(prior),
+            "artifact": _link(
+                trace_ref,
+                RUN_TRACE_SCHEMA_VERSION_V2,
+                f"trace:{RUN_ID}",
+            ),
+        },
+    )
+    terminal_event = _append_run_event(
+        scenario.events,
+        RUN_COMPLETED,
+        {
+            "outcome": "executed",
+            "authorization_outcome": "allow",
+            "execution_status": "succeeded",
+            "trace_artifact_digest": trace_ref.digest,
+        },
+    )
+    return (
+        {
+            STATE_TRANSITION_RECORDED: transition_event,
+            TRACE_RECORDED: trace_event,
+            RUN_COMPLETED: terminal_event,
+        },
+        acceptance,
+    )
+
+
+def _append_run_event(
+    events: EventStore,
+    event_type: str,
+    payload: Mapping[str, JsonInput],
+) -> EventEnvelope:
+    stream = events.read_stream(RUN_STREAM)
+    previous = stream[-1]
+    event = EventEnvelope.create(
+        stream_id=RUN_STREAM,
+        stream_sequence=previous.stream_sequence + 1,
+        event_type=event_type,
+        schema_version=2,
+        actor=ACTOR,
+        source=SOURCE,
+        payload={"run_id": RUN_ID, **payload},
+        recorded_at=EVALUATED_AT,
+        effective_at=EVALUATED_AT,
+        correlation_id=RUN_ID,
+        causation_id=previous.event_id,
+    )
+    return events.append(event, expected_sequence=previous.stream_sequence)
+
+
+def _run_trace_entries(events: Sequence[EventEnvelope]) -> list[dict[str, JsonInput]]:
+    return [
+        {
+            "event_id": event.event_id,
+            "event_type": event.event_type,
+            "schema_version": event.schema_version,
+            "stream_sequence": event.stream_sequence,
+            "global_position": event.global_position,
+            "recorded_at": event.recorded_at.isoformat(),
+            "effective_at": event.effective_at.isoformat(),
+            "causation_id": event.causation_id,
+            "artifact_links": [
+                {
+                    "field": field,
+                    "digest": cast("Mapping[str, str]", value)["digest"],
+                }
+                for field, value in sorted(event.payload.items())
+                if (field == "artifact" or field.endswith("_artifact"))
+                and isinstance(value, Mapping)
+            ],
+        }
+        for event in events
+    ]
 
 
 def _project(

@@ -153,7 +153,11 @@ observation criterion. Denied, approval-required, and UNKNOWN executions do not 
 - `observe_outcome` owns the observer result artifact.
 - `evaluate_outcome` owns EvaluationSpec and evaluation artifacts.
 - `accept_state_transition` owns transition artifacts.
-- The run recorder verifies and links owner artifacts; it never writes competing payloads.
+- The run recorder links request-decision and execution artifacts already owned by their durable
+  journals and proves those links through read-only journal lookups. For feature values without a
+  dedicated durable journal, the recorder is the persistence coordinator: it stores exactly the
+  feature's canonical codec output, verifies the content address, and links that single artifact.
+  It never invents a competing schema or alternate encoding.
 
 Artifacts commit and verify before their referencing event. An interruption may leave an inert
 orphan artifact or a nonterminal run prefix, never a fabricated completed stage.

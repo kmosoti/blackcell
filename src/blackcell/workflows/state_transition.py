@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 
 from blackcell.features.accept_state_transition import (
+    ACCEPTED_STATE_TRANSITION_MEDIA_TYPE,
+    ACCEPTED_STATE_TRANSITION_SCHEMA_VERSION,
     AcceptStateTransition,
     AuthorizationReference,
     EvaluationReference,
@@ -23,12 +25,15 @@ from blackcell.features.accept_state_transition import (
     TransitionEventReference,
     TransitionExecutionStatus,
     TransitionStateView,
+    decode_accepted_state_transition,
 )
 from blackcell.features.authorize_action import (
     ACTION_PROPOSAL_MEDIA_TYPE,
     AUTHORIZATION_DECISION_MEDIA_TYPE,
+    ActionAuthorizer,
     ActionProposal,
     AuthorizationDecision,
+    AuthorizeAction,
     decode_action_proposal,
     decode_authorization_decision,
 )
@@ -79,16 +84,25 @@ from blackcell.features.request_decision import (
     DECISION_ATTEMPT_MEDIA_TYPE,
     DECISION_REQUEST_MEDIA_TYPE,
     DECISION_RESPONSE_MEDIA_TYPE,
+    DECISION_ROUTE_MEDIA_TYPE,
+    DECISION_USAGE_MEDIA_TYPE,
+    DecisionAffordance,
+    DecisionArgumentSpec,
     DecisionAttempt,
     DecisionResponse,
+    DecisionRoute,
+    DecisionUsage,
     RequestDecision,
     decode_decision_attempt,
     decode_decision_request,
     decode_decision_response,
+    decode_decision_route,
+    decode_decision_usage,
 )
 from blackcell.features.solve_constraints import (
     CONSTRAINT_EVALUATION_MEDIA_TYPE,
     ConstraintEvaluation,
+    DeterministicConstraintSolver,
     decode_constraint_evaluation,
 )
 from blackcell.kernel import (
@@ -96,9 +110,22 @@ from blackcell.kernel import (
     ArtifactNotFoundError,
     ArtifactRef,
     EventEnvelope,
+    JsonInput,
     ProjectionCheckpoint,
 )
-from blackcell.kernel._json import bytes_digest
+from blackcell.kernel._json import bytes_digest, canonical_json_bytes
+from blackcell.workflows.daily_operator_v2_evidence import (
+    DailyOperatorV2EvidenceError,
+    rebuild_requested_context,
+    verify_requested_ingestion,
+)
+from blackcell.workflows.daily_operator_v2_identity import (
+    DAILY_OPERATOR_REQUEST_V2_MEDIA_TYPE,
+    DAILY_OPERATOR_REQUEST_V2_SCHEMA_VERSION,
+    daily_operator_v2_request_digest,
+    decode_daily_operator_v2_request,
+)
+from blackcell.workflows.daily_operator_v2_request import DailyOperatorV2Request
 from blackcell.workflows.outcome_evidence import (
     OutcomeEvidenceBindingError,
     bind_evaluation_observation,
@@ -113,16 +140,29 @@ from blackcell.workflows.run_protocol import (
     EXECUTION_RECORDED,
     INITIAL_STATE_RECORDED,
     MODEL_ATTEMPT_RECORDED,
+    MODEL_FAILED,
     MODEL_REQUESTED,
     MODEL_RESPONDED,
     OUTCOME_OBSERVED,
     OUTCOME_STATE_RECORDED,
     PROPOSAL_RECORDED,
+    RUN_COMPLETED,
+    RUN_FAILED,
+    RUN_FAILURE_MEDIA_TYPE,
+    RUN_FAILURE_SCHEMA_VERSION,
     RUN_STARTED,
+    RUN_TRACE_MEDIA_TYPE,
+    RUN_TRACE_SCHEMA_VERSION_V2,
+    RUN_WORKFLOW,
+    RUN_WORKFLOW_VERSION_V2,
+    STATE_TRANSITION_RECORDED,
+    TRACE_RECORDED,
+    RunOutcome,
     RunProtocolIntegrityError,
     RunProtocolVersion,
     run_stream_id,
 )
+from blackcell.workflows.run_protocol_v2 import V2_EVENT_PAYLOAD_FIELDS
 
 _SOURCE = "blackcell.workflows.daily_operator"
 _ARTIFACT_KEYS = frozenset(
@@ -194,8 +234,17 @@ def bind_and_accept_state_transition(
         raise ValueError("run_id must not be empty")
     selected_acceptor = acceptor or StateTransitionAcceptor()
     try:
-        command = _bind_command(run_id, history, artifacts)
-        return selected_acceptor.handle(command)
+        events = tuple(history.read_stream(run_stream_id(run_id)))
+        command = _bind_command(run_id, history, artifacts, events=events)
+        acceptance = selected_acceptor.handle(command)
+        _verify_recorded_suffix(
+            run_id,
+            events,
+            command=command,
+            acceptance=acceptance,
+            artifacts=artifacts,
+        )
+        return acceptance
     except StateTransitionNotReady:
         raise
     except StateTransitionBindingError:
@@ -219,8 +268,9 @@ def _bind_command(
     run_id: str,
     history: StateTransitionHistory,
     artifacts: StateTransitionArtifacts,
+    *,
+    events: tuple[EventEnvelope, ...],
 ) -> AcceptStateTransition:
-    events = tuple(history.read_stream(run_stream_id(run_id)))
     if not events:
         raise StateTransitionNotReady(f"run {run_id!r} has not started")
     grammar = validate_run_grammar(events, run_id=run_id)
@@ -234,8 +284,16 @@ def _bind_command(
         )
 
     start = _event(by_type, RUN_STARTED)
+    workflow_request = _workflow_request(start, artifacts)
+    if workflow_request.run_id != run_id or workflow_request.ingestion.actor != start.actor:
+        raise StateTransitionBindingError("DailyOperatorV2Request differs from its run identity")
     spec_event = _event(by_type, EVALUATION_SPECIFIED)
-    spec, spec_artifact = _evaluation_spec(start, spec_event, artifacts)
+    spec, spec_artifact = _evaluation_spec(
+        start,
+        spec_event,
+        workflow_request=workflow_request,
+        artifacts=artifacts,
+    )
     initial_event = _event(by_type, INITIAL_STATE_RECORDED)
     initial_state, initial_artifact = _state_snapshot(
         initial_event,
@@ -243,16 +301,22 @@ def _bind_command(
         artifacts=artifacts,
         label="initial state",
     )
-    _verify_initial_scope(start, initial_state)
+    _verify_initial_scope(workflow_request, initial_state)
+    try:
+        verify_requested_ingestion(workflow_request, start, initial_state, history)
+    except DailyOperatorV2EvidenceError as error:
+        raise StateTransitionBindingError(str(error)) from error
 
     context_event = _event(by_type, CONTEXT_RECORDED)
     frame = _context_frame(
         context_event,
+        workflow_request=workflow_request,
         initial_state=initial_state,
         artifacts=artifacts,
     )
     _request, _attempts, response = _gateway_prefix(
         events,
+        workflow_request=workflow_request,
         context_event=context_event,
         frame=frame,
         artifacts=artifacts,
@@ -266,6 +330,7 @@ def _bind_command(
     constraints_event = _event(by_type, CONSTRAINTS_EVALUATED)
     constraints = _constraints(
         constraints_event,
+        workflow_request=workflow_request,
         proposal=proposal,
         frame=frame,
         artifacts=artifacts,
@@ -273,8 +338,10 @@ def _bind_command(
     authorization_event = _event(by_type, AUTHORIZATION_DECIDED)
     authorization, authorization_artifact = _authorization(
         authorization_event,
+        workflow_request=workflow_request,
         proposal=proposal,
         constraints=constraints,
+        frame=frame,
         artifacts=artifacts,
     )
 
@@ -285,6 +352,7 @@ def _bind_command(
         execution, execution_reference = _execution(
             execution_event,
             run_id=run_id,
+            workflow_request=workflow_request,
             proposal=proposal,
             proposal_digest=proposal.proposal_digest,
             authorization=authorization,
@@ -303,6 +371,7 @@ def _bind_command(
             raise StateTransitionBindingError("terminal outcome evidence is incomplete")
         outcome_observation, outcome_observation_artifact, outcome_event_ids = _outcome(
             outcome_event,
+            workflow_request=workflow_request,
             spec=spec,
             execution_reference=execution_reference,
             history=history,
@@ -382,6 +451,186 @@ def _bind_command(
     return command
 
 
+def _verify_recorded_suffix(
+    run_id: str,
+    events: tuple[EventEnvelope, ...],
+    *,
+    command: AcceptStateTransition,
+    acceptance: TransitionAcceptance,
+    artifacts: StateTransitionArtifacts,
+) -> None:
+    by_type = {event.event_type: event for event in events}
+    transition_event = by_type.get(STATE_TRANSITION_RECORDED)
+    if transition_event is not None:
+        expected = acceptance.transition
+        if expected is None:
+            raise StateTransitionBindingError(
+                "recorded transition has no derived accepted transition"
+            )
+        link = _artifact(
+            transition_event,
+            artifacts=artifacts,
+            media_type=ACCEPTED_STATE_TRANSITION_MEDIA_TYPE,
+            schema_version=ACCEPTED_STATE_TRANSITION_SCHEMA_VERSION,
+        )
+        recorded = decode_accepted_state_transition(link.data)
+        _matches(
+            transition_event,
+            {
+                "transition_id": recorded.transition_id,
+                "initial_snapshot_digest": recorded.initial_state.snapshot_digest,
+                "outcome_snapshot_digest": recorded.outcome_state.snapshot_digest,
+                "evaluation_id": recorded.evaluation.evaluation_id,
+                "accepted_claim_ids": recorded.accepted_claim_ids,
+                "accepted_source_event_ids": recorded.accepted_source_event_ids,
+            },
+        )
+        if link.logical_id != recorded.transition_id or recorded != expected:
+            raise StateTransitionBindingError(
+                "recorded transition differs from derived accepted evidence"
+            )
+
+    trace_event = by_type.get(TRACE_RECORDED)
+    trace_link: _Artifact | None = None
+    if trace_event is not None:
+        trace_outcome = _text(trace_event.payload, "outcome")
+        if (
+            trace_outcome != RunOutcome.FAILED.value
+            and acceptance.transition is not None
+            and transition_event is None
+        ):
+            raise StateTransitionBindingError(
+                "completed trace omits its derived accepted transition"
+            )
+        trace_link = _artifact(
+            trace_event,
+            artifacts=artifacts,
+            media_type=RUN_TRACE_MEDIA_TYPE,
+            schema_version=RUN_TRACE_SCHEMA_VERSION_V2,
+        )
+        prior = tuple(
+            event for event in events if event.stream_sequence < trace_event.stream_sequence
+        )
+        expected_trace = {
+            "schema_version": RUN_TRACE_SCHEMA_VERSION_V2,
+            "run_id": run_id,
+            "run_stream_id": run_stream_id(run_id),
+            "outcome": trace_outcome,
+            "entries": _trace_entries(prior),
+        }
+        _matches(
+            trace_event,
+            {
+                "run_id": run_id,
+                "entry_count": len(prior),
+            },
+        )
+        if trace_link.logical_id != f"trace:{run_id}" or trace_link.data != canonical_json_bytes(
+            expected_trace
+        ):
+            raise StateTransitionBindingError("recorded trace differs from its exact run prefix")
+
+    terminal = next(
+        (event for event in events if event.event_type in {RUN_COMPLETED, RUN_FAILED}),
+        None,
+    )
+    if terminal is None:
+        return
+    if trace_event is None or trace_link is None:
+        raise StateTransitionBindingError("terminal run lacks its verified trace")
+    trace_outcome = _text(trace_event.payload, "outcome")
+    if terminal.event_type == RUN_COMPLETED:
+        material_outcome = _material_outcome(command)
+        _matches(
+            terminal,
+            {
+                "run_id": run_id,
+                "outcome": material_outcome.value,
+                "authorization_outcome": command.authorization.outcome.value,
+                "execution_status": (
+                    None if command.execution is None else command.execution.status.value
+                ),
+                "trace_artifact_digest": trace_link.digest,
+            },
+        )
+        if trace_outcome != material_outcome.value:
+            raise StateTransitionBindingError(
+                "completed trace outcome differs from derived run evidence"
+            )
+        return
+
+    _matches(
+        terminal,
+        {
+            "run_id": run_id,
+            "outcome": RunOutcome.FAILED.value,
+            "trace_artifact_digest": trace_link.digest,
+        },
+    )
+    if trace_outcome != RunOutcome.FAILED.value:
+        raise StateTransitionBindingError("failed terminal requires a failed trace")
+    failure_link = _artifact(
+        terminal,
+        artifacts=artifacts,
+        media_type=RUN_FAILURE_MEDIA_TYPE,
+        schema_version=RUN_FAILURE_SCHEMA_VERSION,
+    )
+    phase = _text(terminal.payload, "phase")
+    error_type = _text(terminal.payload, "error_type")
+    expected_failure = canonical_json_bytes(
+        {
+            "schema_version": RUN_FAILURE_SCHEMA_VERSION,
+            "run_id": run_id,
+            "phase": phase,
+            "error_type": error_type,
+        }
+    )
+    if failure_link.logical_id != f"failure:{run_id}" or failure_link.data != expected_failure:
+        raise StateTransitionBindingError("run failure artifact differs from its terminal event")
+
+
+def _material_outcome(command: AcceptStateTransition) -> RunOutcome:
+    execution_status = None if command.execution is None else command.execution.status.value
+    outcomes: Mapping[tuple[str, str | None], RunOutcome] = {
+        ("deny", None): RunOutcome.DENIED,
+        ("require-approval", None): RunOutcome.APPROVAL_REQUIRED,
+        ("allow", "succeeded"): RunOutcome.EXECUTED,
+        ("allow", "failed"): RunOutcome.EXECUTION_FAILED,
+        ("allow", "unknown"): RunOutcome.REQUIRES_RECONCILIATION,
+    }
+    try:
+        return outcomes[(command.authorization.outcome.value, execution_status)]
+    except KeyError as error:
+        raise StateTransitionBindingError(
+            "authorization/execution cannot produce a completed run outcome"
+        ) from error
+
+
+def _trace_entries(events: Sequence[EventEnvelope]) -> list[dict[str, JsonInput]]:
+    return [
+        {
+            "event_id": event.event_id,
+            "event_type": event.event_type,
+            "schema_version": event.schema_version,
+            "stream_sequence": event.stream_sequence,
+            "global_position": event.global_position,
+            "recorded_at": event.recorded_at.isoformat(),
+            "effective_at": event.effective_at.isoformat(),
+            "causation_id": event.causation_id,
+            "artifact_links": [
+                {
+                    "field": field,
+                    "digest": _text(cast("Mapping[str, object]", value), "digest"),
+                }
+                for field, value in sorted(event.payload.items())
+                if (field == "artifact" or field.endswith("_artifact"))
+                and isinstance(value, Mapping)
+            ],
+        }
+        for event in events
+    ]
+
+
 def _verify_run_occurrences(
     events: tuple[EventEnvelope, ...],
     *,
@@ -397,6 +646,9 @@ def _verify_run_occurrences(
         if event.correlation_id != run_id:
             raise StateTransitionBindingError("run correlation is inconsistent")
         _prove_occurrence(event, history)
+        expected_fields = V2_EVENT_PAYLOAD_FIELDS.get(event.event_type)
+        if expected_fields is None or frozenset(event.payload) != expected_fields:
+            raise StateTransitionBindingError(f"{event.event_type} payload fields are not exact")
         position = cast("int", event.global_position)
         positions.append(position)
         _verify_nested_artifact_links(event, artifacts)
@@ -421,6 +673,12 @@ def _verify_nested_artifact_links(
 ) -> None:
     for name, value in event.payload.items():
         if name == "artifact" or name.endswith("_artifact"):
+            if (
+                event.event_type == MODEL_FAILED
+                and name in {"route_artifact", "usage_artifact"}
+                and value is None
+            ):
+                continue
             if not isinstance(value, Mapping):
                 raise StateTransitionBindingError(f"{event.event_type} {name} is not an object")
             _artifact_from_mapping(
@@ -430,9 +688,41 @@ def _verify_nested_artifact_links(
             )
 
 
+def _workflow_request(
+    event: EventEnvelope,
+    artifacts: StateTransitionArtifacts,
+) -> DailyOperatorV2Request:
+    link = _artifact(
+        event,
+        artifacts=artifacts,
+        media_type=DAILY_OPERATOR_REQUEST_V2_MEDIA_TYPE,
+        schema_version=DAILY_OPERATOR_REQUEST_V2_SCHEMA_VERSION,
+    )
+    request = decode_daily_operator_v2_request(link.data)
+    request_digest = daily_operator_v2_request_digest(request)
+    if link.logical_id != request_digest:
+        raise StateTransitionBindingError("DailyOperatorV2Request logical identity is inconsistent")
+    _matches(
+        event,
+        {
+            "run_id": request.run_id,
+            "request_digest": request_digest,
+            "workflow": RUN_WORKFLOW,
+            "workflow_version": RUN_WORKFLOW_VERSION_V2,
+            "task_id": request.context.task_id,
+            "objective": request.context.objective,
+            "domain": request.ingestion.domain,
+            "observation_stream_id": request.ingestion.stream_id,
+        },
+    )
+    return request
+
+
 def _evaluation_spec(
     start: EventEnvelope,
     event: EventEnvelope,
+    *,
+    workflow_request: DailyOperatorV2Request,
     artifacts: StateTransitionArtifacts,
 ) -> tuple[EvaluationSpec, _Artifact]:
     link = _artifact(
@@ -447,13 +737,15 @@ def _evaluation_spec(
         {
             "evaluation_spec_id": spec.spec_id,
             "evaluation_spec_digest": link.digest,
-            "request_digest": _text(start.payload, "request_digest"),
+            "request_digest": daily_operator_v2_request_digest(workflow_request),
         },
     )
     if link.logical_id != spec.spec_id:
         raise StateTransitionBindingError("EvaluationSpec logical identity is inconsistent")
-    if spec.objective != _text(start.payload, "objective"):
-        raise StateTransitionBindingError("EvaluationSpec objective differs from its run")
+    if spec != workflow_request.evaluation_spec or _text(
+        start.payload, "request_digest"
+    ) != daily_operator_v2_request_digest(workflow_request):
+        raise StateTransitionBindingError("EvaluationSpec differs from the immutable request")
     return spec, link
 
 
@@ -505,17 +797,23 @@ def _state_snapshot(
     return state, link
 
 
-def _verify_initial_scope(start: EventEnvelope, state: OperationalBeliefState) -> None:
+def _verify_initial_scope(
+    workflow_request: DailyOperatorV2Request,
+    state: OperationalBeliefState,
+) -> None:
     if state.scope != OperationalStateScope(
-        _text(start.payload, "domain"),
-        _text(start.payload, "observation_stream_id"),
+        workflow_request.ingestion.domain,
+        workflow_request.ingestion.stream_id,
     ):
         raise StateTransitionBindingError("initial state scope differs from the run request")
+    if state.effective_time_cutoff != workflow_request.initial_effective_time_cutoff:
+        raise StateTransitionBindingError("initial state cutoff differs from the immutable request")
 
 
 def _context_frame(
     event: EventEnvelope,
     *,
+    workflow_request: DailyOperatorV2Request,
     initial_state: OperationalBeliefState,
     artifacts: StateTransitionArtifacts,
 ) -> ContextFrame:
@@ -529,10 +827,20 @@ def _context_frame(
     if link.digest != frame_id or link.logical_id != frame_id:
         raise StateTransitionBindingError("ContextFrame link does not match frame_id")
     frame = decode_context_frame(link.data, expected_frame_id=frame_id)
+    expected_frame = rebuild_requested_context(workflow_request, initial_state)
     if frame.schema_version != link.schema_version:
         raise StateTransitionBindingError("ContextFrame schema differs from its artifact link")
+    if frame.schema_version == "context-frame/v4" and frame.state_effective_time != (
+        initial_state.effective_time_cutoff
+    ):
+        raise StateTransitionBindingError("ContextFrame effective-time identity differs from state")
     if (
-        frame.task_id != _text(event.payload, "task_id")
+        frame != expected_frame
+        or frame.task_id != workflow_request.context.task_id
+        or frame.objective != workflow_request.context.objective
+        or frame.generated_at != workflow_request.context.generated_at
+        or frame.model_payload_characters > workflow_request.context.max_characters
+        or frame.task_id != _text(event.payload, "task_id")
         or frame.state_domain != initial_state.scope.domain
         or frame.state_stream_id != initial_state.scope.stream_id
         or frame.state_global_position != initial_state.cutoff_global_position
@@ -550,16 +858,13 @@ def _context_frame(
             "source_selection_id": frame.source_selection_id,
         },
     )
-    if frame.schema_version == "context-frame/v4" and frame.state_effective_time != (
-        initial_state.effective_time_cutoff
-    ):
-        raise StateTransitionBindingError("ContextFrame effective-time identity differs from state")
     return frame
 
 
 def _gateway_prefix(
     events: tuple[EventEnvelope, ...],
     *,
+    workflow_request: DailyOperatorV2Request,
     context_event: EventEnvelope,
     frame: ContextFrame,
     artifacts: StateTransitionArtifacts,
@@ -593,11 +898,16 @@ def _gateway_prefix(
         or request.objective != frame.objective
         or request.context_payload != frame.model_payload
         or request.evidence_event_ids != frame.provenance_event_ids
+        or request.requirements != workflow_request.gateway_requirements
+        or request.affordances != (_decision_affordance(workflow_request),)
     ):
-        raise StateTransitionBindingError("decision request differs from its causal ContextFrame")
+        raise StateTransitionBindingError(
+            "decision request differs from its immutable policy or causal ContextFrame"
+        )
 
     attempt_events = tuple(item for item in events if item.event_type == MODEL_ATTEMPT_RECORDED)
     attempts: list[DecisionAttempt] = []
+    routes: list[DecisionRoute] = []
     for number, attempt_event in enumerate(attempt_events, start=1):
         attempt_link = _artifact(
             attempt_event,
@@ -611,6 +921,19 @@ def _gateway_prefix(
             attempt_link.data,
             expected_attempt_id=attempt_link.digest,
         )
+        route_link = _named_artifact(
+            attempt_event,
+            "route_artifact",
+            artifacts=artifacts,
+            media_type=DECISION_ROUTE_MEDIA_TYPE,
+            schema_version="decision-route/v1",
+        )
+        route = decode_decision_route(
+            route_link.data,
+            expected_route_id=route_link.digest,
+        )
+        if route_link.logical_id != route.route_id:
+            raise StateTransitionBindingError("decision route link identity is inconsistent")
         _matches(
             attempt_event,
             {
@@ -625,9 +948,17 @@ def _gateway_prefix(
             attempt.request_id != request.request_id
             or attempt.request_digest != request.request_digest
             or attempt.attempt_number != number
+            or attempt.route_id != route.route_id
+            or route.capability != request.capability
+            or (request.locality.value == "local-only" and not route.local)
+            or (request.deterministic_required and not route.deterministic)
+            or route.selected_at > attempt.started_at
         ):
-            raise StateTransitionBindingError("decision attempt chain differs from its request")
+            raise StateTransitionBindingError(
+                "decision attempt or route differs from its request policy"
+            )
         attempts.append(attempt)
+        routes.append(route)
     if not attempts:
         raise StateTransitionBindingError("a successful model response requires an attempt")
 
@@ -645,6 +976,19 @@ def _gateway_prefix(
         expected_response_id=response_link.digest,
         request=request,
     )
+    usage_link = _named_artifact(
+        response_event,
+        "usage_artifact",
+        artifacts=artifacts,
+        media_type=DECISION_USAGE_MEDIA_TYPE,
+        schema_version="decision-usage/v1",
+    )
+    usage = decode_decision_usage(
+        usage_link.data,
+        expected_usage_id=usage_link.digest,
+    )
+    if usage_link.logical_id != usage.usage_id:
+        raise StateTransitionBindingError("decision usage link identity is inconsistent")
     _matches(
         response_event,
         {
@@ -652,17 +996,33 @@ def _gateway_prefix(
             "request_id": response.request_id,
             "request_digest": response.request_digest,
             "attempt_id": response.attempt_id,
+            "route_id": response.route_id,
             "proposal_id": response.proposal.proposal_id,
+            "usage_id": usage.usage_id,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "latency_ms": usage.latency_ms,
+            "cost_microusd": usage.cost_microusd,
+            "deterministic": usage.deterministic,
         },
     )
     final_attempt = attempts[-1]
+    final_route = routes[-1]
     if (
         response.request_id != request.request_id
         or response.request_digest != request.request_digest
         or response.attempt_id != final_attempt.attempt_id
         or response.route_id != final_attempt.route_id
+        or response.route_id != final_route.route_id
+        or response.completed_at < final_attempt.started_at
+        or response_event.recorded_at < response.completed_at
+        or usage.request_id != request.request_id
+        or usage.attempt_id != final_attempt.attempt_id
+        or not _usage_within_budget(usage, request, final_route)
     ):
-        raise StateTransitionBindingError("decision response differs from its final attempt")
+        raise StateTransitionBindingError(
+            "decision response or usage differs from its final attempt"
+        )
     return request, tuple(attempts), response
 
 
@@ -707,6 +1067,7 @@ def _proposal(
 def _constraints(
     event: EventEnvelope,
     *,
+    workflow_request: DailyOperatorV2Request,
     proposal: ActionProposal,
     frame: ContextFrame,
     artifacts: StateTransitionArtifacts,
@@ -735,14 +1096,21 @@ def _constraints(
     cited = {event_id for proof in evaluation.proofs for event_id in proof.evidence_event_ids}
     if not cited <= provenance:
         raise StateTransitionBindingError("constraint proof cites evidence outside ContextFrame")
+    replayed = DeterministicConstraintSolver().handle(workflow_request.constraints, frame)
+    if evaluation != replayed:
+        raise StateTransitionBindingError(
+            "ConstraintEvaluation differs from immutable request replay"
+        )
     return evaluation
 
 
 def _authorization(
     event: EventEnvelope,
     *,
+    workflow_request: DailyOperatorV2Request,
     proposal: ActionProposal,
     constraints: ConstraintEvaluation,
+    frame: ContextFrame,
     artifacts: StateTransitionArtifacts,
 ) -> tuple[AuthorizationDecision, _Artifact]:
     link = _artifact(
@@ -778,6 +1146,20 @@ def _authorization(
         raise StateTransitionBindingError(
             "authorization record cannot precede authorization evaluation"
         )
+    replayed = ActionAuthorizer().handle(
+        AuthorizeAction(
+            proposal,
+            workflow_request.authorization_affordance,
+            workflow_request.constraints.evaluated_at,
+            frame.provenance_event_ids,
+            workflow_request.approval_granted,
+        ),
+        constraints,
+    )
+    if decision != replayed:
+        raise StateTransitionBindingError(
+            "AuthorizationDecision differs from immutable policy replay"
+        )
     return decision, link
 
 
@@ -785,6 +1167,7 @@ def _execution(
     event: EventEnvelope,
     *,
     run_id: str,
+    workflow_request: DailyOperatorV2Request,
     proposal: ActionProposal,
     proposal_digest: str,
     authorization: AuthorizationDecision,
@@ -841,10 +1224,12 @@ def _execution(
     _verify_execution_preparation(
         preparation,
         run_id=run_id,
+        workflow_request=workflow_request,
         proposal=proposal,
         authorization=authorization,
         result=result,
     )
+    journal_position = event.payload.get("journal_position")
     if (
         result.proposal_id != proposal.proposal_id
         or result.authorization_decision_id != authorization.decision_id
@@ -853,6 +1238,9 @@ def _execution(
         or result.started_at < authorization.evaluated_at
         or result.started_at < preparation.invocation.requested_at
         or event.recorded_at < result.completed_at
+        or isinstance(journal_position, bool)
+        or not isinstance(journal_position, int)
+        or journal_position < 1
     ):
         raise StateTransitionBindingError("ExecutionResult differs from its authorized action")
     reference = ExecutionReference(
@@ -887,6 +1275,7 @@ def _verify_execution_preparation(
     preparation: ExecutionPreparation,
     *,
     run_id: str,
+    workflow_request: DailyOperatorV2Request,
     proposal: ActionProposal,
     authorization: AuthorizationDecision,
     result: ExecutionResult,
@@ -899,6 +1288,9 @@ def _verify_execution_preparation(
     provided = {item.name for item in invocation.arguments}
     if (
         preparation.run_id != run_id
+        or preparation.definition != workflow_request.execution_affordance
+        or invocation.invocation_id != workflow_request.invocation_id
+        or invocation.idempotency_key != workflow_request.idempotency_key
         or invocation.proposal_id != proposal.proposal_id
         or invocation.affordance != proposal.affordance
         or invocation_arguments != proposal_arguments
@@ -952,6 +1344,7 @@ def _execution_binding_id(
 def _outcome(
     event: EventEnvelope,
     *,
+    workflow_request: DailyOperatorV2Request,
     spec: EvaluationSpec,
     execution_reference: ExecutionReference | None,
     history: StateTransitionHistory,
@@ -980,11 +1373,17 @@ def _outcome(
     )
     if link.logical_id != outcome.observation_digest:
         raise StateTransitionBindingError("OutcomeObservation logical ID is inconsistent")
+    targets = {(item.subject, item.predicate) for item in spec.criteria}
     if (
         outcome.evaluation_spec_id != spec.spec_id
         or outcome.binding.binding_id != execution_reference.execution_binding_id
         or outcome.binding.run_id != execution_reference.run_id
         or outcome.binding.execution_result_id != execution_reference.execution_result_id
+        or outcome.domain != workflow_request.ingestion.domain
+        or outcome.stream_id != workflow_request.ingestion.stream_id
+        or outcome.observer_id != workflow_request.expected_observer_id
+        or outcome.observer_contract_version != workflow_request.expected_observer_contract_version
+        or any(item.key not in targets for item in outcome.claims)
     ):
         raise StateTransitionBindingError("OutcomeObservation cross-identity is inconsistent")
     if len(outcome_event_ids) != 1:
@@ -1398,6 +1797,31 @@ def _strings(value: object, label: str) -> tuple[str, ...]:
     if len(result) != len(set(result)):
         raise StateTransitionBindingError(f"{label} values must be unique")
     return cast("tuple[str, ...]", result)
+
+
+def _decision_affordance(request: DailyOperatorV2Request) -> DecisionAffordance:
+    definition = request.execution_affordance
+    return DecisionAffordance(
+        definition.name,
+        tuple(DecisionArgumentSpec(item.name, item.required) for item in definition.arguments),
+    )
+
+
+def _usage_within_budget(
+    usage: DecisionUsage,
+    request: RequestDecision,
+    route: DecisionRoute,
+) -> bool:
+    budget = request.budget
+    return (
+        usage.request_id == request.request_id
+        and usage.input_tokens <= budget.max_input_tokens
+        and usage.output_tokens <= budget.max_output_tokens
+        and usage.latency_ms <= budget.max_latency_ms
+        and usage.cost_microusd <= budget.max_cost_microusd
+        and (not request.deterministic_required or usage.deterministic)
+        and (not route.deterministic or usage.deterministic)
+    )
 
 
 class _NoCheckpoints:
