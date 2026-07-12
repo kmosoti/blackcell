@@ -41,6 +41,15 @@ class BeliefClaimLike(Protocol):
     @property
     def global_position(self) -> int: ...
 
+    @property
+    def epistemic_status(self) -> str: ...
+
+    @property
+    def unknown_reason(self) -> str | None: ...
+
+    @property
+    def expires_at(self) -> datetime | None: ...
+
 
 class BeliefConflictLike(Protocol):
     @property
@@ -74,6 +83,9 @@ class BeliefStateLike(Protocol):
 
     @property
     def last_source_stream_sequence(self) -> int: ...
+
+    @property
+    def effective_time_cutoff(self) -> datetime | None: ...
 
 
 class OperationalStateScopeLike(Protocol):

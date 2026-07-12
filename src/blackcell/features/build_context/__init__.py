@@ -8,11 +8,13 @@ from blackcell.features.build_context.handler import (
 )
 from blackcell.features.build_context.models import (
     ContextClaimIdentity,
+    ContextEpistemicStatus,
     ContextEvidence,
     ContextFrame,
     ContextOmission,
     ContextOmissionReason,
     ContextOmissionStage,
+    ContextUnknownReason,
     serialize_context_evidence,
     serialize_context_frame,
 )
@@ -28,6 +30,7 @@ __all__ = [
     "BuildContext",
     "ContextBudgetError",
     "ContextClaimIdentity",
+    "ContextEpistemicStatus",
     "ContextEvidence",
     "ContextFrame",
     "ContextFrameBuilder",
@@ -40,6 +43,7 @@ __all__ = [
     "ContextOmissionReason",
     "ContextOmissionStage",
     "ContextSelectionMismatchError",
+    "ContextUnknownReason",
     "serialize_context_evidence",
     "serialize_context_frame",
 ]

@@ -45,6 +45,15 @@ class SignalClaimLike(Protocol):
     @property
     def global_position(self) -> int: ...
 
+    @property
+    def epistemic_status(self) -> str: ...
+
+    @property
+    def unknown_reason(self) -> str | None: ...
+
+    @property
+    def expires_at(self) -> datetime | None: ...
+
 
 class SignalConflictLike(Protocol):
     @property
@@ -72,6 +81,9 @@ class SignalPacketLike(Protocol):
 
     @property
     def state_stream_position(self) -> int: ...
+
+    @property
+    def state_effective_time(self) -> datetime | None: ...
 
     @property
     def claims(self) -> Sequence[SignalClaimLike]: ...

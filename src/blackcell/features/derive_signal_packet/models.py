@@ -2,9 +2,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import StrEnum
 
 from blackcell.kernel import JsonScalar
 from blackcell.kernel._json import json_digest
+
+
+class SignalEpistemicStatus(StrEnum):
+    OBSERVED = "observed"
+    UNKNOWN = "unknown"
+
+
+class SignalUnknownReason(StrEnum):
+    EXPIRED = "expired"
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +32,34 @@ class SignalClaim:
     stream_id: str
     stream_sequence: int
     global_position: int
+    epistemic_status: SignalEpistemicStatus = SignalEpistemicStatus.OBSERVED
+    unknown_reason: SignalUnknownReason | None = None
+    expires_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.epistemic_status, SignalEpistemicStatus):
+            raise TypeError("epistemic_status must be recognized")
+        if self.unknown_reason is not None and not isinstance(
+            self.unknown_reason, SignalUnknownReason
+        ):
+            raise TypeError("unknown_reason must be recognized")
+        if self.expires_at is not None and (
+            self.expires_at.tzinfo is None or self.expires_at.utcoffset() is None
+        ):
+            raise ValueError("expires_at must be timezone-aware")
+        if self.expires_at is not None and self.expires_at < self.effective_at:
+            raise ValueError("expires_at cannot precede effective_at")
+        if self.epistemic_status is SignalEpistemicStatus.OBSERVED:
+            if self.unknown_reason is not None:
+                raise ValueError("observed signal claims cannot have an unknown reason")
+        elif (
+            self.value is not None
+            or self.confidence != 0.0
+            or self.unknown_reason is not SignalUnknownReason.EXPIRED
+            or self.expires_at is None
+            or not self.stale
+        ):
+            raise ValueError("unknown signal claims require explicit expired semantics")
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +91,7 @@ class SignalPacket:
     mean_confidence: float
     stale_claim_count: int
     schema_version: str = "signal-packet/v2"
+    state_effective_time: datetime | None = None
     packet_id: str = field(init=False)
 
     @property
@@ -66,6 +105,23 @@ class SignalPacket:
             raise ValueError("packet purpose and state domain must not be empty")
         if self.generated_at.tzinfo is None or self.generated_at.utcoffset() is None:
             raise ValueError("generated_at must be timezone-aware")
+        if self.state_effective_time is not None and (
+            self.state_effective_time.tzinfo is None
+            or self.state_effective_time.utcoffset() is None
+        ):
+            raise ValueError("state_effective_time must be timezone-aware")
+        if self.schema_version not in {"signal-packet/v2", "signal-packet/v3"}:
+            raise ValueError("signal packet schema is unsupported")
+        has_epistemic_extensions = self.state_effective_time is not None or any(
+            claim.epistemic_status is not SignalEpistemicStatus.OBSERVED
+            or claim.unknown_reason is not None
+            or claim.expires_at is not None
+            for claim in self.claims
+        )
+        if self.schema_version == "signal-packet/v2" and has_epistemic_extensions:
+            raise ValueError("signal-packet/v2 cannot contain epistemic extensions")
+        if self.schema_version == "signal-packet/v3" and not has_epistemic_extensions:
+            raise ValueError("signal-packet/v3 requires epistemic extensions")
         if self.state_stream_id is not None and not self.state_stream_id.strip():
             raise ValueError("state_stream_id must not be blank")
         if self.state_global_position < 0 or self.state_stream_position < 0:
@@ -110,7 +166,7 @@ class SignalPacket:
 
 
 def _packet_payload(packet: SignalPacket) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "schema_version": packet.schema_version,
         "purpose": packet.purpose,
         "state_domain": packet.state_domain,
@@ -118,7 +174,7 @@ def _packet_payload(packet: SignalPacket) -> dict[str, object]:
         "generated_at": packet.generated_at.isoformat(),
         "state_global_position": packet.state_global_position,
         "state_stream_position": packet.state_stream_position,
-        "claims": [_claim_payload(claim) for claim in packet.claims],
+        "claims": [_claim_payload(claim, packet.schema_version) for claim in packet.claims],
         "conflicts": [
             {
                 "subject": conflict.subject,
@@ -133,10 +189,17 @@ def _packet_payload(packet: SignalPacket) -> dict[str, object]:
         "mean_confidence": packet.mean_confidence,
         "stale_claim_count": packet.stale_claim_count,
     }
+    if packet.schema_version == "signal-packet/v3":
+        payload["state_effective_time"] = (
+            packet.state_effective_time.isoformat()
+            if packet.state_effective_time is not None
+            else None
+        )
+    return payload
 
 
-def _claim_payload(claim: SignalClaim) -> dict[str, object]:
-    return {
+def _claim_payload(claim: SignalClaim, schema_version: str) -> dict[str, object]:
+    payload: dict[str, object] = {
         "claim_id": claim.claim_id,
         "subject": claim.subject,
         "predicate": claim.predicate,
@@ -151,3 +214,14 @@ def _claim_payload(claim: SignalClaim) -> dict[str, object]:
         "stream_sequence": claim.stream_sequence,
         "global_position": claim.global_position,
     }
+    if schema_version == "signal-packet/v3":
+        payload.update(
+            {
+                "epistemic_status": claim.epistemic_status,
+                "unknown_reason": claim.unknown_reason,
+                "expires_at": (
+                    claim.expires_at.isoformat() if claim.expires_at is not None else None
+                ),
+            }
+        )
+    return payload

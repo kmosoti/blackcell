@@ -10,11 +10,13 @@ from typing import Self, cast
 
 from blackcell.features.build_context.models import (
     ContextClaimIdentity,
+    ContextEpistemicStatus,
     ContextEvidence,
     ContextFrame,
     ContextOmission,
     ContextOmissionReason,
     ContextOmissionStage,
+    ContextUnknownReason,
     serialize_context_frame,
 )
 from blackcell.features.build_context.storage import (
@@ -32,8 +34,8 @@ from blackcell.kernel._json import bytes_digest, canonical_json_bytes
 from blackcell.kernel.database import connect
 
 _INDEX_SCHEMA_VERSION = 1
-_FRAME_SCHEMA_VERSION = "context-frame/v3"
-_OMISSION_SCHEMA_VERSION = "context-omission/v2"
+_FRAME_SCHEMA_VERSIONS = frozenset({"context-frame/v3", "context-frame/v4"})
+_OMISSION_SCHEMA_VERSIONS = frozenset({"context-omission/v2", "context-omission/v3"})
 _MEDIA_TYPE = "application/vnd.blackcell.context-frame+json"
 _MIGRATION_TABLE = "context_frame_index_schema_migrations"
 
@@ -53,7 +55,7 @@ create table if not exists context_frame_index (
 )
 """
 
-_FRAME_KEYS = frozenset(
+_FRAME_V3_KEYS = frozenset(
     {
         "schema_version",
         "task_id",
@@ -73,8 +75,12 @@ _FRAME_KEYS = frozenset(
         "model_payload_characters",
     }
 )
+_FRAME_KEYS_BY_SCHEMA = {
+    "context-frame/v3": _FRAME_V3_KEYS,
+    "context-frame/v4": _FRAME_V3_KEYS | {"state_effective_time"},
+}
 _CLAIM_IDENTITY_KEYS = frozenset({"source_event_id", "claim_id"})
-_EVIDENCE_KEYS = frozenset(
+_EVIDENCE_V3_KEYS = frozenset(
     {
         "claim_id",
         "subject",
@@ -94,7 +100,11 @@ _EVIDENCE_KEYS = frozenset(
         "conflicted",
     }
 )
-_OMISSION_KEYS = frozenset(
+_EVIDENCE_KEYS_BY_FRAME_SCHEMA = {
+    "context-frame/v3": _EVIDENCE_V3_KEYS,
+    "context-frame/v4": _EVIDENCE_V3_KEYS | {"epistemic_status", "unknown_reason", "expires_at"},
+}
+_OMISSION_V2_KEYS = frozenset(
     {
         "schema_version",
         "claim_id",
@@ -120,6 +130,10 @@ _OMISSION_KEYS = frozenset(
         "source_omission_schema_version",
     }
 )
+_OMISSION_KEYS_BY_SCHEMA = {
+    "context-omission/v2": _OMISSION_V2_KEYS,
+    "context-omission/v3": _OMISSION_V2_KEYS | {"epistemic_status", "unknown_reason", "expires_at"},
+}
 
 
 class ArtifactContextFrameStore:
@@ -334,15 +348,29 @@ def _index_schema_version(connection: sqlite3.Connection) -> int:
 
 
 def _decode_frame(value: object, *, expected_frame_id: str) -> ContextFrame:
-    payload = _require_mapping(value, keys=_FRAME_KEYS, label="ContextFrame")
-    schema_version = _require_string(payload["schema_version"], label="schema_version")
-    if schema_version != _FRAME_SCHEMA_VERSION:
+    if not isinstance(value, dict):
+        raise ContextFrameIntegrityError("ContextFrame must be a JSON object")
+    schema_version = _require_string(value.get("schema_version"), label="schema_version")
+    if schema_version not in _FRAME_SCHEMA_VERSIONS:
         raise ContextFrameSchemaError(
             f"unsupported ContextFrame schema {schema_version!r}; "
-            f"expected {_FRAME_SCHEMA_VERSION!r}"
+            f"expected one of {sorted(_FRAME_SCHEMA_VERSIONS)!r}"
         )
+    payload = _require_mapping(
+        value,
+        keys=_FRAME_KEYS_BY_SCHEMA[schema_version],
+        label="ContextFrame",
+    )
     generated_at = _require_datetime(payload["generated_at"], label="generated_at")
     state_stream_id = _require_optional_string(payload["state_stream_id"], label="state_stream_id")
+    state_effective_time = (
+        _require_optional_datetime(
+            payload["state_effective_time"],
+            label="state_effective_time",
+        )
+        if schema_version == "context-frame/v4"
+        else None
+    )
     raw_identities = payload["source_claim_identities"]
     if not isinstance(raw_identities, list):
         raise ContextFrameIntegrityError("source_claim_identities must be a JSON array")
@@ -352,7 +380,10 @@ def _decode_frame(value: object, *, expected_frame_id: str) -> ContextFrame:
     raw_evidence = payload["evidence"]
     if not isinstance(raw_evidence, list):
         raise ContextFrameIntegrityError("ContextFrame evidence must be a JSON array")
-    evidence = tuple(_decode_evidence(item, index=index) for index, item in enumerate(raw_evidence))
+    evidence = tuple(
+        _decode_evidence(item, index=index, frame_schema_version=schema_version)
+        for index, item in enumerate(raw_evidence)
+    )
     raw_omissions = payload["omissions"]
     if not isinstance(raw_omissions, list):
         raise ContextFrameIntegrityError("ContextFrame omissions must be a JSON array")
@@ -390,6 +421,7 @@ def _decode_frame(value: object, *, expected_frame_id: str) -> ContextFrame:
                 payload["model_payload_characters"], label="model_payload_characters"
             ),
             schema_version=schema_version,
+            state_effective_time=state_effective_time,
         )
     except ValueError as error:
         raise ContextFrameIntegrityError("payload violates the ContextFrame contract") from error
@@ -414,49 +446,98 @@ def _decode_claim_identity(value: object, *, index: int) -> ContextClaimIdentity
         raise ContextFrameIntegrityError(f"{label} violates its contract") from error
 
 
-def _decode_evidence(value: object, *, index: int) -> ContextEvidence:
+def _decode_evidence(
+    value: object,
+    *,
+    index: int,
+    frame_schema_version: str,
+) -> ContextEvidence:
     label = f"ContextFrame evidence[{index}]"
-    payload = _require_mapping(value, keys=_EVIDENCE_KEYS, label=label)
-    confidence = _require_confidence(payload["confidence"], label=f"{label} confidence")
-    return ContextEvidence(
-        claim_id=_require_string(payload["claim_id"], label=f"{label} claim_id"),
-        subject=_require_string(payload["subject"], label=f"{label} subject"),
-        predicate=_require_string(payload["predicate"], label=f"{label} predicate"),
-        value=_require_json_scalar(payload["value"], label=f"{label} value"),
-        confidence=confidence,
-        effective_at=_require_datetime(payload["effective_at"], label=f"{label} effective_at"),
-        freshness_seconds=_require_non_negative_int(
-            payload["freshness_seconds"], label=f"{label} freshness_seconds"
-        ),
-        stale=_require_bool(payload["stale"], label=f"{label} stale"),
-        source_event_id=_require_string(
-            payload["source_event_id"], label=f"{label} source_event_id"
-        ),
-        domain=_require_string(payload["domain"], label=f"{label} domain"),
-        stream_id=_require_string(payload["stream_id"], label=f"{label} stream_id"),
-        stream_sequence=_require_positive_int(
-            payload["stream_sequence"], label=f"{label} stream_sequence"
-        ),
-        global_position=_require_positive_int(
-            payload["global_position"], label=f"{label} global_position"
-        ),
-        relevance_score=_require_int(payload["relevance_score"], label=f"{label} relevance_score"),
-        selection_reasons=_require_string_tuple(
-            payload["selection_reasons"], label=f"{label} selection_reasons"
-        ),
-        conflicted=_require_bool(payload["conflicted"], label=f"{label} conflicted"),
+    payload = _require_mapping(
+        value,
+        keys=_EVIDENCE_KEYS_BY_FRAME_SCHEMA[frame_schema_version],
+        label=label,
     )
+    confidence = _require_confidence(payload["confidence"], label=f"{label} confidence")
+    try:
+        return ContextEvidence(
+            claim_id=_require_string(payload["claim_id"], label=f"{label} claim_id"),
+            subject=_require_string(payload["subject"], label=f"{label} subject"),
+            predicate=_require_string(payload["predicate"], label=f"{label} predicate"),
+            value=_require_json_scalar(payload["value"], label=f"{label} value"),
+            confidence=confidence,
+            effective_at=_require_datetime(payload["effective_at"], label=f"{label} effective_at"),
+            freshness_seconds=_require_non_negative_int(
+                payload["freshness_seconds"], label=f"{label} freshness_seconds"
+            ),
+            stale=_require_bool(payload["stale"], label=f"{label} stale"),
+            source_event_id=_require_string(
+                payload["source_event_id"], label=f"{label} source_event_id"
+            ),
+            domain=_require_string(payload["domain"], label=f"{label} domain"),
+            stream_id=_require_string(payload["stream_id"], label=f"{label} stream_id"),
+            stream_sequence=_require_positive_int(
+                payload["stream_sequence"], label=f"{label} stream_sequence"
+            ),
+            global_position=_require_positive_int(
+                payload["global_position"], label=f"{label} global_position"
+            ),
+            relevance_score=_require_int(
+                payload["relevance_score"], label=f"{label} relevance_score"
+            ),
+            selection_reasons=_require_string_tuple(
+                payload["selection_reasons"], label=f"{label} selection_reasons"
+            ),
+            conflicted=_require_bool(payload["conflicted"], label=f"{label} conflicted"),
+            epistemic_status=(
+                _require_enum(
+                    ContextEpistemicStatus,
+                    payload["epistemic_status"],
+                    label=f"{label} epistemic_status",
+                )
+                if frame_schema_version == "context-frame/v4"
+                else ContextEpistemicStatus.OBSERVED
+            ),
+            unknown_reason=(
+                _require_optional_enum(
+                    ContextUnknownReason,
+                    payload["unknown_reason"],
+                    label=f"{label} unknown_reason",
+                )
+                if frame_schema_version == "context-frame/v4"
+                else None
+            ),
+            expires_at=(
+                _require_optional_datetime(
+                    payload["expires_at"],
+                    label=f"{label} expires_at",
+                )
+                if frame_schema_version == "context-frame/v4"
+                else None
+            ),
+        )
+    except (TypeError, ValueError) as error:
+        raise ContextFrameIntegrityError(f"{label} violates its contract") from error
 
 
 def _decode_omission(value: object, *, index: int) -> ContextOmission:
     label = f"ContextFrame omission[{index}]"
-    payload = _require_mapping(value, keys=_OMISSION_KEYS, label=label)
-    schema_version = _require_string(payload["schema_version"], label=f"{label} schema_version")
-    if schema_version != _OMISSION_SCHEMA_VERSION:
+    if not isinstance(value, dict):
+        raise ContextFrameIntegrityError(f"{label} must be a JSON object")
+    schema_version = _require_string(
+        value.get("schema_version"),
+        label=f"{label} schema_version",
+    )
+    if schema_version not in _OMISSION_SCHEMA_VERSIONS:
         raise ContextFrameSchemaError(
             f"unsupported ContextOmission schema {schema_version!r}; "
-            f"expected {_OMISSION_SCHEMA_VERSION!r}"
+            f"expected one of {sorted(_OMISSION_SCHEMA_VERSIONS)!r}"
         )
+    payload = _require_mapping(
+        value,
+        keys=_OMISSION_KEYS_BY_SCHEMA[schema_version],
+        label=label,
+    )
     try:
         return ContextOmission(
             claim_id=_require_string(payload["claim_id"], label=f"{label} claim_id"),
@@ -501,6 +582,32 @@ def _decode_omission(value: object, *, index: int) -> ContextOmission:
                 label=f"{label} source_omission_schema_version",
             ),
             schema_version=schema_version,
+            epistemic_status=(
+                _require_enum(
+                    ContextEpistemicStatus,
+                    payload["epistemic_status"],
+                    label=f"{label} epistemic_status",
+                )
+                if schema_version == "context-omission/v3"
+                else ContextEpistemicStatus.OBSERVED
+            ),
+            unknown_reason=(
+                _require_optional_enum(
+                    ContextUnknownReason,
+                    payload["unknown_reason"],
+                    label=f"{label} unknown_reason",
+                )
+                if schema_version == "context-omission/v3"
+                else None
+            ),
+            expires_at=(
+                _require_optional_datetime(
+                    payload["expires_at"],
+                    label=f"{label} expires_at",
+                )
+                if schema_version == "context-omission/v3"
+                else None
+            ),
         )
     except ValueError as error:
         raise ContextFrameIntegrityError(
@@ -557,6 +664,12 @@ def _require_datetime(value: object, *, label: str) -> datetime:
     return parsed
 
 
+def _require_optional_datetime(value: object, *, label: str) -> datetime | None:
+    if value is None:
+        return None
+    return _require_datetime(value, label=label)
+
+
 def _require_int(value: object, *, label: str) -> int:
     if type(value) is not int:
         raise ContextFrameIntegrityError(f"{label} must be an integer")
@@ -601,6 +714,17 @@ def _require_enum[EnumT](enum_type: type[EnumT], value: object, *, label: str) -
         return enum_type(text)
     except (TypeError, ValueError) as error:
         raise ContextFrameIntegrityError(f"{label} is not recognized") from error
+
+
+def _require_optional_enum[EnumT](
+    enum_type: type[EnumT],
+    value: object,
+    *,
+    label: str,
+) -> EnumT | None:
+    if value is None:
+        return None
+    return _require_enum(enum_type, value, label=label)
 
 
 def _require_json_scalar(value: object, *, label: str) -> JsonScalar:
