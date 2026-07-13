@@ -301,7 +301,7 @@ class FeedbackRunRecorder(Protocol):
         self,
         run_id: str,
         preparation: DecisionPreparation,
-        attempt: DecisionAttemptRecord,
+        attempt_record: DecisionAttemptRecord,
     ) -> EventEnvelope: ...
 
     def record_model_terminal(
