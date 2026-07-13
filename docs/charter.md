@@ -60,10 +60,9 @@ state, stale and conflicting evidence, distractors, corrections, unsafe proposal
 partial failures. A private Daily Operator can reuse the kernel after the public slice
 establishes replay and evaluation integrity.
 
-`DailyOperatorWorkflow` is currently the generic application-level control-path skeleton used to
-extract those capabilities from the legacy operator. Its name does not change the Phase 1 product:
-the Repository Operator remains the first public adapter and acceptance surface until it delegates
-to a traced, evaluated, replayable closed loop.
+`DailyOperatorV2Workflow` is the canonical application-level control path. The public Repository
+Operator now delegates to that traced, evaluated, replayable closed loop while retaining the
+product name and JSON-first interface; the characterized predecessor is migration-only.
 
 ## Phase 1 acceptance criteria
 

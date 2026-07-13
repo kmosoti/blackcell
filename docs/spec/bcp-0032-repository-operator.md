@@ -10,19 +10,24 @@ edges:
 
 # BCP-0032: Repository Operator Loop
 
-Status: legacy product accepted — canonical Daily Operator delegation remains pending
+Status: product accepted — public facade delegates to canonical Daily Operator v2
 
 Connect observation ingestion, state projection, ContextFrame construction, model proposal,
 policy evaluation, one bounded affordance, outcome observation, evaluation, and event append.
 
-The current implementation proves the product behavior through `RepositoryOperator`. Runtime-v1
-must characterize that behavior, make the facade delegate to the new vertical slices and gateway,
-and retain historical replay compatibility before deleting the legacy coordination path.
+The public `RepositoryOperator` composes `DailyOperatorV2Workflow`, the model gateway, typed
+repository status adapters, canonical state/context inspection, and read-only replay. The
+characterized predecessor remains available only as `LegacyRepositoryOperator` until the later
+retirement gate; the CLI no longer writes its `operator.*` event grammar.
 
 Acceptance:
 
-- `RecordedModel` supports deterministic CI and replay;
-- `CodexExecModel` is optional, structured, time-bounded, and uses the Codex CLI read-only
-  sandbox from a temporary frame-only workspace;
+- the recorded gateway route deterministically derives a schema-valid baseline proposal from the
+  admitted request, while the optional Codex route requires an explicit model ID and uses the
+  bounded `CodexCliModelAdapter`;
+- one fixed `inspect_repository` execution reads Git status without a shell, and a distinct status
+  read supplies post-execution outcome evidence;
 - one CLI command completes the loop and emits machine-readable output;
+- state, context, and replay inspection use the canonical runtime-v1 contracts;
+- human corrections append `observation.corrected` evidence through `IngestCorrectionHandler`;
 - the model never gains direct execution authority.

@@ -153,19 +153,20 @@ Runtime-v1 adds a separate `daily-operator/v2` grammar defined by ADR 0006. It r
 developer-owned EvaluationSpec and initial state before context, inserts real model
 request/attempt/response evidence before the proposal, and records `run.outcome-observed`, the
 outcome-state snapshot, evaluation, and optional observed transition after authorization/execution.
-Version-one history is never reinterpreted. Version-two writing activates only after the complete
-composer and replay verifier exist; the public facade switches after compatibility characterization.
+Version-one history is never reinterpreted. Version-two writing is now active through the public
+Repository Operator facade after composer, replay verifier, and compatibility characterization
+landed together; the predecessor remains explicitly importable only for migration testing.
 
 ## Model boundary
 
-A `DecisionModel` receives one serialized ContextFrame and a response schema. It returns a
-typed proposal. It has no direct tool access and no ambient authority. Blackcell owns policy,
+The capability gateway receives one serialized ContextFrame and response schema and returns a
+typed proposal. Models have no direct tool access or ambient authority. Blackcell owns policy,
 approval, execution, and outcome recording.
 
-`RecordedModel` supports deterministic CI and replay. `CodexExecModel` is an optional local
-adapter that prepares a temporary Git workspace containing only the frame and schema and asks
-the Codex CLI to use its read-only sandbox. Its process sandbox is provided by the CLI, not by
-Blackcell.
+The public Repository Operator defaults to a deterministic local recorded adapter derived from
+the admitted request. Its optional Codex CLI adapter is remote and nondeterministic by policy,
+requires an explicit model ID, and prepares a temporary Git workspace containing only canonical
+input and schema documents. Its process sandbox is provided by Codex CLI, not by Blackcell.
 
 ## Observability boundary
 

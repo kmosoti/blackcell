@@ -18,7 +18,9 @@ from blackcell.operator import (
     RUN_FAILED,
     TRACE_RECORDED,
     OperatorRunStatus,
-    RepositoryOperator,
+)
+from blackcell.operator import (
+    LegacyRepositoryOperator as RepositoryOperator,
 )
 
 _NOW = datetime(2026, 7, 9, 12, tzinfo=UTC)

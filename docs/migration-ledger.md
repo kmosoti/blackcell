@@ -22,7 +22,7 @@ authorize a second implementation to become another permanent subsystem.
 | Current capability | Target owner | Migration rule |
 | --- | --- | --- |
 | `domains.repository.adapter` and repository events | `features/ingest_observation` | Preserve event meaning; emit through the kernel store. |
-| `domains.repository.projector` and `models.projector` | `features/project_operational_state` | Make `OperationalStateEstimate` canonical. |
+| `domains.repository.projector` and `models.projector` | `features/project_operational_state` | Keep `OperationalBeliefState` canonical. |
 | `context.signals` | `features/derive_signal_packet` | Keep SignalPacket distinct from ContextFrame. |
 | `context.projector` and context baselines | `features/build_context` and `features/retrieve_evidence` | Preserve independently inspectable context and citations. |
 | `control.policies` | `features/authorize_action` and `features/solve_constraints` | Keep deterministic policy as the required baseline. |
@@ -62,17 +62,18 @@ Status uses three evidence levels:
 | --- | --- | --- |
 | WP00-WP02 | accepted support deliverables; no product maturity claim | Keep the debt and status records current. |
 | WP03 | integrated kernel append/replay baseline plus one causal Daily Operator run stream | Downstream replay and DAG packages consume this kernel; they are not remaining WP03 work. |
-| WP04a-WP04b | integrated for current observed claims: ingestion, explicit domain/stream scope, source-aware conflicts, cutoff replay, and characterized legacy overlap | WP04c-WP04d add corrections, expiry, epistemic unknowns, independent effective-time cutoff, and incremental checkpoints before legacy retirement. |
-| WP05a-WP05b | integrated in `DailyOperatorWorkflow`: scoped claim lineage, complete typed dispositions, bounded model payload, artifact-backed ContextFrame persistence, and run-linked context events | WP05c exposes inspection and final parity. FTS5 remains a later matched retrieval intervention. |
-| WP06a-WP06b | contract complete | WP06c-WP06f add the request-decision slice, durable attempts, workflow composition, and bounded host-model adapter. |
+| WP04a-WP04d | integrated: ingestion, correction, effective-time replay, expiry, epistemic unknowns, exact scoped snapshots, and disposable incremental checkpoints | Public product inspection remains part of the compatibility cutover; no state-contract work blocks the canonical workflow. |
+| WP05a-WP05c | integrated in `DailyOperatorV2Workflow`: scoped claim lineage, complete typed dispositions, bounded model payload, artifact-backed ContextFrame evidence, and exact state-to-context replay | Product-facing context inspection lands with WP09b. FTS5 remains a later matched retrieval intervention. |
+| WP06a-WP06f | integrated: capability policy, request-decision contracts, durable fenced attempts, verified success/failure/usage evidence, gateway bridge, canonical workflow composition, and a deadline/output-bounded Codex CLI host-model adapter with no tool authority | WP09b now selects the recorded or explicit Codex route through gateway policy; no model-gateway work remains for the Phase 1 product. |
 | WP07a-WP07b | integrated deterministic proof and authorization artifacts in the causal run | Clingo parity is pending. |
-| WP08a | integrated prepared-action SQLite journal with exact-input artifacts, collision checks, restart reconstruction, fencing, and explicit manual reconciliation | WP08b adds a real allowlisted process adapter with timeout, isolation, output bounds, and reconciliation. |
-| WP09a | bounded durable control path: complete request identity, run-linked material artifacts, causal trace, terminal safety outcomes, and failure prefixes | WP09c composes gateway, re-observation, evaluation, and transition; WP09b then delegates the product facade and CLI. |
-| WP09b-WP09c | pending | Integrate the closed loop, prove replay, characterize the old product path, then delegate without duplicate coordination. |
+| WP08a-WP08b | integrated prepared-action SQLite journal plus a real allowlisted local-process adapter with exact inputs, collision checks, timeout/isolation/output bounds, fencing, UNKNOWN reconciliation, and manual recovery | Durable scheduler-owned recovery remains WP13 work. |
+| WP09a/WP09c | integrated create-only `daily-operator/v2` loop: complete request identity, gateway evidence, symbolic authorization, journaled execution, independent outcome evidence, deterministic evaluation, accepted transition, causal trace, and terminal safety outcomes | No remaining workflow-composition work blocks the public product path. |
+| WP09b | product accepted: the public Repository Operator and JSON-first CLI delegate to `daily-operator/v2`, route recorded or explicit Codex decisions through the gateway, execute one bounded repository inspection, independently observe its outcome, expose canonical state/context/WP17 replay, and append corrections without dual writes | Retain the explicitly named legacy coordinator only until WP26 retirement evidence. |
 | WP10-WP11 | pending | Begin after recorded outcome/transition data and replay make prediction measurable. |
 | WP12 | pending and independently feasible | Run a Python 3.14/container compatibility decision, then add Clingo only behind solver parity and explanation tests. |
 | WP13-WP15 | pending | Simulate DAG invariants before durable leases/fencing and role binding. |
-| WP16-WP17 | pending; promoted ahead of WP10 | Close outcome evaluation and live-free replay first. |
+| WP16a-WP16c | integrated independent outcome evidence, deterministic evaluation, and evidence-scoped transition acceptance; inconclusive outcomes never commit state | No remaining WP16 work blocks the product join. |
+| WP17 | integrated read-only `ReplayRun` contract and SQLite adapter for v1/v2 grammar, artifact ownership, journal identity, exact state cutoffs, terminal/interrupted/corrupt classification, and no-write replay | Product-facing replay selection and rendering remain part of WP09b delegation. |
 | WP18-WP21 | pending | After the product use cases and scheduler stabilize, add API contracts, Granian lifecycle, Podman, and OTel. |
 | WP22a-WP22b | pending | Security, auth, secrets, data-directory, and redaction boundaries precede API exposure; backup, restore, quotas, and recovery follow deployment. |
 | WP23-WP27 | pending | Run matched experiments, reliability work, retirement, and release evidence last. |

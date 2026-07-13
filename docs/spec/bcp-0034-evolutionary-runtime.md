@@ -12,20 +12,40 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — PR #40 established scoped state/context, artifact-first execution, and bounded
-durable Daily Operator runs. Runtime-v1 now executes as one continuous dependency DAG on one
-integration branch and one pull request.
+Status: active — WP06f, WP09b-WP09c, and WP17 compose the public Repository Operator, bounded
+host-model, scoped state/context, gateway, artifact-first execution, independent outcome
+evaluation, transition, and live-free replay around one canonical `daily-operator/v2` application
+workflow. Runtime-v1 continues as one dependency DAG on one integration branch and one pull
+request.
 
-The current `DailyOperatorWorkflow` is a deterministic control-path skeleton. It proves that the
-new feature contracts can compose through observation, scoped state projection, bounded context,
-proposal, symbolic authorization, and typed execution. It persists and verifies material artifacts,
-records one create-only causal run stream, rejects duplicate delivery before live work, and uses a
-prepared-action SQLite journal with explicit manual reconciliation after worker loss. It does not
-yet satisfy the charter's closed-loop acceptance: the workflow bypasses the model gateway,
-performs no post-action observation or outcome evaluation, commits no resulting transition, and
-has no live-free replay or new CLI/bootstrap path. The Repository Operator remains the Phase 1
-public product slice; the Daily Operator is the generic application workflow it will eventually
-delegate to.
+`DailyOperatorV2Workflow` now records one create-only causal run from immutable request and
+evaluation policy through gateway decision, symbolic authorization, journaled execution,
+independent outcome observation, deterministic evaluation, evidence-scoped transition acceptance,
+verified trace, and terminal result. Duplicate delivery is rejected before live work, unresolved
+model or execution attempts remain fail-closed, and definitive failed-goal evidence is preserved
+rather than discarded.
+
+`ReplayRunHandler` now dispatches recorded `daily-operator/v1` and `daily-operator/v2` histories
+through history-reader, protocol-decoder, artifact-verifier, and projection-verifier ports only.
+It distinguishes completed, failed, interrupted, and corrupt history from the material run
+outcome, verifies exact v2 journal and state evidence, reports absent v1 state snapshots as not
+recorded, and performs no write or live call. This establishes an integrated closed loop and
+historical replay contract. WP09b now joins it to the public Repository Operator and CLI: live runs
+are composed once through the v2 workflow, and replay remains a separate read-only capability.
+
+`CodexCliModelAdapter` supplies the bounded host-model edge for that join. It receives the exact
+gateway-selected model and admitted deadline, writes only canonical input and schema documents to
+an isolated temporary Git workspace, fixes Codex approval and sandbox posture, bounds every
+captured output surface, and reports exact usage without exposing request or provider content.
+Gateway policy still owns classification, locality, determinism, budgets, and final schema
+validation; the adapter cannot grant tools or affordances.
+
+The WP09b product facade owns only composition, repository-scoped lookup, and compact rendering.
+Its initial source, read-only executor, and post-execution observer each use the same bounded Git
+status reader through separate calls; executor output is never treated as evaluation evidence.
+Persisted status manifests contain typed booleans, counts, and digests rather than raw paths. The
+recorded route is local and deterministic, while the Codex route is remote, nondeterministic, and
+requires an explicit model ID before any storage or host-model call.
 
 ## Outcome
 
@@ -249,16 +269,14 @@ flowchart TD
 
 | Node | Deliverable | Acceptance evidence |
 | --- | --- | --- |
-| protocol-v2 | backward-compatible gateway and feedback run grammar | v1 streams remain readable; strict v2 artifact/event grammar |
-| WP04c-WP05c | corrections, effective time, expiry, unknowns, checkpoints, inspection | no history rewrite; complete replay and context parity |
-| WP06c-WP06f | request-decision slice, durable gateway attempts, workflow adapter, host adapter | pre-call request record, success/failure/usage artifacts, enforced deadlines, no direct authority |
-| WP08b | real allowlisted process affordance | argv/cwd/path/output/time bounds and UNKNOWN reconciliation |
-| WP16a-WP16c | independent outcome evidence, evaluation, accepted transition | developer-authored success criteria; inconclusive outcomes never commit state |
-| WP09c/WP17/WP09b | canonical closed loop, live-free replay, delegating facade and CLI | one public command, exploding live ports, context/replay inspection |
 | WP10-WP12/WP23a | deterministic prediction, optional local predictor, Clingo decision, FTS5 | matched baselines and explicit promote-or-defer records |
 | WP14-WP15/WP13 | typed DAG, failure simulation, transaction seam, scheduler, role graph | cycle/self-approval rejection, leases/fencing, atomic accepted results |
 | WP18-WP22 | security, API, Granian, OTel, Podman, recovery | strict edge contracts, non-root image, durable restore |
 | WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |
+
+The landed dependency join includes protocol-v2, WP04c-WP05c, WP06c-WP06f, WP08b, WP09b-WP09c,
+WP16a-WP16c, and WP17. WP09b is the product-accepted public composition over those integrated
+contracts.
 
 ## Delivery and review protocol
 
