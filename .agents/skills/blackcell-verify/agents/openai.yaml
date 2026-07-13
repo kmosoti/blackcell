@@ -1,0 +1,4 @@
+interface:
+  display_name: "BlackCell Verify"
+  short_description: "Verify high-risk BlackCell changes"
+  default_prompt: "Use $blackcell-verify to independently verify a completed high-risk BlackCell change without editing tracked files."

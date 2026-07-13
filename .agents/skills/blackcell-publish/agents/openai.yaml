@@ -1,0 +1,4 @@
+interface:
+  display_name: "BlackCell Publish"
+  short_description: "Safely commit and push runtime-v1"
+  default_prompt: "Use $blackcell-publish to validate, commit, and normally push the current agent/runtime-v1 changes."

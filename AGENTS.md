@@ -9,6 +9,26 @@ orchestration. Do not project these files from `blackcell.plan.yaml` or `src/bla
 Explore repository truth before asking a discoverable question. Preserve existing contracts and
 unrelated work. Use one writer and bounded workers; zero workers is the default for trivial work.
 
+## Repository workflow
+
+On mobile, select **Custom** manually when the checked-in model, reasoning, and developer setup is
+required. The mobile collaboration-mode picker is client-owned; repository config does not choose
+its default mode. Do not add a speculative collaboration-mode key to `.codex/config.toml`.
+
+Use the repository skills as the command-like lifecycle:
+
+| Intent | Invocation | Effect |
+| --- | --- | --- |
+| Ground and plan | `/plan`, then `$blackcell-plan` when explicit routing is useful | Read repository truth and return a decision-complete plan without edits. |
+| Implement an approved plan | `Implement the proposed plan` or `$blackcell-change` | Use the validated change workflow; a separate implementation skill is not needed. |
+| Map independent evidence | `$blackcell-spark-sweep` | Run bounded read-only evidence shards. |
+| Review consequential work | `$blackcell-review` | Hand one validated read-only packet to `k_reviewer`. |
+| Verify completed high-risk work | `$blackcell-verify` | Hand declared acceptance checks to `k_verifier` without tracked edits. |
+| Commit and push | `$blackcell-publish` | Gate, commit selected paths, and normally push `agent/runtime-v1`. |
+
+`/plan` is a built-in Codex mode and cannot be overridden by repository prompts. An approved plan
+does not execute automatically; the next implementation request triggers `blackcell-change`.
+
 ## Delegation
 
 Before nontrivial delegation, create and validate one shared change spec under

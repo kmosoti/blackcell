@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 CODEX_ROOT = ROOT / ".codex"
@@ -18,6 +19,7 @@ ORCHESTRATION_ROOT = CODEX_ROOT / "orchestration"
 VALIDATOR = ORCHESTRATION_ROOT / "validate_contract.py"
 RULES = CODEX_ROOT / "rules/blackcell.rules"
 CODEX = shutil.which("codex")
+SKILLS_ROOT = ROOT / ".agents/skills"
 
 
 def test_project_config_and_named_agents_are_explicit() -> None:
@@ -84,6 +86,47 @@ def test_repo_instructions_and_skills_require_no_history_spawns() -> None:
     assert "Five to eight workers require explicit user instruction" in agents_text
     assert "only one micro-edit worker" in agents_text
     assert "alternate Git refspec" in agents_text
+
+
+def test_lifecycle_skills_are_discoverable_and_bounded() -> None:
+    expected_prompts = {
+        "blackcell-plan": "Plan",
+        "blackcell-review": "Review",
+        "blackcell-verify": "Verify",
+        "blackcell-publish": "Publish",
+    }
+
+    for skill_name, display_suffix in expected_prompts.items():
+        skill_root = SKILLS_ROOT / skill_name
+        skill_text = (skill_root / "SKILL.md").read_text(encoding="utf-8")
+        metadata = yaml.safe_load((skill_root / "agents/openai.yaml").read_text(encoding="utf-8"))[
+            "interface"
+        ]
+
+        assert f"name: {skill_name}" in skill_text
+        assert metadata["display_name"] == f"BlackCell {display_suffix}"
+        assert 25 <= len(metadata["short_description"]) <= 64
+        assert f"${skill_name}" in metadata["default_prompt"]
+
+    plan = (SKILLS_ROOT / "blackcell-plan/SKILL.md").read_text(encoding="utf-8")
+    assert "Do not edit tracked files" in plan
+    assert "<proposed_plan>" in plan
+
+    for skill_name, agent_name, packet_mode in (
+        ("blackcell-review", "k_reviewer", "review"),
+        ("blackcell-verify", "k_verifier", "verify"),
+    ):
+        text = (SKILLS_ROOT / skill_name / "SKILL.md").read_text(encoding="utf-8")
+        assert agent_name in text
+        assert f"`{packet_mode}`" in text
+        assert 'fork_turns = "none"' in text
+        assert "Do not edit tracked files" in text
+
+    publish = (SKILLS_ROOT / "blackcell-publish/SKILL.md").read_text(encoding="utf-8")
+    assert "agent/runtime-v1" in publish
+    assert "git push origin agent/runtime-v1" in publish
+    assert "Never use `--force`" in publish
+    assert "do not merge, rebase, reset, or rewrite history" in publish
 
 
 def test_contract_schemas_are_closed_and_parseable() -> None:

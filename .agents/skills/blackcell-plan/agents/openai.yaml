@@ -1,0 +1,4 @@
+interface:
+  display_name: "BlackCell Plan"
+  short_description: "Plan the next bounded BlackCell change"
+  default_prompt: "Use $blackcell-plan to ground the repository and produce a decision-complete plan without editing files."
