@@ -8,6 +8,12 @@ description: Independently verify a completed high-risk BlackCell change through
 Verify the completed artifact against declared acceptance criteria. Do not reinterpret the target.
 Do not edit tracked files.
 
+Before creating verification artifacts, inspect the live `spawn_agent` schema. If it does not
+expose `agent_type`, report the independent verification as `blocked` and name the missing selector.
+Do not substitute `task_name`, a generic worker, or root self-verification for `k_verifier`. Its
+named agent configuration is the source of model, reasoning effort, and sandbox; direct spawn
+overrides require an explicit user request.
+
 ## Define The Verification
 
 1. Inspect the accepted plan or change specification, current branch, status, diff or commit range,

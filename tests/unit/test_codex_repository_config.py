@@ -32,10 +32,16 @@ def test_project_config_and_named_agents_are_explicit() -> None:
     assert config["approval_policy"] == "on-request"
     assert config["approvals_reviewer"] == "user"
     assert config["agents"] == {
-        "max_threads": 9,
         "max_depth": 1,
         "interrupt_message": False,
     }
+    assert config["features"]["multi_agent_v2"] == {
+        "enabled": True,
+        "max_concurrent_threads_per_session": 9,
+        "hide_spawn_agent_metadata": False,
+        "non_code_mode_only": False,
+    }
+    assert "suppress_unstable_features_warning" not in config
     assert not {
         "model_provider",
         "profile",
@@ -86,6 +92,18 @@ def test_repo_instructions_and_skills_require_no_history_spawns() -> None:
     assert "Five to eight workers require explicit user instruction" in agents_text
     assert "only one micro-edit worker" in agents_text
     assert "alternate Git refspec" in agents_text
+    assert "live `spawn_agent` schema exposes `agent_type`" in agents_text
+    assert "Do not set the direct `model`, `reasoning_effort`, or `service_tier`" in agents_text
+    assert "Optional delegation stays on the Terra root" in agents_text
+
+    change = (SKILLS_ROOT / "blackcell-change/SKILL.md").read_text(encoding="utf-8")
+    assert "continue the optional\nmicro-edit at the Terra root" in change
+    for skill_name in ("blackcell-spark-sweep", "blackcell-review", "blackcell-verify"):
+        text = (SKILLS_ROOT / skill_name / "SKILL.md").read_text(encoding="utf-8")
+        normalized = " ".join(text.split())
+        assert "`agent_type`" in text
+        assert "`blocked`" in text
+        assert "Do not substitute `task_name`" in normalized
 
 
 def test_lifecycle_skills_are_discoverable_and_bounded() -> None:
@@ -382,6 +400,17 @@ def test_installed_codex_accepts_project_config_strictly() -> None:
     assert completed.returncode == 0, completed.stderr
     assert "codex-cli" in completed.stdout
 
+    prompt_input = subprocess.run(
+        [CODEX or "codex", "debug", "prompt-input", "configuration probe"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert prompt_input.returncode == 0, prompt_input.stderr
+    assert json.loads(prompt_input.stdout)
+
 
 @pytest.mark.skipif(CODEX is None, reason="Codex CLI is not installed")
 @pytest.mark.parametrize(
@@ -443,6 +472,8 @@ def test_research_proposal_records_context_costs_and_non_goals() -> None:
     ):
         assert f"`{field}`" in text
     assert 'fork_turns = "none"' in text
+    assert "hide_spawn_agent_metadata" in text
+    assert "`agent_type`" in text
     assert "GraphRAG" in text
     assert "persistent\nagent memory" in text
     assert "spark-repository-perception.md" in index

@@ -7,6 +7,11 @@ approval_policy = "on-request"
 approvals_reviewer = "user"
 
 [agents]
-max_threads = 9
 max_depth = 1
 interrupt_message = false
+
+[features.multi_agent_v2]
+enabled = true
+max_concurrent_threads_per_session = 9
+hide_spawn_agent_metadata = false
+non_code_mode_only = false

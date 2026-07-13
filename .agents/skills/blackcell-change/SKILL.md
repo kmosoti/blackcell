@@ -33,6 +33,12 @@ Stay Terra-direct when the change spans multiple behavioral boundaries, contains
 choices, or needs architecture, state, security, concurrency, replay, policy, or migration
 judgment.
 
+Before preparing a worker packet, inspect the live `spawn_agent` schema. If it does not expose
+`agent_type`, do not delegate and do not use `task_name` as a substitute; continue the optional
+micro-edit at the Terra root and record the capability fallback. Named agent configuration is the
+normal source of model and reasoning settings. Do not pass direct `model`, `reasoning_effort`, or
+`service_tier` overrides unless the user explicitly requested one.
+
 Use one `k_spark_worker` only when all of the following hold:
 
 - the edit is localized and text-only or mechanically bounded;

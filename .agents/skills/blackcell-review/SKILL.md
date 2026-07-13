@@ -7,6 +7,12 @@ description: Independently review a consequential BlackCell change through a val
 
 Review completed work independently. Do not edit tracked files or fix findings.
 
+Before creating review artifacts, inspect the live `spawn_agent` schema. If it does not expose
+`agent_type`, report the independent review as `blocked` and name the missing selector. Do not
+substitute `task_name`, a generic worker, or root self-review for `k_reviewer`. Its named agent
+configuration is the source of model, reasoning effort, and sandbox; direct spawn overrides require
+an explicit user request.
+
 ## Define The Review
 
 1. Inspect the request, current branch, status, diff or commit range, relevant specification, and

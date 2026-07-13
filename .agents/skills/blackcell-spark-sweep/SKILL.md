@@ -21,6 +21,12 @@ Use zero workers for a small targeted inspection. Use up to four workers without
 shards are genuinely independent. Use five to eight only after explicit user instruction. Every
 five-to-eight-worker sweep is read-only. Never create an eight-worker write workflow.
 
+Before creating worker packets, inspect the live `spawn_agent` schema. If it does not expose
+`agent_type`, stop the worker sweep as `blocked` and name the missing selector. Do not substitute
+`task_name`, generic workers, or a root-only scan for the requested independent sweep. Named agent
+configuration is the normal source of model and reasoning settings; direct `model`,
+`reasoning_effort`, and `service_tier` overrides require an explicit user request.
+
 ## Route Each Shard
 
 Use `k_spark_worker` in `evidence` mode for already-localized searches, inventories, catalogs, and

@@ -110,8 +110,15 @@ workers ambient authority, or recommend full-history forks.
 The current Codex subagent guidance recommends distilled worker results because each child performs
 its own model and tool work. Codex 0.144.1's MultiAgentV2 spawn implementation defaults an omitted
 `fork_turns` to `"all"`; the BlackCell workflow therefore treats explicit `"none"` as mandatory.
+The same release defaults `hide_spawn_agent_metadata` to `true`, which removes `agent_type`,
+`model`, `reasoning_effort`, and `service_tier` from the model-visible spawn schema. BlackCell
+explicitly enables MultiAgentV2 for every mode and sets that option to `false` so named project
+agents remain selectable. The named agent file, not direct spawn overrides, remains the normal
+source of a worker's model and reasoning configuration. Existing threads do not hot-reload this
+schema; configuration acceptance uses a fresh session.
 
 References:
 
 - [Codex subagent guidance](https://developers.openai.com/codex/subagents)
 - [Codex 0.144.1 MultiAgentV2 spawn implementation](https://github.com/openai/codex/blob/rust-v0.144.1/codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs)
+- [Codex 0.144.1 MultiAgentV2 spawn schema](https://github.com/openai/codex/blob/rust-v0.144.1/codex-rs/core/src/tools/handlers/multi_agents_spec.rs)
