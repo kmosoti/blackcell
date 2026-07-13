@@ -59,6 +59,26 @@ def test_feature_slices_do_not_reach_across_slices_or_edges() -> None:
     assert not violations, _format(violations)
 
 
+def test_orchestration_contracts_do_not_depend_on_edge_or_legacy_agent_packages() -> None:
+    forbidden = (
+        "blackcell.adapters",
+        "blackcell.agents",
+        "blackcell.cli",
+        "blackcell.harness",
+        "blackcell.latent",
+        "blackcell.runtime",
+        "blackcell.world",
+    )
+    violations = [
+        edge
+        for edge in _imports()
+        if edge.importer.startswith("blackcell.orchestration")
+        and edge.imported.startswith(forbidden)
+    ]
+
+    assert not violations, _format(violations)
+
+
 def test_workflows_and_runtime_cores_depend_inward() -> None:
     allowed_by_root = {
         "workflows": ("blackcell.kernel", "blackcell.features", "blackcell.workflows"),

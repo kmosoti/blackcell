@@ -55,6 +55,19 @@ Durable multi-agent orchestration is a consumer of these same boundaries, not a 
 runtime. DAG nodes invoke typed workflow or feature ports; their attempts, leases, results, and
 evaluations append to the same ledger and share the same authorization path.
 
+Runtime DAG definitions are immutable and content-addressed. Every node declares a handler port,
+principal and role, typed input bindings and output schema, dependency set, retry policy, timeout,
+token/latency/cost budget, side-effect class, required reviewer/verifier approvals, gateway
+capability, classification, locality, and determinism requirement. Validation establishes a stable
+topological order and rejects missing edges, cycles, schema drift, self-approval, irreversible
+scheduler authority, and role-policy violations before any work can be submitted.
+
+Planner, executor, reviewer, verifier, and synthesizer profiles are separate gateway-policy
+boundaries. Only executors may declare effects; verifiers are local and deterministic; reviewer or
+verifier roles may approve bounded reversible work; synthesizers have no authority to override a
+symbolic denial. These are runtime contracts under `blackcell.orchestration`, distinct from the
+repository's Codex developer-tool agents.
+
 ## Command, event, projection, and artifact separation
 
 Commands request work and use imperative names. Events record accepted facts in past tense.
