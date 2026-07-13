@@ -51,7 +51,7 @@ from blackcell.features.request_decision import (
     RequestDecision,
     RequestDecisionHandler,
 )
-from blackcell.features.solve_constraints import DeterministicConstraintSolver
+from blackcell.features.solve_constraints import ConstraintSolver, DeterministicConstraintSolver
 from blackcell.workflows.daily_operator_v2_evidence import rebuild_requested_context
 from blackcell.workflows.daily_operator_v2_request import DailyOperatorV2Request
 from blackcell.workflows.decision_bridge import action_proposal_from_decision
@@ -86,6 +86,7 @@ class DailyOperatorV2Workflow:
         outcome_observer: OutcomeObserver,
         outcome_evidence: OutcomeEvidenceWriter,
         evaluator: OutcomeEvaluator | None = None,
+        constraint_solver: ConstraintSolver | None = None,
     ) -> None:
         self._history = history
         self._artifacts = artifacts
@@ -97,7 +98,7 @@ class DailyOperatorV2Workflow:
         self._execution_journal = execution_journal
         self._outcome_observer = outcome_observer
         self._outcome_evidence = outcome_evidence
-        self._constraints = DeterministicConstraintSolver()
+        self._constraints = constraint_solver or DeterministicConstraintSolver()
         self._authorization = ActionAuthorizer()
         self._evaluator = evaluator or OutcomeEvaluator()
 

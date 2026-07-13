@@ -15,6 +15,7 @@ from blackcell.features.solve_constraints.models import (
     ConstraintOutcome,
     ConstraintProof,
 )
+from blackcell.features.solve_constraints.ports import ConstraintSolver
 
 __all__ = [
     "CONSTRAINT_EVALUATION_MEDIA_TYPE",
@@ -24,6 +25,7 @@ __all__ = [
     "ConstraintOperator",
     "ConstraintOutcome",
     "ConstraintProof",
+    "ConstraintSolver",
     "DeterministicConstraintSolver",
     "SolveConstraints",
     "decode_constraint_evaluation",

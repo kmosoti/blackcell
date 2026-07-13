@@ -187,6 +187,20 @@ predictor runtime nor a configured prediction route or matched WP10 evaluation. 
 a pinned deployment, gateway-owned resource bounds, and a like-for-like outcome-scoring comparison;
 the machine-readable deferral is recorded in `docs/decisions/runtime-v1/wp11-local-predictor.json`.
 
+## Constraint solver boundary
+
+Deterministic Python policy remains the default and reference `ConstraintSolver`. The optional
+Clingo 5.8 adapter receives only the already-selected current values for decisive predicates and
+independently checks `EXISTS`, `EQUALS`, `NOT_EQUALS`, `IN`, and `NOT_IN`. It returns the reference
+evaluation byte-for-byte at the DTO level when parity holds and fails closed with a content-free
+integrity error on disagreement or solver failure.
+
+Freshness, confidence, future-effective evidence, conflicts, unknowns, provenance, explanations,
+proof identity, and authorization remain Blackcell-owned. `DailyOperatorV2Workflow` accepts an
+explicit solver port but defaults to `DeterministicConstraintSolver`; the Repository Operator does
+not opt into Clingo. Compatibility and bounded promotion evidence are recorded in
+`docs/decisions/runtime-v1/wp12-clingo.json`.
+
 ## Observability boundary
 
 Domain evidence and diagnostic telemetry remain separate. Stable internal spans include:

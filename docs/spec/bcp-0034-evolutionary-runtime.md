@@ -153,9 +153,12 @@ route, or matched WP10 evaluation exists. Its machine-readable decision records 
 gateway-boundary, calibration, latency, and resource-evidence prerequisites for reconsideration;
 no speculative adapter or dependency is added.
 
-`solve_constraints` starts with deterministic Python policy and can add Clingo through a port.
-Neural interpretation may propose facts or plans, but symbolic checks consume typed facts and
-return proof or violation artifacts. A denied constraint cannot be bypassed by model confidence.
+`solve_constraints` keeps deterministic Python policy as its semantic reference and default. The
+promoted Clingo 5.8 adapter sits behind the feature-owned solver port and independently checks each
+decisive predicate after Blackcell has selected current evidence. It returns the exact reference
+proofs and explanations on parity and fails closed without evidence content on drift or solver
+failure. Freshness, conflicts, unknowns, provenance, proof identity, and authorization remain
+Blackcell-owned; a denied constraint cannot be bypassed by model confidence or adapter selection.
 
 Retrieval begins with SQLite FTS5 and provenance-preserving ranking. LightRAG or another graph/RAG
 adapter may be evaluated only against the same retrieval port, scenarios, and context budget. It
@@ -275,15 +278,16 @@ flowchart TD
 
 | Node | Deliverable | Acceptance evidence |
 | --- | --- | --- |
-| WP12/WP23a | Clingo decision and FTS5 | solver parity plus explicit promote-or-defer evidence |
+| WP23a | FTS5 baseline | matched retrieval evidence and explicit promote-or-defer record |
 | WP14-WP15/WP13 | typed DAG, failure simulation, transaction seam, scheduler, role graph | cycle/self-approval rejection, leases/fencing, atomic accepted results |
 | WP18-WP22 | security, API, Granian, OTel, Podman, recovery | strict edge contracts, non-root image, durable restore |
 | WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |
 
 The landed dependency join includes protocol-v2, WP04c-WP05c, WP06c-WP06f, WP08b, WP09b-WP09c,
-WP10, WP16a-WP16c, and WP17. WP09b is the product-accepted public composition over those
+WP10, WP12, WP16a-WP16c, and WP17. WP09b is the product-accepted public composition over those
 integrated contracts; WP10 consumes its recorded initial/outcome state and action identities
-without entering the product control path.
+without entering the product control path, while WP12 remains an explicitly injected policy-edge
+adapter.
 
 ## Delivery and review protocol
 

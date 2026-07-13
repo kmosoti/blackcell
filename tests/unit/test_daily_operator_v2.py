@@ -59,7 +59,10 @@ from blackcell.features.request_decision import (
 from blackcell.features.retrieve_evidence import EvidenceKey, RetrieveEvidence
 from blackcell.features.solve_constraints import (
     ConstraintDefinition,
+    ConstraintEvaluation,
     ConstraintOperator,
+    ConstraintSolver,
+    DeterministicConstraintSolver,
     SolveConstraints,
 )
 from blackcell.kernel import (
@@ -263,6 +266,7 @@ class WorkflowFixture:
         adapter: ExecutionAdapter | None = None,
         observer: Observer | None = None,
         hide_execution_entry: bool = False,
+        constraint_solver: ConstraintSolver | None = None,
     ) -> WorkflowFixture:
         database = tmp_path / "kernel.sqlite3"
         artifact_root = tmp_path / "artifacts"
@@ -304,6 +308,7 @@ class WorkflowFixture:
             outcome_observer=selected_observer,
             outcome_evidence=OutcomeEvidenceWriter(events),
             evaluator=OutcomeEvaluator(),
+            constraint_solver=constraint_solver,
         )
         return cls(
             events,
@@ -340,6 +345,24 @@ def test_successful_v2_workflow_records_and_rebinds_transition(tmp_path: Path) -
     assert validate_run_grammar(events, run_id=RUN_ID).terminal
     acceptance = bind_and_accept_state_transition(RUN_ID, fixture.events, fixture.artifacts)
     assert acceptance.transition is not None
+
+
+def test_v2_workflow_accepts_an_explicit_constraint_solver_port(tmp_path: Path) -> None:
+    class TrackingSolver:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def handle(self, command: SolveConstraints, frame) -> ConstraintEvaluation:
+            self.calls += 1
+            return DeterministicConstraintSolver().handle(command, frame)
+
+    solver = TrackingSolver()
+    fixture = WorkflowFixture.create(tmp_path, constraint_solver=solver)
+
+    terminal = fixture.workflow.run(_request())
+
+    assert terminal.terminal_event.event_type == RUN_COMPLETED
+    assert solver.calls == 1
 
 
 @pytest.mark.parametrize(
