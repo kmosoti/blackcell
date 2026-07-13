@@ -70,7 +70,10 @@ The service now has framework-neutral security configuration for an explicit own
 opaque environment-or-file credential, strict Bearer and scope checks, zero proxy trust, and
 pre-storage redaction. A Litestar/msgspec `/api/v1` edge composes those checks over canonical
 observation, operator run, context, replay, evaluation, event, and scheduler approval use cases,
-with public liveness/readiness and an owner-only SQLite file. Granian process lifecycle, the
+with public liveness/readiness and an owner-only SQLite file. The `blackcell-runtime` entry point
+now runs that edge through one bounded Granian ASGI worker or runs a durable scheduler worker over
+the reviewed five-role Repository Operator DAG. Both modes consume the same explicit security and
+data configuration; API backpressure, leases, polling, and graceful shutdown are bounded. The
 non-root image, OTel export, persistent-volume deployment, and recovery evidence remain measured
 work, not assumed capabilities.
 
@@ -91,10 +94,9 @@ Until a work package explicitly replaces them with tested compatibility:
 - overlapping runtime and persistence implementations;
 - orchestration concentrated in two large modules;
 - 23 SQLite `ResourceWarning` instances under strict warning reporting;
-- no architectural dependency tests;
-- no first-class model gateway;
-- no Litestar/Granian operator API;
-- no production-shaped rootless Podman image;
-- no durable multi-agent DAG scheduler, leases, or fencing tokens.
+- remaining dependency debt is tracked in `architecture/dependency_debt.json`;
+- no production-shaped rootless Podman image or persistent-volume composition;
+- no OpenTelemetry exporter mapping;
+- no tested backup/restore, quota, retention, or disaster-recovery workflow.
 
 No production behavior changes are included in WP00.

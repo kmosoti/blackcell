@@ -125,9 +125,17 @@ closed. Error responses contain one stable code and no request, credential, path
 content. OpenAPI, sessions, cookies, browser auth, CORS, and proxy-derived identity are not enabled.
 
 Service composition creates the canonical SQLite path as an owner-owned mode-`0600` regular file
-before any adapter connects. Run submission is synchronous in this first local contract. Granian
-startup and shutdown, worker lifecycle, OTel export, container health wiring, quotas, and recovery
-remain separate nodes.
+before any adapter connects. Run submission is synchronous in this first local contract.
+
+`blackcell-runtime api` serves the application through Granian's ASGI interface with one worker,
+one runtime thread, HTTP/1, disabled WebSockets and access logging, bounded connection backlog and
+request backpressure, and a bounded worker-kill timeout. Granian owns API signal handling.
+`blackcell-runtime worker` installs SIGINT/SIGTERM handling before worker construction, recovers
+expired scheduler leases, acquires one fenced node at a time, and stops before acquiring new work.
+The worker loads only the five reviewed Repository Operator handlers; it validates dependency and
+result artifacts, accounts node usage before completion, and lets the scheduler reject stale
+leases. Execution reuses the canonical operator, while verification uses historical replay only.
+Container health wiring, OTel export, quotas, and recovery remain separate nodes.
 
 ## Command, event, projection, and artifact separation
 
