@@ -21,8 +21,10 @@ from litestar.status_codes import (
     HTTP_409_CONFLICT,
     HTTP_413_REQUEST_ENTITY_TOO_LARGE,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    HTTP_429_TOO_MANY_REQUESTS,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_503_SERVICE_UNAVAILABLE,
+    HTTP_507_INSUFFICIENT_STORAGE,
 )
 
 from blackcell.interfaces import (
@@ -50,6 +52,7 @@ from blackcell.interfaces.http.ports import (
     RuntimeApiFailureCode,
     RuntimeApiPort,
 )
+from blackcell.interfaces.http.quota import RequestQuotaPort
 
 _PRINCIPAL_STATE_KEY = "blackcell.service_principal"
 _MAX_PATH_ID_CHARS = 200
@@ -67,12 +70,13 @@ def create_http_app(
     *,
     authenticator: BearerAuthenticator,
     authorizer: ScopeAuthorizer,
+    request_quota: RequestQuotaPort | None = None,
 ) -> Litestar:
     """Create the versioned HTTP edge over one injected runtime application port."""
 
-    read_guard = _scope_guard(authenticator, authorizer, ServiceScope.READ)
-    run_guard = _scope_guard(authenticator, authorizer, ServiceScope.RUN)
-    approve_guard = _scope_guard(authenticator, authorizer, ServiceScope.APPROVE)
+    read_guard = _scope_guard(authenticator, authorizer, ServiceScope.READ, request_quota)
+    run_guard = _scope_guard(authenticator, authorizer, ServiceScope.RUN, request_quota)
+    approve_guard = _scope_guard(authenticator, authorizer, ServiceScope.APPROVE, request_quota)
 
     @get("/health/live", status_code=HTTP_200_OK, sync_to_thread=False)
     def liveness() -> Response[bytes]:
@@ -214,11 +218,14 @@ def _scope_guard(
     authenticator: BearerAuthenticator,
     authorizer: ScopeAuthorizer,
     required_scope: ServiceScope,
+    request_quota: RequestQuotaPort | None,
 ) -> Callable[[ASGIConnection[Any, Any, Any, Any], BaseRouteHandler], None]:
     def guard(
         connection: ASGIConnection[Any, Any, Any, Any],
         _: BaseRouteHandler,
     ) -> None:
+        if request_quota is not None and not request_quota.consume():
+            raise HttpBoundaryError("request-quota-exceeded", HTTP_429_TOO_MANY_REQUESTS)
         headers = tuple(
             value.decode("latin-1")
             for name, value in connection.scope.get("headers", ())
@@ -262,6 +269,7 @@ def _invoke[ResponseT: msgspec.Struct](operation: Callable[[], ResponseT]) -> Re
             RuntimeApiFailureCode.NOT_FOUND: HTTP_404_NOT_FOUND,
             RuntimeApiFailureCode.CONFLICT: HTTP_409_CONFLICT,
             RuntimeApiFailureCode.NOT_READY: HTTP_503_SERVICE_UNAVAILABLE,
+            RuntimeApiFailureCode.STORAGE_QUOTA_EXCEEDED: HTTP_507_INSUFFICIENT_STORAGE,
         }
         raise HttpBoundaryError(error.code.value, statuses[error.code]) from error
 
@@ -345,6 +353,7 @@ def _exception_response(
             HTTP_405_METHOD_NOT_ALLOWED: "method-not-allowed",
             HTTP_413_REQUEST_ENTITY_TOO_LARGE: "request-too-large",
             HTTP_415_UNSUPPORTED_MEDIA_TYPE: "unsupported-media-type",
+            HTTP_429_TOO_MANY_REQUESTS: "request-quota-exceeded",
         }
         if error.status_code >= HTTP_500_INTERNAL_SERVER_ERROR:
             return _json_response(

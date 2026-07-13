@@ -24,6 +24,9 @@ OTEL_TIMEOUT_SECONDS_ENV = "BLACKCELL_OTEL_TIMEOUT_SECONDS"
 OTEL_MAX_QUEUE_SIZE_ENV = "BLACKCELL_OTEL_MAX_QUEUE_SIZE"
 OTEL_MAX_EXPORT_BATCH_SIZE_ENV = "BLACKCELL_OTEL_MAX_EXPORT_BATCH_SIZE"
 OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV = "BLACKCELL_OTEL_SCHEDULE_DELAY_MILLISECONDS"
+REQUESTS_PER_MINUTE_ENV = "BLACKCELL_REQUESTS_PER_MINUTE"
+ACTIVE_STORAGE_MAX_BYTES_ENV = "BLACKCELL_ACTIVE_STORAGE_MAX_BYTES"
+MUTATION_RESERVE_BYTES_ENV = "BLACKCELL_MUTATION_RESERVE_BYTES"
 
 _OTEL_DEPENDENT_ENV = (
     OTEL_ENDPOINT_ENV,
@@ -42,6 +45,7 @@ class ProcessConfigFailureCode(StrEnum):
     INVALID_WORKER_LEASE = "invalid-worker-lease"
     INVALID_WORKER_ID = "invalid-worker-id"
     INVALID_OTEL_CONFIG = "invalid-otel-config"
+    INVALID_QUOTA_CONFIG = "invalid-quota-config"
 
 
 class ProcessConfigError(RuntimeError):
@@ -61,6 +65,17 @@ class RuntimeTelemetryConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class RuntimeQuotaConfig:
+    requests_per_minute: int
+    active_storage_max_bytes: int
+    mutation_reserve_bytes: int
+
+    @property
+    def artifact_max_total_bytes(self) -> int:
+        return self.active_storage_max_bytes - self.mutation_reserve_bytes
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeProcessConfig:
     security: RuntimeSecurityConfig
     repository_root: Path
@@ -70,6 +85,7 @@ class RuntimeProcessConfig:
     worker_lease_seconds: int
     worker_id: str
     telemetry: RuntimeTelemetryConfig
+    quota: RuntimeQuotaConfig
 
     @classmethod
     def from_environment(
@@ -117,6 +133,7 @@ class RuntimeProcessConfig:
         ):
             raise ProcessConfigError(ProcessConfigFailureCode.INVALID_WORKER_ID)
         telemetry = _telemetry_config(values)
+        quota = _quota_config(values)
         return cls(
             security,
             repository_root,
@@ -126,6 +143,7 @@ class RuntimeProcessConfig:
             lease,
             worker_id,
             telemetry,
+            quota,
         )
 
 
@@ -205,6 +223,30 @@ def _telemetry_config(values: Mapping[str, str]) -> RuntimeTelemetryConfig:
     )
 
 
+def _quota_config(values: Mapping[str, str]) -> RuntimeQuotaConfig:
+    requests = _integer(
+        values.get(REQUESTS_PER_MINUTE_ENV, "600"),
+        minimum=1,
+        maximum=100_000,
+        code=ProcessConfigFailureCode.INVALID_QUOTA_CONFIG,
+    )
+    active_storage = _integer(
+        values.get(ACTIVE_STORAGE_MAX_BYTES_ENV, "10737418240"),
+        minimum=1_048_576,
+        maximum=1_099_511_627_776,
+        code=ProcessConfigFailureCode.INVALID_QUOTA_CONFIG,
+    )
+    reserve = _integer(
+        values.get(MUTATION_RESERVE_BYTES_ENV, "16777216"),
+        minimum=4_096,
+        maximum=1_073_741_824,
+        code=ProcessConfigFailureCode.INVALID_QUOTA_CONFIG,
+    )
+    if reserve >= active_storage:
+        raise ProcessConfigError(ProcessConfigFailureCode.INVALID_QUOTA_CONFIG)
+    return RuntimeQuotaConfig(requests, active_storage, reserve)
+
+
 def _telemetry_endpoint(value: str | None) -> str:
     if (
         not isinstance(value, str)
@@ -240,8 +282,10 @@ def _telemetry_endpoint(value: str | None) -> str:
 
 
 __all__ = [
+    "ACTIVE_STORAGE_MAX_BYTES_ENV",
     "API_BACKPRESSURE_ENV",
     "GRACEFUL_TIMEOUT_SECONDS_ENV",
+    "MUTATION_RESERVE_BYTES_ENV",
     "OTEL_ENABLED_ENV",
     "OTEL_ENDPOINT_ENV",
     "OTEL_MAX_EXPORT_BATCH_SIZE_ENV",
@@ -249,11 +293,13 @@ __all__ = [
     "OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV",
     "OTEL_TIMEOUT_SECONDS_ENV",
     "REPOSITORY_ROOT_ENV",
+    "REQUESTS_PER_MINUTE_ENV",
     "WORKER_ID_ENV",
     "WORKER_LEASE_SECONDS_ENV",
     "WORKER_POLL_MILLISECONDS_ENV",
     "ProcessConfigError",
     "ProcessConfigFailureCode",
     "RuntimeProcessConfig",
+    "RuntimeQuotaConfig",
     "RuntimeTelemetryConfig",
 ]

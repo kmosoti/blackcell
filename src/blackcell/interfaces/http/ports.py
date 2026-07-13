@@ -24,6 +24,7 @@ class RuntimeApiFailureCode(StrEnum):
     NOT_FOUND = "not-found"
     CONFLICT = "conflict"
     NOT_READY = "not-ready"
+    STORAGE_QUOTA_EXCEEDED = "storage-quota-exceeded"
 
 
 class RuntimeApiError(RuntimeError):

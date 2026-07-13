@@ -132,6 +132,7 @@ class RepositoryOperator:
         status_reader: RepositoryStatusReader | None = None,
         clock: Clock = lambda: datetime.now(UTC),
         workflow_telemetry: WorkflowTelemetry | None = None,
+        artifact_max_total_bytes: int | None = None,
     ) -> None:
         if model not in {"recorded", "codex"}:
             raise ValueError(f"unsupported repository operator model route: {model!r}")
@@ -159,14 +160,20 @@ class RepositoryOperator:
         self.repository_stream_id = f"repository:{root_digest}"
 
         self.events = EventStore(self.database_path)
-        self.artifacts = ArtifactStore(self.artifact_root, database_path=self.database_path)
+        self.artifacts = ArtifactStore(
+            self.artifact_root,
+            database_path=self.database_path,
+            max_total_bytes=artifact_max_total_bytes,
+        )
         self._decision_journal = SQLiteDecisionAttemptJournal(
             self.artifact_root,
             database_path=self.database_path,
+            artifact_max_total_bytes=artifact_max_total_bytes,
         )
         self._execution_journal = SQLiteExecutionJournal(
             self.artifact_root,
             database_path=self.database_path,
+            artifact_max_total_bytes=artifact_max_total_bytes,
         )
         self._state = ProjectOperationalStateHandler(
             self.events,

@@ -105,8 +105,10 @@ It yields a typed principal whose `read`, `run`, `approve`, and `admin` scopes a
 explicit subset for each protected operation; admin is not ambient authority. Binding defaults to
 loopback, authentication remains mandatory on every bind address, and forwarded-client trust is
 disabled. Telemetry redacts sensitive keys, credential shapes, and configured secret values before
-records enter memory or exporters. TLS termination, quotas, and backup/restore remain separate
-bounded work.
+records enter memory or exporters. TLS termination remains a deployment boundary. A single
+process-local sliding request window covers every protected route before authentication; public
+health routes are exempt. The service does not trust proxy-derived client identity, so this limit
+is deliberately global rather than per-client.
 
 ## HTTP service edge
 
@@ -143,7 +145,27 @@ publishes the container's explicit `0.0.0.0` bind only through host loopback, mo
 repository read-only with optional Git locks disabled, and serializes worker startup behind API
 readiness. Both services share one named volume above the canonical owner-only data child, so
 container replacement preserves SQLite and artifacts without weakening runtime path validation.
-Quotas and recovery remain separate nodes.
+
+Mutation admission measures the active SQLite database, WAL/SHM, and artifact tree while excluding
+backups, reserves explicit headroom, makes readiness fail closed, rejects API mutations, and keeps
+the worker from acquiring new work when exhausted. Artifact metadata transactions serialize an
+exact aggregate artifact-byte ceiling across API and worker stores. These are application-level
+admission controls, not filesystem or distributed hard quotas.
+
+The recovery adapter uses SQLite online backup to capture one consistent database snapshot, then
+copies and hashes the exact immutable artifact inventory visible in that snapshot. A canonical
+manifest records database identity, schema and event high-water position plus every artifact path,
+size, and digest. Owner-only files and directories are fsynced and the manifest is written last
+before the bundle directory is renamed into place. Verification rejects unsafe entries, inventory
+drift, hash drift, and SQLite integrity or foreign-key failures. Count retention prunes only oldest
+verified bundles after a successful backup and never prunes canonical events or artifacts.
+
+Restore always verifies first and creates an absent data root through a staged same-filesystem
+rename; it never replaces the active root or cuts processes over automatically. Operators copy a
+verified bundle off-volume, stop writers, restore to an absent target, select it explicitly through
+`BLACKCELL_DATA_DIR`, and prove readiness plus live-free replay. This establishes tested local
+disaster recovery without claiming offsite transport, encryption, filesystem hard quotas, or
+power-loss behavior on untested storage.
 
 ## Command, event, projection, and artifact separation
 

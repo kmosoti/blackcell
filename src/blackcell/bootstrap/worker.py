@@ -36,6 +36,7 @@ from blackcell.orchestration import (
     OrchestrationResultConflict,
     OrchestrationSchedulerPort,
 )
+from blackcell.runtime import RuntimeStorageQuota, StorageQuotaPort
 from blackcell.workflows.run_protocol import MODEL_RESPONDED
 
 _FAILURE_CODE = re.compile(r"[a-z0-9][a-z0-9._-]{0,99}\Z")
@@ -93,6 +94,7 @@ class RuntimeWorker:
         stop_event: Event | None = None,
         monotonic_clock: Callable[[], float] = time.monotonic,
         shutdown: Callable[[], None] | None = None,
+        storage_quota: StorageQuotaPort | None = None,
     ) -> None:
         self._operator = operator
         self._artifacts = operator.artifacts
@@ -101,6 +103,7 @@ class RuntimeWorker:
         self.stop_event = stop_event or Event()
         self._monotonic_clock = monotonic_clock
         self._shutdown = shutdown or (lambda: None)
+        self._storage_quota = storage_quota
         builtins = {
             PLAN_HANDLER: HandlerRegistration(PLAN_SCHEMA, self._plan),
             EXECUTE_HANDLER: HandlerRegistration(RUN_SCHEMA, self._execute),
@@ -125,6 +128,7 @@ class RuntimeWorker:
                 database_path=database_path,
                 artifact_root=config.security.paths.artifact_root,
                 workflow_telemetry=telemetry.workflow,
+                artifact_max_total_bytes=config.quota.artifact_max_total_bytes,
             )
             scheduler = SQLiteOrchestrationScheduler(database_path)
         except Exception:
@@ -136,6 +140,11 @@ class RuntimeWorker:
             config,
             stop_event=stop_event,
             shutdown=telemetry.shutdown,
+            storage_quota=RuntimeStorageQuota(
+                config.security.paths,
+                max_active_bytes=config.quota.active_storage_max_bytes,
+                mutation_reserve_bytes=config.quota.mutation_reserve_bytes,
+            ),
         )
 
     def serve(self, *, once: bool = False) -> int:
@@ -151,6 +160,8 @@ class RuntimeWorker:
             self._shutdown()
 
     def run_once(self) -> bool:
+        if self._storage_quota is not None and not self._storage_quota.has_mutation_capacity():
+            return False
         self._scheduler.recover_expired()
         if self.stop_event.is_set():
             return False

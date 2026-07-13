@@ -6,6 +6,7 @@ from blackcell.kernel.database import SCHEMA_VERSION
 from blackcell.kernel.errors import (
     ArtifactIntegrityError,
     ArtifactNotFoundError,
+    ArtifactQuotaExceededError,
     ConcurrencyError,
     EventConflictError,
     EventIntegrityError,
@@ -29,6 +30,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "ArtifactIntegrityError",
     "ArtifactNotFoundError",
+    "ArtifactQuotaExceededError",
     "ArtifactRef",
     "ArtifactStore",
     "CheckpointStore",

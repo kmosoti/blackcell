@@ -79,8 +79,11 @@ OpenTelemetry OTLP/HTTP adapter with bounded asynchronous batching and process-o
 One multi-stage OCI image now runs both API and worker under numeric non-root identity, and the
 rootless Podman Compose contract adds loopback publication, health sequencing, read-only roots and
 repository access, dropped capabilities, runtime-only token injection, and durable named-volume
-state. Backup, quota, retention, and recovery evidence remain measured work, not assumed
-capabilities.
+state. WP22b now adds a consistent SQLite-plus-artifact recovery bundle, strict independent
+verification, non-destructive restore, verified-only retention, global protected-request admission,
+active-storage reserve, and an exact serialized artifact ceiling. An external-copy drill proves
+restore and live-free replay after source-state loss; offsite transport and host capacity monitoring
+remain deployment responsibilities.
 
 ## Preserved contracts
 
@@ -102,6 +105,7 @@ Until a work package explicitly replaces them with tested compatibility:
 - remaining dependency debt is tracked in `architecture/dependency_debt.json`;
 - no published, signed, or attested runtime image;
 - no deployed OpenTelemetry collector or container telemetry composition;
-- no tested backup/restore, quota, retention, or disaster-recovery workflow.
+- no automated offsite backup transport, encrypted bundle format, or filesystem/cgroup hard quota;
+- no fault-injected power-loss claim for untested storage hardware.
 
 No production behavior changes are included in WP00.

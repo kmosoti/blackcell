@@ -12,7 +12,7 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP06f, WP09b-WP09c, WP17-WP21, and WP22a compose the public Repository Operator, bounded
+Status: active — WP06f, WP09b-WP09c, and WP17-WP22 compose the public Repository Operator, bounded
 host-model, scoped state/context, gateway, artifact-first execution, independent outcome
 evaluation, transition, and live-free replay around one canonical `daily-operator/v2` application
 workflow. Runtime-v1 continues as one dependency DAG on one integration branch and one pull
@@ -240,6 +240,20 @@ credentials and engine sockets stay outside the image and composition. An explic
 gate proves health, filesystem and uid modes, credential exclusion, worker entry, and state survival
 across API restart.
 
+WP22b closes the bounded local recovery node. SQLite online backup captures one consistent kernel
+snapshot; the bundle includes the exact immutable artifact inventory and a canonical manifest
+written last after owner-only file and directory fsync. Independent verification checks paths,
+modes, inventory, hashes, SQLite integrity, foreign keys, schema, and event high-water position
+before verified-only count retention or non-destructive restore. JSON-first recovery commands do not
+load the service token, repository, or model runtime. A copied bundle restores a new canonical data
+root and replays recorded work after both source-state deletion and repository loss.
+
+The production API consumes one global sliding request window before authentication on protected
+routes; health remains exempt. Active-state admission reserves explicit SQLite/artifact headroom,
+fails readiness and API mutations closed, and prevents worker acquisition. Artifact transactions
+serialize one exact aggregate byte ceiling across processes. These controls intentionally do not
+claim per-client, filesystem, distributed, encrypted, or automatic-cutover behavior.
+
 ## Work packages
 
 | WP | Deliverable | Acceptance evidence |
@@ -345,11 +359,10 @@ flowchart TD
 | Node | Deliverable | Acceptance evidence |
 | --- | --- | --- |
 | WP23a | FTS5 baseline | matched retrieval evidence and explicit promote-or-defer record |
-| WP22b | recovery | durable restore, quota, and retention evidence |
 | WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |
 
 The landed dependency join includes protocol-v2, WP04c-WP05c, WP06c-WP06f, WP08b, WP09b-WP09c,
-WP10, WP12-WP15, WP16a-WP16c, WP17-WP21, and WP22a. WP09b is the product-accepted public composition over those
+WP10, WP12-WP15, WP16a-WP16c, and WP17-WP22. WP09b is the product-accepted public composition over those
 integrated contracts; WP10 consumes its recorded initial/outcome state and action identities
 without entering the product control path, while WP12 remains an explicitly injected policy-edge
 adapter.

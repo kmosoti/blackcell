@@ -7,6 +7,7 @@ edges:
     - migration-ledger
     - spec/bcp-0034-evolutionary-runtime
     - targets/containers
+    - targets/recovery
   depends-on:
     - adr/0001-event-sourced-kernel
     - adr/0003-model-execution-boundary
@@ -26,10 +27,10 @@ an implicit data location, credential in a tracked config or command line, permi
 mode, ambiguous proxy header, raw authorization failure, or telemetry export containing a secret
 would create authority or disclosure outside the kernel's typed policy boundary.
 
-The protected assets are the kernel database, artifact bytes, future backups, service credential,
+The protected assets are the kernel database, artifact bytes, backups, service credential,
 model/provider credentials, approval authority, execution authority, and recorded prompts or
 outputs. The initial actors are one local service process, its worker process, an authenticated API
-client, the host/container operator, and later telemetry or backup adapters. Model output is
+client, the host/container operator, and telemetry or backup adapters. Model output is
 untrusted content and never becomes an identity or credential.
 
 ## Decision
@@ -76,6 +77,22 @@ credential-free OTLP/HTTP endpoint. The runtime supplies a fixed non-secret head
 OpenTelemetry endpoint and header configuration cannot redirect or decorate exports. Exporter
 failure is content-free and cannot alter domain execution.
 
+### Quota and recovery extension
+
+WP22b extends this boundary with one process-local sliding request window consumed before
+authentication on every protected route. Health routes are exempt. With proxy trust fixed at zero,
+the service has no safe client-IP partition and therefore makes no per-client quota claim.
+
+Active-storage admission measures SQLite, WAL/SHM, and artifacts, reserves mutation headroom, and
+fails API/worker admission closed. Every production artifact store also enforces one exact aggregate
+artifact-byte ceiling inside its SQLite write transaction. Backup bytes are excluded from active
+admission and require host capacity monitoring.
+
+Recovery bundles contain a consistent SQLite online snapshot, its exact immutable artifacts, and a
+canonical manifest. Verification enforces owner-only non-symlink entries, exact inventory and hashes,
+and SQLite integrity before retention or restore. Restore creates only an absent target and leaves
+cutover to a stopped, explicit operator procedure.
+
 ## Threat and mitigation matrix
 
 | Threat | Mitigation | Residual limit |
@@ -84,12 +101,15 @@ failure is content-free and cannot alter domain execution.
 | Symlink or permissive-path substitution | `lstat`, no-follow credential open, uid and exact-mode checks | parent mount and host integrity belong to deployment |
 | Credential appears in argv or tracked YAML | environment or owner-only credential file only | host root and process-environment readers remain trusted |
 | Header smuggling or duplicate credentials | transport preserves multiplicity; exactly one strict Bearer value | WP18 must not comma-fold headers before authentication |
-| Token timing oracle | constant-time digest comparison and content-free failure codes | network rate limits and quotas land with WP22b |
+| Token timing oracle or brute-force pressure | constant-time digest comparison, content-free failures, and one pre-auth protected-route request window | the limit is process-local and global, not a distributed or per-client defense |
 | Admin token gains undeclared route power | explicit scope subset checks; no implicit admin expansion | the initial token intentionally receives all declared scopes |
 | Secret reaches telemetry or exception export | nested key/pattern/exact-value sanitization before storage/export | arbitrary unknown secrets need provider-specific policy additions |
 | Spoofed forwarded client identity | trusted proxy hops fixed at zero | trusted reverse-proxy support is deferred |
 | Container gains host or repository write authority | rootless engine, numeric non-root user, dropped capabilities, no-new-privileges, read-only root/repository, no engine socket | the invoking host uid and local container engine remain trusted |
-| Container replacement loses or weakens state | named volume above the runtime-created owner-only data child; engine-backed restart test | backup, quota, retention, and disaster recovery remain WP22b |
+| Container replacement or volume loss destroys state | persistent volume plus verified SQLite-and-artifact bundles and an external-copy restore drill | the operator must transport and protect a bundle off-volume |
+| Corrupt or substituted backup enters service state | canonical manifest, exact hashes/inventory, mode and symlink checks, SQLite integrity, and verify-before-restore | bundles are not encrypted or authenticated against a compromised service uid |
+| Storage exhaustion creates partial mutations | active-byte reserve, readiness/API/worker admission, and serialized exact artifact ceiling | admission is not a filesystem hard quota; backups need host capacity monitoring |
+| Restore destroys a usable active root | absent-target-only staged restore and explicit stopped-process cutover | deleting old roots remains a separate operator-authorized action |
 | Model output grants runtime authority | authentication is an interface concern; action policy remains deterministic | prompt injection still requires ongoing policy and evaluation tests |
 
 ## Consequences
@@ -98,8 +118,8 @@ failure is content-free and cannot alter domain execution.
   than defining alternate auth, path, proxy, or redaction defaults.
 - Provider credentials remain separate from the Blackcell service token and are never placed in
   the data directory, image, tracked configuration, or telemetry.
-- This decision does not implement TLS, external identity federation, token rotation, multi-tenant
-  RBAC, request quotas, backup/restore, retention, or disaster recovery. Those are deployment or
-  WP22b concerns and must not be inferred from this boundary.
+- WP22b adds bounded request/storage admission and tested local backup, retention, restore, and
+  disaster-recovery evidence. It does not add TLS, external identity federation, token rotation,
+  multi-tenant RBAC, offsite transport, bundle encryption, or filesystem hard quotas.
 - The repository-local CLI remains a user-invoked compatibility surface. Service startup uses the
   explicit runtime configuration and does not inherit the CLI's Git-directory default.

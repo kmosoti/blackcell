@@ -10,7 +10,8 @@ from litestar import Litestar
 from blackcell.adapters.telemetry import RuntimeTelemetry
 from blackcell.bootstrap.runtime_api import RuntimeApiService
 from blackcell.config import RuntimeProcessConfig
-from blackcell.interfaces.http import create_http_app
+from blackcell.interfaces.http import SlidingWindowRequestQuota, create_http_app
+from blackcell.runtime import RuntimeStorageQuota
 
 GRANIAN_TARGET = "blackcell.bootstrap.granian:create_granian_app"
 
@@ -25,11 +26,18 @@ def create_granian_app() -> Litestar:
             config.security,
             repository_root=config.repository_root,
             workflow_telemetry=telemetry.workflow,
+            artifact_max_total_bytes=config.quota.artifact_max_total_bytes,
+            storage_quota=RuntimeStorageQuota(
+                config.security.paths,
+                max_active_bytes=config.quota.active_storage_max_bytes,
+                mutation_reserve_bytes=config.quota.mutation_reserve_bytes,
+            ),
         )
         app = create_http_app(
             service,
             authenticator=config.security.authenticator(),
             authorizer=config.security.authorizer(),
+            request_quota=SlidingWindowRequestQuota(config.quota.requests_per_minute),
         )
     except Exception:
         telemetry.shutdown()

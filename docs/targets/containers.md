@@ -63,6 +63,12 @@ Worker startup waits for API readiness so initial state-directory creation is se
 `podman compose down` removes containers and preserves the named volume. Adding `--volumes`
 deletes the durable runtime state and is appropriate only for an intentional destructive reset.
 
+The process applies the bounded request and active-storage defaults documented in
+`targets/recovery.md`; deployments may override those explicit `BLACKCELL_*` values. Run an online
+bundle through `podman compose exec blackcell-api blackcell-runtime recovery backup`, then copy and
+verify it outside the named volume. Do not remove the volume until the external-copy restore drill
+in the recovery runbook has passed.
+
 ## Acceptance gate
 
 Static container contracts run in the normal suite. On a Linux host with rootless Podman, run the

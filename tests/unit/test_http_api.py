@@ -27,6 +27,7 @@ from blackcell.interfaces.http import (
     RunSubmissionRequest,
     RuntimeApiError,
     RuntimeApiFailureCode,
+    SlidingWindowRequestQuota,
     create_http_app,
 )
 
@@ -315,6 +316,22 @@ def test_query_and_service_failures_are_bounded_and_content_free() -> None:
     assert TOKEN not in internal.text
 
 
+def test_request_quota_counts_failed_authentication_and_exempts_health() -> None:
+    quota = SlidingWindowRequestQuota(2, monotonic_clock=lambda: 100.0)
+    with _client(FakeRuntimeApi(), request_quota=quota) as client:
+        first = client.get("/api/v1/events")
+        second = client.get("/api/v1/events", headers=_auth())
+        exhausted = client.get("/api/v1/events", headers=_auth())
+        live = client.get("/health/live")
+        ready = client.get("/health/ready")
+
+    assert first.status_code == 401
+    assert second.status_code == 200
+    assert exhausted.status_code == 429
+    assert exhausted.json()["error"] == "request-quota-exceeded"
+    assert live.status_code == ready.status_code == 200
+
+
 def _client(
     service: FakeRuntimeApi,
     *,
@@ -323,12 +340,14 @@ def _client(
         ServiceScope.RUN,
         ServiceScope.APPROVE,
     ),
+    request_quota: SlidingWindowRequestQuota | None = None,
 ) -> TestClient[Any]:
     principal = ServicePrincipal("client:test", scopes)
     app = create_http_app(
         service,
         authenticator=BearerAuthenticator(SecretValue(TOKEN), principal),
         authorizer=ScopeAuthorizer(),
+        request_quota=request_quota,
     )
     return TestClient(app)
 

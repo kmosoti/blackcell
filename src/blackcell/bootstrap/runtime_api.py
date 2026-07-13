@@ -38,7 +38,12 @@ from blackcell.interfaces.http.ports import (
     RuntimeApiFailureCode,
     RuntimeApiPort,
 )
-from blackcell.kernel import ConcurrencyError, EventEnvelope, KernelError
+from blackcell.kernel import (
+    ArtifactQuotaExceededError,
+    ConcurrencyError,
+    EventEnvelope,
+    KernelError,
+)
 from blackcell.operator import (
     CanonicalOperatorRunResult,
     RepositoryOperator,
@@ -53,6 +58,7 @@ from blackcell.orchestration import (
     OrchestrationSchedulerError,
     OrchestrationSchedulerPort,
 )
+from blackcell.runtime import StorageQuotaPort
 from blackcell.workflows.run_protocol import EVALUATION_RECORDED
 from blackcell.workflows.telemetry import WorkflowTelemetry
 
@@ -64,11 +70,13 @@ class RuntimeApiService(RuntimeApiPort):
         self,
         operator: RepositoryOperator,
         scheduler: OrchestrationSchedulerPort,
+        storage_quota: StorageQuotaPort | None = None,
     ) -> None:
         self._operator = operator
         self._events = operator.events
         self._ingestion = IngestObservationHandler(self._events)
         self._scheduler = scheduler
+        self._storage_quota = storage_quota
 
     @classmethod
     def from_config(
@@ -77,6 +85,8 @@ class RuntimeApiService(RuntimeApiPort):
         *,
         repository_root: Path | str,
         workflow_telemetry: WorkflowTelemetry | None = None,
+        artifact_max_total_bytes: int | None = None,
+        storage_quota: StorageQuotaPort | None = None,
     ) -> RuntimeApiService:
         database_path = config.paths.ensure_database_file()
         operator = RepositoryOperator(
@@ -84,12 +94,19 @@ class RuntimeApiService(RuntimeApiPort):
             database_path=database_path,
             artifact_root=config.paths.artifact_root,
             workflow_telemetry=workflow_telemetry,
+            artifact_max_total_bytes=artifact_max_total_bytes,
         )
-        return cls(operator, SQLiteOrchestrationScheduler(database_path))
+        return cls(
+            operator,
+            SQLiteOrchestrationScheduler(database_path),
+            storage_quota=storage_quota,
+        )
 
     def readiness(self) -> HealthResponse:
         try:
             self._events.read_all(after_position=0, limit=1)
+            if self._storage_quota is not None and not self._storage_quota.has_mutation_capacity():
+                return HealthResponse(status="not-ready")
         except Exception:
             return HealthResponse(status="not-ready")
         return HealthResponse(status="ready")
@@ -101,6 +118,7 @@ class RuntimeApiService(RuntimeApiPort):
         principal_id: str,
     ) -> ObservationIngestResponse:
         _principal(principal_id)
+        self._require_storage()
 
         def operation() -> ObservationIngestResponse:
             events = self._ingestion.handle(
@@ -157,6 +175,7 @@ class RuntimeApiService(RuntimeApiPort):
         principal_id: str,
     ) -> RunResponse:
         _principal(principal_id)
+        self._require_storage()
         return _translate(
             lambda: _run_response(
                 self._operator.run(
@@ -240,6 +259,7 @@ class RuntimeApiService(RuntimeApiPort):
         principal_id: str,
     ) -> OrchestrationApprovalResponse:
         _principal(principal_id)
+        self._require_storage()
         return _translate(
             lambda: _approval_response(
                 self._scheduler.record_approval(
@@ -252,12 +272,18 @@ class RuntimeApiService(RuntimeApiPort):
             )
         )
 
+    def _require_storage(self) -> None:
+        if self._storage_quota is not None and not self._storage_quota.has_mutation_capacity():
+            raise RuntimeApiError(RuntimeApiFailureCode.STORAGE_QUOTA_EXCEEDED)
+
 
 def _translate[ResultT](operation: Callable[[], ResultT]) -> ResultT:
     try:
         return operation()
     except RuntimeApiError:
         raise
+    except ArtifactQuotaExceededError as error:
+        raise RuntimeApiError(RuntimeApiFailureCode.STORAGE_QUOTA_EXCEEDED) from error
     except (ConcurrencyError, OrchestrationApprovalConflict, OrchestrationRunConflict) as error:
         raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from error
     except LookupError as error:

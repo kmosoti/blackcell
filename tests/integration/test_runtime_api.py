@@ -133,6 +133,51 @@ def test_http_observation_ingest_and_scheduler_approval_use_authenticated_identi
     assert inspected.json()["approvals"][0]["principal_id"] == "service:runtime-v1"
 
 
+def test_storage_exhaustion_fails_readiness_and_mutations_but_preserves_reads(
+    tmp_path: Path,
+) -> None:
+    repository = _git_repository(tmp_path / "repository")
+    config = _config(tmp_path / "runtime-data")
+
+    class ExhaustedStorage:
+        def has_mutation_capacity(self) -> bool:
+            return False
+
+    service = RuntimeApiService.from_config(
+        config,
+        repository_root=repository,
+        storage_quota=ExhaustedStorage(),
+    )
+    app = create_http_app(
+        service,
+        authenticator=config.authenticator(),
+        authorizer=config.authorizer(),
+    )
+
+    with TestClient(app) as client:
+        readiness = client.get("/health/ready")
+        events = client.get("/api/v1/events", headers=_auth())
+        submitted = client.post(
+            "/api/v1/runs",
+            headers=_auth(),
+            json={
+                "schema_version": "run-submission-request/v1",
+                "objective": "This mutation must be rejected.",
+                "approval_granted": False,
+                "token_budget": 2_000,
+                "character_budget": 8_000,
+            },
+        )
+
+    assert readiness.status_code == 503
+    assert events.status_code == 200
+    assert submitted.status_code == 507
+    assert submitted.json() == {
+        "error": "storage-quota-exceeded",
+        "schema_version": "error/v1",
+    }
+
+
 def _config(data_root: Path) -> RuntimeSecurityConfig:
     return RuntimeSecurityConfig.from_environment(
         {DATA_DIR_ENV: str(data_root), API_TOKEN_ENV: TOKEN}

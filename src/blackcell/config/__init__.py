@@ -1,7 +1,9 @@
 from blackcell.config.loader import ConfigError, find_repo_root
 from blackcell.config.process import (
+    ACTIVE_STORAGE_MAX_BYTES_ENV,
     API_BACKPRESSURE_ENV,
     GRACEFUL_TIMEOUT_SECONDS_ENV,
+    MUTATION_RESERVE_BYTES_ENV,
     OTEL_ENABLED_ENV,
     OTEL_ENDPOINT_ENV,
     OTEL_MAX_EXPORT_BATCH_SIZE_ENV,
@@ -9,13 +11,21 @@ from blackcell.config.process import (
     OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV,
     OTEL_TIMEOUT_SECONDS_ENV,
     REPOSITORY_ROOT_ENV,
+    REQUESTS_PER_MINUTE_ENV,
     WORKER_ID_ENV,
     WORKER_LEASE_SECONDS_ENV,
     WORKER_POLL_MILLISECONDS_ENV,
     ProcessConfigError,
     ProcessConfigFailureCode,
     RuntimeProcessConfig,
+    RuntimeQuotaConfig,
     RuntimeTelemetryConfig,
+)
+from blackcell.config.recovery import (
+    BACKUP_RETENTION_COUNT_ENV,
+    RecoveryConfigError,
+    RecoveryConfigFailureCode,
+    RuntimeRecoveryConfig,
 )
 from blackcell.config.runtime import (
     BIND_HOST_ENV,
@@ -35,13 +45,16 @@ from blackcell.config.secrets import (
 )
 
 __all__ = [
+    "ACTIVE_STORAGE_MAX_BYTES_ENV",
     "API_BACKPRESSURE_ENV",
     "API_TOKEN_ENV",
     "API_TOKEN_FILE_ENV",
+    "BACKUP_RETENTION_COUNT_ENV",
     "BIND_HOST_ENV",
     "BIND_PORT_ENV",
     "DATA_DIR_ENV",
     "GRACEFUL_TIMEOUT_SECONDS_ENV",
+    "MUTATION_RESERVE_BYTES_ENV",
     "OTEL_ENABLED_ENV",
     "OTEL_ENDPOINT_ENV",
     "OTEL_MAX_EXPORT_BATCH_SIZE_ENV",
@@ -49,6 +62,7 @@ __all__ = [
     "OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV",
     "OTEL_TIMEOUT_SECONDS_ENV",
     "REPOSITORY_ROOT_ENV",
+    "REQUESTS_PER_MINUTE_ENV",
     "TRUSTED_PROXY_HOPS_ENV",
     "WORKER_ID_ENV",
     "WORKER_LEASE_SECONDS_ENV",
@@ -56,8 +70,12 @@ __all__ = [
     "ConfigError",
     "ProcessConfigError",
     "ProcessConfigFailureCode",
+    "RecoveryConfigError",
+    "RecoveryConfigFailureCode",
     "RuntimePaths",
     "RuntimeProcessConfig",
+    "RuntimeQuotaConfig",
+    "RuntimeRecoveryConfig",
     "RuntimeSecurityConfig",
     "RuntimeTelemetryConfig",
     "SecretValue",

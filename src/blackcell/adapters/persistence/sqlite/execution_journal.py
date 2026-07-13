@@ -144,9 +144,14 @@ class SQLiteExecutionJournal:
         root: Path | str,
         *,
         database_path: Path | str | None = None,
+        artifact_max_total_bytes: int | None = None,
     ) -> None:
         self.root = Path(root)
-        self._artifacts = ArtifactStore(self.root, database_path=database_path)
+        self._artifacts = ArtifactStore(
+            self.root,
+            database_path=database_path,
+            max_total_bytes=artifact_max_total_bytes,
+        )
         self.database_path = self._artifacts.database_path
         self._closed = False
         self._initialize_schema()

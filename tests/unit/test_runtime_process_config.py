@@ -6,10 +6,12 @@ from pathlib import Path
 import pytest
 
 from blackcell.config import (
+    ACTIVE_STORAGE_MAX_BYTES_ENV,
     API_BACKPRESSURE_ENV,
     API_TOKEN_ENV,
     DATA_DIR_ENV,
     GRACEFUL_TIMEOUT_SECONDS_ENV,
+    MUTATION_RESERVE_BYTES_ENV,
     OTEL_ENABLED_ENV,
     OTEL_ENDPOINT_ENV,
     OTEL_MAX_EXPORT_BATCH_SIZE_ENV,
@@ -17,6 +19,7 @@ from blackcell.config import (
     OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV,
     OTEL_TIMEOUT_SECONDS_ENV,
     REPOSITORY_ROOT_ENV,
+    REQUESTS_PER_MINUTE_ENV,
     WORKER_ID_ENV,
     WORKER_LEASE_SECONDS_ENV,
     WORKER_POLL_MILLISECONDS_ENV,
@@ -49,6 +52,10 @@ def test_process_config_uses_bounded_explicit_runtime_defaults(tmp_path: Path) -
     assert config.worker_id == "worker:runtime-host:42"
     assert not config.telemetry.enabled
     assert config.telemetry.endpoint is None
+    assert config.quota.requests_per_minute == 600
+    assert config.quota.active_storage_max_bytes == 10_737_418_240
+    assert config.quota.mutation_reserve_bytes == 16_777_216
+    assert config.quota.artifact_max_total_bytes == 10_720_641_024
 
 
 def test_process_config_accepts_explicit_bounded_lifecycle_values(tmp_path: Path) -> None:
@@ -64,6 +71,9 @@ def test_process_config_accepts_explicit_bounded_lifecycle_values(tmp_path: Path
             WORKER_POLL_MILLISECONDS_ENV: "60000",
             WORKER_LEASE_SECONDS_ENV: "86400",
             WORKER_ID_ENV: "worker:runtime-1",
+            REQUESTS_PER_MINUTE_ENV: "100000",
+            ACTIVE_STORAGE_MAX_BYTES_ENV: "1048576",
+            MUTATION_RESERVE_BYTES_ENV: "4096",
         }
     )
 
@@ -72,6 +82,9 @@ def test_process_config_accepts_explicit_bounded_lifecycle_values(tmp_path: Path
     assert config.worker_poll_milliseconds == 60_000
     assert config.worker_lease_seconds == 86_400
     assert config.worker_id == "worker:runtime-1"
+    assert config.quota.requests_per_minute == 100_000
+    assert config.quota.active_storage_max_bytes == 1_048_576
+    assert config.quota.mutation_reserve_bytes == 4_096
 
 
 def test_process_config_accepts_bounded_explicit_otlp_http_export(tmp_path: Path) -> None:
@@ -163,6 +176,17 @@ def test_process_config_rejects_ambient_or_unsafe_otel_configuration_content_fre
         (WORKER_POLL_MILLISECONDS_ENV, "9", ProcessConfigFailureCode.INVALID_WORKER_POLL),
         (WORKER_LEASE_SECONDS_ENV, "86401", ProcessConfigFailureCode.INVALID_WORKER_LEASE),
         (WORKER_ID_ENV, "worker with space", ProcessConfigFailureCode.INVALID_WORKER_ID),
+        (REQUESTS_PER_MINUTE_ENV, "0", ProcessConfigFailureCode.INVALID_QUOTA_CONFIG),
+        (
+            ACTIVE_STORAGE_MAX_BYTES_ENV,
+            "1048575",
+            ProcessConfigFailureCode.INVALID_QUOTA_CONFIG,
+        ),
+        (
+            MUTATION_RESERVE_BYTES_ENV,
+            "1073741825",
+            ProcessConfigFailureCode.INVALID_QUOTA_CONFIG,
+        ),
     ),
 )
 def test_process_config_rejects_implicit_or_unbounded_values_content_free(
@@ -202,6 +226,25 @@ def test_process_config_rejects_missing_and_symlinked_repository_roots(tmp_path:
                 }
             )
         assert caught.value.code is ProcessConfigFailureCode.INVALID_REPOSITORY_ROOT
+
+
+def test_process_config_rejects_reserve_without_active_storage_headroom(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path / "repository")
+
+    with pytest.raises(ProcessConfigError) as caught:
+        RuntimeProcessConfig.from_environment(
+            {
+                DATA_DIR_ENV: str(tmp_path / "data"),
+                API_TOKEN_ENV: TOKEN,
+                REPOSITORY_ROOT_ENV: str(repository),
+                ACTIVE_STORAGE_MAX_BYTES_ENV: "1048576",
+                MUTATION_RESERVE_BYTES_ENV: "1048576",
+            }
+        )
+
+    assert caught.value.code is ProcessConfigFailureCode.INVALID_QUOTA_CONFIG
 
 
 def _repository(path: Path) -> Path:

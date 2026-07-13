@@ -243,6 +243,24 @@ def test_worker_serve_always_closes_its_process_telemetry(tmp_path: Path) -> Non
     assert closed == [True]
 
 
+def test_worker_does_not_recover_or_acquire_when_storage_is_exhausted(tmp_path: Path) -> None:
+    config, operator, scheduler = _runtime(tmp_path)
+    scheduler.submit(
+        "orchestration:quota",
+        DagDefinition("dag:quota", (_node("plan", handler=PLAN_HANDLER, schema=PLAN_SCHEMA),)),
+        submitted_by="service:test",
+    )
+
+    class ExhaustedStorage:
+        def has_mutation_capacity(self) -> bool:
+            return False
+
+    worker = RuntimeWorker(operator, scheduler, config, storage_quota=ExhaustedStorage())
+
+    assert not worker.run_once()
+    assert scheduler.inspect("orchestration:quota").nodes[0].status is NodeStatus.PENDING
+
+
 def _runtime(
     tmp_path: Path,
 ) -> tuple[RuntimeProcessConfig, RepositoryOperator, SQLiteOrchestrationScheduler]:

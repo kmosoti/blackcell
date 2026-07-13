@@ -29,6 +29,10 @@ from blackcell.interfaces.http.ports import (
     RuntimeApiFailureCode,
     RuntimeApiPort,
 )
+from blackcell.interfaces.http.quota import (
+    RequestQuotaPort,
+    SlidingWindowRequestQuota,
+)
 
 __all__ = [
     "ApprovalRequest",
@@ -47,11 +51,13 @@ __all__ = [
     "OrchestrationNodeResponse",
     "OrchestrationRunResponse",
     "ReplayResponse",
+    "RequestQuotaPort",
     "RunResponse",
     "RunSubmissionRequest",
     "RuntimeApiError",
     "RuntimeApiFailureCode",
     "RuntimeApiPort",
+    "SlidingWindowRequestQuota",
     "WireContractError",
     "create_http_app",
     "decode_contract",

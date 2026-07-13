@@ -34,6 +34,9 @@ The service security boundary is defined by `adr/0007-runtime-security-boundary.
 owner-only data paths, opaque credentials, strict Bearer/scope authorization, zero proxy trust, and
 pre-storage redaction before HTTP exposure.
 
+The local recovery and quota runbook is `targets/recovery.md`: verified immutable bundles,
+non-destructive cutover, verified-only retention, and the exact request/storage admission limits.
+
 ## Proposed developer-workflow research
 
 - `research/spark-repository-perception.md`: matched Terra-versus-Spark repository-perception
