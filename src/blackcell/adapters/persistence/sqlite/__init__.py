@@ -5,6 +5,11 @@ from blackcell.adapters.persistence.sqlite.decision_attempts import SQLiteDecisi
 from blackcell.adapters.persistence.sqlite.execution_journal import SQLiteExecutionJournal
 from blackcell.adapters.persistence.sqlite.run_records import KernelRunRecorder
 from blackcell.adapters.persistence.sqlite.run_replay import KernelRunReplayAdapter
+from blackcell.adapters.persistence.sqlite.session import (
+    SQLiteKernelSession,
+    SQLiteKernelTransaction,
+    SQLiteTransactionError,
+)
 
 __all__ = [
     "ArtifactContextFrameStore",
@@ -12,4 +17,7 @@ __all__ = [
     "KernelRunReplayAdapter",
     "SQLiteDecisionAttemptJournal",
     "SQLiteExecutionJournal",
+    "SQLiteKernelSession",
+    "SQLiteKernelTransaction",
+    "SQLiteTransactionError",
 ]

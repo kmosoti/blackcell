@@ -61,8 +61,103 @@ class EventStore:
         batch = tuple(events)
         if not batch:
             return ()
+        with connect(self.path) as connection:
+            connection.execute("begin immediate")
+            try:
+                appended = self.append_many_in_transaction(
+                    connection,
+                    batch,
+                    expected_sequences=expected_sequences,
+                )
+                connection.commit()
+                return appended
+            except Exception:
+                connection.rollback()
+                raise
 
-        stream_ids = {event.stream_id for event in batch}
+    def append_many_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        events: Sequence[EventEnvelope],
+        *,
+        expected_sequences: Mapping[str, int],
+    ) -> tuple[EventEnvelope, ...]:
+        """Append a batch inside the caller's active transaction.
+
+        The connection must target this store's main database, have foreign-key
+        enforcement enabled, and already hold an explicit transaction. This
+        method never commits or rolls back; the caller owns the complete atomic
+        unit, including any adapter state written through the same connection.
+        """
+
+        self._validate_transaction_connection(connection)
+        batch = tuple(events)
+        if not batch:
+            return ()
+        stream_ids = self._validate_append_request(batch, expected_sequences)
+
+        existing = tuple(self._idempotent_event(connection, event) for event in batch)
+        if all(event is not None for event in existing):
+            self._validate_existing_batch_order(existing)
+            return tuple(event for event in existing if event is not None)
+
+        grouped: dict[str, list[tuple[EventEnvelope, EventEnvelope | None]]] = {
+            stream_id: [] for stream_id in stream_ids
+        }
+        for candidate, stored in zip(batch, existing, strict=True):
+            grouped[candidate.stream_id].append((candidate, stored))
+
+        current_sequences: dict[str, int] = {}
+        committed_prefixes: dict[str, int] = {}
+        for stream_id, stream_events in grouped.items():
+            expected = expected_sequences[stream_id]
+            actual = self._current_sequence(connection, stream_id)
+            current_sequences[stream_id] = actual
+            prefix = self._validate_batch_stream(
+                stream_id,
+                stream_events,
+                expected_sequence=expected,
+                actual_sequence=actual,
+            )
+            committed_prefixes[stream_id] = prefix
+            if actual == 0:
+                connection.execute(
+                    "insert into event_streams(stream_id, current_sequence) values (?, 0)",
+                    (stream_id,),
+                )
+
+        appended: list[EventEnvelope] = []
+        for candidate, stored in zip(batch, existing, strict=True):
+            if stored is not None:
+                appended.append(stored)
+                continue
+            appended.append(self._insert_event(connection, candidate))
+
+        for stream_id, stream_events in grouped.items():
+            new_count = len(stream_events) - committed_prefixes[stream_id]
+            if new_count == 0:
+                continue
+            previous = current_sequences[stream_id]
+            required = previous + new_count
+            changed = connection.execute(
+                """
+                update event_streams set current_sequence = ?
+                where stream_id = ? and current_sequence = ?
+                """,
+                (required, stream_id, previous),
+            ).rowcount
+            if changed != 1:  # guarded by begin immediate; retained as an invariant check
+                fresh = self._current_sequence(connection, stream_id)
+                raise ConcurrencyError(stream_id, previous, fresh)
+
+        return tuple(appended)
+
+    @staticmethod
+    def _validate_append_request(
+        events: Sequence[EventEnvelope],
+        expected_sequences: Mapping[str, int],
+    ) -> set[str]:
+        stream_ids = {event.stream_id for event in events}
         missing = stream_ids.difference(expected_sequences)
         if missing:
             names = ", ".join(repr(name) for name in sorted(missing))
@@ -70,70 +165,23 @@ class EventStore:
         for stream_id in stream_ids:
             if expected_sequences[stream_id] < 0:
                 raise ValueError(f"expected sequence for stream {stream_id!r} must be non-negative")
+        return stream_ids
 
-        with connect(self.path) as connection:
-            connection.execute("begin immediate")
-            try:
-                existing = tuple(self._idempotent_event(connection, event) for event in batch)
-                if all(event is not None for event in existing):
-                    self._validate_existing_batch_order(existing)
-                    connection.commit()
-                    return tuple(event for event in existing if event is not None)
-
-                grouped: dict[str, list[tuple[EventEnvelope, EventEnvelope | None]]] = {
-                    stream_id: [] for stream_id in stream_ids
-                }
-                for candidate, stored in zip(batch, existing, strict=True):
-                    grouped[candidate.stream_id].append((candidate, stored))
-
-                current_sequences: dict[str, int] = {}
-                committed_prefixes: dict[str, int] = {}
-                for stream_id, stream_events in grouped.items():
-                    expected = expected_sequences[stream_id]
-                    actual = self._current_sequence(connection, stream_id)
-                    current_sequences[stream_id] = actual
-                    prefix = self._validate_batch_stream(
-                        stream_id,
-                        stream_events,
-                        expected_sequence=expected,
-                        actual_sequence=actual,
-                    )
-                    committed_prefixes[stream_id] = prefix
-                    if actual == 0:
-                        connection.execute(
-                            "insert into event_streams(stream_id, current_sequence) values (?, 0)",
-                            (stream_id,),
-                        )
-
-                appended: list[EventEnvelope] = []
-                for candidate, stored in zip(batch, existing, strict=True):
-                    if stored is not None:
-                        appended.append(stored)
-                        continue
-                    appended.append(self._insert_event(connection, candidate))
-
-                for stream_id, stream_events in grouped.items():
-                    new_count = len(stream_events) - committed_prefixes[stream_id]
-                    if new_count == 0:
-                        continue
-                    previous = current_sequences[stream_id]
-                    required = previous + new_count
-                    changed = connection.execute(
-                        """
-                        update event_streams set current_sequence = ?
-                        where stream_id = ? and current_sequence = ?
-                        """,
-                        (required, stream_id, previous),
-                    ).rowcount
-                    if changed != 1:  # guarded by begin immediate; retained as an invariant check
-                        fresh = self._current_sequence(connection, stream_id)
-                        raise ConcurrencyError(stream_id, previous, fresh)
-
-                connection.commit()
-                return tuple(appended)
-            except Exception:
-                connection.rollback()
-                raise
+    def _validate_transaction_connection(self, connection: sqlite3.Connection) -> None:
+        if not connection.in_transaction:
+            raise RuntimeError("kernel event append requires an active transaction")
+        foreign_keys = connection.execute("pragma foreign_keys").fetchone()
+        if foreign_keys is None or int(foreign_keys[0]) != 1:
+            raise RuntimeError("kernel event append requires SQLite foreign keys")
+        database_rows = connection.execute("pragma database_list").fetchall()
+        main_path: str | None = None
+        for row in database_rows:
+            name = str(row[1])
+            if name == "main":
+                main_path = str(row[2])
+                break
+        if main_path is None or Path(main_path).resolve() != self.path.resolve():
+            raise ValueError("transaction connection does not target this event store")
 
     @staticmethod
     def _validate_existing_batch_order(events: Sequence[EventEnvelope | None]) -> None:

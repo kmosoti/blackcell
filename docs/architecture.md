@@ -55,6 +55,13 @@ Durable multi-agent orchestration is a consumer of these same boundaries, not a 
 runtime. DAG nodes invoke typed workflow or feature ports; their attempts, leases, results, and
 evaluations append to the same ledger and share the same authorization path.
 
+Local scheduler state and its corresponding kernel event share one explicit SQLite transaction.
+`SQLiteKernelSession` owns the transaction boundary, permits bounded adapter data statements, and
+uses `EventStore.append_many_in_transaction` without nested commits. The event store verifies the
+active connection, database identity, and foreign-key enforcement; either all adapter rows and
+events commit or all roll back. External effects and file-backed artifact bytes remain outside
+that atomic unit and still require preparation, idempotency, and reconciliation.
+
 Runtime DAG definitions are immutable and content-addressed. Every node declares a handler port,
 principal and role, typed input bindings and output schema, dependency set, retry policy, timeout,
 token/latency/cost budget, side-effect class, required reviewer/verifier approvals, gateway
