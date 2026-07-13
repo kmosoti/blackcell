@@ -76,19 +76,25 @@ class SpanHandle:
         duration_ms = max(0.0, (self._recorder._monotonic_clock() - self._started_tick) * 1000)
         policy = self._recorder.content_policy
         events = tuple(
-            SpanEvent(name, timestamp.isoformat(), policy.sanitize(attributes))
+            SpanEvent(
+                policy.sanitize_text(name),
+                timestamp.isoformat(),
+                policy.sanitize(attributes),
+            )
             for name, timestamp, attributes in self._events
         )
         record = SpanRecord(
-            trace_id=self.trace_id,
+            trace_id=policy.sanitize_text(self.trace_id),
             span_id=self.span_id,
-            parent_span_id=self.parent_span_id,
+            parent_span_id=(
+                None if self.parent_span_id is None else policy.sanitize_text(self.parent_span_id)
+            ),
             name=self.name,
             started_at=self._started_at.isoformat(),
             ended_at=ended_at.isoformat(),
             duration_ms=duration_ms,
             status=status,
-            correlation_ids=dict(self.correlation_ids),
+            correlation_ids=policy.sanitize_text_mapping(self.correlation_ids),
             attributes=policy.sanitize(self._attributes),
             events=events,
         )

@@ -10,6 +10,7 @@ edges:
     - adr/0004-evolutionary-runtime-architecture
     - adr/0005-durable-run-and-execution-protocol
     - adr/0006-versioned-run-feedback-protocol
+    - adr/0007-runtime-security-boundary
 ---
 
 # Runtime Architecture
@@ -90,6 +91,22 @@ blocks descendants and fences other active branches. Every accepted transition a
 decision appends a content-free event in the same transaction, and inspection reconstructs and
 revalidates the DAG after restart. Worker transport and handler dispatch remain outside the
 persistence adapter.
+
+## Service security boundary
+
+Service composition requires one explicit absolute data root; the root, artifacts, and reserved
+backup directory are owner-only, non-symlink paths, and an existing database is an owner-only
+regular file. There is no repository or current-directory service fallback. Exactly one opaque API
+credential comes from the environment or an owner-only non-symlink file, never tracked config or
+argv. Secret display is redacted and candidate verification is constant-time.
+
+Inbound authentication preserves header multiplicity and accepts exactly one strict Bearer value.
+It yields a typed principal whose `read`, `run`, `approve`, and `admin` scopes are checked as an
+explicit subset for each protected operation; admin is not ambient authority. Binding defaults to
+loopback, authentication remains mandatory on every bind address, and forwarded-client trust is
+disabled. Telemetry redacts sensitive keys, credential shapes, and configured secret values before
+records enter memory or exporters. HTTP adaptation, TLS termination, process lifecycle, quotas,
+and backup/restore remain separate bounded work.
 
 ## Command, event, projection, and artifact separation
 

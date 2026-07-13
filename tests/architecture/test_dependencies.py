@@ -124,6 +124,26 @@ def test_core_packages_do_not_import_frameworks_or_provider_sdks() -> None:
     assert not violations, _format(violations)
 
 
+def test_auth_contract_is_framework_and_edge_independent() -> None:
+    rules = _load_json(RULES_PATH)
+    forbidden = (
+        *rules["framework_and_provider_modules"],
+        "blackcell.adapters",
+        "blackcell.bootstrap",
+        "blackcell.cli",
+        "blackcell.config",
+        "blackcell.operator",
+        "blackcell.runtime",
+    )
+    violations = [
+        edge
+        for edge in _imports()
+        if edge.importer == "blackcell.interfaces.auth" and edge.imported.startswith(forbidden)
+    ]
+
+    assert not violations, _format(violations)
+
+
 def test_canonical_runtime_does_not_acquire_legacy_dependencies() -> None:
     debt = _load_json(DEBT_PATH)
     legacy = tuple(entry["package"] for entry in debt["legacy_roots"])

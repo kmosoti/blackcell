@@ -66,9 +66,12 @@ model. A generic transport inbox and remote worker dispatcher are not part of th
 
 ## Deployment baseline
 
-The current container is a root development shell. It does not expose the intended HTTP service,
-health endpoints, non-root runtime user, or an explicit persistent data volume. Container hardening
-and the Podman-first deployment contract are therefore measured work, not assumed capabilities.
+The service now has framework-neutral security configuration for an explicit owner-only data root,
+opaque environment-or-file credential, strict Bearer and scope checks, zero proxy trust, and
+pre-storage redaction. The current container remains a root development shell and does not yet
+compose that boundary into an HTTP process, health endpoints, non-root runtime user, or explicit
+persistent volume. Container hardening and Podman deployment remain measured work, not assumed
+capabilities.
 
 ## Preserved contracts
 

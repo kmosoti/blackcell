@@ -30,6 +30,10 @@ The current durability boundary is defined by
 `adr/0005-durable-run-and-execution-protocol.md`: artifact-first causal run records and explicit
 prepared-action recovery without whole-workflow or distributed exactly-once claims.
 
+The service security boundary is defined by `adr/0007-runtime-security-boundary.md`: explicit
+owner-only data paths, opaque credentials, strict Bearer/scope authorization, zero proxy trust, and
+pre-storage redaction before HTTP exposure.
+
 ## Proposed developer-workflow research
 
 - `research/spark-repository-perception.md`: matched Terra-versus-Spark repository-perception
