@@ -62,6 +62,44 @@ class NodeBudget:
 
 
 @dataclass(frozen=True, slots=True)
+class NodeUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    latency_ms: int = 0
+    cost_microusd: int = 0
+
+    def __post_init__(self) -> None:
+        values = (
+            self.input_tokens,
+            self.output_tokens,
+            self.latency_ms,
+            self.cost_microusd,
+        )
+        if any(isinstance(item, bool) or not isinstance(item, int) for item in values):
+            raise TypeError("node usage values must be integers")
+        if min(values) < 0:
+            raise ValueError("node usage values must be non-negative")
+
+    def __add__(self, other: NodeUsage) -> NodeUsage:
+        if not isinstance(other, NodeUsage):
+            return NotImplemented
+        return NodeUsage(
+            self.input_tokens + other.input_tokens,
+            self.output_tokens + other.output_tokens,
+            self.latency_ms + other.latency_ms,
+            self.cost_microusd + other.cost_microusd,
+        )
+
+    def exceeds(self, budget: NodeBudget) -> bool:
+        return (
+            self.input_tokens > budget.max_input_tokens
+            or self.output_tokens > budget.max_output_tokens
+            or self.latency_ms > budget.max_latency_ms
+            or self.cost_microusd > budget.max_cost_microusd
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class RetryPolicy:
     max_attempts: int = 1
     backoff_seconds: int = 0
@@ -238,6 +276,7 @@ __all__ = [
     "NodeInputBinding",
     "NodeSideEffect",
     "NodeStatus",
+    "NodeUsage",
     "OrchestrationRole",
     "OrchestrationRunStatus",
     "RetryPolicy",

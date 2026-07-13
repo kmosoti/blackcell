@@ -147,6 +147,12 @@ executor self-approval, remote or nondeterministic verification, irreversible sc
 cycles, missing edges, and schema drift fail before submission. Persistence and worker dispatch
 remain WP13 work.
 
+WP15 exercises that definition boundary with a pure deterministic failure simulator. It accounts
+for each attempt's token, latency, and cost usage; applies bounded retries; models worker loss,
+stale completion, and duplicate delivery with fencing evidence; evaluates independent approvals;
+blocks dependent nodes after terminal failure; and emits a content-addressed report with at most
+one simulated commit per node. It deliberately does not dispatch workers or write scheduler state.
+
 ## Predictive and neural-symbolic realism
 
 Blackcell does not claim a learned world model in the initial runtime. `predict_transition` now
@@ -286,12 +292,12 @@ flowchart TD
 | Node | Deliverable | Acceptance evidence |
 | --- | --- | --- |
 | WP23a | FTS5 baseline | matched retrieval evidence and explicit promote-or-defer record |
-| WP15/WP13 | failure simulation, transaction seam, and durable scheduler | bounded retries, leases/fencing, recovery, and atomic accepted results |
+| WP13 | transaction seam and durable scheduler | leases/fencing, restart recovery, and atomic accepted results |
 | WP18-WP22 | security, API, Granian, OTel, Podman, recovery | strict edge contracts, non-root image, durable restore |
 | WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |
 
 The landed dependency join includes protocol-v2, WP04c-WP05c, WP06c-WP06f, WP08b, WP09b-WP09c,
-WP10, WP12, WP14, WP16a-WP16c, and WP17. WP09b is the product-accepted public composition over those
+WP10, WP12, WP14-WP15, WP16a-WP16c, and WP17. WP09b is the product-accepted public composition over those
 integrated contracts; WP10 consumes its recorded initial/outcome state and action identities
 without entering the product control path, while WP12 remains an explicitly injected policy-edge
 adapter.

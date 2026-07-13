@@ -68,6 +68,12 @@ verifier roles may approve bounded reversible work; synthesizers have no authori
 symbolic denial. These are runtime contracts under `blackcell.orchestration`, distinct from the
 repository's Codex developer-tool agents.
 
+Deterministic orchestration simulation exercises those contracts before persistence or dispatch.
+Scenarios declare bounded attempt outcomes, usage, and independent approvals; reports preserve
+attempt and fencing evidence, reject stale completions, count duplicate delivery as one commit,
+enforce retry and node budgets, block descendants after terminal failure, and derive a stable
+content identity. The simulator has no scheduler, worker, gateway, or ledger side effects.
+
 ## Command, event, projection, and artifact separation
 
 Commands request work and use imperative names. Events record accepted facts in past tense.
