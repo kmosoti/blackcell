@@ -168,6 +168,20 @@ the admitted request. Its optional Codex CLI adapter is remote and nondeterminis
 requires an explicit model ID, and prepares a temporary Git workspace containing only canonical
 input and schema documents. Its process sandbox is provided by Codex CLI, not by Blackcell.
 
+## Prediction boundary
+
+`features.predict_transition` provides the first runtime-v1 advisory baseline over canonical
+`OperationalBeliefState` snapshots. It persists an explicitly requested current fact through one
+declared action with conservative confidence, source claim/event provenance, a bounded horizon,
+and explicit assumptions. Missing, expired, ambiguous, or conflicted source evidence produces an
+unknown prediction instead of an invented value.
+
+Scoring requires a later state from the same domain and source stream. It distinguishes exact
+matches, mismatches, missing outcomes, conflicting outcomes, and unscored unknown predictions,
+using canonical JSON scalar identity so booleans and integers do not collapse. Predictions and
+scores are content-addressed DTOs only: they append no observations, commit no transitions, and
+grant no execution authority.
+
 ## Observability boundary
 
 Domain evidence and diagnostic telemetry remain separate. Stable internal spans include:

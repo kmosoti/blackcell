@@ -142,10 +142,12 @@ outcomes.
 
 ## Predictive and neural-symbolic realism
 
-Blackcell does not claim a learned world model in the initial runtime. `predict_transition` starts
-with deterministic and simulation adapters, then permits local model proposals behind the gateway.
-Predictions carry horizon, confidence, assumptions, provenance, and model version. They are scored
-against later observations and never become facts automatically.
+Blackcell does not claim a learned world model in the initial runtime. `predict_transition` now
+provides a deterministic state-persistence baseline over explicitly requested canonical facts.
+Predictions carry source snapshot and action identity, horizon, confidence, assumptions,
+claim/event provenance, and model version. A later same-stream canonical outcome state yields
+typed match, mismatch, missing, conflict, or unscored findings plus exact-match and Brier measures.
+Predictions and scores remain advisory DTOs and never become observations or accepted facts.
 
 `solve_constraints` starts with deterministic Python policy and can add Clingo through a port.
 Neural interpretation may propose facts or plans, but symbolic checks consume typed facts and
@@ -269,14 +271,15 @@ flowchart TD
 
 | Node | Deliverable | Acceptance evidence |
 | --- | --- | --- |
-| WP10-WP12/WP23a | deterministic prediction, optional local predictor, Clingo decision, FTS5 | matched baselines and explicit promote-or-defer records |
+| WP11-WP12/WP23a | optional local predictor, Clingo decision, FTS5 | matched baselines and explicit promote-or-defer records |
 | WP14-WP15/WP13 | typed DAG, failure simulation, transaction seam, scheduler, role graph | cycle/self-approval rejection, leases/fencing, atomic accepted results |
 | WP18-WP22 | security, API, Granian, OTel, Podman, recovery | strict edge contracts, non-root image, durable restore |
 | WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |
 
 The landed dependency join includes protocol-v2, WP04c-WP05c, WP06c-WP06f, WP08b, WP09b-WP09c,
-WP16a-WP16c, and WP17. WP09b is the product-accepted public composition over those integrated
-contracts.
+WP10, WP16a-WP16c, and WP17. WP09b is the product-accepted public composition over those
+integrated contracts; WP10 consumes its recorded initial/outcome state and action identities
+without entering the product control path.
 
 ## Delivery and review protocol
 
