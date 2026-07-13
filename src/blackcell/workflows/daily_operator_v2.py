@@ -67,6 +67,11 @@ from blackcell.workflows.state_transition import (
     StateTransitionHistory,
     bind_and_accept_state_transition,
 )
+from blackcell.workflows.telemetry import (
+    NullWorkflowTelemetry,
+    WorkflowSpanName,
+    WorkflowTelemetry,
+)
 
 
 class DailyOperatorV2Workflow:
@@ -87,6 +92,7 @@ class DailyOperatorV2Workflow:
         outcome_evidence: OutcomeEvidenceWriter,
         evaluator: OutcomeEvaluator | None = None,
         constraint_solver: ConstraintSolver | None = None,
+        telemetry: WorkflowTelemetry | None = None,
     ) -> None:
         self._history = history
         self._artifacts = artifacts
@@ -101,34 +107,39 @@ class DailyOperatorV2Workflow:
         self._constraints = constraint_solver or DeterministicConstraintSolver()
         self._authorization = ActionAuthorizer()
         self._evaluator = evaluator or OutcomeEvaluator()
+        self._telemetry = telemetry or NullWorkflowTelemetry()
 
     def run(self, request: DailyOperatorV2Request) -> RunTerminal:
         self._validate_observer(request)
         opening = self._runs.open(request)
         phase = "ingestion"
         try:
-            observations = self._ingestion.handle(
-                replace(request.ingestion, causation_id=opening.started.event_id)
-            )
-            final_observation_position = observations[-1].global_position
-            if final_observation_position is None:
-                raise ValueError("requested observation is not a stored ledger occurrence")
+            with self._telemetry.span(WorkflowSpanName.OBSERVE, run_id=request.run_id):
+                observations = self._ingestion.handle(
+                    replace(request.ingestion, causation_id=opening.started.event_id)
+                )
+                final_observation_position = observations[-1].global_position
+                if final_observation_position is None:
+                    raise ValueError("requested observation is not a stored ledger occurrence")
 
             phase = "initial-state"
-            initial_state = self._project_state(
-                request,
-                position=final_observation_position,
-                effective_time=request.initial_effective_time_cutoff,
-            )
-            self._runs.record_initial_state(request.run_id, initial_state)
+            with self._telemetry.span(WorkflowSpanName.PROJECT_STATE, run_id=request.run_id):
+                initial_state = self._project_state(
+                    request,
+                    position=final_observation_position,
+                    effective_time=request.initial_effective_time_cutoff,
+                )
+                self._runs.record_initial_state(request.run_id, initial_state)
 
             phase = "context"
-            frame = rebuild_requested_context(request, initial_state)
-            context_event = self._runs.record_context(request.run_id, frame)
+            with self._telemetry.span(WorkflowSpanName.BUILD_CONTEXT, run_id=request.run_id):
+                frame = rebuild_requested_context(request, initial_state)
+                context_event = self._runs.record_context(request.run_id, frame)
 
             phase = "decision"
-            decision = self._request_decision(request, frame, context_event.event_id)
-            terminal = self._run_decision(request.run_id, decision)
+            with self._telemetry.span(WorkflowSpanName.MODEL_DECIDE, run_id=request.run_id):
+                decision = self._request_decision(request, frame, context_event.event_id)
+                terminal = self._run_decision(request.run_id, decision)
             if isinstance(terminal, DecisionFailureRecord):
                 return self._runs.fail(
                     request.run_id,
@@ -137,25 +148,26 @@ class DailyOperatorV2Workflow:
                 )
 
             phase = "proposal"
-            proposal = action_proposal_from_decision(terminal.response.proposal)
-            self._runs.record_proposal(request.run_id, proposal)
+            with self._telemetry.span(WorkflowSpanName.POLICY_EVALUATE, run_id=request.run_id):
+                proposal = action_proposal_from_decision(terminal.response.proposal)
+                self._runs.record_proposal(request.run_id, proposal)
 
-            phase = "constraints"
-            constraints = self._constraints.handle(request.constraints, frame)
-            self._runs.record_constraints(request.run_id, constraints)
+                phase = "constraints"
+                constraints = self._constraints.handle(request.constraints, frame)
+                self._runs.record_constraints(request.run_id, constraints)
 
-            phase = "authorization"
-            authorization = self._authorization.handle(
-                AuthorizeAction(
-                    proposal,
-                    request.authorization_affordance,
-                    request.constraints.evaluated_at,
-                    frame.provenance_event_ids,
-                    request.approval_granted,
-                ),
-                constraints,
-            )
-            self._runs.record_authorization(request.run_id, authorization)
+                phase = "authorization"
+                authorization = self._authorization.handle(
+                    AuthorizeAction(
+                        proposal,
+                        request.authorization_affordance,
+                        request.constraints.evaluated_at,
+                        frame.provenance_event_ids,
+                        request.approval_granted,
+                    ),
+                    constraints,
+                )
+                self._runs.record_authorization(request.run_id, authorization)
             if authorization.outcome is not AuthorizationOutcome.ALLOW:
                 return self._finish_without_execution(
                     request,
@@ -164,25 +176,26 @@ class DailyOperatorV2Workflow:
                 )
 
             phase = "execution"
-            result = self._execution.handle(
-                AffordanceInvocation(
-                    invocation_id=request.invocation_id,
-                    proposal_id=proposal.proposal_id,
-                    affordance=proposal.affordance,
-                    arguments=tuple(
-                        AffordanceArgument(item.name, item.value) for item in proposal.arguments
+            with self._telemetry.span(WorkflowSpanName.AFFORDANCE_EXECUTE, run_id=request.run_id):
+                result = self._execution.handle(
+                    AffordanceInvocation(
+                        invocation_id=request.invocation_id,
+                        proposal_id=proposal.proposal_id,
+                        affordance=proposal.affordance,
+                        arguments=tuple(
+                            AffordanceArgument(item.name, item.value) for item in proposal.arguments
+                        ),
+                        idempotency_key=request.idempotency_key,
+                        requested_at=request.constraints.evaluated_at,
                     ),
-                    idempotency_key=request.idempotency_key,
-                    requested_at=request.constraints.evaluated_at,
-                ),
-                request.execution_affordance,
-                authorization,
-                run_id=request.run_id,
-            )
-            entry = self._execution_journal.get_entry_by_invocation(request.invocation_id)
-            if entry is None or entry.current_result != result:
-                raise ValueError("execution result lacks its exact terminal journal entry")
-            execution_event = self._runs.record_execution(request.run_id, entry)
+                    request.execution_affordance,
+                    authorization,
+                    run_id=request.run_id,
+                )
+                entry = self._execution_journal.get_entry_by_invocation(request.invocation_id)
+                if entry is None or entry.current_result != result:
+                    raise ValueError("execution result lacks its exact terminal journal entry")
+                execution_event = self._runs.record_execution(request.run_id, entry)
 
             if result.status is ExecutionStatus.UNKNOWN:
                 return self._finish_unknown_execution(
@@ -196,73 +209,77 @@ class DailyOperatorV2Workflow:
                 )
 
             phase = "outcome-observation"
-            observation = CollectOutcomeHandler(self._outcome_observer).handle(
-                ObserveOutcome(
-                    binding=self._outcome_binding(
-                        request,
-                        proposal=proposal,
-                        authorization=authorization,
-                        execution=result,
-                        adapter_contract_version=entry.binding.adapter_contract_version,
-                    ),
-                    evaluation_spec_id=request.evaluation_spec.spec_id,
-                    domain=request.ingestion.domain,
-                    stream_id=request.ingestion.stream_id,
-                    targets=tuple(
-                        OutcomeTarget(item.subject, item.predicate)
-                        for item in request.evaluation_spec.criteria
-                    ),
+            with self._telemetry.span(WorkflowSpanName.OUTCOME_OBSERVE, run_id=request.run_id):
+                observation = CollectOutcomeHandler(self._outcome_observer).handle(
+                    ObserveOutcome(
+                        binding=self._outcome_binding(
+                            request,
+                            proposal=proposal,
+                            authorization=authorization,
+                            execution=result,
+                            adapter_contract_version=entry.binding.adapter_contract_version,
+                        ),
+                        evaluation_spec_id=request.evaluation_spec.spec_id,
+                        domain=request.ingestion.domain,
+                        stream_id=request.ingestion.stream_id,
+                        targets=tuple(
+                            OutcomeTarget(item.subject, item.predicate)
+                            for item in request.evaluation_spec.criteria
+                        ),
+                    )
                 )
-            )
 
-            phase = "outcome-evidence"
-            outcome_event = self._outcome_evidence.handle(
-                WriteOutcomeEvidence(
-                    outcome=observation,
-                    expected_sequence=initial_state.last_source_stream_sequence,
-                    actor=request.ingestion.actor,
-                    execution_event_id=execution_event.event_id,
+                phase = "outcome-evidence"
+                outcome_event = self._outcome_evidence.handle(
+                    WriteOutcomeEvidence(
+                        outcome=observation,
+                        expected_sequence=initial_state.last_source_stream_sequence,
+                        actor=request.ingestion.actor,
+                        execution_event_id=execution_event.event_id,
+                    )
                 )
-            )
-            self._runs.record_outcome(
-                request.run_id,
-                observation,
-                outcome_event_ids=(outcome_event.event_id,),
-            )
+                self._runs.record_outcome(
+                    request.run_id,
+                    observation,
+                    outcome_event_ids=(outcome_event.event_id,),
+                )
 
-            phase = "outcome-state"
-            outcome_position = outcome_event.global_position
-            if outcome_position is None:
-                raise ValueError("outcome observation is not a stored ledger occurrence")
-            outcome_state = self._project_state(
-                request,
-                position=outcome_position,
-                effective_time=observation.observed_at,
-            )
-            self._runs.record_outcome_state(request.run_id, outcome_state)
+                phase = "outcome-state"
+                outcome_position = outcome_event.global_position
+                if outcome_position is None:
+                    raise ValueError("outcome observation is not a stored ledger occurrence")
+                outcome_state = self._project_state(
+                    request,
+                    position=outcome_position,
+                    effective_time=observation.observed_at,
+                )
+                self._runs.record_outcome_state(request.run_id, outcome_state)
 
             phase = "evaluation"
-            bound_observation = bind_evaluation_observation(
-                observation,
-                self._history,
-                self._artifacts,
-                execution_event_id=execution_event.event_id,
-                outcome_event_ids=(outcome_event.event_id,),
-            )
-            evaluation = self._evaluator.handle(
-                EvaluateOutcome(
-                    run_id=request.run_id,
-                    spec=request.evaluation_spec,
-                    authorization_outcome=EvaluationAuthorizationOutcome.ALLOW,
-                    execution_status=EvaluationExecutionStatus(result.status.value),
+            with self._telemetry.span(WorkflowSpanName.EVALUATION_GRADE, run_id=request.run_id):
+                bound_observation = bind_evaluation_observation(
+                    observation,
+                    self._history,
+                    self._artifacts,
                     execution_event_id=execution_event.event_id,
-                    execution_binding_id=observation.binding.binding_id,
-                    observation=bound_observation,
-                    initial_state_position=initial_state.cutoff_global_position,
+                    outcome_event_ids=(outcome_event.event_id,),
                 )
-            )
-            self._runs.record_evaluation(request.run_id, evaluation)
-            self._record_transition(request.run_id)
+                evaluation = self._evaluator.handle(
+                    EvaluateOutcome(
+                        run_id=request.run_id,
+                        spec=request.evaluation_spec,
+                        authorization_outcome=EvaluationAuthorizationOutcome.ALLOW,
+                        execution_status=EvaluationExecutionStatus(result.status.value),
+                        execution_event_id=execution_event.event_id,
+                        execution_binding_id=observation.binding.binding_id,
+                        observation=bound_observation,
+                        initial_state_position=initial_state.cutoff_global_position,
+                    )
+                )
+                self._runs.record_evaluation(request.run_id, evaluation)
+            phase = "transition"
+            with self._telemetry.span(WorkflowSpanName.TRANSITION_COMMIT, run_id=request.run_id):
+                self._record_transition(request.run_id)
             return self._runs.complete(request.run_id, _run_outcome(authorization, result))
         except Exception as error:
             try:
@@ -377,20 +394,24 @@ class DailyOperatorV2Workflow:
         initial_state: OperationalBeliefState,
         authorization: AuthorizationDecision,
     ) -> RunTerminal:
-        evaluation = self._evaluator.handle(
-            EvaluateOutcome(
-                run_id=request.run_id,
-                spec=request.evaluation_spec,
-                authorization_outcome=EvaluationAuthorizationOutcome(authorization.outcome.value),
-                execution_status=None,
-                execution_event_id=None,
-                execution_binding_id=None,
-                observation=None,
-                initial_state_position=initial_state.cutoff_global_position,
+        with self._telemetry.span(WorkflowSpanName.EVALUATION_GRADE, run_id=request.run_id):
+            evaluation = self._evaluator.handle(
+                EvaluateOutcome(
+                    run_id=request.run_id,
+                    spec=request.evaluation_spec,
+                    authorization_outcome=EvaluationAuthorizationOutcome(
+                        authorization.outcome.value
+                    ),
+                    execution_status=None,
+                    execution_event_id=None,
+                    execution_binding_id=None,
+                    observation=None,
+                    initial_state_position=initial_state.cutoff_global_position,
+                )
             )
-        )
-        self._runs.record_evaluation(request.run_id, evaluation)
-        self._record_transition(request.run_id)
+            self._runs.record_evaluation(request.run_id, evaluation)
+        with self._telemetry.span(WorkflowSpanName.TRANSITION_COMMIT, run_id=request.run_id):
+            self._record_transition(request.run_id)
         return self._runs.complete(request.run_id, _run_outcome(authorization, None))
 
     def _finish_unknown_execution(
@@ -404,26 +425,28 @@ class DailyOperatorV2Workflow:
         execution_event_id: str,
         adapter_contract_version: str,
     ) -> RunTerminal:
-        evaluation = self._evaluator.handle(
-            EvaluateOutcome(
-                run_id=request.run_id,
-                spec=request.evaluation_spec,
-                authorization_outcome=EvaluationAuthorizationOutcome.ALLOW,
-                execution_status=EvaluationExecutionStatus.UNKNOWN,
-                execution_event_id=execution_event_id,
-                execution_binding_id=self._outcome_binding(
-                    request,
-                    proposal=proposal,
-                    authorization=authorization,
-                    execution=execution,
-                    adapter_contract_version=adapter_contract_version,
-                ).binding_id,
-                observation=None,
-                initial_state_position=initial_state.cutoff_global_position,
+        with self._telemetry.span(WorkflowSpanName.EVALUATION_GRADE, run_id=request.run_id):
+            evaluation = self._evaluator.handle(
+                EvaluateOutcome(
+                    run_id=request.run_id,
+                    spec=request.evaluation_spec,
+                    authorization_outcome=EvaluationAuthorizationOutcome.ALLOW,
+                    execution_status=EvaluationExecutionStatus.UNKNOWN,
+                    execution_event_id=execution_event_id,
+                    execution_binding_id=self._outcome_binding(
+                        request,
+                        proposal=proposal,
+                        authorization=authorization,
+                        execution=execution,
+                        adapter_contract_version=adapter_contract_version,
+                    ).binding_id,
+                    observation=None,
+                    initial_state_position=initial_state.cutoff_global_position,
+                )
             )
-        )
-        self._runs.record_evaluation(request.run_id, evaluation)
-        self._record_transition(request.run_id)
+            self._runs.record_evaluation(request.run_id, evaluation)
+        with self._telemetry.span(WorkflowSpanName.TRANSITION_COMMIT, run_id=request.run_id):
+            self._record_transition(request.run_id)
         return self._runs.complete(request.run_id, _run_outcome(authorization, execution))
 
     def _record_transition(self, run_id: str) -> None:

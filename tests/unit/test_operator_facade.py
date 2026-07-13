@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from blackcell.adapters.telemetry import TraceWorkflowTelemetry
 from blackcell.domains.repository import (
     Claim,
     ClaimCorrection,
@@ -17,6 +18,8 @@ from blackcell.operator import (
     RepositoryStatusReader,
     RepositoryStatusSnapshot,
 )
+from blackcell.telemetry import TraceRecorder
+from blackcell.workflows import WorkflowSpanName
 from blackcell.workflows.run_protocol import RUN_WORKFLOW_VERSION_V2
 
 NOW = datetime(2026, 7, 13, 12, tzinfo=UTC)
@@ -86,6 +89,29 @@ def test_public_operator_delegates_to_verified_daily_operator_v2(tmp_path: Path)
     assert not any(event.event_type.startswith("operator.") for event in replay.events)
 
 
+def test_canonical_operator_emits_stable_correlated_workflow_spans(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    recorder = TraceRecorder()
+    operator = RepositoryOperator(
+        repo,
+        database_path=repo / ".blackcell" / "kernel.sqlite3",
+        clock=lambda: NOW,
+        workflow_telemetry=TraceWorkflowTelemetry(recorder),
+    )
+
+    result = operator.run()
+
+    records = recorder.records(trace_id=result.run_id)
+    assert tuple(record.name for record in records) == tuple(
+        item.value for item in WorkflowSpanName
+    )
+    assert all(record.trace_id == result.run_id for record in records)
+    assert all(record.correlation_ids == {"run_id": result.run_id} for record in records)
+    assert all(record.attributes == {"workflow.version": "daily-operator/v2"} for record in records)
+    operator.replay(result.run_id)
+    assert recorder.records(trace_id=result.run_id) == records
+
+
 def test_status_output_paths_are_not_persisted_as_run_evidence(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
     sensitive_name = "customer-secret-path.txt"
@@ -112,11 +138,13 @@ def test_symbolic_repository_constraint_denies_without_execution_or_outcome_read
 ) -> None:
     repo = _repository(tmp_path)
     reader = InvalidStatusReader(repo)
+    recorder = TraceRecorder()
     operator = RepositoryOperator(
         repo,
         database_path=repo / ".blackcell" / "kernel.sqlite3",
         status_reader=reader,
         clock=lambda: NOW,
+        workflow_telemetry=TraceWorkflowTelemetry(recorder),
     )
 
     result = operator.run()
@@ -128,6 +156,15 @@ def test_symbolic_repository_constraint_denies_without_execution_or_outcome_read
     assert result.evaluation_verdict == "not-evaluated"
     assert not result.transition_recorded
     assert reader.calls == 1
+    assert tuple(record.name for record in recorder.records(trace_id=result.run_id)) == (
+        WorkflowSpanName.OBSERVE.value,
+        WorkflowSpanName.PROJECT_STATE.value,
+        WorkflowSpanName.BUILD_CONTEXT.value,
+        WorkflowSpanName.MODEL_DECIDE.value,
+        WorkflowSpanName.POLICY_EVALUATE.value,
+        WorkflowSpanName.EVALUATION_GRADE.value,
+        WorkflowSpanName.TRANSITION_COMMIT.value,
+    )
 
 
 def test_codex_route_requires_an_explicit_model_before_storage_creation(

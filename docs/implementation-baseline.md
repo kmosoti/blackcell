@@ -74,8 +74,10 @@ with public liveness/readiness and an owner-only SQLite file. The `blackcell-run
 now runs that edge through one bounded Granian ASGI worker or runs a durable scheduler worker over
 the reviewed five-role Repository Operator DAG. Both modes consume the same explicit security and
 data configuration; API backpressure, leases, polling, and graceful shutdown are bounded. The
-non-root image, OTel export, persistent-volume deployment, and recovery evidence remain measured
-work, not assumed capabilities.
+canonical workflow now emits stable, correlated, pre-export-redacted spans through an opt-in
+OpenTelemetry OTLP/HTTP adapter with bounded asynchronous batching and process-owned shutdown.
+The non-root image, persistent-volume deployment, and recovery evidence remain measured work, not
+assumed capabilities.
 
 ## Preserved contracts
 
@@ -96,7 +98,7 @@ Until a work package explicitly replaces them with tested compatibility:
 - 23 SQLite `ResourceWarning` instances under strict warning reporting;
 - remaining dependency debt is tracked in `architecture/dependency_debt.json`;
 - no production-shaped rootless Podman image or persistent-volume composition;
-- no OpenTelemetry exporter mapping;
+- no deployed OpenTelemetry collector or container telemetry composition;
 - no tested backup/restore, quota, retention, or disaster-recovery workflow.
 
 No production behavior changes are included in WP00.

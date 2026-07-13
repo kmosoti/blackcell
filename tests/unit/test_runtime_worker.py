@@ -229,6 +229,20 @@ def test_stale_worker_completion_cannot_escape_scheduler_fencing(tmp_path: Path)
     assert node.result_digest is None
 
 
+def test_worker_serve_always_closes_its_process_telemetry(tmp_path: Path) -> None:
+    config, operator, scheduler = _runtime(tmp_path)
+    closed: list[bool] = []
+    worker = RuntimeWorker(
+        operator,
+        scheduler,
+        config,
+        shutdown=lambda: closed.append(True),
+    )
+
+    assert worker.serve(once=True) == 3
+    assert closed == [True]
+
+
 def _runtime(
     tmp_path: Path,
 ) -> tuple[RuntimeProcessConfig, RepositoryOperator, SQLiteOrchestrationScheduler]:

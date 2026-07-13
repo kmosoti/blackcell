@@ -7,6 +7,7 @@ from typing import Any
 
 from granian.constants import HTTPModes, Interfaces, Loops, RuntimeModes, TaskImpl
 from litestar import Litestar
+from litestar.testing import TestClient
 
 from blackcell.bootstrap.granian import GRANIAN_TARGET, GranianServer, create_granian_app
 from blackcell.bootstrap.process import main
@@ -85,6 +86,9 @@ def test_granian_factory_builds_the_authenticated_app_and_owner_only_database(
     app = create_granian_app()
 
     assert isinstance(app, Litestar)
+    assert len(app.on_shutdown) == 1
+    with TestClient(app):
+        pass
     assert config.security.paths.database_path.is_file()
     assert stat.S_IMODE(config.security.paths.database_path.stat().st_mode) == 0o600
 

@@ -112,11 +112,17 @@ class TraceRecorder:
         exporters: Sequence[SpanExporter] = (),
         wall_clock: WallClock | None = None,
         monotonic_clock: MonotonicClock = time.monotonic,
+        max_records: int | None = None,
     ) -> None:
+        if max_records is not None and (
+            isinstance(max_records, bool) or not isinstance(max_records, int) or max_records < 0
+        ):
+            raise ValueError("max_records must be a non-negative integer or None")
         self.content_policy = content_policy or ContentPolicy()
         self._exporters = tuple(exporters)
         self._wall_clock = wall_clock or (lambda: datetime.now(UTC))
         self._monotonic_clock = monotonic_clock
+        self._max_records = max_records
         self._records: list[SpanRecord] = []
         self._export_errors: list[str] = []
         self._lock = threading.Lock()
@@ -182,13 +188,17 @@ class TraceRecorder:
 
     def _commit(self, record: SpanRecord) -> None:
         with self._lock:
-            self._records.append(record)
+            if self._max_records != 0:
+                self._records.append(record)
+                if self._max_records is not None:
+                    del self._records[: -self._max_records]
         for exporter in self._exporters:
             try:
                 exporter.export(record)
             except Exception as error:  # exporter failure must not fail the controlled action
                 with self._lock:
                     self._export_errors.append(type(error).__name__)
+                    del self._export_errors[:-128]
 
 
 def _validate_span_name(name: str) -> None:

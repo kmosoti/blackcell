@@ -7,6 +7,7 @@ from granian import Granian
 from granian.constants import HTTPModes, Interfaces, Loops, RuntimeModes, TaskImpl
 from litestar import Litestar
 
+from blackcell.adapters.telemetry import RuntimeTelemetry
 from blackcell.bootstrap.runtime_api import RuntimeApiService
 from blackcell.config import RuntimeProcessConfig
 from blackcell.interfaces.http import create_http_app
@@ -18,15 +19,23 @@ def create_granian_app() -> Litestar:
     """Build one authenticated runtime application inside the Granian worker."""
 
     config = RuntimeProcessConfig.from_environment()
-    service = RuntimeApiService.from_config(
-        config.security,
-        repository_root=config.repository_root,
-    )
-    return create_http_app(
-        service,
-        authenticator=config.security.authenticator(),
-        authorizer=config.security.authorizer(),
-    )
+    telemetry = RuntimeTelemetry.from_config(config)
+    try:
+        service = RuntimeApiService.from_config(
+            config.security,
+            repository_root=config.repository_root,
+            workflow_telemetry=telemetry.workflow,
+        )
+        app = create_http_app(
+            service,
+            authenticator=config.security.authenticator(),
+            authorizer=config.security.authorizer(),
+        )
+    except Exception:
+        telemetry.shutdown()
+        raise
+    app.on_shutdown.append(telemetry.shutdown)
+    return app
 
 
 class GranianServer:

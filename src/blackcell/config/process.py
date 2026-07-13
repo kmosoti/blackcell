@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import os
 import socket
 import stat
@@ -7,6 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from blackcell.config.runtime import RuntimeSecurityConfig
 
@@ -16,6 +18,20 @@ API_BACKPRESSURE_ENV = "BLACKCELL_API_BACKPRESSURE"
 WORKER_POLL_MILLISECONDS_ENV = "BLACKCELL_WORKER_POLL_MILLISECONDS"
 WORKER_LEASE_SECONDS_ENV = "BLACKCELL_WORKER_LEASE_SECONDS"
 WORKER_ID_ENV = "BLACKCELL_WORKER_ID"
+OTEL_ENABLED_ENV = "BLACKCELL_OTEL_ENABLED"
+OTEL_ENDPOINT_ENV = "BLACKCELL_OTEL_ENDPOINT"
+OTEL_TIMEOUT_SECONDS_ENV = "BLACKCELL_OTEL_TIMEOUT_SECONDS"
+OTEL_MAX_QUEUE_SIZE_ENV = "BLACKCELL_OTEL_MAX_QUEUE_SIZE"
+OTEL_MAX_EXPORT_BATCH_SIZE_ENV = "BLACKCELL_OTEL_MAX_EXPORT_BATCH_SIZE"
+OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV = "BLACKCELL_OTEL_SCHEDULE_DELAY_MILLISECONDS"
+
+_OTEL_DEPENDENT_ENV = (
+    OTEL_ENDPOINT_ENV,
+    OTEL_TIMEOUT_SECONDS_ENV,
+    OTEL_MAX_QUEUE_SIZE_ENV,
+    OTEL_MAX_EXPORT_BATCH_SIZE_ENV,
+    OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV,
+)
 
 
 class ProcessConfigFailureCode(StrEnum):
@@ -25,12 +41,23 @@ class ProcessConfigFailureCode(StrEnum):
     INVALID_WORKER_POLL = "invalid-worker-poll"
     INVALID_WORKER_LEASE = "invalid-worker-lease"
     INVALID_WORKER_ID = "invalid-worker-id"
+    INVALID_OTEL_CONFIG = "invalid-otel-config"
 
 
 class ProcessConfigError(RuntimeError):
     def __init__(self, code: ProcessConfigFailureCode) -> None:
         self.code = code
         super().__init__(code.value)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeTelemetryConfig:
+    enabled: bool
+    endpoint: str | None
+    timeout_seconds: int
+    max_queue_size: int
+    max_export_batch_size: int
+    schedule_delay_milliseconds: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +69,7 @@ class RuntimeProcessConfig:
     worker_poll_milliseconds: int
     worker_lease_seconds: int
     worker_id: str
+    telemetry: RuntimeTelemetryConfig
 
     @classmethod
     def from_environment(
@@ -88,6 +116,7 @@ class RuntimeProcessConfig:
             or any(not 0x21 <= ord(character) <= 0x7E for character in worker_id)
         ):
             raise ProcessConfigError(ProcessConfigFailureCode.INVALID_WORKER_ID)
+        telemetry = _telemetry_config(values)
         return cls(
             security,
             repository_root,
@@ -96,6 +125,7 @@ class RuntimeProcessConfig:
             poll,
             lease,
             worker_id,
+            telemetry,
         )
 
 
@@ -129,9 +159,95 @@ def _integer(
     return parsed
 
 
+def _telemetry_config(values: Mapping[str, str]) -> RuntimeTelemetryConfig:
+    enabled_value = values.get(OTEL_ENABLED_ENV, "0")
+    if enabled_value not in {"0", "1"}:
+        raise ProcessConfigError(ProcessConfigFailureCode.INVALID_OTEL_CONFIG)
+    enabled = enabled_value == "1"
+    if not enabled:
+        if any(name in values for name in _OTEL_DEPENDENT_ENV):
+            raise ProcessConfigError(ProcessConfigFailureCode.INVALID_OTEL_CONFIG)
+        return RuntimeTelemetryConfig(False, None, 10, 2_048, 512, 5_000)
+    endpoint = _telemetry_endpoint(values.get(OTEL_ENDPOINT_ENV))
+    timeout = _integer(
+        values.get(OTEL_TIMEOUT_SECONDS_ENV, "10"),
+        minimum=1,
+        maximum=30,
+        code=ProcessConfigFailureCode.INVALID_OTEL_CONFIG,
+    )
+    queue_size = _integer(
+        values.get(OTEL_MAX_QUEUE_SIZE_ENV, "2048"),
+        minimum=1,
+        maximum=8_192,
+        code=ProcessConfigFailureCode.INVALID_OTEL_CONFIG,
+    )
+    batch_size = _integer(
+        values.get(OTEL_MAX_EXPORT_BATCH_SIZE_ENV, "512"),
+        minimum=1,
+        maximum=8_192,
+        code=ProcessConfigFailureCode.INVALID_OTEL_CONFIG,
+    )
+    if batch_size > queue_size:
+        raise ProcessConfigError(ProcessConfigFailureCode.INVALID_OTEL_CONFIG)
+    schedule_delay = _integer(
+        values.get(OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV, "5000"),
+        minimum=100,
+        maximum=60_000,
+        code=ProcessConfigFailureCode.INVALID_OTEL_CONFIG,
+    )
+    return RuntimeTelemetryConfig(
+        True,
+        endpoint,
+        timeout,
+        queue_size,
+        batch_size,
+        schedule_delay,
+    )
+
+
+def _telemetry_endpoint(value: str | None) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > 2_048
+        or any(not 0x21 <= ord(character) <= 0x7E for character in value)
+    ):
+        raise ProcessConfigError(ProcessConfigFailureCode.INVALID_OTEL_CONFIG)
+    parsed = urlsplit(value)
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise ProcessConfigError(ProcessConfigFailureCode.INVALID_OTEL_CONFIG) from error
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or not parsed.path.endswith("/v1/traces")
+        or (port is not None and not 1 <= port <= 65_535)
+    ):
+        raise ProcessConfigError(ProcessConfigFailureCode.INVALID_OTEL_CONFIG)
+    if parsed.scheme == "http":
+        try:
+            address = ipaddress.ip_address(parsed.hostname)
+        except ValueError as error:
+            raise ProcessConfigError(ProcessConfigFailureCode.INVALID_OTEL_CONFIG) from error
+        if not address.is_loopback:
+            raise ProcessConfigError(ProcessConfigFailureCode.INVALID_OTEL_CONFIG)
+    return value
+
+
 __all__ = [
     "API_BACKPRESSURE_ENV",
     "GRACEFUL_TIMEOUT_SECONDS_ENV",
+    "OTEL_ENABLED_ENV",
+    "OTEL_ENDPOINT_ENV",
+    "OTEL_MAX_EXPORT_BATCH_SIZE_ENV",
+    "OTEL_MAX_QUEUE_SIZE_ENV",
+    "OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV",
+    "OTEL_TIMEOUT_SECONDS_ENV",
     "REPOSITORY_ROOT_ENV",
     "WORKER_ID_ENV",
     "WORKER_LEASE_SECONDS_ENV",
@@ -139,4 +255,5 @@ __all__ = [
     "ProcessConfigError",
     "ProcessConfigFailureCode",
     "RuntimeProcessConfig",
+    "RuntimeTelemetryConfig",
 ]

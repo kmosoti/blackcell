@@ -10,6 +10,7 @@ from types import MappingProxyType
 from typing import cast
 
 from blackcell.adapters.persistence.sqlite import SQLiteOrchestrationScheduler
+from blackcell.adapters.telemetry import RuntimeTelemetry
 from blackcell.bootstrap.role_dag import (
     EXECUTE_HANDLER,
     PLAN_HANDLER,
@@ -91,6 +92,7 @@ class RuntimeWorker:
         handlers: Mapping[str, HandlerRegistration] | None = None,
         stop_event: Event | None = None,
         monotonic_clock: Callable[[], float] = time.monotonic,
+        shutdown: Callable[[], None] | None = None,
     ) -> None:
         self._operator = operator
         self._artifacts = operator.artifacts
@@ -98,6 +100,7 @@ class RuntimeWorker:
         self._config = config
         self.stop_event = stop_event or Event()
         self._monotonic_clock = monotonic_clock
+        self._shutdown = shutdown or (lambda: None)
         builtins = {
             PLAN_HANDLER: HandlerRegistration(PLAN_SCHEMA, self._plan),
             EXECUTE_HANDLER: HandlerRegistration(RUN_SCHEMA, self._execute),
@@ -114,23 +117,38 @@ class RuntimeWorker:
         *,
         stop_event: Event | None = None,
     ) -> RuntimeWorker:
-        database_path = config.security.paths.ensure_database_file()
-        operator = RepositoryOperator(
-            config.repository_root,
-            database_path=database_path,
-            artifact_root=config.security.paths.artifact_root,
+        telemetry = RuntimeTelemetry.from_config(config)
+        try:
+            database_path = config.security.paths.ensure_database_file()
+            operator = RepositoryOperator(
+                config.repository_root,
+                database_path=database_path,
+                artifact_root=config.security.paths.artifact_root,
+                workflow_telemetry=telemetry.workflow,
+            )
+            scheduler = SQLiteOrchestrationScheduler(database_path)
+        except Exception:
+            telemetry.shutdown()
+            raise
+        return cls(
+            operator,
+            scheduler,
+            config,
+            stop_event=stop_event,
+            shutdown=telemetry.shutdown,
         )
-        scheduler = SQLiteOrchestrationScheduler(database_path)
-        return cls(operator, scheduler, config, stop_event=stop_event)
 
     def serve(self, *, once: bool = False) -> int:
-        while not self.stop_event.is_set():
-            worked = self.run_once()
-            if once:
-                return 0 if worked else 3
-            if not worked:
-                self.stop_event.wait(self._config.worker_poll_milliseconds / 1_000)
-        return 0
+        try:
+            while not self.stop_event.is_set():
+                worked = self.run_once()
+                if once:
+                    return 0 if worked else 3
+                if not worked:
+                    self.stop_event.wait(self._config.worker_poll_milliseconds / 1_000)
+            return 0
+        finally:
+            self._shutdown()
 
     def run_once(self) -> bool:
         self._scheduler.recover_expired()

@@ -33,6 +33,11 @@ from blackcell.workflows.state_transition import (
     StateTransitionNotReady,
     bind_and_accept_state_transition,
 )
+from blackcell.workflows.telemetry import (
+    NullWorkflowTelemetry,
+    WorkflowSpanName,
+    WorkflowTelemetry,
+)
 
 __all__ = [
     "DailyOperatorRequest",
@@ -40,6 +45,7 @@ __all__ = [
     "DailyOperatorV2Request",
     "DailyOperatorV2Workflow",
     "DailyOperatorWorkflow",
+    "NullWorkflowTelemetry",
     "RunAlreadyExists",
     "RunArtifactLink",
     "RunIdentityConflict",
@@ -56,6 +62,8 @@ __all__ = [
     "StateTransitionBindingError",
     "StateTransitionHistory",
     "StateTransitionNotReady",
+    "WorkflowSpanName",
+    "WorkflowTelemetry",
     "bind_and_accept_state_transition",
     "daily_operator_request_digest",
     "daily_operator_request_payload",

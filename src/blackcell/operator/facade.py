@@ -93,7 +93,11 @@ from blackcell.operator.repository_adapters import (
     RepositoryStatusReader,
 )
 from blackcell.operator.service import _validated_git_directory
-from blackcell.workflows import DailyOperatorV2Request, DailyOperatorV2Workflow
+from blackcell.workflows import (
+    DailyOperatorV2Request,
+    DailyOperatorV2Workflow,
+    WorkflowTelemetry,
+)
 from blackcell.workflows.outcome_evidence import OutcomeEvidenceWriter
 from blackcell.workflows.run_protocol import (
     AUTHORIZATION_DECIDED,
@@ -127,6 +131,7 @@ class RepositoryOperator:
         codex_model: str | None = None,
         status_reader: RepositoryStatusReader | None = None,
         clock: Clock = lambda: datetime.now(UTC),
+        workflow_telemetry: WorkflowTelemetry | None = None,
     ) -> None:
         if model not in {"recorded", "codex"}:
             raise ValueError(f"unsupported repository operator model route: {model!r}")
@@ -203,6 +208,7 @@ class RepositoryOperator:
             outcome_observer=outcome_observer,
             outcome_evidence=OutcomeEvidenceWriter(self.events, clock=clock),
             evaluator=OutcomeEvaluator(clock=clock),
+            telemetry=workflow_telemetry,
         )
         replay_adapter = KernelRunReplayAdapter(
             self.events,

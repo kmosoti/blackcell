@@ -170,3 +170,22 @@ def test_duration_can_be_measured_with_injected_clocks() -> None:
         pass
 
     assert recorder.records()[0].duration_ms == pytest.approx(25)
+
+
+def test_trace_recorder_supports_bounded_or_export_only_retention() -> None:
+    exporter = CollectingExporter()
+    bounded = TraceRecorder(exporters=(exporter,), max_records=1)
+    export_only = TraceRecorder(exporters=(exporter,), max_records=0)
+
+    with bounded.span(SpanNames.OBSERVE):
+        pass
+    with bounded.span(SpanNames.PROJECT_STATE):
+        pass
+    with export_only.span(SpanNames.BUILD_CONTEXT):
+        pass
+
+    assert tuple(record.name for record in bounded.records()) == (SpanNames.PROJECT_STATE,)
+    assert export_only.records() == ()
+    assert len(exporter.records) == 3
+    with pytest.raises(ValueError, match="max_records"):
+        TraceRecorder(max_records=-1)

@@ -71,7 +71,10 @@ Telemetry sanitization runs before in-memory recording and before exporter invoc
 sensitive-key variants, credential-shaped strings, private-key markers, URI user information, and
 the exact configured service secret, including nested collections and exception messages. The
 configured values are excluded from policy representation and equality. Content remains
-metadata-only by default; enabling richer telemetry is an explicit later policy decision.
+metadata-only. OpenTelemetry export is disabled by default and requires an explicit,
+credential-free OTLP/HTTP endpoint. The runtime supplies a fixed non-secret header map so ambient
+OpenTelemetry endpoint and header configuration cannot redirect or decorate exports. Exporter
+failure is content-free and cannot alter domain execution.
 
 ## Threat and mitigation matrix
 
@@ -89,8 +92,8 @@ metadata-only by default; enabling richer telemetry is an explicit later policy 
 
 ## Consequences
 
-- WP18, WP19, WP21, and WP20 must consume these contracts rather than define alternate auth, path,
-  proxy, or redaction defaults.
+- WP18, WP19, and WP21 consume these contracts. WP20 must preserve them rather than define
+  alternate auth, path, proxy, or redaction defaults.
 - Provider credentials remain separate from the Blackcell service token and are never placed in
   the data directory, image, tracked configuration, or telemetry.
 - This decision does not implement TLS, external identity federation, token rotation, multi-tenant

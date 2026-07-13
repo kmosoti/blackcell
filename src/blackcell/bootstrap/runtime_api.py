@@ -54,6 +54,7 @@ from blackcell.orchestration import (
     OrchestrationSchedulerPort,
 )
 from blackcell.workflows.run_protocol import EVALUATION_RECORDED
+from blackcell.workflows.telemetry import WorkflowTelemetry
 
 
 class RuntimeApiService(RuntimeApiPort):
@@ -75,12 +76,14 @@ class RuntimeApiService(RuntimeApiPort):
         config: RuntimeSecurityConfig,
         *,
         repository_root: Path | str,
+        workflow_telemetry: WorkflowTelemetry | None = None,
     ) -> RuntimeApiService:
         database_path = config.paths.ensure_database_file()
         operator = RepositoryOperator(
             Path(repository_root),
             database_path=database_path,
             artifact_root=config.paths.artifact_root,
+            workflow_telemetry=workflow_telemetry,
         )
         return cls(operator, SQLiteOrchestrationScheduler(database_path))
 

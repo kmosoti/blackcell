@@ -160,6 +160,17 @@ def test_http_framework_imports_stay_at_interface_and_bootstrap_edges() -> None:
     assert not violations, _format(violations)
 
 
+def test_opentelemetry_sdk_imports_stay_inside_the_telemetry_adapter() -> None:
+    violations = [
+        edge
+        for edge in _imports()
+        if edge.imported.startswith("opentelemetry")
+        and not edge.importer.startswith("blackcell.adapters.telemetry")
+    ]
+
+    assert not violations, _format(violations)
+
+
 def test_canonical_runtime_does_not_acquire_legacy_dependencies() -> None:
     debt = _load_json(DEBT_PATH)
     legacy = tuple(entry["package"] for entry in debt["legacy_roots"])

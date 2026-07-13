@@ -13,6 +13,9 @@ dependencies = [
     "granian>=2.7.9,<3",
     "litestar>=2.24.0,<3",
     "msgspec>=0.21.1,<1",
+    "opentelemetry-api>=1.42.1,<2",
+    "opentelemetry-exporter-otlp-proto-http>=1.42.1,<2",
+    "opentelemetry-sdk>=1.42.1,<2",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
 ]

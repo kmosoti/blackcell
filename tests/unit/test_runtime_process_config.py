@@ -10,6 +10,12 @@ from blackcell.config import (
     API_TOKEN_ENV,
     DATA_DIR_ENV,
     GRACEFUL_TIMEOUT_SECONDS_ENV,
+    OTEL_ENABLED_ENV,
+    OTEL_ENDPOINT_ENV,
+    OTEL_MAX_EXPORT_BATCH_SIZE_ENV,
+    OTEL_MAX_QUEUE_SIZE_ENV,
+    OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV,
+    OTEL_TIMEOUT_SECONDS_ENV,
     REPOSITORY_ROOT_ENV,
     WORKER_ID_ENV,
     WORKER_LEASE_SECONDS_ENV,
@@ -41,6 +47,8 @@ def test_process_config_uses_bounded_explicit_runtime_defaults(tmp_path: Path) -
     assert config.worker_poll_milliseconds == 250
     assert config.worker_lease_seconds == 30
     assert config.worker_id == "worker:runtime-host:42"
+    assert not config.telemetry.enabled
+    assert config.telemetry.endpoint is None
 
 
 def test_process_config_accepts_explicit_bounded_lifecycle_values(tmp_path: Path) -> None:
@@ -64,6 +72,82 @@ def test_process_config_accepts_explicit_bounded_lifecycle_values(tmp_path: Path
     assert config.worker_poll_milliseconds == 60_000
     assert config.worker_lease_seconds == 86_400
     assert config.worker_id == "worker:runtime-1"
+
+
+def test_process_config_accepts_bounded_explicit_otlp_http_export(tmp_path: Path) -> None:
+    repository = _repository(tmp_path / "repository")
+
+    config = RuntimeProcessConfig.from_environment(
+        {
+            DATA_DIR_ENV: str(tmp_path / "data"),
+            API_TOKEN_ENV: TOKEN,
+            REPOSITORY_ROOT_ENV: str(repository),
+            OTEL_ENABLED_ENV: "1",
+            OTEL_ENDPOINT_ENV: "http://127.0.0.1:4318/v1/traces",
+            OTEL_TIMEOUT_SECONDS_ENV: "3",
+            OTEL_MAX_QUEUE_SIZE_ENV: "64",
+            OTEL_MAX_EXPORT_BATCH_SIZE_ENV: "16",
+            OTEL_SCHEDULE_DELAY_MILLISECONDS_ENV: "100",
+        }
+    )
+
+    assert config.telemetry.enabled
+    assert config.telemetry.endpoint == "http://127.0.0.1:4318/v1/traces"
+    assert config.telemetry.timeout_seconds == 3
+    assert config.telemetry.max_queue_size == 64
+    assert config.telemetry.max_export_batch_size == 16
+    assert config.telemetry.schedule_delay_milliseconds == 100
+
+
+@pytest.mark.parametrize(
+    "updates",
+    (
+        {OTEL_ENABLED_ENV: "yes"},
+        {OTEL_ENDPOINT_ENV: "https://collector.example/v1/traces"},
+        {OTEL_ENABLED_ENV: "1"},
+        {
+            OTEL_ENABLED_ENV: "1",
+            OTEL_ENDPOINT_ENV: "http://collector.example/v1/traces",
+        },
+        {
+            OTEL_ENABLED_ENV: "1",
+            OTEL_ENDPOINT_ENV: "https://token@collector.example/v1/traces",
+        },
+        {
+            OTEL_ENABLED_ENV: "1",
+            OTEL_ENDPOINT_ENV: "https://collector.example/v1/traces?token=secret",
+        },
+        {
+            OTEL_ENABLED_ENV: "1",
+            OTEL_ENDPOINT_ENV: "https://collector.example/v1/traces",
+            OTEL_MAX_QUEUE_SIZE_ENV: "8",
+            OTEL_MAX_EXPORT_BATCH_SIZE_ENV: "9",
+        },
+        {
+            OTEL_ENABLED_ENV: "1",
+            OTEL_ENDPOINT_ENV: "https://collector.example/v1/traces",
+            OTEL_TIMEOUT_SECONDS_ENV: "31",
+        },
+    ),
+)
+def test_process_config_rejects_ambient_or_unsafe_otel_configuration_content_free(
+    tmp_path: Path,
+    updates: dict[str, str],
+) -> None:
+    repository = _repository(tmp_path / "repository")
+    environment = {
+        DATA_DIR_ENV: str(tmp_path / "data"),
+        API_TOKEN_ENV: TOKEN,
+        REPOSITORY_ROOT_ENV: str(repository),
+        **updates,
+    }
+
+    with pytest.raises(ProcessConfigError) as caught:
+        RuntimeProcessConfig.from_environment(environment)
+
+    assert caught.value.code is ProcessConfigFailureCode.INVALID_OTEL_CONFIG
+    assert str(caught.value) == "invalid-otel-config"
+    assert not any(value in str(caught.value) for value in updates.values())
 
 
 @pytest.mark.parametrize(

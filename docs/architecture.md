@@ -135,7 +135,7 @@ expired scheduler leases, acquires one fenced node at a time, and stops before a
 The worker loads only the five reviewed Repository Operator handlers; it validates dependency and
 result artifacts, accounts node usage before completion, and lets the scheduler reject stale
 leases. Execution reuses the canonical operator, while verification uses historical replay only.
-Container health wiring, OTel export, quotas, and recovery remain separate nodes.
+Container health wiring, quotas, and recovery remain separate nodes.
 
 ## Command, event, projection, and artifact separation
 
@@ -298,5 +298,10 @@ Domain evidence and diagnostic telemetry remain separate. Stable internal spans 
 - `blackcell.transition.commit`.
 
 Span attributes contain low-cardinality identifiers and versions. Prompt and evidence content
-is artifact data governed by an explicit redaction policy. OpenTelemetry mapping is an
-exporter concern and cannot define the domain schema.
+is artifact data governed by an explicit redaction policy. The application workflow depends on a
+telemetry port whose default is a no-op. The OpenTelemetry edge adapter maps already-sanitized
+records to deterministic transport trace and span identifiers, then exports them through a bounded
+asynchronous OTLP/HTTP batch. Export is disabled unless the runtime receives an explicit endpoint;
+API and worker lifecycle shutdown flushes and closes the adapter without making telemetry failure a
+domain failure. The adapter does not install a global tracer provider, write domain evidence, or
+define the domain schema.

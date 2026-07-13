@@ -12,7 +12,7 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP06f, WP09b-WP09c, WP17-WP19, and WP22a compose the public Repository Operator, bounded
+Status: active — WP06f, WP09b-WP09c, WP17-WP19, WP21, and WP22a compose the public Repository Operator, bounded
 host-model, scoped state/context, gateway, artifact-first execution, independent outcome
 evaluation, transition, and live-free replay around one canonical `daily-operator/v2` application
 workflow. Runtime-v1 continues as one dependency DAG on one integration branch and one pull
@@ -215,7 +215,15 @@ node usage is charged against its declared budget, and stale completion remains 
 The executor reuses the canonical Repository Operator; the verifier calls historical replay only,
 so a restarted worker can finish verification after the repository becomes unavailable.
 
-WP22a fixes the security boundary before that transport exists. Service startup requires an
+WP21 adds an opt-in OpenTelemetry edge without moving telemetry into the domain. The canonical
+workflow emits nine stable lifecycle phases through a no-op-by-default port. The runtime adapter
+sanitizes attributes before retention or export, derives deterministic trace and parent identifiers,
+and sends OTLP/HTTP spans through a bounded asynchronous batch processor. API and worker shutdown
+flushes and closes the adapter; exporter failure remains content-free and cannot change workflow
+results. Endpoint selection is explicit, ambient OpenTelemetry endpoint and header configuration is
+ignored, and no global tracer provider, collector topology, or domain write path is introduced.
+
+WP22a fixed the security boundary before that transport was added. Service startup requires an
 absolute owner-only data root and exactly one opaque API credential from the environment or an
 owner-only credential file. Framework-neutral authentication preserves header multiplicity,
 accepts one strict Bearer value, and yields explicit read/run/approve/admin scopes without ambient
@@ -332,11 +340,11 @@ flowchart TD
 | Node | Deliverable | Acceptance evidence |
 | --- | --- | --- |
 | WP23a | FTS5 baseline | matched retrieval evidence and explicit promote-or-defer record |
-| WP20-WP22b | OTel, Podman, recovery | trace gates, non-root image, durable restore |
+| WP20 and WP22b | Podman and recovery | non-root image and durable restore |
 | WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |
 
 The landed dependency join includes protocol-v2, WP04c-WP05c, WP06c-WP06f, WP08b, WP09b-WP09c,
-WP10, WP12-WP15, WP16a-WP16c, WP17-WP19, and WP22a. WP09b is the product-accepted public composition over those
+WP10, WP12-WP15, WP16a-WP16c, WP17-WP19, WP21, and WP22a. WP09b is the product-accepted public composition over those
 integrated contracts; WP10 consumes its recorded initial/outcome state and action identities
 without entering the product control path, while WP12 remains an explicitly injected policy-edge
 adapter.
