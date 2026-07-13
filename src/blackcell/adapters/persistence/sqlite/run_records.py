@@ -461,6 +461,15 @@ class KernelRunRecorder:
         self._validate_events(run_id, events)
         return events
 
+    def verify_history(
+        self,
+        run_id: str,
+        events: Sequence[EventEnvelope],
+    ) -> None:
+        """Apply the writer's exact read-only integrity checks to recorded history."""
+
+        self._validate_events(run_id, events)
+
     def _validate_events(self, run_id: str, events: Sequence[EventEnvelope]) -> None:
         traced = False
         terminal = False

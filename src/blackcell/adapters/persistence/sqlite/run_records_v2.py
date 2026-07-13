@@ -56,7 +56,7 @@ from blackcell.features.execute_affordance import (
     deserialize_execution_preparation,
     deserialize_execution_result,
 )
-from blackcell.features.execute_affordance.ports import ExecutionJournal
+from blackcell.features.execute_affordance.ports import ExecutionEvidenceJournal
 from blackcell.features.observe_outcome import (
     OUTCOME_OBSERVATION_MEDIA_TYPE,
     OutcomeArgument,
@@ -208,7 +208,7 @@ class KernelFeedbackRunRecorder:
         events: EventStore,
         artifacts: ArtifactStore,
         decision_journal: DecisionEvidenceJournal,
-        execution_journal: ExecutionJournal,
+        execution_journal: ExecutionEvidenceJournal,
         *,
         clock: Clock = utc_now,
     ) -> None:
@@ -1184,6 +1184,15 @@ class KernelFeedbackRunRecorder:
             raise RunProtocolIntegrityError(f"run {run_id!r} has not started")
         self._validate_prefix(run_id, events, stored=True)
         return events
+
+    def verify_history(
+        self,
+        run_id: str,
+        events: Sequence[EventEnvelope],
+    ) -> None:
+        """Apply the writer's exact read-only integrity checks to recorded history."""
+
+        self._validate_prefix(run_id, events, stored=True)
 
     def _validate_prefix(
         self,

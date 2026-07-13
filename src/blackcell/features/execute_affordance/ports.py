@@ -54,28 +54,8 @@ class AffordanceAdapter(Protocol):
     ) -> AdapterOutcome: ...
 
 
-class ExecutionJournal(Protocol):
-    def acquire(
-        self,
-        preparation: ExecutionPreparation,
-        *,
-        acquired_at: datetime,
-    ) -> ExecutionClaim | ExecutionResult: ...
-
-    def recover(
-        self,
-        authorization: ExecutionRecoveryAuthorization,
-        *,
-        recovered_at: datetime,
-    ) -> ExecutionRecovery: ...
-
-    def complete(
-        self,
-        claim: ExecutionClaim,
-        result: ExecutionResult,
-        *,
-        recorded_at: datetime,
-    ) -> ExecutionResult: ...
+class ExecutionEvidenceJournal(Protocol):
+    """Read-only access to exact evidence owned by an execution journal."""
 
     def get(self, idempotency_key: str) -> ExecutionResult | None: ...
 
@@ -100,6 +80,30 @@ class ExecutionJournal(Protocol):
         limit: int | None = None,
         status: ExecutionJournalStatus | None = None,
     ) -> tuple[ExecutionJournalEntry, ...]: ...
+
+
+class ExecutionJournal(ExecutionEvidenceJournal, Protocol):
+    def acquire(
+        self,
+        preparation: ExecutionPreparation,
+        *,
+        acquired_at: datetime,
+    ) -> ExecutionClaim | ExecutionResult: ...
+
+    def recover(
+        self,
+        authorization: ExecutionRecoveryAuthorization,
+        *,
+        recovered_at: datetime,
+    ) -> ExecutionRecovery: ...
+
+    def complete(
+        self,
+        claim: ExecutionClaim,
+        result: ExecutionResult,
+        *,
+        recorded_at: datetime,
+    ) -> ExecutionResult: ...
 
 
 type AdapterRegistry = Mapping[str, AffordanceAdapter]

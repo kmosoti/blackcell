@@ -43,6 +43,7 @@ from blackcell.features.execute_affordance.models import (
     serialize_execution_preparation,
     serialize_execution_result,
 )
+from blackcell.features.execute_affordance.ports import ExecutionEvidenceJournal
 from blackcell.features.execute_affordance.recovery import ManualAffordanceRecovery
 
 __all__ = [
@@ -60,6 +61,7 @@ __all__ = [
     "ExecutionBinding",
     "ExecutionClaim",
     "ExecutionDenied",
+    "ExecutionEvidenceJournal",
     "ExecutionIdentityConflict",
     "ExecutionInProgress",
     "ExecutionJournalEntry",
