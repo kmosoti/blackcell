@@ -88,12 +88,14 @@ failure is content-free and cannot alter domain execution.
 | Admin token gains undeclared route power | explicit scope subset checks; no implicit admin expansion | the initial token intentionally receives all declared scopes |
 | Secret reaches telemetry or exception export | nested key/pattern/exact-value sanitization before storage/export | arbitrary unknown secrets need provider-specific policy additions |
 | Spoofed forwarded client identity | trusted proxy hops fixed at zero | trusted reverse-proxy support is deferred |
+| Container gains host or repository write authority | rootless engine, numeric non-root user, dropped capabilities, no-new-privileges, read-only root/repository, no engine socket | the invoking host uid and local container engine remain trusted |
+| Container replacement loses or weakens state | named volume above the runtime-created owner-only data child; engine-backed restart test | backup, quota, retention, and disaster recovery remain WP22b |
 | Model output grants runtime authority | authentication is an interface concern; action policy remains deterministic | prompt injection still requires ongoing policy and evaluation tests |
 
 ## Consequences
 
-- WP18, WP19, and WP21 consume these contracts. WP20 must preserve them rather than define
-  alternate auth, path, proxy, or redaction defaults.
+- WP18-WP21 consume these contracts across HTTP, process, telemetry, and container edges rather
+  than defining alternate auth, path, proxy, or redaction defaults.
 - Provider credentials remain separate from the Blackcell service token and are never placed in
   the data directory, image, tracked configuration, or telemetry.
 - This decision does not implement TLS, external identity federation, token rotation, multi-tenant

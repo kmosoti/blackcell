@@ -1,18 +1,64 @@
+x-blackcell-runtime: &blackcell-runtime
+  image: "${BLACKCELL_RUNTIME_IMAGE:-blackcell-runtime:0.2.0}"
+  build:
+    context: .
+    dockerfile: Containerfile
+    target: runtime
+  user: "10001:10001"
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
+  environment:
+    BLACKCELL_API_TOKEN: "${BLACKCELL_API_TOKEN:?BLACKCELL_API_TOKEN is required}"
+    BLACKCELL_BIND_HOST: "0.0.0.0"
+    BLACKCELL_BIND_PORT: "8080"
+    BLACKCELL_DATA_DIR: /var/lib/blackcell/data
+    BLACKCELL_GRACEFUL_TIMEOUT_SECONDS: "30"
+    BLACKCELL_REPOSITORY_ROOT: /workspace/repository
+    BLACKCELL_TRUSTED_PROXY_HOPS: "0"
+    BLACKCELL_WORKER_ID: worker:compose:1
+  volumes:
+    - type: volume
+      source: blackcell-data
+      target: /var/lib/blackcell
+    - type: bind
+      source: "${BLACKCELL_REPOSITORY_PATH:-.}"
+      target: /workspace/repository
+      read_only: true
+      bind:
+        create_host_path: false
+  stop_grace_period: 35s
+  restart: unless-stopped
+
 services:
-  blackcell:
-    build:
-      context: .
-      dockerfile: Containerfile
-    image: blackcell:dev
-    working_dir: /workspace
-    volumes:
-      - .:/workspace
-      - blackcell-uv-cache:/root/.cache/uv
-    environment:
-      UV_LINK_MODE: copy
-    command: bash
-    tty: true
-    stdin_open: true
+  blackcell-api:
+    <<: *blackcell-runtime
+    command:
+      - api
+    ports:
+      - target: 8080
+        published: "${BLACKCELL_PUBLISHED_PORT:-8080}"
+        host_ip: 127.0.0.1
+        protocol: tcp
+  blackcell-worker:
+    <<: *blackcell-runtime
+    command:
+      - worker
+    depends_on:
+      blackcell-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c 'import os; os.kill(1, 0)'
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
 volumes:
-  blackcell-uv-cache:
+  blackcell-data:

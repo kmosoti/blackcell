@@ -76,8 +76,11 @@ the reviewed five-role Repository Operator DAG. Both modes consume the same expl
 data configuration; API backpressure, leases, polling, and graceful shutdown are bounded. The
 canonical workflow now emits stable, correlated, pre-export-redacted spans through an opt-in
 OpenTelemetry OTLP/HTTP adapter with bounded asynchronous batching and process-owned shutdown.
-The non-root image, persistent-volume deployment, and recovery evidence remain measured work, not
-assumed capabilities.
+One multi-stage OCI image now runs both API and worker under numeric non-root identity, and the
+rootless Podman Compose contract adds loopback publication, health sequencing, read-only roots and
+repository access, dropped capabilities, runtime-only token injection, and durable named-volume
+state. Backup, quota, retention, and recovery evidence remain measured work, not assumed
+capabilities.
 
 ## Preserved contracts
 
@@ -97,7 +100,7 @@ Until a work package explicitly replaces them with tested compatibility:
 - orchestration concentrated in two large modules;
 - 23 SQLite `ResourceWarning` instances under strict warning reporting;
 - remaining dependency debt is tracked in `architecture/dependency_debt.json`;
-- no production-shaped rootless Podman image or persistent-volume composition;
+- no published, signed, or attested runtime image;
 - no deployed OpenTelemetry collector or container telemetry composition;
 - no tested backup/restore, quota, retention, or disaster-recovery workflow.
 

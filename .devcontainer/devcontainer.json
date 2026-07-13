@@ -2,7 +2,8 @@
   "name": "BlackCell",
   "build": {
     "dockerfile": "../Containerfile",
-    "context": ".."
+    "context": "..",
+    "target": "development"
   },
   "workspaceFolder": "/workspace",
   "mounts": [

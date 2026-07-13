@@ -30,7 +30,7 @@ source = { editable = "." }
 dependencies = [
     { name = "clingo" },
     { name = "cyclopts" },
-    { name = "granian" },
+    { name = "granian", extra = ["pname"] },
     { name = "litestar" },
     { name = "msgspec" },
     { name = "opentelemetry-api" },
@@ -54,7 +54,7 @@ dev = [
 requires-dist = [
     { name = "clingo", specifier = ">=5.8.0,<6" },
     { name = "cyclopts", specifier = ">=4.20.0" },
-    { name = "granian", specifier = ">=2.7.9,<3" },
+    { name = "granian", extras = ["pname"], specifier = ">=2.7.9,<3" },
     { name = "litestar", specifier = ">=2.24.0,<3" },
     { name = "msgspec", specifier = ">=0.21.1,<1" },
     { name = "opentelemetry-api", specifier = ">=1.42.1,<2" },
@@ -334,6 +334,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/92/3a/bec3533aaaff69a9a984f3fd578a2ca29548c9d8503770b1ba5c2260aecd/granian-2.7.9-cp314-cp314t-musllinux_1_1_armv7l.whl", hash = "sha256:3022cde5c662716db8fe16838ba351e0897768435b9c732afc9a4a7322ed05d5", size = 7420697, upload-time = "2026-07-03T12:41:46.332Z" },
     { url = "https://files.pythonhosted.org/packages/c6/d9/4526cc50a1fe3addcc29fe3c7c676d64046f724a4d8e4e29d76ba7dcbe04/granian-2.7.9-cp314-cp314t-musllinux_1_1_x86_64.whl", hash = "sha256:6c7e3193da47554561142be7a58520b36a01f6a2da57a7bcbe61f970fb53cc0c", size = 6950255, upload-time = "2026-07-03T12:41:48.023Z" },
     { url = "https://files.pythonhosted.org/packages/0a/62/aa89482ffbc3e56d533cf8c87a91cfb58c486e6a77c522fa34c9f8874113/granian-2.7.9-cp314-cp314t-win_amd64.whl", hash = "sha256:d2cef5a15afee90683944a3b23694e97d75adeafd59ef85ff3896bc9462695d2", size = 3992366, upload-time = "2026-07-03T12:41:49.523Z" },
+]
+
+[package.optional-dependencies]
+pname = [
+    { name = "setproctitle" },
 ]
 
 [[package]]

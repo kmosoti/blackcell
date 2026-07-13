@@ -12,7 +12,7 @@ edges:
 
 # BCP-0034: Evolutionary Agentic Runtime
 
-Status: active — WP06f, WP09b-WP09c, WP17-WP19, WP21, and WP22a compose the public Repository Operator, bounded
+Status: active — WP06f, WP09b-WP09c, WP17-WP21, and WP22a compose the public Repository Operator, bounded
 host-model, scoped state/context, gateway, artifact-first execution, independent outcome
 evaluation, transition, and live-free replay around one canonical `daily-operator/v2` application
 workflow. Runtime-v1 continues as one dependency DAG on one integration branch and one pull
@@ -231,9 +231,14 @@ admin expansion. Bind defaults to loopback, forwarded-client trust is zero, and 
 sensitive keys, credential shapes, and the exact configured secret before storage or export. ADR
 0007 records the threat matrix and the TLS, federation, rotation, quota, and recovery limits.
 
-The OCI image is Podman-compatible, runs as a non-root user, uses an explicit data volume, exposes
-health checks, supports read-only root filesystems, and keeps provider credentials out of layers and
-configuration committed to Git. The same image runs API and worker entry points.
+WP20 integrates the OCI boundary through one multi-stage Containerfile and one Compose contract.
+The same production image runs API and worker entry points as numeric user `10001:10001`; rootless
+services use read-only roots, bounded temporary storage, dropped capabilities, no-new-privileges,
+public readiness, loopback-only host publication, one read-only repository bind, and one shared
+named state volume. The token enters only through runtime environment injection, while provider
+credentials and engine sockets stay outside the image and composition. An explicit rootless Podman
+gate proves health, filesystem and uid modes, credential exclusion, worker entry, and state survival
+across API restart.
 
 ## Work packages
 
@@ -340,11 +345,11 @@ flowchart TD
 | Node | Deliverable | Acceptance evidence |
 | --- | --- | --- |
 | WP23a | FTS5 baseline | matched retrieval evidence and explicit promote-or-defer record |
-| WP20 and WP22b | Podman and recovery | non-root image and durable restore |
+| WP22b | recovery | durable restore, quota, and retention evidence |
 | WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |
 
 The landed dependency join includes protocol-v2, WP04c-WP05c, WP06c-WP06f, WP08b, WP09b-WP09c,
-WP10, WP12-WP15, WP16a-WP16c, WP17-WP19, WP21, and WP22a. WP09b is the product-accepted public composition over those
+WP10, WP12-WP15, WP16a-WP16c, WP17-WP21, and WP22a. WP09b is the product-accepted public composition over those
 integrated contracts; WP10 consumes its recorded initial/outcome state and action identities
 without entering the product control path, while WP12 remains an explicitly injected policy-edge
 adapter.

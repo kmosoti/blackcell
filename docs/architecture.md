@@ -105,8 +105,8 @@ It yields a typed principal whose `read`, `run`, `approve`, and `admin` scopes a
 explicit subset for each protected operation; admin is not ambient authority. Binding defaults to
 loopback, authentication remains mandatory on every bind address, and forwarded-client trust is
 disabled. Telemetry redacts sensitive keys, credential shapes, and configured secret values before
-records enter memory or exporters. HTTP adaptation, TLS termination, process lifecycle, quotas,
-and backup/restore remain separate bounded work.
+records enter memory or exporters. TLS termination, quotas, and backup/restore remain separate
+bounded work.
 
 ## HTTP service edge
 
@@ -135,7 +135,15 @@ expired scheduler leases, acquires one fenced node at a time, and stops before a
 The worker loads only the five reviewed Repository Operator handlers; it validates dependency and
 result artifacts, accounts node usage before completion, and lets the scheduler reject stale
 leases. Execution reuses the canonical operator, while verification uses historical replay only.
-Container health wiring, quotas, and recovery remain separate nodes.
+
+The rootless Podman edge builds one production image for both modes. A numeric non-root user,
+read-only root filesystem, bounded temporary filesystem, dropped capabilities, and
+`no-new-privileges` constrain each service without mounting engine or provider authority. Compose
+publishes the container's explicit `0.0.0.0` bind only through host loopback, mounts the observed
+repository read-only with optional Git locks disabled, and serializes worker startup behind API
+readiness. Both services share one named volume above the canonical owner-only data child, so
+container replacement preserves SQLite and artifacts without weakening runtime path validation.
+Quotas and recovery remain separate nodes.
 
 ## Command, event, projection, and artifact separation
 
