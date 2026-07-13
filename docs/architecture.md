@@ -182,6 +182,11 @@ using canonical JSON scalar identity so booleans and integers do not collapse. P
 scores are content-addressed DTOs only: they append no observations, commit no transitions, and
 grant no execution authority.
 
+WP11 deliberately adds no local-model adapter. The repository has neither an installed offline
+predictor runtime nor a configured prediction route or matched WP10 evaluation. Promotion requires
+a pinned deployment, gateway-owned resource bounds, and a like-for-like outcome-scoring comparison;
+the machine-readable deferral is recorded in `docs/decisions/runtime-v1/wp11-local-predictor.json`.
+
 ## Observability boundary
 
 Domain evidence and diagnostic telemetry remain separate. Stable internal spans include:

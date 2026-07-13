@@ -148,6 +148,10 @@ Predictions carry source snapshot and action identity, horizon, confidence, assu
 claim/event provenance, and model version. A later same-stream canonical outcome state yields
 typed match, mismatch, missing, conflict, or unscored findings plus exact-match and Brier measures.
 Predictions and scores remain advisory DTOs and never become observations or accepted facts.
+WP11 is explicitly deferred because no installed offline runtime, configured local prediction
+route, or matched WP10 evaluation exists. Its machine-readable decision records the deployment,
+gateway-boundary, calibration, latency, and resource-evidence prerequisites for reconsideration;
+no speculative adapter or dependency is added.
 
 `solve_constraints` starts with deterministic Python policy and can add Clingo through a port.
 Neural interpretation may propose facts or plans, but symbolic checks consume typed facts and
@@ -271,7 +275,7 @@ flowchart TD
 
 | Node | Deliverable | Acceptance evidence |
 | --- | --- | --- |
-| WP11-WP12/WP23a | optional local predictor, Clingo decision, FTS5 | matched baselines and explicit promote-or-defer records |
+| WP12/WP23a | Clingo decision and FTS5 | solver parity plus explicit promote-or-defer evidence |
 | WP14-WP15/WP13 | typed DAG, failure simulation, transaction seam, scheduler, role graph | cycle/self-approval rejection, leases/fencing, atomic accepted results |
 | WP18-WP22 | security, API, Granian, OTel, Podman, recovery | strict edge contracts, non-root image, durable restore |
 | WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |

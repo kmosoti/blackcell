@@ -1,0 +1,50 @@
+{
+  "schema_version": "runtime-v1-decision/v1",
+  "work_package": "WP11",
+  "decision": "defer",
+  "recorded_on": "2026-07-13",
+  "subject": "offline local-model transition predictor",
+  "observations": [
+    {
+      "id": "local-runtime",
+      "status": "absent",
+      "probe_argv": [
+        "command",
+        "-v",
+        "llama-server"
+      ],
+      "result": "no executable path"
+    },
+    {
+      "id": "prediction-route",
+      "status": "absent",
+      "evidence": [
+        "examples/gateway/local-first.yaml contains only a deployment-selected llama-cpp embedding placeholder",
+        "no Blackcell llama-cpp adapter implementation is present",
+        "no configured offline route consumes the WP10 transition-prediction contract"
+      ]
+    },
+    {
+      "id": "matched-evaluation",
+      "status": "absent",
+      "evidence": [
+        "no offline predictor has been run against the WP10 typed targets",
+        "no offline predictor has exact-match or Brier results against the same canonical outcome snapshots and budgets"
+      ]
+    }
+  ],
+  "reason": "Adding an unconfigured adapter would create an unmeasured provider edge and imply capability that the repository cannot currently exercise.",
+  "promotion_prerequisites": [
+    "install or deploy an offline runtime with a pinned model and explicit availability probe",
+    "configure a gateway-owned local prediction route with input, output, time, token, and memory bounds",
+    "map its output into the existing advisory transition-prediction schema without observation or transition authority",
+    "run a matched WP24 comparison against the deterministic WP10 baseline over identical targets, source states, actions, horizons, and outcome snapshots",
+    "record exact-match, missing/conflict coverage, Brier calibration, latency, token usage, and resource cost",
+    "promote only if the measured benefit justifies the new runtime and model dependency"
+  ],
+  "repository_effect": {
+    "adapter_added": false,
+    "dependency_added": false,
+    "default_changed": false
+  }
+}
