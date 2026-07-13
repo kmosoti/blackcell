@@ -144,6 +144,22 @@ def test_auth_contract_is_framework_and_edge_independent() -> None:
     assert not violations, _format(violations)
 
 
+def test_http_framework_imports_stay_at_interface_and_bootstrap_edges() -> None:
+    framework_modules = ("litestar", "msgspec")
+    allowed_importers = (
+        "blackcell.interfaces.http",
+        "blackcell.bootstrap",
+    )
+    violations = [
+        edge
+        for edge in _imports()
+        if edge.imported.startswith(framework_modules)
+        and not edge.importer.startswith(allowed_importers)
+    ]
+
+    assert not violations, _format(violations)
+
+
 def test_canonical_runtime_does_not_acquire_legacy_dependencies() -> None:
     debt = _load_json(DEBT_PATH)
     legacy = tuple(entry["package"] for entry in debt["legacy_roots"])

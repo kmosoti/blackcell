@@ -34,6 +34,14 @@ class RuntimePaths:
     artifact_root: Path
     backup_root: Path
 
+    def __post_init__(self) -> None:
+        if (
+            self.database_path != self.data_root / "kernel.sqlite3"
+            or self.artifact_root != self.data_root / "artifacts"
+            or self.backup_root != self.data_root / "backups"
+        ):
+            raise ValueError("runtime paths must use the canonical data-root layout")
+
     @classmethod
     def prepare(cls, value: str, *, expected_uid: int | None = None) -> RuntimePaths:
         if not isinstance(value, str) or not value:
@@ -51,6 +59,39 @@ class RuntimePaths:
         _prepare_owner_directory(artifacts, uid=uid)
         _prepare_owner_directory(backups, uid=uid)
         return cls(root, database, artifacts, backups)
+
+    def ensure_database_file(self, *, expected_uid: int | None = None) -> Path:
+        """Create or revalidate the canonical owner-only SQLite file."""
+
+        uid = _current_uid() if expected_uid is None else expected_uid
+        _prepare_owner_directory(self.data_root, uid=uid)
+        _prepare_owner_directory(self.artifact_root, uid=uid)
+        _prepare_owner_directory(self.backup_root, uid=uid)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(self.database_path, flags, 0o600)
+        except FileExistsError:
+            _validate_owner_file(self.database_path, uid=uid)
+            return self.database_path
+        except OSError as error:
+            raise SecurityConfigError(SecurityConfigFailureCode.UNSAFE_DATA_DIRECTORY) from error
+        try:
+            try:
+                os.fchmod(descriptor, 0o600)
+                metadata = os.fstat(descriptor)
+            except OSError as error:
+                raise SecurityConfigError(
+                    SecurityConfigFailureCode.UNSAFE_DATA_DIRECTORY
+                ) from error
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_uid != uid
+                or stat.S_IMODE(metadata.st_mode) != 0o600
+            ):
+                raise SecurityConfigError(SecurityConfigFailureCode.UNSAFE_DATA_DIRECTORY)
+        finally:
+            os.close(descriptor)
+        return self.database_path
 
 
 @dataclass(frozen=True, slots=True)

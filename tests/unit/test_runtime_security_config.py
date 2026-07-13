@@ -50,6 +50,20 @@ def test_runtime_config_creates_owner_only_paths_and_redaction_policy(tmp_path: 
     assert config.authenticator().authenticate((f"Bearer {TOKEN}",)) == config.principal
 
 
+def test_runtime_paths_create_and_revalidate_owner_only_database(tmp_path: Path) -> None:
+    paths = RuntimePaths.prepare(str(tmp_path / "runtime-data"))
+
+    database = paths.ensure_database_file()
+    assert database == paths.database_path
+    assert database.is_file()
+    assert stat.S_IMODE(database.stat().st_mode) == 0o600
+    assert paths.ensure_database_file() == database
+
+    os.chmod(database, 0o640)
+    with pytest.raises(SecurityConfigError, match="unsafe-data-directory"):
+        paths.ensure_database_file()
+
+
 def test_runtime_config_accepts_explicit_non_loopback_bind_but_never_skips_auth(
     tmp_path: Path,
 ) -> None:

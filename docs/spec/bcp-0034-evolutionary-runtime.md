@@ -196,6 +196,16 @@ Litestar owns HTTP transport and msgspec owns wire contracts. Granian serves the
 Transport types do not enter feature packages. The initial API exposes health/readiness, observation
 ingest, run submission and inspection, context inspection, approvals, events, replay, and evaluation.
 
+WP18 integrates that edge as strict immutable msgspec contracts under `/api/v1`, translated by
+Litestar into one injected application port. The concrete bootstrap adapter delegates to the
+canonical Repository Operator, ingestion handler, event store, replay/evaluation evidence, and
+durable scheduler instead of creating parallel behavior. Liveness and readiness are the only
+public routes. Protected routes preserve raw ASGI header multiplicity and require explicit
+read/run/approve scopes before body decoding. Responses and failures are bounded JSON; OpenAPI,
+sessions, browser auth, proxy identity, and raw artifact access remain disabled. Service
+composition creates the SQLite file owner-only before connecting. Submission remains synchronous
+until the WP19 Granian lifecycle exists.
+
 WP22a fixes the security boundary before that transport exists. Service startup requires an
 absolute owner-only data root and exactly one opaque API credential from the environment or an
 owner-only credential file. Framework-neutral authentication preserves header multiplicity,
@@ -313,11 +323,11 @@ flowchart TD
 | Node | Deliverable | Acceptance evidence |
 | --- | --- | --- |
 | WP23a | FTS5 baseline | matched retrieval evidence and explicit promote-or-defer record |
-| WP18-WP22b | API, Granian, OTel, Podman, recovery | strict edge contracts, non-root image, durable restore |
+| WP19-WP22b | Granian, OTel, Podman, recovery | lifecycle gates, non-root image, durable restore |
 | WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |
 
 The landed dependency join includes protocol-v2, WP04c-WP05c, WP06c-WP06f, WP08b, WP09b-WP09c,
-WP10, WP12-WP15, WP16a-WP16c, WP17, and WP22a. WP09b is the product-accepted public composition over those
+WP10, WP12-WP15, WP16a-WP16c, WP17, WP18, and WP22a. WP09b is the product-accepted public composition over those
 integrated contracts; WP10 consumes its recorded initial/outcome state and action identities
 without entering the product control path, while WP12 remains an explicitly injected policy-edge
 adapter.

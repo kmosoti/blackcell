@@ -108,6 +108,27 @@ disabled. Telemetry redacts sensitive keys, credential shapes, and configured se
 records enter memory or exporters. HTTP adaptation, TLS termination, process lifecycle, quotas,
 and backup/restore remain separate bounded work.
 
+## HTTP service edge
+
+The versioned `/api/v1` Litestar adapter accepts strict immutable msgspec contracts and delegates
+through one injected `RuntimeApiPort`. Its concrete bootstrap adapter reuses the canonical
+Repository Operator, observation ingestion, historical replay, evaluation, event ledger, and
+durable scheduler inspection/approval use cases. HTTP handlers do not append kernel or scheduler
+rows directly, and transport types do not enter features, workflows, gateway, orchestration, or
+kernel packages.
+
+Only `/health/live` and `/health/ready` are public. Every API route reads raw ASGI header tuples,
+requires exactly one Bearer value, and checks an explicit `read`, `run`, or `approve` scope before
+decoding a body or invoking a use case. Unknown fields, schema drift, oversized bodies and
+collections, unsafe stream namespaces, malformed query bounds, and duplicate credentials fail
+closed. Error responses contain one stable code and no request, credential, path, or exception
+content. OpenAPI, sessions, cookies, browser auth, CORS, and proxy-derived identity are not enabled.
+
+Service composition creates the canonical SQLite path as an owner-owned mode-`0600` regular file
+before any adapter connects. Run submission is synchronous in this first local contract. Granian
+startup and shutdown, worker lifecycle, OTel export, container health wiring, quotas, and recovery
+remain separate nodes.
+
 ## Command, event, projection, and artifact separation
 
 Commands request work and use imperative names. Events record accepted facts in past tense.

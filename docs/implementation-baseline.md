@@ -68,10 +68,11 @@ model. A generic transport inbox and remote worker dispatcher are not part of th
 
 The service now has framework-neutral security configuration for an explicit owner-only data root,
 opaque environment-or-file credential, strict Bearer and scope checks, zero proxy trust, and
-pre-storage redaction. The current container remains a root development shell and does not yet
-compose that boundary into an HTTP process, health endpoints, non-root runtime user, or explicit
-persistent volume. Container hardening and Podman deployment remain measured work, not assumed
-capabilities.
+pre-storage redaction. A Litestar/msgspec `/api/v1` edge composes those checks over canonical
+observation, operator run, context, replay, evaluation, event, and scheduler approval use cases,
+with public liveness/readiness and an owner-only SQLite file. Granian process lifecycle, the
+non-root image, OTel export, persistent-volume deployment, and recovery evidence remain measured
+work, not assumed capabilities.
 
 ## Preserved contracts
 
