@@ -81,6 +81,16 @@ attempt and fencing evidence, reject stale completions, count duplicate delivery
 enforce retry and node budgets, block descendants after terminal failure, and derive a stable
 content identity. The simulator has no scheduler, worker, gateway, or ledger side effects.
 
+The durable SQLite scheduler persists the canonical DAG, stable node state, independent approval
+decisions, bounded leases, monotonically increasing fencing tokens, cumulative usage, and one
+terminal outcome per attempt. Submission and terminal outcomes are content-idempotent. Ready-node
+claims require successful dependencies and every declared approval; retry backoff and lease expiry
+consume bounded attempts; stale or expired workers cannot commit. Terminal denial or failure
+blocks descendants and fences other active branches. Every accepted transition and run-status
+decision appends a content-free event in the same transaction, and inspection reconstructs and
+revalidates the DAG after restart. Worker transport and handler dispatch remain outside the
+persistence adapter.
+
 ## Command, event, projection, and artifact separation
 
 Commands request work and use imperative names. Events record accepted facts in past tense.

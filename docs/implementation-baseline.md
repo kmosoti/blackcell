@@ -58,10 +58,11 @@ store is the only path eligible to become the authoritative write model. Migrati
 dual writes. The ledger and latent stores may be read through compatibility adapters until their
 data is migrated or their experiments are retired.
 
-The event kernel already provides envelopes, artifacts, projections, checkpoints, atomic batches,
-and a caller-owned in-transaction append used by the SQLite adapter session. It does not yet
-provide the idempotent inbox, durable DAG lease, or fencing semantics required by the target
-runtime.
+The event kernel provides envelopes, artifacts, projections, checkpoints, atomic batches, and a
+caller-owned in-transaction append used by the SQLite adapter session. The orchestration adapter
+now adds content-idempotent run submission and attempt outcomes, durable leases, fencing, retry
+backoff, approval decisions, recovery, and restart reconstruction without creating a second write
+model. A generic transport inbox and remote worker dispatcher are not part of this local scheduler.
 
 ## Deployment baseline
 

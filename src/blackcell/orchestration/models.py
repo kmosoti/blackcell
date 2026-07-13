@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import cast
 
 from blackcell.gateway import DataClassification, LocalityPolicy, ModelCapability
 from blackcell.kernel._json import json_digest
@@ -268,6 +270,149 @@ def dag_definition_payload(definition: DagDefinition) -> dict[str, object]:
     }
 
 
+def dag_definition_from_payload(payload: Mapping[str, object]) -> DagDefinition:
+    """Reconstruct and revalidate a canonical persisted DAG definition."""
+
+    node_values = _sequence(payload.get("nodes"), "nodes")
+    nodes: list[DagNode] = []
+    for index, raw_node in enumerate(node_values):
+        node = _mapping(raw_node, f"nodes[{index}]")
+        retry = _mapping(node.get("retry"), f"nodes[{index}].retry")
+        budget = _mapping(node.get("budget"), f"nodes[{index}].budget")
+        raw_capability = node.get("model_capability")
+        capability = (
+            None
+            if raw_capability is None
+            else ModelCapability(_string(raw_capability, f"nodes[{index}].model_capability"))
+        )
+        raw_classification = _string(
+            node.get("classification"),
+            f"nodes[{index}].classification",
+        )
+        try:
+            classification = DataClassification[raw_classification.upper()]
+        except KeyError as error:
+            raise ValueError("persisted DAG classification is not recognized") from error
+        nodes.append(
+            DagNode(
+                node_id=_string(node.get("node_id"), f"nodes[{index}].node_id"),
+                role=OrchestrationRole(_string(node.get("role"), f"nodes[{index}].role")),
+                principal_id=_string(
+                    node.get("principal_id"),
+                    f"nodes[{index}].principal_id",
+                ),
+                handler=_string(node.get("handler"), f"nodes[{index}].handler"),
+                output_schema=_string(
+                    node.get("output_schema"),
+                    f"nodes[{index}].output_schema",
+                ),
+                depends_on=tuple(
+                    _string(item, f"nodes[{index}].depends_on")
+                    for item in _sequence(
+                        node.get("depends_on"),
+                        f"nodes[{index}].depends_on",
+                    )
+                ),
+                inputs=tuple(
+                    NodeInputBinding(
+                        _string(
+                            binding.get("input_name"),
+                            f"nodes[{index}].inputs.input_name",
+                        ),
+                        _string(
+                            binding.get("source_node_id"),
+                            f"nodes[{index}].inputs.source_node_id",
+                        ),
+                        _string(
+                            binding.get("source_schema"),
+                            f"nodes[{index}].inputs.source_schema",
+                        ),
+                    )
+                    for binding in (
+                        _mapping(item, f"nodes[{index}].inputs")
+                        for item in _sequence(
+                            node.get("inputs"),
+                            f"nodes[{index}].inputs",
+                        )
+                    )
+                ),
+                retry=RetryPolicy(
+                    _integer(retry.get("max_attempts"), "retry.max_attempts"),
+                    _integer(retry.get("backoff_seconds"), "retry.backoff_seconds"),
+                    tuple(
+                        _string(item, "retry.retryable_codes")
+                        for item in _sequence(
+                            retry.get("retryable_codes"),
+                            "retry.retryable_codes",
+                        )
+                    ),
+                ),
+                timeout_seconds=_integer(
+                    node.get("timeout_seconds"),
+                    f"nodes[{index}].timeout_seconds",
+                ),
+                budget=NodeBudget(
+                    _integer(budget.get("max_input_tokens"), "budget.max_input_tokens"),
+                    _integer(budget.get("max_output_tokens"), "budget.max_output_tokens"),
+                    _integer(budget.get("max_latency_ms"), "budget.max_latency_ms"),
+                    _integer(budget.get("max_cost_microusd"), "budget.max_cost_microusd"),
+                ),
+                side_effect=NodeSideEffect(
+                    _string(node.get("side_effect"), f"nodes[{index}].side_effect")
+                ),
+                required_approvals=tuple(
+                    OrchestrationRole(_string(item, "required_approvals"))
+                    for item in _sequence(
+                        node.get("required_approvals"),
+                        f"nodes[{index}].required_approvals",
+                    )
+                ),
+                model_capability=capability,
+                classification=classification,
+                locality=LocalityPolicy(_string(node.get("locality"), f"nodes[{index}].locality")),
+                deterministic_required=_boolean(
+                    node.get("deterministic_required"),
+                    f"nodes[{index}].deterministic_required",
+                ),
+            )
+        )
+    return DagDefinition(
+        dag_id=_string(payload.get("dag_id"), "dag_id"),
+        nodes=tuple(nodes),
+        schema_version=_string(payload.get("schema_version"), "schema_version"),
+    )
+
+
+def _mapping(value: object, field_name: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+        raise TypeError(f"{field_name} must be an object with string keys")
+    return cast("Mapping[str, object]", value)
+
+
+def _sequence(value: object, field_name: str) -> Sequence[object]:
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        raise TypeError(f"{field_name} must be an array")
+    return cast("Sequence[object]", value)
+
+
+def _string(value: object, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise TypeError(f"{field_name} must be non-empty text")
+    return value
+
+
+def _integer(value: object, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{field_name} must be an integer")
+    return value
+
+
+def _boolean(value: object, field_name: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{field_name} must be a boolean")
+    return value
+
+
 __all__ = [
     "DAG_SCHEMA_VERSION",
     "DagDefinition",
@@ -280,6 +425,7 @@ __all__ = [
     "OrchestrationRole",
     "OrchestrationRunStatus",
     "RetryPolicy",
+    "dag_definition_from_payload",
     "dag_definition_payload",
     "dag_node_payload",
 ]
