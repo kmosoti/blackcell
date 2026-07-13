@@ -15,3 +15,4 @@ enabled = true
 max_concurrent_threads_per_session = 9
 hide_spawn_agent_metadata = false
 non_code_mode_only = false
+tool_namespace = "agents"

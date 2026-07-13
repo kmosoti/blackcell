@@ -40,6 +40,7 @@ def test_project_config_and_named_agents_are_explicit() -> None:
         "max_concurrent_threads_per_session": 9,
         "hide_spawn_agent_metadata": False,
         "non_code_mode_only": False,
+        "tool_namespace": "agents",
     }
     assert "suppress_unstable_features_warning" not in config
     assert not {
@@ -92,7 +93,8 @@ def test_repo_instructions_and_skills_require_no_history_spawns() -> None:
     assert "Five to eight workers require explicit user instruction" in agents_text
     assert "only one micro-edit worker" in agents_text
     assert "alternate Git refspec" in agents_text
-    assert "live `spawn_agent` schema exposes `agent_type`" in agents_text
+    assert "`functions.agents__spawn_agent`" in agents_text
+    assert "live spawn schema includes `agent_type`" in agents_text
     assert "Do not set the direct `model`, `reasoning_effort`, or `service_tier`" in agents_text
     assert "Optional delegation stays on the Terra root" in agents_text
 

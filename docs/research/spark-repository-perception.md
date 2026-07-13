@@ -113,9 +113,11 @@ its own model and tool work. Codex 0.144.1's MultiAgentV2 spawn implementation d
 The same release defaults `hide_spawn_agent_metadata` to `true`, which removes `agent_type`,
 `model`, `reasoning_effort`, and `service_tier` from the model-visible spawn schema. BlackCell
 explicitly enables MultiAgentV2 for every mode and sets that option to `false` so named project
-agents remain selectable. The named agent file, not direct spawn overrides, remains the normal
-source of a worker's model and reasoning configuration. Existing threads do not hot-reload this
-schema; configuration acceptance uses a fresh session.
+agents remain selectable. It also sets `tool_namespace = "agents"`, so a fresh session exposes
+`functions.agents__spawn_agent` and the related V2 tools. The named agent file, not direct spawn
+overrides, remains the normal source of a worker's model and reasoning configuration. Existing
+threads retain their original schema and do not hot-reload this change; configuration acceptance
+uses a fresh session.
 
 References:
 

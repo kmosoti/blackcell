@@ -35,12 +35,13 @@ Before nontrivial delegation, create and validate one shared change spec under
 `/tmp/blackcell-codex/<work-id>/change-spec.json`. Create one validated packet per independent
 worker under `workers/`, and persist returned JSON under `results/` before validating it.
 
-The project explicitly enables MultiAgentV2 and exposes its spawn metadata. A configuration change
-does not alter an already-started thread's tool schema; start a fresh Codex session before relying
-on newly exposed fields. Before delegation, confirm that the live `spawn_agent` schema exposes
-`agent_type`. Named agent files are the normal source of worker model, reasoning effort, sandbox,
-and instructions. Do not set the direct `model`, `reasoning_effort`, or `service_tier` spawn fields
-unless the user explicitly requests that override.
+The project explicitly enables MultiAgentV2, exposes its spawn metadata, and routes its tools
+through the `agents` namespace. A configuration change does not alter an already-started thread's
+tool schema. Start a fresh Codex session to expose `functions.agents__spawn_agent` and the related
+V2 tools, then confirm that the live spawn schema includes `agent_type`. Named agent files are the
+normal source of worker model, reasoning effort, sandbox, and instructions. Do not set the direct
+`model`, `reasoning_effort`, or `service_tier` spawn fields unless the user explicitly requests
+that override.
 
 If `agent_type` is absent, never substitute `task_name`, a generic worker, or root self-review.
 Optional delegation stays on the Terra root and records the capability fallback. A requested Spark
