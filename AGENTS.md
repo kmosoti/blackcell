@@ -29,6 +29,10 @@ Use the repository skills as the command-like lifecycle:
 `/plan` is a built-in Codex mode and cannot be overridden by repository prompts. An approved plan
 does not execute automatically; the next implementation request triggers `blackcell-change`.
 
+Use the authenticated local `gh` CLI and its API surface for repository GitHub metadata. Prefer
+native `gh issue`, `gh project`, and `gh api` operations and their readback output; do not route
+BlackCell issue relationships, Project fields, or development branches through a connector.
+
 ## Hyper-critical multi-dimensional planning
 
 Architecture, migration, runtime, release, and multi-issue work must be planned across five

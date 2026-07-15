@@ -12,7 +12,8 @@ Plan from the checked-out repository, not from stale conversation state.
 1. Read `AGENTS.md`, `blackcell.plan.yaml`, the active specification, relevant source and tests,
    the migration ledger, the current branch and status, and the recent history affecting the task.
    For a multi-issue program, also inspect the current GitHub assignees, labels, Project fields,
-   parent/sub-issue graph, blocking graph, and linked development branches.
+   parent/sub-issue graph, blocking graph, and linked development branches with the authenticated
+   local `gh` CLI or `gh api`; do not use a GitHub connector for this control-plane metadata.
 2. Confirm whether the request belongs to repository Codex tooling or the BlackCell runtime. Keep
    those boundaries separate.
 3. Map completed evidence, current gaps, dependencies, compatibility constraints, and unresolved
@@ -32,6 +33,8 @@ Plan from the checked-out repository, not from stale conversation state.
   read-only; `blackcell-change` materializes the approved metadata. If the available GitHub client
   lacks a required native mutation, state the blocker explicitly rather than treating body text,
   task lists, or branch names as equivalent metadata.
+- Name local `gh issue`, `gh project`, or `gh api` commands for approved materialization and
+  readback. Do not prescribe connector operations for repository control-plane delivery.
 - Record assumptions and explicit non-goals. Preserve consequential unknowns instead of inventing
   policy.
 - Return one concise `<proposed_plan>` block that another engineer can implement without making

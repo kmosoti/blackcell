@@ -134,6 +134,8 @@ def test_lifecycle_skills_are_discoverable_and_bounded() -> None:
     assert "delivery-metadata map" in plan
     assert "linked development branches" in plan
     assert "required native mutation" in plan
+    assert "local `gh` CLI" in plan
+    assert "do not use a GitHub connector" in plan
 
     for skill_name, agent_name, packet_mode in (
         ("blackcell-review", "k_reviewer", "review"),

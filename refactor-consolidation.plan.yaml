@@ -65,6 +65,7 @@ planning_dimensions:
 
 issue_delivery:
   repository: kmosoti/blackcell
+  materialization_tool: local-gh-cli
   integration_branch: refactor/consolidation
   superseded_branch: refactor/architecture-consolidation
   assignee: kmosoti
@@ -82,6 +83,7 @@ issue_delivery:
     body_summary: Stable architectural contract for AC00-AC07. It treats runtime-v1 as historical foundation context and uses this plan as the current evidence map.
   child_linkage: Each child names the parent epic and plan ID; the parent task list is updated with created issue numbers and dependency order.
   relationships:
+    kind: github-native
     parent_issue: 63
     ordered_children: [64, 65, 66, 67, 68, 69, 70, 71]
     blocked_by:

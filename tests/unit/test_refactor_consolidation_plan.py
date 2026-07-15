@@ -34,6 +34,7 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
     delivery = plan["issue_delivery"]
     assert delivery["integration_branch"] == "refactor/consolidation"
     assert delivery["superseded_branch"] == "refactor/architecture-consolidation"
+    assert delivery["materialization_tool"] == "local-gh-cli"
     assert delivery["assignee"] == "kmosoti"
     assert delivery["labels"] == {
         "default": ["enhancement"],
@@ -45,6 +46,7 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
         "type": "refactor",
     }
     assert delivery["relationships"] == {
+        "kind": "github-native",
         "parent_issue": 63,
         "ordered_children": list(range(64, 72)),
         "blocked_by": {
