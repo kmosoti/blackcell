@@ -1,4 +1,10 @@
+from blackcell.operator.facade import (
+    DEFAULT_CONSTRAINTS,
+    DEFAULT_OBJECTIVE,
+    RepositoryOperator,
+)
 from blackcell.operator.models import (
+    CanonicalOperatorRunResult,
     ExecutionSummary,
     HistoricalReplay,
     OperatorEvaluation,
@@ -8,11 +14,14 @@ from blackcell.operator.models import (
     RunArtifacts,
     StoredContextFrame,
 )
+from blackcell.operator.repository_adapters import (
+    RepositoryStatusError,
+    RepositoryStatusReader,
+    RepositoryStatusSnapshot,
+)
 from blackcell.operator.service import (
     ACTION_OBSERVED,
     CONTEXT_BUILT,
-    DEFAULT_CONSTRAINTS,
-    DEFAULT_OBJECTIVE,
     EVALUATION_RECORDED,
     POLICY_EVALUATED,
     PROPOSAL_RECORDED,
@@ -25,7 +34,9 @@ from blackcell.operator.service import (
     TRANSITION_COMMITTED,
     ActionExecutor,
     RepositoryObserver,
-    RepositoryOperator,
+)
+from blackcell.operator.service import (
+    RepositoryOperator as LegacyRepositoryOperator,
 )
 
 __all__ = [
@@ -44,14 +55,19 @@ __all__ = [
     "TRACE_RECORDED",
     "TRANSITION_COMMITTED",
     "ActionExecutor",
+    "CanonicalOperatorRunResult",
     "ExecutionSummary",
     "HistoricalReplay",
+    "LegacyRepositoryOperator",
     "OperatorEvaluation",
     "OperatorRunResult",
     "OperatorRunStatus",
     "ReplayArtifact",
     "RepositoryObserver",
     "RepositoryOperator",
+    "RepositoryStatusError",
+    "RepositoryStatusReader",
+    "RepositoryStatusSnapshot",
     "RunArtifacts",
     "StoredContextFrame",
 ]

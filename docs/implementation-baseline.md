@@ -58,15 +58,32 @@ store is the only path eligible to become the authoritative write model. Migrati
 dual writes. The ledger and latent stores may be read through compatibility adapters until their
 data is migrated or their experiments are retired.
 
-The event kernel already provides envelopes, artifacts, projections, and checkpoints. It does not
-yet provide the complete transactional append, idempotent inbox, durable DAG lease, or fencing
-semantics required by the target runtime.
+The event kernel provides envelopes, artifacts, projections, checkpoints, atomic batches, and a
+caller-owned in-transaction append used by the SQLite adapter session. The orchestration adapter
+now adds content-idempotent run submission and attempt outcomes, durable leases, fencing, retry
+backoff, approval decisions, recovery, and restart reconstruction without creating a second write
+model. A generic transport inbox and remote worker dispatcher are not part of this local scheduler.
 
 ## Deployment baseline
 
-The current container is a root development shell. It does not expose the intended HTTP service,
-health endpoints, non-root runtime user, or an explicit persistent data volume. Container hardening
-and the Podman-first deployment contract are therefore measured work, not assumed capabilities.
+The service now has framework-neutral security configuration for an explicit owner-only data root,
+opaque environment-or-file credential, strict Bearer and scope checks, zero proxy trust, and
+pre-storage redaction. A Litestar/msgspec `/api/v1` edge composes those checks over canonical
+observation, operator run, context, replay, evaluation, event, and scheduler approval use cases,
+with public liveness/readiness and an owner-only SQLite file. The `blackcell-runtime` entry point
+now runs that edge through one bounded Granian ASGI worker or runs a durable scheduler worker over
+the reviewed five-role Repository Operator DAG. Both modes consume the same explicit security and
+data configuration; API backpressure, leases, polling, and graceful shutdown are bounded. The
+canonical workflow now emits stable, correlated, pre-export-redacted spans through an opt-in
+OpenTelemetry OTLP/HTTP adapter with bounded asynchronous batching and process-owned shutdown.
+One multi-stage OCI image now runs both API and worker under numeric non-root identity, and the
+rootless Podman Compose contract adds loopback publication, health sequencing, read-only roots and
+repository access, dropped capabilities, runtime-only token injection, and durable named-volume
+state. WP22b now adds a consistent SQLite-plus-artifact recovery bundle, strict independent
+verification, non-destructive restore, verified-only retention, global protected-request admission,
+active-storage reserve, and an exact serialized artifact ceiling. An external-copy drill proves
+restore and live-free replay after source-state loss; offsite transport and host capacity monitoring
+remain deployment responsibilities.
 
 ## Preserved contracts
 
@@ -85,10 +102,10 @@ Until a work package explicitly replaces them with tested compatibility:
 - overlapping runtime and persistence implementations;
 - orchestration concentrated in two large modules;
 - 23 SQLite `ResourceWarning` instances under strict warning reporting;
-- no architectural dependency tests;
-- no first-class model gateway;
-- no Litestar/Granian operator API;
-- no production-shaped rootless Podman image;
-- no durable multi-agent DAG scheduler, leases, or fencing tokens.
+- remaining dependency debt is tracked in `architecture/dependency_debt.json`;
+- no published, signed, or attested runtime image;
+- no deployed OpenTelemetry collector or container telemetry composition;
+- no automated offsite backup transport, encrypted bundle format, or filesystem/cgroup hard quota;
+- no fault-injected power-loss claim for untested storage hardware.
 
 No production behavior changes are included in WP00.

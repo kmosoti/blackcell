@@ -54,7 +54,35 @@ class AffordanceAdapter(Protocol):
     ) -> AdapterOutcome: ...
 
 
-class ExecutionJournal(Protocol):
+class ExecutionEvidenceJournal(Protocol):
+    """Read-only access to exact evidence owned by an execution journal."""
+
+    def get(self, idempotency_key: str) -> ExecutionResult | None: ...
+
+    def get_by_authorization(self, decision_id: str) -> ExecutionResult | None: ...
+
+    def get_by_invocation(self, invocation_id: str) -> ExecutionResult | None: ...
+
+    def get_entry_by_invocation(
+        self,
+        invocation_id: str,
+    ) -> ExecutionJournalEntry | None: ...
+
+    def get_preparation(
+        self,
+        execution_identity_digest: str,
+    ) -> ExecutionPreparation | None: ...
+
+    def list_entries(
+        self,
+        *,
+        after_position: int = 0,
+        limit: int | None = None,
+        status: ExecutionJournalStatus | None = None,
+    ) -> tuple[ExecutionJournalEntry, ...]: ...
+
+
+class ExecutionJournal(ExecutionEvidenceJournal, Protocol):
     def acquire(
         self,
         preparation: ExecutionPreparation,
@@ -76,25 +104,6 @@ class ExecutionJournal(Protocol):
         *,
         recorded_at: datetime,
     ) -> ExecutionResult: ...
-
-    def get(self, idempotency_key: str) -> ExecutionResult | None: ...
-
-    def get_by_authorization(self, decision_id: str) -> ExecutionResult | None: ...
-
-    def get_by_invocation(self, invocation_id: str) -> ExecutionResult | None: ...
-
-    def get_preparation(
-        self,
-        execution_identity_digest: str,
-    ) -> ExecutionPreparation | None: ...
-
-    def list_entries(
-        self,
-        *,
-        after_position: int = 0,
-        limit: int | None = None,
-        status: ExecutionJournalStatus | None = None,
-    ) -> tuple[ExecutionJournalEntry, ...]: ...
 
 
 type AdapterRegistry = Mapping[str, AffordanceAdapter]

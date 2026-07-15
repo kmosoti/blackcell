@@ -6,11 +6,13 @@ from blackcell.gateway.models import (
     DataClassification,
     GatewayAuditRecord,
     GatewayBudget,
+    GatewayFailureCode,
     GatewayResult,
     LocalityPolicy,
     ModelCapability,
     ModelRequest,
     ModelResponse,
+    PreparedGatewayCall,
     RoutingDecision,
 )
 from blackcell.gateway.profiles import GatewayProfile
@@ -23,6 +25,7 @@ __all__ = [
     "GatewayAuditRecord",
     "GatewayBudget",
     "GatewayConfiguration",
+    "GatewayFailureCode",
     "GatewayProfile",
     "GatewayResult",
     "LocalityPolicy",
@@ -30,5 +33,6 @@ __all__ = [
     "ModelGateway",
     "ModelRequest",
     "ModelResponse",
+    "PreparedGatewayCall",
     "RoutingDecision",
 ]

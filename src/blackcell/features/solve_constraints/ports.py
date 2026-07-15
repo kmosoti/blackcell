@@ -2,6 +2,8 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
+from blackcell.features.solve_constraints.command import SolveConstraints
+from blackcell.features.solve_constraints.models import ConstraintEvaluation
 from blackcell.kernel import JsonScalar
 
 
@@ -34,3 +36,11 @@ class ContextFrameLike(Protocol):
 
     @property
     def evidence(self) -> Sequence[ContextEvidenceLike]: ...
+
+
+class ConstraintSolver(Protocol):
+    def handle(
+        self,
+        command: SolveConstraints,
+        frame: ContextFrameLike,
+    ) -> ConstraintEvaluation: ...

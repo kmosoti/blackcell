@@ -121,9 +121,10 @@ where possible downstream idempotency.
   recovery and adapter reconciliation.
 - A committed journal result whose run event was not appended is recoverable evidence, but
   automatic run-event repair is deferred.
-- The current WAL and file-write configuration establishes process-crash recovery. Sudden
-  power-loss durability is not claimed until SQLite critical commits, directory fsync behavior,
-  backup, and restore are tested as a system.
+- The WAL and file-write configuration establishes process-crash recovery. WP22b now tests SQLite
+  online backup, artifact inventory, file and directory fsync, external-copy restore, integrity,
+  and live-free replay as one local system. Sudden power-loss behavior on a particular filesystem
+  or storage device is still not claimed without fault-injected evidence for that deployment.
 - Run ordering is enforced by the run-recorder adapter. Direct low-level EventStore writers remain
   responsible for respecting the aggregate grammar.
 

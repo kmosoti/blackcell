@@ -54,6 +54,15 @@ class EvidenceCandidateLike(Protocol):
     @property
     def conflicted(self) -> bool: ...
 
+    @property
+    def epistemic_status(self) -> str: ...
+
+    @property
+    def unknown_reason(self) -> str | None: ...
+
+    @property
+    def expires_at(self) -> datetime | None: ...
+
 
 class EvidenceOmissionLike(EvidenceCandidateLike, Protocol):
     @property
@@ -82,6 +91,9 @@ class EvidenceSelectionLike(Protocol):
     def selection_id(self) -> str: ...
 
     @property
+    def schema_version(self) -> str: ...
+
+    @property
     def source_packet_id(self) -> str: ...
 
     @property
@@ -98,6 +110,9 @@ class EvidenceSelectionLike(Protocol):
 
     @property
     def state_stream_position(self) -> int: ...
+
+    @property
+    def state_effective_time(self) -> datetime | None: ...
 
     @property
     def source_claim_identities(self) -> Sequence[EvidenceClaimIdentityLike]: ...

@@ -1,0 +1,59 @@
+{
+  "schema_version": "runtime-v1-decision/v1",
+  "work_package": "WP12",
+  "decision": "promote",
+  "recorded_on": "2026-07-13",
+  "subject": "Clingo constraint-solver adapter",
+  "compatibility_probe": {
+    "argv": [
+      "uv",
+      "run",
+      "python",
+      "-c",
+      "import json, platform, clingo; print(json.dumps({'python': platform.python_version(), 'clingo': clingo.__version__}, sort_keys=True))"
+    ],
+    "result": {
+      "python": "3.14.6",
+      "clingo": "5.8.0"
+    },
+    "status": "pass"
+  },
+  "promotion_boundary": {
+    "feature_port": "blackcell.features.solve_constraints.ConstraintSolver",
+    "adapter": "blackcell.adapters.reasoning.ClingoConstraintSolver",
+    "dependency": "clingo>=5.8.0,<6",
+    "locked_version": "5.8.0",
+    "workflow_default": "DeterministicConstraintSolver",
+    "explicit_injection_only": true
+  },
+  "semantic_contract": [
+    "Blackcell deterministic policy selects evidence and owns freshness, confidence, conflict, unknown, provenance, explanation, proof identity, and authorization semantics",
+    "Clingo independently checks each decisive EXISTS, EQUALS, NOT_EQUALS, IN, and NOT_IN predicate result using canonical JSON scalar identities",
+    "the adapter returns the exact reference ConstraintEvaluation and proof artifacts when parity holds",
+    "any disagreement, malformed mapping, solver error, or non-unique model fails closed with a content-free integrity error"
+  ],
+  "verification": {
+    "focused_test": "tests/unit/test_clingo_constraint_solver.py",
+    "operator_cases": [
+      "exists",
+      "equals",
+      "not-equals",
+      "in",
+      "not-in"
+    ],
+    "policy_cases": [
+      "missing",
+      "stale",
+      "conflicting",
+      "canonical-bool-vs-int",
+      "parity-drift-fail-closed",
+      "workflow-explicit-injection"
+    ],
+    "status": "pass"
+  },
+  "limitations": [
+    "promotion establishes compatibility and semantic parity, not improved policy quality",
+    "Clingo does not receive authority to reinterpret evidence or bypass a deterministic denial",
+    "the Repository Operator and DailyOperatorV2Workflow defaults remain deterministic Python policy"
+  ]
+}

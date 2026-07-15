@@ -71,6 +71,67 @@ def test_redact_sensitive_mode_detects_bearer_values_and_truncates() -> None:
     assert sanitized == {"header": "[REDACTED]", "label": "abcd"}
 
 
+def test_content_policy_redacts_exact_runtime_secret_and_credential_shapes() -> None:
+    token = "Runtime-v1_opaque-token.0123456789-ABCDEFG"
+    policy = ContentPolicy(
+        mode=ContentMode.REDACT_SENSITIVE,
+        sensitive_values=(token,),
+    )
+
+    sanitized = policy.sanitize(
+        {
+            "detail": f"request failed with {token}",
+            "authorization_header": "not-even-a-token",
+            "nested": {
+                "connection": "https://runtime:credential@example.test/path",
+                "provider": "github_pat_abcdefghijklmnopqrstuvwxyz",
+                token: "secret-in-key",
+            },
+        }
+    )
+
+    assert sanitized == {
+        "detail": "[REDACTED]",
+        "authorization_header": "[REDACTED]",
+        "nested": {
+            "connection": "[REDACTED]",
+            "provider": "[REDACTED]",
+            "[REDACTED]": "[REDACTED]",
+        },
+    }
+    assert token not in repr(policy)
+
+
+def test_configured_secret_is_redacted_from_exception_before_export() -> None:
+    token = "Runtime-v1_opaque-token.0123456789-ABCDEFG"
+    exporter = CollectingExporter()
+    recorder = TraceRecorder(
+        content_policy=ContentPolicy(sensitive_values=(token,)),
+        exporters=(exporter,),
+    )
+
+    with (
+        pytest.raises(RuntimeError, match="request failed"),
+        recorder.span(
+            SpanNames.MODEL_DECIDE,
+            trace_id=token,
+            parent_span_id=token,
+            correlation_ids={"request_id": token, "api_token": "opaque"},
+        ),
+    ):
+        raise RuntimeError(f"request failed with {token}")
+
+    assert recorder.records()[0].attributes["error.message"] == "[REDACTED]"
+    assert recorder.records()[0].trace_id == "[REDACTED]"
+    assert recorder.records()[0].parent_span_id == "[REDACTED]"
+    assert recorder.records()[0].correlation_ids == {
+        "request_id": "[REDACTED]",
+        "api_token": "[REDACTED]",
+    }
+    assert exporter.records[0].attributes["error.message"] == "[REDACTED]"
+    assert token not in repr(exporter.records[0])
+
+
 def test_error_span_redacts_exception_message_and_preserves_failure() -> None:
     recorder = TraceRecorder()
 
@@ -109,3 +170,22 @@ def test_duration_can_be_measured_with_injected_clocks() -> None:
         pass
 
     assert recorder.records()[0].duration_ms == pytest.approx(25)
+
+
+def test_trace_recorder_supports_bounded_or_export_only_retention() -> None:
+    exporter = CollectingExporter()
+    bounded = TraceRecorder(exporters=(exporter,), max_records=1)
+    export_only = TraceRecorder(exporters=(exporter,), max_records=0)
+
+    with bounded.span(SpanNames.OBSERVE):
+        pass
+    with bounded.span(SpanNames.PROJECT_STATE):
+        pass
+    with export_only.span(SpanNames.BUILD_CONTEXT):
+        pass
+
+    assert tuple(record.name for record in bounded.records()) == (SpanNames.PROJECT_STATE,)
+    assert export_only.records() == ()
+    assert len(exporter.records) == 3
+    with pytest.raises(ValueError, match="max_records"):
+        TraceRecorder(max_records=-1)

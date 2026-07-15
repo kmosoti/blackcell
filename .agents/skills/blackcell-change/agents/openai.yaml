@@ -1,0 +1,4 @@
+interface:
+  display_name: "BlackCell Change"
+  short_description: "Run validated BlackCell implementation changes"
+  default_prompt: "Use $blackcell-change to implement a nontrivial BlackCell change with a validated minimal-context handoff."

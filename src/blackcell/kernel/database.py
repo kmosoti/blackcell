@@ -5,10 +5,13 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from time import monotonic, sleep
 
 from blackcell.kernel.errors import SchemaVersionError
 
 SCHEMA_VERSION = 1
+_BUSY_TIMEOUT_MILLISECONDS = 30_000
+_WAL_RETRY_INTERVAL_SECONDS = 0.01
 
 _SCHEMA_V1 = """
 create table if not exists kernel_schema_migrations (
@@ -78,37 +81,63 @@ create table if not exists projection_checkpoints (
 def initialize_database(path: Path) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with connect(path) as connection:
-        current = int(connection.execute("pragma user_version").fetchone()[0])
-        if current > SCHEMA_VERSION:
-            raise SchemaVersionError(
-                f"kernel database schema {current} is newer than supported schema {SCHEMA_VERSION}"
-            )
-        if current < 1:
-            connection.executescript(
-                "begin immediate;\n"
-                f"{_SCHEMA_V1}\n"
-                "insert into kernel_schema_migrations(version, applied_at) "
-                "values (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));\n"
-                "pragma user_version = 1;\n"
-                "commit;"
-            )
+        connection.execute("begin immediate")
+        try:
+            # Read the version only after taking the write lock. Concurrent
+            # first-open callers may all observe a new database before this
+            # point; the lock holder initializes it and later callers then see
+            # the committed version instead of replaying migration 1.
+            current = int(connection.execute("pragma user_version").fetchone()[0])
+            if current > SCHEMA_VERSION:
+                raise SchemaVersionError(
+                    f"kernel database schema {current} is newer than supported schema "
+                    f"{SCHEMA_VERSION}"
+                )
+            if current < 1:
+                _execute_schema(connection, _SCHEMA_V1)
+                connection.execute(
+                    "insert into kernel_schema_migrations(version, applied_at) "
+                    "values (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+                )
+                connection.execute("pragma user_version = 1")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
     _owner_only_file(path)
+
+
+def _execute_schema(connection: sqlite3.Connection, script: str) -> None:
+    """Execute a schema script without leaving the caller's transaction."""
+
+    pending = ""
+    for line in script.splitlines(keepends=True):
+        pending += line
+        if sqlite3.complete_statement(pending):
+            connection.execute(pending)
+            pending = ""
+    if pending.strip():  # pragma: no cover - static schema authoring invariant
+        raise RuntimeError("kernel schema contains an incomplete SQL statement")
 
 
 @contextmanager
 def connect(path: Path) -> Iterator[sqlite3.Connection]:
-    connection = sqlite3.connect(path, timeout=30.0, isolation_level=None)
-    _owner_only_file(path)
-    connection.row_factory = sqlite3.Row
-    connection.execute("pragma foreign_keys = on")
-    connection.execute("pragma busy_timeout = 30000")
-    connection.execute("pragma journal_mode = wal")
-    connection.execute("pragma synchronous = normal")
-    for suffix in ("-wal", "-shm"):
-        auxiliary = Path(f"{path}{suffix}")
-        if auxiliary.exists():
-            _owner_only_file(auxiliary)
+    connection = sqlite3.connect(
+        path,
+        timeout=_BUSY_TIMEOUT_MILLISECONDS / 1_000,
+        isolation_level=None,
+    )
     try:
+        _owner_only_file(path)
+        connection.row_factory = sqlite3.Row
+        connection.execute("pragma foreign_keys = on")
+        connection.execute(f"pragma busy_timeout = {_BUSY_TIMEOUT_MILLISECONDS}")
+        _enable_wal(connection)
+        connection.execute("pragma synchronous = normal")
+        for suffix in ("-wal", "-shm"):
+            auxiliary = Path(f"{path}{suffix}")
+            if auxiliary.exists():
+                _owner_only_file(auxiliary)
         yield connection
     finally:
         connection.close()
@@ -116,6 +145,22 @@ def connect(path: Path) -> Iterator[sqlite3.Connection]:
             auxiliary = Path(f"{path}{suffix}")
             if auxiliary.exists():
                 _owner_only_file(auxiliary)
+
+
+def _enable_wal(connection: sqlite3.Connection) -> None:
+    """Negotiate persistent WAL mode across concurrent first-open callers."""
+
+    deadline = monotonic() + (_BUSY_TIMEOUT_MILLISECONDS / 1_000)
+    while True:
+        try:
+            row = connection.execute("pragma journal_mode = wal").fetchone()
+            if row is None or str(row[0]).casefold() != "wal":
+                raise RuntimeError("kernel database did not enter WAL journal mode")
+            return
+        except sqlite3.OperationalError as error:
+            if "locked" not in str(error).casefold() or monotonic() >= deadline:
+                raise
+            sleep(_WAL_RETRY_INTERVAL_SECONDS)
 
 
 def _owner_only_file(path: Path) -> None:

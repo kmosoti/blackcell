@@ -8,6 +8,15 @@ from blackcell.kernel import JsonScalar
 from blackcell.kernel._json import json_digest
 
 
+class EvidenceEpistemicStatus(StrEnum):
+    OBSERVED = "observed"
+    UNKNOWN = "unknown"
+
+
+class EvidenceUnknownReason(StrEnum):
+    EXPIRED = "expired"
+
+
 @dataclass(frozen=True, slots=True)
 class EvidenceKey:
     subject: str
@@ -28,8 +37,24 @@ class EvidenceClaimIdentity:
             raise ValueError("evidence claim identities must not be empty")
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class UnknownEvidenceSupport:
+    source_event_id: str
+    claim_id: str
+    expires_at: datetime
+    unknown_reason: EvidenceUnknownReason = EvidenceUnknownReason.EXPIRED
+
+    def __post_init__(self) -> None:
+        if not self.source_event_id.strip() or not self.claim_id.strip():
+            raise ValueError("unknown evidence support identities must not be empty")
+        _require_aware(self.expires_at, "unknown evidence support expires_at")
+        if not isinstance(self.unknown_reason, EvidenceUnknownReason):
+            raise TypeError("unknown evidence support reason must be recognized")
+
+
 class RequiredEvidenceGapReason(StrEnum):
     ABSENT = "absent-required-key"
+    UNKNOWN = "unknown-required-key"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +67,8 @@ class RequiredEvidenceGap:
     state_stream_position: int
     reason: RequiredEvidenceGapReason = RequiredEvidenceGapReason.ABSENT
     schema_version: str = "required-evidence-gap/v2"
+    state_effective_time: datetime | None = None
+    unknown_supports: tuple[UnknownEvidenceSupport, ...] = ()
     gap_id: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -53,23 +80,32 @@ class RequiredEvidenceGap:
             raise ValueError("state positions must be non-negative")
         if self.state_stream_id is None and self.state_stream_position:
             raise ValueError("an unbound gap scope cannot have a stream position")
-        object.__setattr__(
-            self,
-            "gap_id",
-            json_digest(
-                {
-                    "schema_version": self.schema_version,
-                    "subject": self.key.subject,
-                    "predicate": self.key.predicate,
-                    "source_packet_id": self.source_packet_id,
-                    "state_domain": self.state_domain,
-                    "state_stream_id": self.state_stream_id,
-                    "state_global_position": self.state_global_position,
-                    "state_stream_position": self.state_stream_position,
-                    "reason": self.reason,
-                }
-            ),
-        )
+        if self.state_effective_time is not None:
+            _require_aware(self.state_effective_time, "state_effective_time")
+        if tuple(sorted(set(self.unknown_supports))) != self.unknown_supports:
+            raise ValueError("unknown evidence supports must be sorted and unique")
+        if self.reason is RequiredEvidenceGapReason.ABSENT and self.unknown_supports:
+            raise ValueError("absent required-evidence gaps cannot have unknown support")
+        if self.reason is RequiredEvidenceGapReason.UNKNOWN and not self.unknown_supports:
+            raise ValueError("unknown required-evidence gaps require supporting claims")
+        if self.schema_version not in {
+            "required-evidence-gap/v2",
+            "required-evidence-gap/v3",
+        }:
+            raise ValueError("required-evidence gap schema is unsupported")
+        if self.schema_version == "required-evidence-gap/v2" and (
+            self.state_effective_time is not None
+            or self.unknown_supports
+            or self.reason is not RequiredEvidenceGapReason.ABSENT
+        ):
+            raise ValueError("required-evidence-gap/v2 cannot contain epistemic extensions")
+        if self.schema_version == "required-evidence-gap/v3" and (
+            self.state_effective_time is None
+            and not self.unknown_supports
+            and self.reason is RequiredEvidenceGapReason.ABSENT
+        ):
+            raise ValueError("required-evidence-gap/v3 requires epistemic extensions")
+        object.__setattr__(self, "gap_id", json_digest(_gap_payload(self)))
 
 
 class MissingRequiredEvidenceError(ValueError):
@@ -102,11 +138,28 @@ class EvidenceCandidate:
     score: int
     reasons: tuple[str, ...]
     conflicted: bool
+    epistemic_status: EvidenceEpistemicStatus = EvidenceEpistemicStatus.OBSERVED
+    unknown_reason: EvidenceUnknownReason | None = None
+    expires_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        _validate_claim_semantics(
+            value=self.value,
+            confidence=self.confidence,
+            effective_at=self.effective_at,
+            stale=self.stale,
+            epistemic_status=self.epistemic_status,
+            unknown_reason=self.unknown_reason,
+            expires_at=self.expires_at,
+        )
+        if self.epistemic_status is not EvidenceEpistemicStatus.OBSERVED:
+            raise ValueError("unknown claims cannot be positive evidence candidates")
 
 
 class EvidenceOmissionReason(StrEnum):
     IRRELEVANT = "irrelevant"
     RESULT_LIMIT = "retrieval-result-cap"
+    UNKNOWN = "expired-unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,15 +182,38 @@ class EvidenceOmission:
     conflicted: bool
     reason: EvidenceOmissionReason
     schema_version: str = "evidence-omission/v2"
+    epistemic_status: EvidenceEpistemicStatus = EvidenceEpistemicStatus.OBSERVED
+    unknown_reason: EvidenceUnknownReason | None = None
+    expires_at: datetime | None = None
     omission_id: str = field(init=False)
 
     def __post_init__(self) -> None:
+        _validate_claim_semantics(
+            value=self.value,
+            confidence=self.confidence,
+            effective_at=self.effective_at,
+            stale=self.stale,
+            epistemic_status=self.epistemic_status,
+            unknown_reason=self.unknown_reason,
+            expires_at=self.expires_at,
+        )
         if "required" in self.reasons:
             raise ValueError("required evidence cannot be recorded as omitted")
         if self.reason is EvidenceOmissionReason.IRRELEVANT and self.reasons:
             raise ValueError("irrelevant omissions cannot have selection reasons")
         if self.reason is EvidenceOmissionReason.RESULT_LIMIT and not self.reasons:
             raise ValueError("result-limit omissions require selection reasons")
+        if self.reason is EvidenceOmissionReason.UNKNOWN:
+            if self.reasons or self.epistemic_status is not EvidenceEpistemicStatus.UNKNOWN:
+                raise ValueError("expired-unknown omissions require unknown claim semantics")
+        elif self.epistemic_status is not EvidenceEpistemicStatus.OBSERVED:
+            raise ValueError("unknown claims require the expired-unknown omission reason")
+        if self.schema_version not in {"evidence-omission/v2", "evidence-omission/v3"}:
+            raise ValueError("evidence omission schema is unsupported")
+        if self.schema_version == "evidence-omission/v2" and _has_epistemic_extensions(self):
+            raise ValueError("evidence-omission/v2 cannot contain epistemic extensions")
+        if self.schema_version == "evidence-omission/v3" and not _has_epistemic_extensions(self):
+            raise ValueError("evidence-omission/v3 requires epistemic extensions")
         object.__setattr__(self, "omission_id", json_digest(_omission_payload(self)))
 
 
@@ -156,6 +232,7 @@ class EvidenceSelection:
     required_keys: tuple[EvidenceKey, ...] = ()
     required_match_count: int = 0
     schema_version: str = "evidence-selection/v4"
+    state_effective_time: datetime | None = None
     selection_id: str = field(init=False)
 
     @property
@@ -173,6 +250,10 @@ class EvidenceSelection:
     def __post_init__(self) -> None:
         if not self.source_packet_purpose.strip() or not self.state_domain.strip():
             raise ValueError("packet purpose and state domain must not be empty")
+        if self.state_effective_time is not None:
+            _require_aware(self.state_effective_time, "state_effective_time")
+        if self.schema_version not in {"evidence-selection/v4", "evidence-selection/v5"}:
+            raise ValueError("evidence selection schema is unsupported")
         if self.state_stream_id is not None and not self.state_stream_id.strip():
             raise ValueError("state_stream_id must not be blank")
         if self.state_global_position < 0 or self.state_stream_position < 0:
@@ -205,21 +286,37 @@ class EvidenceSelection:
             raise ValueError("selected and omitted evidence identities must be disjoint")
         if candidate_identities | omission_identities != set(self.source_claim_identities):
             raise ValueError("evidence dispositions must exactly cover source packet claims")
+        has_epistemic_extensions = self.state_effective_time is not None or any(
+            _has_epistemic_extensions(item) for item in dispositions
+        )
+        if self.schema_version == "evidence-selection/v4" and has_epistemic_extensions:
+            raise ValueError("evidence-selection/v4 cannot contain epistemic extensions")
+        if self.schema_version == "evidence-selection/v5" and not has_epistemic_extensions:
+            raise ValueError("evidence-selection/v5 requires epistemic extensions")
         required = {(key.subject, key.predicate) for key in self.required_keys}
-        matching_dispositions = tuple(
-            item for item in dispositions if (item.subject, item.predicate) in required
+        matching_observed_dispositions = tuple(
+            item
+            for item in dispositions
+            if (item.subject, item.predicate) in required
+            and item.epistemic_status is EvidenceEpistemicStatus.OBSERVED
         )
         unselected_required = tuple(
             item
             for item in self.candidates
             if (item.subject, item.predicate) in required and "required" not in item.reasons
-        ) + tuple(item for item in self.omissions if (item.subject, item.predicate) in required)
+        ) + tuple(
+            item
+            for item in self.omissions
+            if (item.subject, item.predicate) in required
+            and item.epistemic_status is EvidenceEpistemicStatus.OBSERVED
+        )
         if unselected_required:
             raise ValueError("every required matching disposition must be selected as required")
-        if self.required_match_count != len(matching_dispositions):
+        if self.required_match_count != len(matching_observed_dispositions):
             raise ValueError(
-                "required_match_count must equal all matching source dispositions: "
-                f"expected {len(matching_dispositions)}, got {self.required_match_count}"
+                "required_match_count must equal all matching observed dispositions: "
+                f"expected {len(matching_observed_dispositions)}, "
+                f"got {self.required_match_count}"
             )
         unexpected_required = tuple(
             item
@@ -246,40 +343,83 @@ class EvidenceSelection:
                 "evidence selection does not contain every required match: "
                 f"expected {self.required_match_count}, selected {len(required_candidates)}"
             )
-        object.__setattr__(
-            self,
-            "selection_id",
-            json_digest(
-                {
-                    "schema_version": self.schema_version,
-                    "objective": self.objective,
-                    "source_packet_id": self.source_packet_id,
-                    "source_packet_purpose": self.source_packet_purpose,
-                    "state_domain": self.state_domain,
-                    "state_stream_id": self.state_stream_id,
-                    "state_global_position": self.state_global_position,
-                    "state_stream_position": self.state_stream_position,
-                    "source_claim_identities": [
-                        {
-                            "source_event_id": identity.source_event_id,
-                            "claim_id": identity.claim_id,
-                        }
-                        for identity in self.source_claim_identities
-                    ],
-                    "required_keys": [
-                        {"subject": key.subject, "predicate": key.predicate}
-                        for key in self.required_keys
-                    ],
-                    "required_match_count": self.required_match_count,
-                    "candidates": [_candidate_payload(item) for item in self.candidates],
-                    "omissions": [_omission_payload(item) for item in self.omissions],
-                }
-            ),
+        object.__setattr__(self, "selection_id", json_digest(_selection_payload(self)))
+
+
+def _gap_payload(gap: RequiredEvidenceGap) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "schema_version": gap.schema_version,
+        "subject": gap.key.subject,
+        "predicate": gap.key.predicate,
+        "source_packet_id": gap.source_packet_id,
+        "state_domain": gap.state_domain,
+        "state_stream_id": gap.state_stream_id,
+        "state_global_position": gap.state_global_position,
+        "state_stream_position": gap.state_stream_position,
+        "reason": gap.reason,
+    }
+    if gap.schema_version == "required-evidence-gap/v3":
+        payload.update(
+            {
+                "state_effective_time": (
+                    gap.state_effective_time.isoformat()
+                    if gap.state_effective_time is not None
+                    else None
+                ),
+                "unknown_supports": [
+                    {
+                        "source_event_id": support.source_event_id,
+                        "claim_id": support.claim_id,
+                        "expires_at": support.expires_at.isoformat(),
+                        "unknown_reason": support.unknown_reason,
+                    }
+                    for support in gap.unknown_supports
+                ],
+            }
         )
+    return payload
 
 
-def _candidate_payload(candidate: EvidenceCandidate) -> dict[str, object]:
-    return {
+def _selection_payload(selection: EvidenceSelection) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "schema_version": selection.schema_version,
+        "objective": selection.objective,
+        "source_packet_id": selection.source_packet_id,
+        "source_packet_purpose": selection.source_packet_purpose,
+        "state_domain": selection.state_domain,
+        "state_stream_id": selection.state_stream_id,
+        "state_global_position": selection.state_global_position,
+        "state_stream_position": selection.state_stream_position,
+        "source_claim_identities": [
+            {
+                "source_event_id": identity.source_event_id,
+                "claim_id": identity.claim_id,
+            }
+            for identity in selection.source_claim_identities
+        ],
+        "required_keys": [
+            {"subject": key.subject, "predicate": key.predicate} for key in selection.required_keys
+        ],
+        "required_match_count": selection.required_match_count,
+        "candidates": [
+            _candidate_payload(item, selection.schema_version) for item in selection.candidates
+        ],
+        "omissions": [_omission_payload(item) for item in selection.omissions],
+    }
+    if selection.schema_version == "evidence-selection/v5":
+        payload["state_effective_time"] = (
+            selection.state_effective_time.isoformat()
+            if selection.state_effective_time is not None
+            else None
+        )
+    return payload
+
+
+def _candidate_payload(
+    candidate: EvidenceCandidate,
+    selection_schema_version: str,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
         "claim_id": candidate.claim_id,
         "subject": candidate.subject,
         "predicate": candidate.predicate,
@@ -297,10 +437,13 @@ def _candidate_payload(candidate: EvidenceCandidate) -> dict[str, object]:
         "reasons": list(candidate.reasons),
         "conflicted": candidate.conflicted,
     }
+    if selection_schema_version == "evidence-selection/v5":
+        payload.update(_epistemic_payload(candidate))
+    return payload
 
 
 def _omission_payload(omission: EvidenceOmission) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "schema_version": omission.schema_version,
         "claim_id": omission.claim_id,
         "subject": omission.subject,
@@ -320,3 +463,60 @@ def _omission_payload(omission: EvidenceOmission) -> dict[str, object]:
         "conflicted": omission.conflicted,
         "reason": omission.reason,
     }
+    if omission.schema_version == "evidence-omission/v3":
+        payload.update(_epistemic_payload(omission))
+    return payload
+
+
+def _epistemic_payload(
+    item: EvidenceCandidate | EvidenceOmission,
+) -> dict[str, object]:
+    return {
+        "epistemic_status": item.epistemic_status,
+        "unknown_reason": item.unknown_reason,
+        "expires_at": item.expires_at.isoformat() if item.expires_at is not None else None,
+    }
+
+
+def _has_epistemic_extensions(item: EvidenceCandidate | EvidenceOmission) -> bool:
+    return (
+        item.epistemic_status is not EvidenceEpistemicStatus.OBSERVED
+        or item.unknown_reason is not None
+        or item.expires_at is not None
+    )
+
+
+def _validate_claim_semantics(
+    *,
+    value: JsonScalar,
+    confidence: float,
+    effective_at: datetime,
+    stale: bool,
+    epistemic_status: EvidenceEpistemicStatus,
+    unknown_reason: EvidenceUnknownReason | None,
+    expires_at: datetime | None,
+) -> None:
+    if not isinstance(epistemic_status, EvidenceEpistemicStatus):
+        raise TypeError("epistemic_status must be recognized")
+    if unknown_reason is not None and not isinstance(unknown_reason, EvidenceUnknownReason):
+        raise TypeError("unknown_reason must be recognized")
+    if expires_at is not None:
+        _require_aware(expires_at, "expires_at")
+        if expires_at < effective_at:
+            raise ValueError("expires_at cannot precede effective_at")
+    if epistemic_status is EvidenceEpistemicStatus.OBSERVED:
+        if unknown_reason is not None:
+            raise ValueError("observed evidence cannot have an unknown reason")
+    elif (
+        value is not None
+        or confidence != 0.0
+        or unknown_reason is not EvidenceUnknownReason.EXPIRED
+        or expires_at is None
+        or not stale
+    ):
+        raise ValueError("unknown evidence requires explicit expired semantics")
+
+
+def _require_aware(value: datetime, label: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{label} must be timezone-aware")

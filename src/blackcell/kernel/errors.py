@@ -40,5 +40,12 @@ class ArtifactIntegrityError(KernelError):
     """Artifact bytes do not match their content address."""
 
 
+class ArtifactQuotaExceededError(KernelError):
+    """A new artifact would exceed the configured exact byte ceiling."""
+
+    def __init__(self) -> None:
+        super().__init__("artifact-quota-exceeded")
+
+
 class ProjectionConflict(KernelError):
     """A projection checkpoint was concurrently changed or would regress."""

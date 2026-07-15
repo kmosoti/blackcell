@@ -23,7 +23,6 @@ from blackcell.agents import (
     render_opencode_artifacts,
 )
 from blackcell.cli.output import OutputRenderer
-from blackcell.domains.repository import OperationalStateEstimate
 from blackcell.evaluation import (
     BenchmarkAggregate,
     BenchmarkScenario,
@@ -35,6 +34,8 @@ from blackcell.evaluation import (
     operator_bench_scenarios,
     scenario_digest,
 )
+from blackcell.features.project_operational_state import OperationalBeliefState
+from blackcell.features.replay_run import RunReplayReport
 from blackcell.harness import HarnessPlan, RunTrace, plan_harness, run_harness
 from blackcell.kernel import EventEnvelope, EventStore, KernelError
 from blackcell.latent import (
@@ -60,13 +61,11 @@ from blackcell.ledger import (
     list_events,
     list_runs,
 )
-from blackcell.models import ActionProposal, CodexExecModel
 from blackcell.nesy import ValidationResult as RuleValidationResult
 from blackcell.nesy import build_default_rules, validate_ruleset
 from blackcell.operator import (
     DEFAULT_OBJECTIVE,
-    HistoricalReplay,
-    OperatorRunResult,
+    CanonicalOperatorRunResult,
     RepositoryOperator,
     StoredContextFrame,
 )
@@ -179,20 +178,18 @@ def operator_run(
     resolved_repo = repo.resolve()
     try:
         database = _operator_database(resolved_repo, db)
-        proposal_model = (
-            CodexExecModel[ActionProposal](model=codex_model) if model == "codex" else None
-        )
         operator = RepositoryOperator(
             resolved_repo,
             database_path=database,
             artifact_root=artifacts,
-            model=proposal_model,
+            model=model,
+            codex_model=codex_model,
         )
         result = operator.run(objective=objective, approval_granted=approval)
     except (KernelError, LookupError, OSError, RuntimeError, ValueError) as error:
         _fail(str(error))
     _output().emit(result, rich=_operator_run_table(result))
-    if result.status.value == "failed":
+    if result.status in {"failed", "corrupt"}:
         raise SystemExit(1)
 
 
@@ -713,30 +710,31 @@ def _kernel_events_table(events: Sequence[EventEnvelope]) -> Table:
     return table
 
 
-def _operator_run_table(result: OperatorRunResult) -> Table:
+def _operator_run_table(result: CanonicalOperatorRunResult) -> Table:
     table = Table(title="Repository Operator Run")
     table.add_column("Field")
     table.add_column("Value")
     table.add_row("Run", result.run_id)
-    table.add_row("Status", result.status.value)
-    table.add_row("State before", result.initial_state_id)
-    table.add_row("SignalPacket", result.signal_packet_id)
-    table.add_row("State after", result.final_state_id or "unchanged")
-    table.add_row("ContextFrame", result.context_frame_id)
-    table.add_row("Proposal", result.proposal.affordance)
-    table.add_row("Policy", result.policy.outcome.value)
-    table.add_row("Action success", str(result.evaluation.execution_success))
-    table.add_row("Evaluation", "passed" if result.evaluation.passed else "failed")
+    table.add_row("Status", result.status)
+    table.add_row("Outcome", result.outcome or "not recorded")
+    table.add_row("Workflow", result.workflow_version or "unknown")
+    table.add_row("ContextFrame", result.context_frame_id or "not recorded")
+    table.add_row("Authorization", result.authorization_outcome or "not recorded")
+    table.add_row("Execution", result.execution_status or "not attempted")
+    table.add_row("Evaluation", result.evaluation_verdict or "not evaluated")
+    table.add_row("State transition", "recorded" if result.transition_recorded else "none")
     table.add_row("Run events", str(result.run_event_count))
     return table
 
 
-def _operator_state_table(state: OperationalStateEstimate) -> Table:
-    table = Table(title="Operational State Estimate")
+def _operator_state_table(state: OperationalBeliefState) -> Table:
+    table = Table(title="Operational Belief State")
     table.add_column("Field")
     table.add_column("Value")
-    table.add_row("State", state.state_id)
-    table.add_row("Sequence", str(state.as_of_sequence))
+    table.add_row("Domain", state.scope.domain)
+    table.add_row("Stream", state.scope.stream_id or "unbound")
+    table.add_row("Ledger position", str(state.cutoff_global_position))
+    table.add_row("Stream sequence", str(state.last_source_stream_sequence))
     table.add_row("Claims", str(len(state.claims)))
     table.add_row("Conflicts", str(len(state.conflicts)))
     table.add_row("Unknowns", str(len(state.unknowns)))
@@ -751,26 +749,35 @@ def _operator_context_table(frame: StoredContextFrame) -> Table:
     table.add_row("Run", frame.run_id)
     table.add_row("Frame", frame.frame_id)
     table.add_row("Artifact", frame.artifact_digest)
-    table.add_row("State", str(frame.payload.get("state_id", "unknown")))
-    table.add_row("Estimated tokens", str(frame.payload.get("estimated_tokens", "unknown")))
+    table.add_row("State position", str(frame.payload.get("state_global_position", "unknown")))
+    table.add_row(
+        "Model characters",
+        str(frame.payload.get("model_payload_characters", "unknown")),
+    )
     return table
 
 
-def _operator_replay_table(replay: HistoricalReplay) -> Table:
+def _operator_replay_table(replay: RunReplayReport) -> Table:
     table = Table(title="Historical Operator Replay")
     table.add_column("Field")
     table.add_column("Value")
     table.add_row("Run", replay.run_id)
-    table.add_row("Status", replay.status)
+    table.add_row("Status", replay.classification.value)
+    table.add_row("Outcome", replay.outcome or "not recorded")
+    table.add_row("Workflow", replay.protocol_version or "unknown")
     table.add_row("Events", str(replay.event_count))
     table.add_row("Artifacts", str(len(replay.artifacts)))
     table.add_row(
-        "Projection replay",
-        "matched" if replay.projection_hash_match else "mismatch",
+        "Projections",
+        ", ".join(item.status.value for item in replay.projections) or "untrusted",
     )
     table.add_row(
         "Integrity",
-        "verified" if all(item.verified for item in replay.artifacts) else "failed",
+        (
+            "verified"
+            if replay.finding is None and all(item.verified for item in replay.artifacts)
+            else "failed"
+        ),
     )
     return table
 

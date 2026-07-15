@@ -11,9 +11,14 @@ from blackcell.kernel import JsonScalar
 from blackcell.kernel._json import canonical_json, freeze_json, json_digest
 
 _EXECUTION_BINDING_SCHEMA = "execution-binding/v1"
-_EXECUTION_PREPARATION_SCHEMA = "execution-preparation/v1"
+EXECUTION_PREPARATION_SCHEMA_VERSION = "execution-preparation/v1"
+EXECUTION_RESULT_SCHEMA_VERSION = "execution-result/v3"
+EXECUTION_PREPARATION_MEDIA_TYPE = "application/vnd.blackcell.execution-preparation+json"
+EXECUTION_RESULT_MEDIA_TYPE = "application/vnd.blackcell.execution-result+json"
+
+_EXECUTION_PREPARATION_SCHEMA = EXECUTION_PREPARATION_SCHEMA_VERSION
 _EXECUTION_RECOVERY_AUTHORIZATION_SCHEMA = "execution-recovery-authorization/v1"
-_EXECUTION_RESULT_SCHEMA = "execution-result/v3"
+_EXECUTION_RESULT_SCHEMA = EXECUTION_RESULT_SCHEMA_VERSION
 
 
 class SideEffectClass(StrEnum):

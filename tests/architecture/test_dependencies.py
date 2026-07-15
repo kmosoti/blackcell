@@ -59,6 +59,26 @@ def test_feature_slices_do_not_reach_across_slices_or_edges() -> None:
     assert not violations, _format(violations)
 
 
+def test_orchestration_contracts_do_not_depend_on_edge_or_legacy_agent_packages() -> None:
+    forbidden = (
+        "blackcell.adapters",
+        "blackcell.agents",
+        "blackcell.cli",
+        "blackcell.harness",
+        "blackcell.latent",
+        "blackcell.runtime",
+        "blackcell.world",
+    )
+    violations = [
+        edge
+        for edge in _imports()
+        if edge.importer.startswith("blackcell.orchestration")
+        and edge.imported.startswith(forbidden)
+    ]
+
+    assert not violations, _format(violations)
+
+
 def test_workflows_and_runtime_cores_depend_inward() -> None:
     allowed_by_root = {
         "workflows": ("blackcell.kernel", "blackcell.features", "blackcell.workflows"),
@@ -99,6 +119,53 @@ def test_core_packages_do_not_import_frameworks_or_provider_sdks() -> None:
         edge
         for edge in _imports()
         if edge.importer.startswith(protected) and edge.imported.startswith(forbidden)
+    ]
+
+    assert not violations, _format(violations)
+
+
+def test_auth_contract_is_framework_and_edge_independent() -> None:
+    rules = _load_json(RULES_PATH)
+    forbidden = (
+        *rules["framework_and_provider_modules"],
+        "blackcell.adapters",
+        "blackcell.bootstrap",
+        "blackcell.cli",
+        "blackcell.config",
+        "blackcell.operator",
+        "blackcell.runtime",
+    )
+    violations = [
+        edge
+        for edge in _imports()
+        if edge.importer == "blackcell.interfaces.auth" and edge.imported.startswith(forbidden)
+    ]
+
+    assert not violations, _format(violations)
+
+
+def test_http_framework_imports_stay_at_interface_and_bootstrap_edges() -> None:
+    framework_modules = ("litestar", "msgspec")
+    allowed_importers = (
+        "blackcell.interfaces.http",
+        "blackcell.bootstrap",
+    )
+    violations = [
+        edge
+        for edge in _imports()
+        if edge.imported.startswith(framework_modules)
+        and not edge.importer.startswith(allowed_importers)
+    ]
+
+    assert not violations, _format(violations)
+
+
+def test_opentelemetry_sdk_imports_stay_inside_the_telemetry_adapter() -> None:
+    violations = [
+        edge
+        for edge in _imports()
+        if edge.imported.startswith("opentelemetry")
+        and not edge.importer.startswith("blackcell.adapters.telemetry")
     ]
 
     assert not violations, _format(violations)

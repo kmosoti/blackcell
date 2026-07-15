@@ -18,6 +18,8 @@ from blackcell.features.execute_affordance.errors import (
     StaleExecutionClaim,
 )
 from blackcell.features.execute_affordance.models import (
+    EXECUTION_PREPARATION_MEDIA_TYPE,
+    EXECUTION_RESULT_MEDIA_TYPE,
     ExecutionBinding,
     ExecutionClaim,
     ExecutionJournalEntry,
@@ -37,9 +39,6 @@ from blackcell.kernel.database import connect
 
 _JOURNAL_SCHEMA_VERSION = 1
 _MIGRATION_TABLE = "execution_journal_schema_migrations"
-_RESULT_MEDIA_TYPE = "application/vnd.blackcell.execution-result+json"
-_PREPARATION_MEDIA_TYPE = "application/vnd.blackcell.execution-preparation+json"
-
 _MIGRATION_SCHEMA = f"""
 create table if not exists {_MIGRATION_TABLE} (
     version integer primary key,
@@ -145,9 +144,14 @@ class SQLiteExecutionJournal:
         root: Path | str,
         *,
         database_path: Path | str | None = None,
+        artifact_max_total_bytes: int | None = None,
     ) -> None:
         self.root = Path(root)
-        self._artifacts = ArtifactStore(self.root, database_path=database_path)
+        self._artifacts = ArtifactStore(
+            self.root,
+            database_path=database_path,
+            max_total_bytes=artifact_max_total_bytes,
+        )
         self.database_path = self._artifacts.database_path
         self._closed = False
         self._initialize_schema()
@@ -417,7 +421,7 @@ class SQLiteExecutionJournal:
         try:
             artifact = self._artifacts.put_bytes(
                 data,
-                media_type=_RESULT_MEDIA_TYPE,
+                media_type=EXECUTION_RESULT_MEDIA_TYPE,
                 encoding="utf-8",
             )
         except ArtifactIntegrityError as error:
@@ -518,6 +522,20 @@ class SQLiteExecutionJournal:
 
     def get_by_invocation(self, invocation_id: str) -> ExecutionResult | None:
         return self._get_by("invocation_id", invocation_id)
+
+    def get_entry_by_invocation(
+        self,
+        invocation_id: str,
+    ) -> ExecutionJournalEntry | None:
+        self._require_open()
+        if not invocation_id.strip():
+            raise ValueError("invocation_id must not be empty")
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                "select * from execution_journal where invocation_id = ?",
+                (invocation_id,),
+            ).fetchone()
+        return None if row is None else self._entry_from_row(row)
 
     def get_preparation(
         self,
@@ -704,7 +722,7 @@ class SQLiteExecutionJournal:
         try:
             artifact = self._artifacts.put_bytes(
                 data,
-                media_type=_PREPARATION_MEDIA_TYPE,
+                media_type=EXECUTION_PREPARATION_MEDIA_TYPE,
                 encoding="utf-8",
             )
         except ArtifactIntegrityError as error:
@@ -720,7 +738,10 @@ class SQLiteExecutionJournal:
     def _load_preparation(self, preparation_id: str) -> ExecutionPreparation:
         try:
             reference = self._artifacts.stat(preparation_id)
-            if reference.media_type != _PREPARATION_MEDIA_TYPE or reference.encoding != "utf-8":
+            if (
+                reference.media_type != EXECUTION_PREPARATION_MEDIA_TYPE
+                or reference.encoding != "utf-8"
+            ):
                 raise ExecutionJournalIntegrityError(
                     f"execution preparation artifact {preparation_id!r} has incompatible metadata"
                 )
@@ -740,7 +761,7 @@ class SQLiteExecutionJournal:
     def _load_result(self, result_id: str) -> ExecutionResult:
         try:
             reference = self._artifacts.stat(result_id)
-            if reference.media_type != _RESULT_MEDIA_TYPE or reference.encoding != "utf-8":
+            if reference.media_type != EXECUTION_RESULT_MEDIA_TYPE or reference.encoding != "utf-8":
                 raise ExecutionJournalIntegrityError(
                     f"execution result artifact {result_id!r} has incompatible metadata"
                 )

@@ -10,6 +10,8 @@ import pytest
 
 from blackcell.adapters.persistence.sqlite import ArtifactContextFrameStore
 from blackcell.features.build_context import (
+    CONTEXT_FRAME_MEDIA_TYPE,
+    CONTEXT_FRAME_SCHEMA_VERSIONS,
     ContextClaimIdentity,
     ContextEvidence,
     ContextFrame,
@@ -19,6 +21,8 @@ from blackcell.features.build_context import (
     ContextOmission,
     ContextOmissionReason,
     ContextOmissionStage,
+    decode_context_frame,
+    encode_context_frame,
     serialize_context_evidence,
     serialize_context_frame,
 )
@@ -30,9 +34,32 @@ NOW = datetime(2026, 7, 10, 17, tzinfo=UTC)
 DOMAIN = "project"
 
 
+def test_feature_owned_context_codec_preserves_golden_bytes_and_identity() -> None:
+    frame = _frame("task:daily", value="blocked")
+    encoded = encode_context_frame(frame)
+
+    assert encoded == serialize_context_frame(frame).encode("utf-8")
+    assert decode_context_frame(encoded, expected_frame_id=frame.frame_id) == frame
+    assert CONTEXT_FRAME_MEDIA_TYPE == "application/vnd.blackcell.context-frame+json"
+    assert frame.schema_version in CONTEXT_FRAME_SCHEMA_VERSIONS
+
+
+def test_feature_owned_context_decoder_rejects_noncanonical_and_wrong_identity() -> None:
+    frame = _frame("task:daily", value="blocked")
+    encoded = encode_context_frame(frame)
+
+    with pytest.raises(ContextFrameIntegrityError, match="canonical JSON"):
+        decode_context_frame(b" " + encoded)
+    with pytest.raises(ContextFrameIntegrityError, match="digest mismatch"):
+        decode_context_frame(encoded, expected_frame_id="sha256:" + "0" * 64)
+
+
 def test_store_round_trips_complete_frame_lineage_and_exact_retry(tmp_path: Path) -> None:
     root = tmp_path / "artifacts"
     frame = _frame("task:daily", value="blocked")
+    assert (
+        frame.frame_id == "sha256:28218eca1badbb54f7399de300eff66abe5384a25d83aab5f377dc0ede8ef40c"
+    )
 
     with ArtifactContextFrameStore(root) as store:
         assert store.put(frame) == frame
@@ -188,6 +215,35 @@ def test_store_rejects_unsupported_frame_artifact_schema(tmp_path: Path) -> None
         )
 
         with pytest.raises(ContextFrameSchemaError, match="unsupported ContextFrame schema"):
+            store.get(artifact.digest)
+
+
+def test_v3_decoder_rejects_v4_fields_without_changing_the_frozen_digest(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "artifacts"
+    frame = _frame("task:daily", value="blocked")
+    assert (
+        frame.frame_id == "sha256:28218eca1badbb54f7399de300eff66abe5384a25d83aab5f377dc0ede8ef40c"
+    )
+
+    with ArtifactContextFrameStore(root) as store:
+        payload = json.loads(serialize_context_frame(frame))
+        payload["state_effective_time"] = None
+        artifact = ArtifactStore(root).put_bytes(
+            canonical_json_bytes(payload),
+            media_type="application/vnd.blackcell.context-frame+json",
+            encoding="utf-8",
+        )
+        _insert_index(
+            store.database_path,
+            artifact.digest,
+            schema_version="context-frame/v3",
+            task_id=frame.task_id,
+            generated_at=frame.generated_at.isoformat(),
+        )
+
+        with pytest.raises(ContextFrameIntegrityError, match="fields do not match"):
             store.get(artifact.digest)
 
 

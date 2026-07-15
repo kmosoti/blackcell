@@ -10,7 +10,11 @@ from uuid import uuid4
 
 from blackcell.kernel._json import JsonInput, bytes_digest, canonical_json_bytes
 from blackcell.kernel.database import connect, initialize_database
-from blackcell.kernel.errors import ArtifactIntegrityError, ArtifactNotFoundError
+from blackcell.kernel.errors import (
+    ArtifactIntegrityError,
+    ArtifactNotFoundError,
+    ArtifactQuotaExceededError,
+)
 from blackcell.kernel.events import utc_now
 
 
@@ -30,12 +34,25 @@ class ArtifactRef:
 class ArtifactStore:
     """File-backed SHA-256 object store with transactional SQLite metadata."""
 
-    def __init__(self, root: Path | str, *, database_path: Path | str | None = None) -> None:
+    def __init__(
+        self,
+        root: Path | str,
+        *,
+        database_path: Path | str | None = None,
+        max_total_bytes: int | None = None,
+    ) -> None:
+        if max_total_bytes is not None and (
+            isinstance(max_total_bytes, bool)
+            or not isinstance(max_total_bytes, int)
+            or max_total_bytes < 1
+        ):
+            raise ValueError("max_total_bytes must be a positive integer")
         self.root = Path(root)
         self.blob_root = self.root / "blobs"
         self.database_path = (
             Path(database_path) if database_path is not None else self.root / "kernel.sqlite3"
         )
+        self.max_total_bytes = max_total_bytes
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.blob_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.root, 0o700)
@@ -68,6 +85,15 @@ class ArtifactStore:
                     self._verify_path(destination, digest, reference.size_bytes)
                     connection.commit()
                     return reference
+
+                if self.max_total_bytes is not None:
+                    used = int(
+                        connection.execute(
+                            "select coalesce(sum(size_bytes), 0) from kernel_artifacts"
+                        ).fetchone()[0]
+                    )
+                    if used + len(data) > self.max_total_bytes:
+                        raise ArtifactQuotaExceededError
 
                 self._write_once(destination, data, digest)
                 created_at = utc_now()

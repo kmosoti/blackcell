@@ -32,9 +32,11 @@ def test_operator_cli_runs_inspects_and_replays_the_vertical_slice(
     assert run_result.exit_code == 0
     run = json.loads(run_result.stdout)
     assert run["status"] == "completed"
-    assert run["proposal"]["affordance"] == "git_status"
-    assert run["policy"]["outcome"] == "allow"
-    assert run["evaluation"]["passed"] is True
+    assert run["outcome"] == "executed"
+    assert run["workflow_version"] == "daily-operator/v2"
+    assert run["authorization_outcome"] == "allow"
+    assert run["execution_status"] == "succeeded"
+    assert run["evaluation_verdict"] == "pass"
 
     state_result = runner.invoke(
         app,
@@ -59,12 +61,36 @@ def test_operator_cli_runs_inspects_and_replays_the_vertical_slice(
     assert state["claims"]
     assert context["run_id"] == run["run_id"]
     assert context["frame_id"] == run["context_frame_id"]
-    assert context["payload"]["rendered_context"].startswith("objective:")
+    assert context["payload"]["objective"].startswith("Inspect current repository")
     assert replay["run_id"] == run["run_id"]
-    assert replay["status"] == "completed"
-    assert replay["projection_hash_match"] is True
+    assert replay["classification"] == "completed"
+    assert replay["protocol_version"] == "daily-operator/v2"
     assert len(replay["events"]) == run["run_event_count"]
     assert all(artifact["verified"] for artifact in replay["artifacts"])
+
+
+def test_operator_cli_requires_codex_model_before_creating_storage(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    database = repo / ".blackcell" / "kernel.sqlite3"
+
+    result = runner.invoke(
+        app,
+        [
+            "operator",
+            "run",
+            "--model",
+            "codex",
+            "--repo",
+            str(repo),
+            "--db",
+            str(database),
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "--codex-model is required" in json.loads(result.stderr)["error"]["message"]
+    assert not database.exists()
 
 
 def test_operator_context_reports_missing_run_as_json_error(tmp_path: Path) -> None:

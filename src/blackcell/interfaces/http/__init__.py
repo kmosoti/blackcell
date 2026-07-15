@@ -1,0 +1,65 @@
+"""Versioned Litestar HTTP adapter and msgspec wire contracts."""
+
+from blackcell.interfaces.http.app import create_http_app
+from blackcell.interfaces.http.contracts import (
+    ApprovalRequest,
+    ClaimRequest,
+    ContextResponse,
+    ErrorResponse,
+    EvaluationResponse,
+    EventPageResponse,
+    EventResponse,
+    EvidenceRequest,
+    HealthResponse,
+    ObservationIngestRequest,
+    ObservationIngestResponse,
+    ObservationRequest,
+    OrchestrationApprovalResponse,
+    OrchestrationNodeResponse,
+    OrchestrationRunResponse,
+    ReplayResponse,
+    RunResponse,
+    RunSubmissionRequest,
+    WireContractError,
+    decode_contract,
+    encode_contract,
+)
+from blackcell.interfaces.http.ports import (
+    RuntimeApiError,
+    RuntimeApiFailureCode,
+    RuntimeApiPort,
+)
+from blackcell.interfaces.http.quota import (
+    RequestQuotaPort,
+    SlidingWindowRequestQuota,
+)
+
+__all__ = [
+    "ApprovalRequest",
+    "ClaimRequest",
+    "ContextResponse",
+    "ErrorResponse",
+    "EvaluationResponse",
+    "EventPageResponse",
+    "EventResponse",
+    "EvidenceRequest",
+    "HealthResponse",
+    "ObservationIngestRequest",
+    "ObservationIngestResponse",
+    "ObservationRequest",
+    "OrchestrationApprovalResponse",
+    "OrchestrationNodeResponse",
+    "OrchestrationRunResponse",
+    "ReplayResponse",
+    "RequestQuotaPort",
+    "RunResponse",
+    "RunSubmissionRequest",
+    "RuntimeApiError",
+    "RuntimeApiFailureCode",
+    "RuntimeApiPort",
+    "SlidingWindowRequestQuota",
+    "WireContractError",
+    "create_http_app",
+    "decode_contract",
+    "encode_contract",
+]

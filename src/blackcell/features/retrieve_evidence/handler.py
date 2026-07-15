@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from blackcell.features.retrieve_evidence.command import RetrieveEvidence
 from blackcell.features.retrieve_evidence.models import (
     EvidenceCandidate,
     EvidenceClaimIdentity,
+    EvidenceEpistemicStatus,
+    EvidenceKey,
     EvidenceOmission,
     EvidenceOmissionReason,
     EvidenceSelection,
+    EvidenceUnknownReason,
     MissingRequiredEvidenceError,
     RequiredEvidenceGap,
+    RequiredEvidenceGapReason,
+    UnknownEvidenceSupport,
 )
 from blackcell.features.retrieve_evidence.ports import SignalClaimLike, SignalPacketLike
 
@@ -20,29 +26,33 @@ _TOKEN = re.compile(r"[a-z0-9_./:-]+")
 class DeterministicEvidenceRetriever:
     def handle(self, query: RetrieveEvidence, packet: SignalPacketLike) -> EvidenceSelection:
         required = {(key.subject, key.predicate) for key in query.required_keys}
-        available = {(claim.subject, claim.predicate) for claim in packet.claims}
+        state_effective_time = getattr(packet, "state_effective_time", None)
+        observed_claims = tuple(
+            claim
+            for claim in packet.claims
+            if _epistemic_status(claim) is EvidenceEpistemicStatus.OBSERVED
+        )
+        unknown_claims = tuple(
+            claim
+            for claim in packet.claims
+            if _epistemic_status(claim) is EvidenceEpistemicStatus.UNKNOWN
+        )
+        available = {(claim.subject, claim.predicate) for claim in observed_claims}
         gaps = tuple(
-            RequiredEvidenceGap(
-                key=key,
-                source_packet_id=packet.packet_id,
-                state_domain=packet.state_domain,
-                state_stream_id=packet.state_stream_id,
-                state_global_position=packet.state_global_position,
-                state_stream_position=packet.state_stream_position,
-            )
+            _required_gap(key, packet, unknown_claims, state_effective_time)
             for key in query.required_keys
             if (key.subject, key.predicate) not in available
         )
         if gaps:
             raise MissingRequiredEvidenceError(gaps)
         required_match_count = sum(
-            (claim.subject, claim.predicate) in required for claim in packet.claims
+            (claim.subject, claim.predicate) in required for claim in observed_claims
         )
         conflict_keys = {(item.subject, item.predicate) for item in packet.conflicts}
         objective_tokens = _tokens(query.objective)
         considered = tuple(
             (claim, _candidate(claim, objective_tokens, required, conflict_keys))
-            for claim in packet.claims
+            for claim in observed_claims
         )
         ranked = tuple(
             sorted(
@@ -51,10 +61,14 @@ class DeterministicEvidenceRetriever:
             )
         )
         irrelevant_claims = tuple(claim for claim, candidate in considered if candidate is None)
-        if not ranked and packet.claims:
+        if not ranked and observed_claims:
             fallback = min(
-                packet.claims,
-                key=lambda item: (item.freshness_seconds, item.source_event_id),
+                observed_claims,
+                key=lambda item: (
+                    item.freshness_seconds,
+                    item.source_event_id,
+                    item.claim_id,
+                ),
             )
             ranked = (_fallback(fallback, conflict_keys),)
             irrelevant_claims = _without_identity(irrelevant_claims, fallback)
@@ -62,12 +76,31 @@ class DeterministicEvidenceRetriever:
         optional_candidates = tuple(item for item in ranked if "required" not in item.reasons)
         optional_capacity = max(0, query.max_results - len(required_candidates))
         selected = required_candidates + optional_candidates[:optional_capacity]
-        omissions = tuple(
-            _omission_from_claim(claim, EvidenceOmissionReason.IRRELEVANT, conflict_keys)
-            for claim in sorted(irrelevant_claims, key=lambda item: item.source_event_id)
-        ) + tuple(
-            _omission_from_candidate(candidate, EvidenceOmissionReason.RESULT_LIMIT)
-            for candidate in optional_candidates[optional_capacity:]
+        omissions = (
+            tuple(
+                _omission_from_claim(claim, EvidenceOmissionReason.IRRELEVANT, conflict_keys)
+                for claim in sorted(
+                    irrelevant_claims,
+                    key=lambda item: (item.source_event_id, item.claim_id),
+                )
+            )
+            + tuple(
+                _omission_from_candidate(candidate, EvidenceOmissionReason.RESULT_LIMIT)
+                for candidate in optional_candidates[optional_capacity:]
+            )
+            + tuple(
+                _omission_from_claim(claim, EvidenceOmissionReason.UNKNOWN, conflict_keys)
+                for claim in sorted(
+                    unknown_claims,
+                    key=lambda item: (item.source_event_id, item.claim_id),
+                )
+            )
+        )
+        selection_schema = (
+            "evidence-selection/v5"
+            if state_effective_time is not None
+            or any(_has_epistemic_extensions(claim) for claim in packet.claims)
+            else "evidence-selection/v4"
         )
         return EvidenceSelection(
             objective=query.objective,
@@ -87,6 +120,8 @@ class DeterministicEvidenceRetriever:
             omissions=omissions,
             required_keys=query.required_keys,
             required_match_count=required_match_count,
+            schema_version=selection_schema,
+            state_effective_time=state_effective_time,
         )
 
 
@@ -132,6 +167,9 @@ def _copy_candidate(
     reasons: tuple[str, ...],
     conflicted: bool,
 ) -> EvidenceCandidate:
+    status = _epistemic_status(claim)
+    if status is not EvidenceEpistemicStatus.OBSERVED:
+        raise ValueError("unknown claims cannot be copied as positive evidence")
     return EvidenceCandidate(
         claim.claim_id,
         claim.subject,
@@ -149,6 +187,9 @@ def _copy_candidate(
         score,
         reasons,
         conflicted,
+        status,
+        _unknown_reason(claim),
+        getattr(claim, "expires_at", None),
     )
 
 
@@ -157,6 +198,7 @@ def _omission_from_claim(
     reason: EvidenceOmissionReason,
     conflict_keys: set[tuple[str, str]],
 ) -> EvidenceOmission:
+    status = _epistemic_status(claim)
     return EvidenceOmission(
         claim.claim_id,
         claim.subject,
@@ -175,6 +217,10 @@ def _omission_from_claim(
         (),
         (claim.subject, claim.predicate) in conflict_keys,
         reason,
+        _omission_schema(claim),
+        status,
+        _unknown_reason(claim),
+        getattr(claim, "expires_at", None),
     )
 
 
@@ -200,7 +246,83 @@ def _omission_from_candidate(
         candidate.reasons,
         candidate.conflicted,
         reason,
+        (
+            "evidence-omission/v3"
+            if _has_epistemic_extensions(candidate)
+            else "evidence-omission/v2"
+        ),
+        candidate.epistemic_status,
+        candidate.unknown_reason,
+        candidate.expires_at,
     )
+
+
+def _required_gap(
+    key: EvidenceKey,
+    packet: SignalPacketLike,
+    unknown_claims: tuple[SignalClaimLike, ...],
+    state_effective_time: datetime | None,
+) -> RequiredEvidenceGap:
+    matching_unknowns = tuple(
+        claim
+        for claim in unknown_claims
+        if (claim.subject, claim.predicate) == (key.subject, key.predicate)
+    )
+    supports = tuple(sorted(_unknown_support(claim) for claim in matching_unknowns))
+    return RequiredEvidenceGap(
+        key=key,
+        source_packet_id=packet.packet_id,
+        state_domain=packet.state_domain,
+        state_stream_id=packet.state_stream_id,
+        state_global_position=packet.state_global_position,
+        state_stream_position=packet.state_stream_position,
+        reason=(
+            RequiredEvidenceGapReason.UNKNOWN if supports else RequiredEvidenceGapReason.ABSENT
+        ),
+        schema_version=(
+            "required-evidence-gap/v3"
+            if state_effective_time is not None or supports
+            else "required-evidence-gap/v2"
+        ),
+        state_effective_time=state_effective_time,
+        unknown_supports=supports,
+    )
+
+
+def _unknown_support(claim: SignalClaimLike) -> UnknownEvidenceSupport:
+    expires_at = getattr(claim, "expires_at", None)
+    reason = _unknown_reason(claim)
+    if expires_at is None or reason is None:
+        raise ValueError("unknown signal claims require explicit expiry provenance")
+    return UnknownEvidenceSupport(
+        source_event_id=claim.source_event_id,
+        claim_id=claim.claim_id,
+        expires_at=expires_at,
+        unknown_reason=reason,
+    )
+
+
+def _epistemic_status(claim: SignalClaimLike | EvidenceCandidate) -> EvidenceEpistemicStatus:
+    return EvidenceEpistemicStatus(getattr(claim, "epistemic_status", "observed"))
+
+
+def _unknown_reason(
+    claim: SignalClaimLike | EvidenceCandidate,
+) -> EvidenceUnknownReason | None:
+    value = getattr(claim, "unknown_reason", None)
+    return None if value is None else EvidenceUnknownReason(value)
+
+
+def _has_epistemic_extensions(claim: SignalClaimLike | EvidenceCandidate) -> bool:
+    return (
+        _epistemic_status(claim) is not EvidenceEpistemicStatus.OBSERVED
+        or _unknown_reason(claim) is not None
+        or getattr(claim, "expires_at", None) is not None
+    )
+
+
+def _omission_schema(claim: SignalClaimLike) -> str:
+    return "evidence-omission/v3" if _has_epistemic_extensions(claim) else "evidence-omission/v2"
 
 
 def _without_identity(

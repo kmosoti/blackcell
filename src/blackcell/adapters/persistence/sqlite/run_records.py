@@ -53,6 +53,7 @@ from blackcell.workflows.run_protocol import (
     RunInterrupted,
     RunOutcome,
     RunProtocolIntegrityError,
+    RunProtocolVersion,
     RunStart,
     RunTerminal,
     run_stream_id,
@@ -96,6 +97,11 @@ class KernelRunRecorder:
         self._clock = clock
 
     def start(self, command: RunStart) -> EventEnvelope:
+        if command.protocol_version is not RunProtocolVersion.V1:
+            raise RunProtocolIntegrityError(
+                "daily-operator/v2 writing is not active until the complete feedback loop "
+                "and replay verifier are composed"
+            )
         stream_id = run_stream_id(command.run_id)
         existing = self._events.read_stream(stream_id)
         if existing:
@@ -454,6 +460,15 @@ class KernelRunRecorder:
             raise RunProtocolIntegrityError(f"run {run_id!r} has not started")
         self._validate_events(run_id, events)
         return events
+
+    def verify_history(
+        self,
+        run_id: str,
+        events: Sequence[EventEnvelope],
+    ) -> None:
+        """Apply the writer's exact read-only integrity checks to recorded history."""
+
+        self._validate_events(run_id, events)
 
     def _validate_events(self, run_id: str, events: Sequence[EventEnvelope]) -> None:
         traced = False

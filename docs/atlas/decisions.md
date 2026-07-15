@@ -8,6 +8,8 @@ edges:
     - concepts/custom-agents
     - adr/0004-evolutionary-runtime-architecture
     - adr/0005-durable-run-and-execution-protocol
+    - adr/0006-versioned-run-feedback-protocol
+    - adr/0007-runtime-security-boundary
 ---
 
 # Decisions
@@ -26,3 +28,9 @@ edges:
   runtime or authority boundary.
 - Record runs artifact-first in one causal kernel stream, and durably prepare an affordance before
   calling its adapter. Recover abandoned preparations explicitly through reconciliation.
+- Preserve the version-one run grammar and add developer-owned evaluation criteria, pre/post state
+  snapshots, gateway evidence, independent outcome evidence, evaluation, and observed transitions
+  through a version-two workflow contract.
+- Require an explicit owner-only service data root, one opaque environment-or-file API credential,
+  strict Bearer and scope checks, zero proxy trust, and pre-storage secret redaction before HTTP
+  exposure.

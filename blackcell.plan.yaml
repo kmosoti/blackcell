@@ -1,4 +1,4 @@
-version: 3
+version: 4
 project:
   key: BCP
   name: Blackcell
@@ -25,6 +25,26 @@ phase_1:
     - BCP-0032
     - BCP-0033
     - BCP-0034
+
+runtime_v1:
+  status: active
+  branch: agent/runtime-v1
+  delivery:
+    pull_requests: 1
+    publish_each_node: true
+    allow_force_push: false
+    confidence_review: independent-subagent
+  critical_path:
+    - protocol-v2
+    - gateway-decision
+    - outcome-evaluation
+    - transition-commit
+    - closed-loop-integration
+    - live-free-replay
+    - product-delegation
+    - durable-dag
+    - operator-platform
+    - release-evidence
 
 active_surfaces:
   cli:
