@@ -257,6 +257,20 @@ class SQLiteDecisionAttemptJournal:
                 connection.rollback()
                 raise
 
+    def resume(
+        self,
+        request: DecisionRequestRecord,
+    ) -> DecisionPreparation | DecisionTerminalRecord | None:
+        evidence = self._read_evidence(request.request.request_id)
+        if evidence is None:
+            raise DecisionJournalError("decision request is not registered")
+        stored_request, preparation, _, terminal = evidence
+        if stored_request != request:
+            raise DecisionIdentityConflict(
+                "decision request record does not match durable registration"
+            )
+        return terminal if terminal is not None else preparation
+
     def record_route(
         self,
         request: DecisionRequestRecord,

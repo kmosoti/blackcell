@@ -93,6 +93,7 @@ class Gateway:
 class Journal:
     def __init__(self, events: list[str]) -> None:
         self.events = events
+        self.preparation: DecisionPreparation | None = None
         self.terminal: DecisionSuccessRecord | DecisionFailureRecord | None = None
         self.claim: DecisionAttemptClaim | None = None
         self.invocation_started = False
@@ -106,6 +107,13 @@ class Journal:
         self.events.append(f"register:{request.request_id}")
         return DecisionRequestRecord(request, request.request_digest, registered_at)
 
+    def resume(
+        self,
+        request: DecisionRequestRecord,
+    ) -> DecisionPreparation | DecisionSuccessRecord | DecisionFailureRecord | None:
+        del request
+        return self.terminal if self.terminal is not None else self.preparation
+
     def record_route(
         self,
         request: DecisionRequestRecord,
@@ -116,7 +124,8 @@ class Journal:
         self.events.append(f"record-route:{route.profile_id}")
         if self.terminal is not None:
             return self.terminal
-        return DecisionPreparation(request, route, route.route_id, recorded_at)
+        self.preparation = DecisionPreparation(request, route, route.route_id, recorded_at)
+        return self.preparation
 
     def reject(
         self,
@@ -663,6 +672,24 @@ def test_two_phase_handler_records_request_before_live_inference() -> None:
         "invoke:decision:1:reason-local",
         "succeed:proposal:1",
     ]
+
+
+def test_prepare_retry_resumes_durable_route_before_gateway() -> None:
+    events: list[str] = []
+    gateway = Gateway(events)
+    journal = Journal(events)
+    handler = RequestDecisionHandler(gateway, journal, clock=lambda: NOW)
+    first = handler.prepare(_request())
+    assert isinstance(first, DecisionPreparation)
+    gateway.route_error = DecisionGatewayError(
+        DecisionFailureKind.ADAPTER,
+        "gateway_unavailable",
+    )
+
+    second = handler.prepare(_request())
+
+    assert second is first
+    assert events.count("route:decision:1") == 1
 
 
 def test_staged_attempt_can_be_recorded_before_live_inference() -> None:

@@ -6,6 +6,7 @@ from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Barrier
 
 import pytest
 
@@ -26,6 +27,7 @@ from blackcell.features.request_decision import (
     DecisionFailure,
     DecisionFailureKind,
     DecisionFailureRecord,
+    DecisionGatewayError,
     DecisionIdentityConflict,
     DecisionJournalError,
     DecisionLocality,
@@ -58,9 +60,12 @@ class Gateway:
         self.selected_at = selected_at or NOW
         self.route_calls = 0
         self.invoke_calls = 0
+        self.route_available = True
 
     def route(self, request: RequestDecision) -> DecisionRoute:
         self.route_calls += 1
+        if not self.route_available:
+            raise AssertionError("gateway route must not be called")
         return _route(selected_at=self.selected_at)
 
     def invoke(
@@ -363,9 +368,52 @@ def test_success_is_artifact_first_restart_safe_and_terminal_reentry_is_typed(
         )
 
 
-def test_real_handler_retry_returns_terminal_without_reinvoking_gateway(tmp_path: Path) -> None:
+def test_prepare_restart_reuses_durable_route_before_gateway(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
     gateway = Gateway()
-    journal = SQLiteDecisionAttemptJournal(tmp_path / "artifacts")
+    moments = iter((NOW, NOW + timedelta(seconds=1)))
+    with SQLiteDecisionAttemptJournal(root) as journal:
+        handler = RequestDecisionHandler(gateway, journal, clock=lambda: next(moments))
+        first = handler.prepare(_request())
+        assert isinstance(first, DecisionPreparation)
+
+    gateway.selected_at = NOW + timedelta(minutes=1)
+    gateway.route_available = False
+    with SQLiteDecisionAttemptJournal(root) as restarted:
+        handler = RequestDecisionHandler(
+            gateway,
+            restarted,
+            clock=lambda: NOW + timedelta(minutes=2),
+        )
+        second = handler.prepare(_request())
+
+    assert second == first
+    assert gateway.route_calls == 1
+    assert gateway.invoke_calls == 0
+
+
+def test_registered_restart_routes_once(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    request = _request()
+    with SQLiteDecisionAttemptJournal(root) as journal:
+        journal.register(request, registered_at=NOW)
+
+    gateway = Gateway(selected_at=NOW + timedelta(seconds=1))
+    with SQLiteDecisionAttemptJournal(root) as restarted:
+        handler = RequestDecisionHandler(
+            gateway,
+            restarted,
+            clock=lambda: NOW + timedelta(seconds=2),
+        )
+        preparation = handler.prepare(request)
+
+    assert isinstance(preparation, DecisionPreparation)
+    assert gateway.route_calls == 1
+
+
+def test_real_handler_retry_returns_terminal_without_reinvoking_gateway(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    gateway = Gateway()
     moments = iter(
         (
             NOW,
@@ -373,19 +421,121 @@ def test_real_handler_retry_returns_terminal_without_reinvoking_gateway(tmp_path
             NOW + timedelta(seconds=1),
             NOW + timedelta(seconds=1),
             NOW + timedelta(seconds=4),
-            NOW + timedelta(minutes=1),
         )
     )
-    handler = RequestDecisionHandler(gateway, journal, clock=lambda: next(moments))
-    preparation = handler.prepare(_request())
-    assert isinstance(preparation, DecisionPreparation)
+    with SQLiteDecisionAttemptJournal(root) as journal:
+        handler = RequestDecisionHandler(gateway, journal, clock=lambda: next(moments))
+        preparation = handler.prepare(_request())
+        assert isinstance(preparation, DecisionPreparation)
+        first = handler.handle(preparation)
 
-    first = handler.handle(preparation)
-    second = handler.handle(preparation)
+    gateway.route_available = False
+    with SQLiteDecisionAttemptJournal(root) as restarted:
+        handler = RequestDecisionHandler(
+            gateway,
+            restarted,
+            clock=lambda: NOW + timedelta(minutes=1),
+        )
+        second = handler.prepare(_request())
 
     assert isinstance(first, DecisionSuccessRecord)
     assert second == first
+    assert gateway.route_calls == 1
     assert gateway.invoke_calls == 1
+
+
+def test_concurrent_prepare_calls_converge_on_first_durable_route(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    barrier = Barrier(2)
+
+    class SynchronizedGateway(Gateway):
+        def route(self, request: RequestDecision) -> DecisionRoute:
+            self.route_calls += 1
+            barrier.wait()
+            return _route(selected_at=self.selected_at)
+
+    gateways = (
+        SynchronizedGateway(selected_at=NOW + timedelta(seconds=1)),
+        SynchronizedGateway(selected_at=NOW + timedelta(seconds=2)),
+    )
+    journals = (
+        SQLiteDecisionAttemptJournal(root),
+        SQLiteDecisionAttemptJournal(root),
+    )
+    handlers = []
+    for gateway, journal in zip(gateways, journals, strict=True):
+        moments = iter((NOW, NOW + timedelta(seconds=3)))
+        handlers.append(
+            RequestDecisionHandler(
+                gateway,
+                journal,
+                clock=lambda moments=moments: next(moments),
+            )
+        )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = tuple(pool.map(lambda handler: handler.prepare(_request()), handlers))
+    finally:
+        for journal in journals:
+            journal.close()
+
+    assert all(isinstance(result, DecisionPreparation) for result in results)
+    assert results[0] == results[1]
+    assert sum(gateway.route_calls for gateway in gateways) == 2
+
+
+def test_concurrent_route_success_and_rejection_converge(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    barrier = Barrier(2)
+
+    class SynchronizedGateway(Gateway):
+        def __init__(self, *, reject: bool) -> None:
+            super().__init__(selected_at=NOW + timedelta(seconds=1))
+            self.reject = reject
+
+        def route(self, request: RequestDecision) -> DecisionRoute:
+            self.route_calls += 1
+            barrier.wait()
+            if self.reject:
+                raise DecisionGatewayError(
+                    DecisionFailureKind.ADMISSION,
+                    "no_profile",
+                )
+            return _route(selected_at=self.selected_at)
+
+    gateways = (SynchronizedGateway(reject=False), SynchronizedGateway(reject=True))
+    journals = (
+        SQLiteDecisionAttemptJournal(root),
+        SQLiteDecisionAttemptJournal(root),
+    )
+    handlers = []
+    for gateway, journal in zip(gateways, journals, strict=True):
+        moments = iter(
+            (
+                NOW,
+                NOW + timedelta(seconds=3),
+                NOW + timedelta(seconds=4),
+            )
+        )
+        handlers.append(
+            RequestDecisionHandler(
+                gateway,
+                journal,
+                clock=lambda moments=moments: next(moments),
+            )
+        )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = tuple(pool.map(lambda handler: handler.prepare(_request()), handlers))
+    finally:
+        for journal in journals:
+            journal.close()
+
+    assert results[0] == results[1]
+    assert isinstance(results[0], DecisionPreparation | DecisionFailureRecord)
+    assert sum(gateway.route_calls for gateway in gateways) == 2
 
 
 def test_handler_classifies_completion_before_invocation_admission(tmp_path: Path) -> None:

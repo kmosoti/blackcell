@@ -42,6 +42,13 @@ class DecisionAttemptJournal(Protocol):
         registered_at: datetime,
     ) -> DecisionRequestRecord: ...
 
+    def resume(
+        self,
+        request: DecisionRequestRecord,
+    ) -> DecisionPreparation | DecisionTerminalRecord | None:
+        """Return exact durable progress without crossing the gateway boundary."""
+        ...
+
     def record_route(
         self,
         request: DecisionRequestRecord,

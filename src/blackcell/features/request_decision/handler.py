@@ -4,7 +4,10 @@ from datetime import datetime
 
 from blackcell.features.request_decision.artifacts import decode_decision_output
 from blackcell.features.request_decision.command import RequestDecision
-from blackcell.features.request_decision.errors import DecisionGatewayError
+from blackcell.features.request_decision.errors import (
+    DecisionGatewayError,
+    DecisionIdentityConflict,
+)
 from blackcell.features.request_decision.models import (
     DecisionAdapterResult,
     DecisionAttemptClaim,
@@ -55,14 +58,16 @@ class RequestDecisionHandler:
             command,
             registered_at=self._now(),
         )
+        resumed = self._journal.resume(request_record)
+        if resumed is not None:
+            return resumed
         try:
             route = self._gateway.route(command)
             _validate_route(command, route)
         except DecisionGatewayError as error:
-            return self._journal.reject(
+            return self._reject(
                 request_record,
                 _gateway_failure(command, error, failed_at=self._now()),
-                recorded_at=self._now(),
             )
         except (TypeError, ValueError) as error:
             failure = DecisionFailure(
@@ -74,16 +79,42 @@ class RequestDecisionHandler:
                 failed_at=self._now(),
                 exception_type=type(error).__name__,
             )
+            return self._reject(request_record, failure)
+        return self._record_route(request_record, route)
+
+    def _record_route(
+        self,
+        request: DecisionRequestRecord,
+        route: DecisionRoute,
+    ) -> DecisionPreparation | DecisionTerminalRecord:
+        try:
+            return self._journal.record_route(
+                request,
+                route,
+                recorded_at=self._now(),
+            )
+        except DecisionIdentityConflict:
+            resumed = self._journal.resume(request)
+            if resumed is None:
+                raise
+            return resumed
+
+    def _reject(
+        self,
+        request: DecisionRequestRecord,
+        failure: DecisionFailure,
+    ) -> DecisionPreparation | DecisionTerminalRecord:
+        try:
             return self._journal.reject(
-                request_record,
+                request,
                 failure,
                 recorded_at=self._now(),
             )
-        return self._journal.record_route(
-            request_record,
-            route,
-            recorded_at=self._now(),
-        )
+        except DecisionIdentityConflict:
+            resumed = self._journal.resume(request)
+            if resumed is None:
+                raise
+            return resumed
 
     def handle(
         self,
