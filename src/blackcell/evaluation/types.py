@@ -12,6 +12,8 @@ class ContextCondition(StrEnum):
     RAW_CHRONOLOGICAL = "raw-chronological"
     LATEST_N = "latest-n"
     STRUCTURED = "structured"
+    TERM_RETRIEVAL = "term-retrieval"
+    FTS5_RETRIEVAL = "fts5-retrieval"
 
 
 class ToolStatus(StrEnum):
@@ -78,6 +80,20 @@ class Trial:
     condition: ContextCondition
     replicate: int = 0
     latest_n: int = 1
+    context_character_budget: int = 12_000
+    retrieval_result_limit: int = 2
+
+    def __post_init__(self) -> None:
+        if not self.trial_id.strip() or not self.scenario_id.strip():
+            raise ValueError("trial identities must not be empty")
+        if self.replicate < 0:
+            raise ValueError("trial replicate must be non-negative")
+        if self.latest_n < 1:
+            raise ValueError("latest_n must be positive")
+        if self.context_character_budget < 1:
+            raise ValueError("context character budget must be positive")
+        if self.retrieval_result_limit < 1:
+            raise ValueError("retrieval result limit must be positive")
 
 
 @dataclass(frozen=True, slots=True)

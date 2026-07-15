@@ -9,68 +9,43 @@ from rich.console import Console
 from rich.table import Table
 
 from blackcell import __version__
-from blackcell.agents import (
-    OPENCODE_TARGET,
-    AgentDoctorReport,
-    AgentProjectionResult,
-    AgentSummary,
-    ConfigScope,
-    RenderedAgentArtifact,
-    check_opencode_agent_pack_drift,
-    doctor_opencode_agent_pack,
-    install_opencode_agent_pack,
-    list_agent_summaries,
-    render_opencode_artifacts,
-)
+from blackcell.adapters.retrieval import Fts5EvidenceRetriever
 from blackcell.cli.output import OutputRenderer
 from blackcell.evaluation import (
     BenchmarkAggregate,
     BenchmarkScenario,
+    ComparativeExperimentDesign,
+    ComparativeExperimentRunner,
+    ComparativeReportReservation,
     ContextCondition,
     DeterministicGrader,
     FixtureScenarioRunner,
+    PredictionConditionAggregate,
+    PredictionExperimentDesign,
+    PredictionExperimentRunner,
+    PredictionReportReservation,
+    RuntimeBenchmarkDesign,
+    RuntimeBenchmarkReport,
+    RuntimeBenchmarkReportReservation,
+    RuntimeBenchmarkRunner,
     Trial,
     aggregate_scores,
     operator_bench_scenarios,
+    prediction_bench_scenarios,
+    recorded_fixture_model,
     scenario_digest,
 )
 from blackcell.features.project_operational_state import OperationalBeliefState
 from blackcell.features.replay_run import RunReplayReport
-from blackcell.harness import HarnessPlan, RunTrace, plan_harness, run_harness
+from blackcell.features.retrieve_evidence import DeterministicEvidenceRetriever
 from blackcell.kernel import EventEnvelope, EventStore, KernelError
-from blackcell.latent import (
-    LatentLedgerRecordResult,
-    LatentLedgerStats,
-    LatentLedgerSummary,
-    LatentPredictionError,
-    LatentState,
-    PredictionSet,
-    encode_world_state,
-    load_transitions,
-    predict_next_states,
-    record_simulation,
-    simulate_transition,
-    summarize_ledger,
-    summarize_prediction_stats,
-)
-from blackcell.ledger import (
-    LedgerEvent,
-    LedgerRun,
-    LedgerSummary,
-    init_ledger,
-    list_events,
-    list_runs,
-)
-from blackcell.nesy import ValidationResult as RuleValidationResult
-from blackcell.nesy import build_default_rules, validate_ruleset
+from blackcell.models import ActionProposal, CodexExecModel, DecisionModel
 from blackcell.operator import (
     DEFAULT_OBJECTIVE,
     CanonicalOperatorRunResult,
     RepositoryOperator,
     StoredContextFrame,
 )
-from blackcell.runtime import DoctorReport, RuntimeAdapter, doctor_report, list_runtime_adapters
-from blackcell.world import Fact, WorldSnapshot, observe_repo
 
 
 class BlackCellCli(App):
@@ -123,24 +98,10 @@ app = BlackCellCli(
 operator_app = App(name="operator")
 events_app = App(name="events")
 bench_app = App(name="bench")
-world_app = App(name="world")
-nesy_app = App(name="nesy")
-harness_app = App(name="harness")
-latent_app = App(name="latent")
-ledger_app = App(name="ledger")
-adapters_app = App(name="adapters")
-agents_app = App(name="agents")
 
 app.command(operator_app)
 app.command(events_app)
 app.command(bench_app)
-app.command(world_app)
-app.command(nesy_app)
-app.command(harness_app)
-app.command(latent_app)
-app.command(ledger_app)
-app.command(adapters_app)
-app.command(agents_app)
 
 
 @operator_app.command(name="run")
@@ -383,313 +344,162 @@ def bench_run(
     _output().emit(result, rich=_bench_results_table(aggregates))
 
 
-@world_app.command(name="observe")
-def world_observe() -> None:
-    """Observe the repository and emit a world snapshot."""
-    snapshot = observe_repo()
-    _output().emit(snapshot, rich=_world_snapshot_table(snapshot))
-
-
-@world_app.command(name="facts")
-def world_facts() -> None:
-    """Emit the current typed fact surface."""
-    snapshot = observe_repo()
-    _output().emit_collection("facts", snapshot.facts, rich=_facts_table(snapshot.facts))
-
-
-@nesy_app.command(name="validate")
-def nesy_validate() -> None:
-    """Validate the default NeSy rule scaffold against the repo world model."""
-    snapshot = observe_repo()
-    result = validate_ruleset(build_default_rules(snapshot))
-    _output().emit(result, rich=_rule_validation_table(result))
-    if not result.valid:
-        raise SystemExit(1)
-
-
-@harness_app.command(name="plan")
-def harness_plan_command() -> None:
-    """Plan the first harness loop from the observed repo state."""
-    plan = plan_harness(observe_repo())
-    _output().emit(plan, rich=_harness_plan_table(plan))
-
-
-@harness_app.command(name="run")
-def harness_run_command(
-    runtime: Annotated[
-        str,
-        Parameter("--runtime", help="Runtime adapter to use."),
-    ] = "dry-run",
-    latent_db: Annotated[
-        Path | None,
-        Parameter("--latent-db", help="Optional SQLite ledger path for latent recording."),
-    ] = None,
-    latent: Annotated[
-        Literal["off", "summary", "record", "stats"],
-        Parameter("--latent", help="Latent mode: off, summary, record, or stats."),
-    ] = "summary",
-    show_stats: Annotated[
-        bool,
-        Parameter("--show-stats", help="Include latent ledger stats in dry-run output."),
-    ] = False,
-    ledger_db: Annotated[
-        Path | None,
-        Parameter("--ledger-db", help="Optional generic run/event ledger path."),
-    ] = None,
-) -> None:
-    """Run the first harness loop through a runtime adapter."""
-    snapshot = observe_repo()
-    plan = plan_harness(snapshot)
-    latent_mode = _resolve_latent_mode(latent=latent, latent_db=latent_db, show_stats=show_stats)
-    try:
-        trace = run_harness(
-            plan,
-            runtime=runtime,
-            snapshot=snapshot,
-            latent_db=latent_db,
-            latent_mode=latent_mode,
-            ledger_db=ledger_db,
-        )
-    except ValueError as error:
-        _fail(str(error))
-    _output().emit(trace, rich=_run_trace_table(trace))
-
-
-@latent_app.command(name="encode")
-def latent_encode() -> None:
-    """Encode the current world snapshot as a deterministic latent capsule."""
-    state = encode_world_state(observe_repo())
-    _output().emit(state, rich=_latent_state_table(state))
-
-
-@latent_app.command(name="predict")
-def latent_predict(
-    db: Annotated[
-        Path | None,
-        Parameter("--db", help="Optional SQLite ledger path for transition memory."),
-    ] = None,
-) -> None:
-    """Predict candidate next latent states using non-parametric V0 memory."""
-    state = encode_world_state(observe_repo())
-    transition_memory = load_transitions(db) if db is not None else ()
-    stats = summarize_prediction_stats(db) if db is not None else None
-    labels_by_action = (
-        {action.action_id: action.confidence_label for action in stats.action_stats}
-        if stats is not None
-        else None
-    )
-    predictions = predict_next_states(
-        state,
-        transition_memory=transition_memory,
-        confidence_labels_by_action=labels_by_action,
-    )
-    _output().emit(predictions, rich=_latent_predictions_table(predictions))
-
-
-@latent_app.command(name="errors")
-def latent_errors() -> None:
-    """Simulate prediction/actual comparison and emit latent error evidence."""
-    result = simulate_transition(observe_repo())
-    _output().emit(result, rich=_latent_error_table(result.error))
-
-
-@latent_app.command(name="record")
-def latent_record(
-    db: Annotated[
-        Path,
-        Parameter("--db", help="SQLite ledger path."),
-    ] = Path(".blackcell/latent.sqlite3"),
-) -> None:
-    """Record a simulated latent transition in the local SQLite ledger."""
-    result = record_simulation(simulate_transition(observe_repo()), path=db)
-    _output().emit(result, rich=_latent_record_table(result))
-
-
-@latent_app.command(name="ledger")
-def latent_ledger(
-    db: Annotated[
-        Path,
-        Parameter("--db", help="SQLite ledger path."),
-    ] = Path(".blackcell/latent.sqlite3"),
-) -> None:
-    """Summarize the local latent SQLite ledger."""
-    summary = summarize_ledger(path=db)
-    _output().emit(summary, rich=_latent_ledger_table(summary))
-
-
-@latent_app.command(name="stats")
-def latent_stats(
-    db: Annotated[
-        Path,
-        Parameter("--db", help="SQLite ledger path."),
-    ] = Path(".blackcell/latent.sqlite3"),
-) -> None:
-    """Summarize ledger-backed latent prediction quality by action."""
-    stats = summarize_prediction_stats(path=db)
-    _output().emit(stats, rich=_latent_stats_table(stats))
-
-
-@ledger_app.command(name="init")
-def ledger_init(
-    db: Annotated[
-        Path,
-        Parameter("--db", help="SQLite ledger path."),
-    ] = Path(".blackcell/ledger.sqlite3"),
-) -> None:
-    """Initialize the local generic run/event ledger."""
-    summary = init_ledger(path=db)
-    _output().emit(summary, rich=_ledger_summary_table(summary))
-
-
-@ledger_app.command(name="runs")
-def ledger_runs(
-    db: Annotated[
-        Path,
-        Parameter("--db", help="SQLite ledger path."),
-    ] = Path(".blackcell/ledger.sqlite3"),
-) -> None:
-    """List runs from the local generic ledger."""
-    runs = list_runs(path=db)
-    _output().emit_collection("runs", runs, rich=_ledger_runs_table(runs))
-
-
-@ledger_app.command(name="events")
-def ledger_events(
-    db: Annotated[
-        Path,
-        Parameter("--db", help="SQLite ledger path."),
-    ] = Path(".blackcell/ledger.sqlite3"),
-    run: Annotated[
+@bench_app.command(name="compare")
+def bench_compare(
+    model: Annotated[
+        Literal["recorded", "codex"],
+        Parameter("--model", help="One decision-model boundary shared by every treatment."),
+    ] = "recorded",
+    codex_model: Annotated[
         str | None,
-        Parameter("--run", help="Optional run ID filter."),
+        Parameter("--codex-model", help="Required model identifier when --model=codex."),
+    ] = None,
+    replicates: Annotated[
+        int,
+        Parameter("--replicates", help="Replicates per scenario and treatment."),
+    ] = 1,
+    context_budget: Annotated[
+        int,
+        Parameter("--context-budget", help="Shared model-context character ceiling."),
+    ] = 12_000,
+    latest_n: Annotated[
+        int,
+        Parameter("--latest-n", help="Observation count for the latest-N treatment."),
+    ] = 1,
+    retrieval_limit: Annotated[
+        int,
+        Parameter("--retrieval-limit", help="Shared result cap for term and FTS5 retrieval."),
+    ] = 2,
+    bootstrap_samples: Annotated[
+        int,
+        Parameter("--bootstrap-samples", help="Deterministic resamples per paired interval."),
+    ] = 2_000,
+    artifact: Annotated[
+        Path | None,
+        Parameter("--artifact", help="Exclusive path for the canonical comparison report."),
     ] = None,
 ) -> None:
-    """List events from the local generic ledger."""
-    events = list_events(path=db, run_id=run)
-    _output().emit_collection("events", events, rich=_ledger_events_table(events))
-
-
-@adapters_app.command(name="list")
-def adapters_list() -> None:
-    """List available runtime adapters."""
-    adapters = list_runtime_adapters()
-    _output().emit_collection("adapters", adapters, rich=_runtime_adapters_table(adapters))
-
-
-@agents_app.command(name="list")
-def agents_list() -> None:
-    """List the canonical BlackCell agent pack."""
-    agents = list_agent_summaries()
-    _output().emit_collection("agents", agents, rich=_agents_table(agents))
-
-
-@agents_app.command(name="render")
-def agents_render(
-    target: Annotated[
-        str,
-        Parameter("--target", help="Agent target. Supported: opencode."),
-    ] = OPENCODE_TARGET,
-    scope: Annotated[
-        str,
-        Parameter("--scope", help="Config scope: project or global."),
-    ] = ConfigScope.PROJECT.value,
-) -> None:
-    """Render managed agent artifacts without writing them."""
+    """Run the matched WP23 context and retrieval comparison."""
+    if model == "codex":
+        if codex_model is None or not codex_model.strip():
+            _fail("--codex-model is required when --model=codex", code=2)
+        if replicates < 3:
+            _fail("--replicates must be at least 3 for a live Codex comparison", code=2)
+        if artifact is None:
+            _fail("--artifact is required for a live Codex comparison", code=2)
+    elif codex_model is not None:
+        _fail("--codex-model is only valid when --model=codex", code=2)
     try:
-        _validate_agent_target(target)
-        artifacts = render_opencode_artifacts(scope=scope)
-    except ValueError as error:
+        design = ComparativeExperimentDesign(
+            experiment_id="wp23-operator-bench-context-retrieval",
+            replicates_per_scenario=replicates,
+            context_character_budget=context_budget,
+            latest_n=latest_n,
+            retrieval_result_limit=retrieval_limit,
+            bootstrap_samples=bootstrap_samples,
+        )
+        scenarios = operator_bench_scenarios()
+        retrievers = {
+            ContextCondition.TERM_RETRIEVAL: DeterministicEvidenceRetriever(),
+            ContextCondition.FTS5_RETRIEVAL: Fts5EvidenceRetriever(),
+        }
+        selected_model: DecisionModel[ActionProposal]
+        if model == "recorded":
+            selected_model = recorded_fixture_model(
+                scenarios,
+                design,
+                retrievers=retrievers,
+            )
+        else:
+            selected_model = CodexExecModel(model=codex_model)
+        reservation = ComparativeReportReservation(artifact) if artifact is not None else None
+        if reservation is None:
+            report = ComparativeExperimentRunner(
+                selected_model,
+                retrievers=retrievers,
+                clock=lambda: 0.0,
+            ).run(scenarios, design)
+        else:
+            with reservation:
+                runner = (
+                    ComparativeExperimentRunner(selected_model, retrievers=retrievers)
+                    if model == "codex"
+                    else ComparativeExperimentRunner(
+                        selected_model,
+                        retrievers=retrievers,
+                        clock=lambda: 0.0,
+                    )
+                )
+                report = runner.run(scenarios, design)
+                reservation.commit(report)
+    except (FileExistsError, OSError, RuntimeError, ValueError) as error:
         _fail(str(error))
-    _output().emit_collection("artifacts", artifacts, rich=_agent_artifacts_table(artifacts))
+    _output().emit(report, rich=_bench_results_table(report.aggregates))
 
 
-@agents_app.command(name="install")
-def agents_install(
-    target: Annotated[
-        str,
-        Parameter("--target", help="Agent target. Supported: opencode."),
-    ] = OPENCODE_TARGET,
-    scope: Annotated[
-        str,
-        Parameter("--scope", help="Config scope: project or global."),
-    ] = ConfigScope.PROJECT.value,
-    apply_changes: Annotated[
+@bench_app.command(name="predict")
+def bench_predict(
+    repetitions: Annotated[
+        int,
+        Parameter("--repetitions", help="Latency repetitions per scenario and condition."),
+    ] = 50,
+    artifact: Annotated[
+        Path | None,
+        Parameter("--artifact", help="Exclusive path for the canonical prediction report."),
+    ] = None,
+) -> None:
+    """Run the matched credential-free WP24 prediction benchmark."""
+    try:
+        design = PredictionExperimentDesign(
+            experiment_id="wp24-prediction-bench",
+            latency_repetitions=repetitions,
+        )
+        scenarios = prediction_bench_scenarios()
+        reservation = PredictionReportReservation(artifact) if artifact is not None else None
+        if reservation is None:
+            report = PredictionExperimentRunner().run(scenarios, design)
+        else:
+            with reservation:
+                report = PredictionExperimentRunner().run(scenarios, design)
+                reservation.commit(report)
+    except (FileExistsError, OSError, RuntimeError, ValueError) as error:
+        _fail(str(error))
+    _output().emit(report, rich=_prediction_results_table(report.aggregates))
+
+
+@bench_app.command(name="runtime")
+def bench_runtime(
+    repo_root: Annotated[
+        Path,
+        Parameter("--repo-root", help="Repository root containing the acceptance surfaces."),
+    ] = Path("."),
+    include_podman: Annotated[
         bool,
-        Parameter("--apply", help="Write non-conflicting managed artifacts."),
+        Parameter("--include-podman", help="Run the live rootless Podman acceptance probe."),
     ] = False,
+    artifact: Annotated[
+        Path | None,
+        Parameter("--artifact", help="Exclusive path for the canonical runtime report."),
+    ] = None,
 ) -> None:
-    """Install managed agent artifacts. Defaults to dry run."""
+    """Profile the existing WP25 runtime reliability acceptance surfaces."""
+    if include_podman and artifact is None:
+        _fail("--artifact is required with --include-podman", code=2)
     try:
-        _validate_agent_target(target)
-        result = install_opencode_agent_pack(scope=scope, apply_changes=apply_changes)
-    except (OSError, ValueError) as error:
+        design = RuntimeBenchmarkDesign(
+            experiment_id="wp25-runtime-performance-reliability",
+            include_rootless_podman=include_podman,
+        )
+        reservation = RuntimeBenchmarkReportReservation(artifact) if artifact is not None else None
+        if reservation is None:
+            report = RuntimeBenchmarkRunner().run(repo_root, design)
+        else:
+            with reservation:
+                report = RuntimeBenchmarkRunner().run(repo_root, design)
+                reservation.commit(report)
+    except (FileExistsError, OSError, RuntimeError, ValueError) as error:
         _fail(str(error))
-    _output().emit(result, rich=_agent_projection_table(result))
-    if result.conflicts:
-        raise SystemExit(1)
-
-
-@agents_app.command(name="check-drift")
-def agents_check_drift(
-    target: Annotated[
-        str,
-        Parameter("--target", help="Agent target. Supported: opencode."),
-    ] = OPENCODE_TARGET,
-    scope: Annotated[
-        str,
-        Parameter("--scope", help="Config scope: project or global."),
-    ] = ConfigScope.PROJECT.value,
-) -> None:
-    """Fail when managed agent artifacts drift from rendered content."""
-    try:
-        _validate_agent_target(target)
-        result = check_opencode_agent_pack_drift(scope=scope)
-    except (OSError, ValueError) as error:
-        _fail(str(error))
-    _output().emit(result, rich=_agent_projection_table(result))
-    if result.drift:
-        raise SystemExit(1)
-
-
-@agents_app.command(name="doctor")
-def agents_doctor(
-    target: Annotated[
-        str,
-        Parameter("--target", help="Agent target. Supported: opencode."),
-    ] = OPENCODE_TARGET,
-    scope: Annotated[
-        str,
-        Parameter("--scope", help="Config scope: project or global."),
-    ] = ConfigScope.PROJECT.value,
-) -> None:
-    """Report local target health for managed BlackCell agents."""
-    try:
-        _validate_agent_target(target)
-        report = doctor_opencode_agent_pack(scope=scope)
-    except (OSError, ValueError) as error:
-        _fail(str(error))
-    _output().emit(report, rich=_agent_doctor_table(report))
-
-
-@app.command(name="doctor")
-def runtime_doctor() -> None:
-    """Report local runtime adapter and repo observation health."""
-    report = doctor_report(observe_repo())
-    _output().emit(report, rich=_doctor_table(report))
-
-
-def _world_snapshot_table(snapshot: WorldSnapshot) -> Table:
-    table = Table(title="World Snapshot")
-    table.add_column("Field")
-    table.add_column("Value")
-    table.add_row("Repo root", str(snapshot.repo_root))
-    table.add_row("Branch", snapshot.branch or "unknown")
-    table.add_row("Observations", str(len(snapshot.observations)))
-    table.add_row("Facts", str(len(snapshot.facts)))
-    table.add_row("Beliefs", str(len(snapshot.beliefs)))
-    table.add_row("Expectations", str(len(snapshot.expectations)))
-    table.add_row("Surprises", str(len(snapshot.surprises)))
-    return table
+    _output().emit(report, rich=_runtime_benchmark_table(report))
 
 
 def _kernel_events_table(events: Sequence[EventEnvelope]) -> Table:
@@ -816,276 +626,41 @@ def _bench_results_table(results: Sequence[BenchmarkAggregate]) -> Table:
     return table
 
 
-def _facts_table(facts: Sequence[Fact]) -> Table:
-    table = Table(title="Facts")
-    table.add_column("Subject")
-    table.add_column("Predicate")
-    table.add_column("Object")
-    table.add_column("Source")
-    for fact in facts:
-        table.add_row(fact.subject, fact.predicate, fact.object, fact.source)
-    return table
-
-
-def _rule_validation_table(result: RuleValidationResult) -> Table:
-    table = Table(title="NeSy Validation")
-    table.add_column("Field")
-    table.add_column("Value")
-    table.add_row("Valid", "yes" if result.valid else "no")
-    table.add_row("Errors", str(len(result.errors)))
-    table.add_row("Warnings", str(len(result.warnings)))
-    return table
-
-
-def _harness_plan_table(plan: HarnessPlan) -> Table:
-    table = Table(title="Harness Plan")
-    table.add_column("Step")
-    table.add_column("Summary")
-    table.add_column("Uses")
-    for step in plan.steps:
-        table.add_row(step.key, step.summary, ", ".join(step.uses))
-    return table
-
-
-def _run_trace_table(trace: RunTrace) -> Table:
-    table = Table(title="Run Trace")
-    table.add_column("#")
-    table.add_column("Kind")
-    table.add_column("Message")
-    for event in trace.events:
-        table.add_row(str(event.index), event.kind, event.message)
-    return table
-
-
-def _latent_state_table(state: LatentState) -> Table:
-    table = Table(title="Latent State")
-    table.add_column("Field")
-    table.add_column("Value")
-    table.add_row("State", state.state_id)
-    table.add_row("Source", state.source)
-    table.add_row("Encoder", state.encoder_version)
-    table.add_row("Facts", str(state.structural.get("fact_count", "unknown")))
-    table.add_row("Dirty", str(state.structural.get("workspace_dirty", "unknown")))
-    return table
-
-
-def _latent_predictions_table(prediction_set: PredictionSet) -> Table:
-    table = Table(title="Latent Predictions")
-    table.add_column("Prediction")
-    table.add_column("Action")
-    table.add_column("Confidence")
-    table.add_column("Label")
-    table.add_column("Samples")
-    table.add_column("Checks")
-    for prediction in prediction_set.predictions:
+def _prediction_results_table(results: Sequence[PredictionConditionAggregate]) -> Table:
+    table = Table(title="PredictionBench Results")
+    table.add_column("Condition")
+    table.add_column("Scored")
+    table.add_column("Exact match")
+    table.add_column("Brier")
+    table.add_column("Mean latency ms")
+    for result in results:
         table.add_row(
-            prediction.prediction_id,
-            prediction.action.kind,
-            str(prediction.confidence),
-            prediction.confidence_label,
-            str(prediction.sample_count),
-            ", ".join(prediction.required_checks),
+            result.condition.value,
+            f"{result.scored_count}/{result.target_count}",
+            "—" if result.exact_match_rate is None else f"{result.exact_match_rate:.3f}",
+            "—" if result.brier_score is None else f"{result.brier_score:.3f}",
+            f"{result.mean_latency_ms:.3f}",
         )
     return table
 
 
-def _latent_error_table(error: object) -> Table:
-    typed_error = error if isinstance(error, LatentPredictionError) else None
-    table = Table(title="Latent Prediction Error")
-    table.add_column("Field")
-    table.add_column("Value")
-    if typed_error is None:
-        return table
-    table.add_row("Error", typed_error.error_id)
-    table.add_row("Surprise", typed_error.surprise)
-    table.add_row("Semantic distance", str(typed_error.semantic_distance))
-    table.add_row("Structural deltas", str(len(typed_error.structural_delta)))
-    table.add_row("Symbolic deltas", str(len(typed_error.symbolic_delta)))
-    return table
-
-
-def _latent_record_table(result: LatentLedgerRecordResult) -> Table:
-    table = Table(title="Latent Ledger Record")
-    table.add_column("Field")
-    table.add_column("Value")
-    table.add_row("Path", str(result.path))
-    table.add_row("State", result.state_id)
-    table.add_row("Prediction", result.prediction_id)
-    table.add_row("Actual", result.actual_state_id)
-    table.add_row("Error", result.error_id)
-    table.add_row("Transition", result.transition_id)
-    table.add_row("Sample", result.sample_id)
-    return table
-
-
-def _latent_ledger_table(summary: LatentLedgerSummary) -> Table:
-    table = Table(title="Latent Ledger")
-    table.add_column("Field")
-    table.add_column("Value")
-    table.add_row("Path", str(summary.path))
-    table.add_row("Schema", str(summary.schema_version))
-    table.add_row("States", str(summary.state_count))
-    table.add_row("Predictions", str(summary.prediction_count))
-    table.add_row("Errors", str(summary.error_count))
-    table.add_row("Transitions", str(summary.transition_count))
-    table.add_row("Samples", str(summary.sample_count))
-    return table
-
-
-def _latent_stats_table(stats: LatentLedgerStats) -> Table:
-    table = Table(title="Latent Prediction Stats")
-    table.add_column("Action")
-    table.add_column("Samples")
-    table.add_column("Mean Semantic Distance")
-    table.add_column("Surprises")
-    table.add_column("Confidence")
-    for action in stats.action_stats:
-        table.add_row(
-            action.action_id,
-            str(action.sample_count),
-            str(action.mean_semantic_distance),
-            str(action.surprise_count),
-            action.confidence_label,
-        )
-    return table
-
-
-def _ledger_summary_table(summary: LedgerSummary) -> Table:
-    table = Table(title="Ledger")
-    table.add_column("Field")
-    table.add_column("Value")
-    table.add_row("Path", str(summary.path))
-    table.add_row("Schema", str(summary.schema_version))
-    table.add_row("Runs", str(summary.run_count))
-    table.add_row("Events", str(summary.event_count))
-    return table
-
-
-def _ledger_runs_table(runs: Sequence[LedgerRun]) -> Table:
-    table = Table(title="Ledger Runs")
-    table.add_column("Run")
-    table.add_column("Kind")
+def _runtime_benchmark_table(report: RuntimeBenchmarkReport) -> Table:
+    table = Table(title="Runtime Performance and Reliability")
+    table.add_column("Probe")
     table.add_column("Status")
-    table.add_column("Created")
-    for run in runs:
-        table.add_row(run.run_id, run.kind, run.status, run.created_at)
-    return table
-
-
-def _ledger_events_table(events: Sequence[LedgerEvent]) -> Table:
-    table = Table(title="Ledger Events")
-    table.add_column("Event")
-    table.add_column("Run")
-    table.add_column("Seq")
-    table.add_column("Kind")
-    table.add_column("Source")
-    table.add_column("Message")
-    for event in events:
+    table.add_column("Passed")
+    table.add_column("Call seconds")
+    table.add_column("Wall seconds")
+    for result in report.probes:
         table.add_row(
-            event.event_id,
-            event.run_id,
-            str(event.sequence),
-            event.kind,
-            event.source,
-            event.message,
+            result.probe_id,
+            result.status,
+            str(result.passed_count),
+            f"{result.call_seconds:.3f}",
+            f"{result.wall_seconds:.3f}",
         )
+    table.caption = "complete" if report.complete else "incomplete: rootless probe omitted"
     return table
-
-
-def _runtime_adapters_table(adapters: Sequence[RuntimeAdapter]) -> Table:
-    table = Table(title="Runtime Adapters")
-    table.add_column("Name")
-    table.add_column("Available")
-    table.add_column("Kind")
-    table.add_column("Write")
-    for adapter in adapters:
-        table.add_row(
-            adapter.name,
-            "yes" if adapter.available else "no",
-            adapter.kind,
-            "yes" if adapter.supports_write else "no",
-        )
-    return table
-
-
-def _doctor_table(report: DoctorReport) -> Table:
-    table = Table(title="Doctor")
-    table.add_column("Field")
-    table.add_column("Value")
-    table.add_row("Repo root", report.repo_root)
-    table.add_row("Branch", report.branch or "unknown")
-    table.add_row("Adapters", str(report.adapter_count))
-    return table
-
-
-def _agents_table(agents: Sequence[AgentSummary]) -> Table:
-    table = Table(title="BlackCell Agents")
-    table.add_column("Key")
-    table.add_column("Mode")
-    table.add_column("Writes")
-    table.add_column("Description")
-    for agent in agents:
-        table.add_row(agent.key, agent.mode, agent.writes, agent.description)
-    return table
-
-
-def _agent_artifacts_table(artifacts: Sequence[RenderedAgentArtifact]) -> Table:
-    table = Table(title="Rendered Agent Artifacts")
-    table.add_column("Kind")
-    table.add_column("Path")
-    table.add_column("Digest")
-    for artifact in artifacts:
-        table.add_row(artifact.kind, artifact.path, artifact.digest)
-    return table
-
-
-def _agent_projection_table(result: AgentProjectionResult) -> Table:
-    title = f"Agent Pack {result.operation} ({result.scope})"
-    if result.dry_run:
-        title += " (dry run)"
-    table = Table(title=title)
-    table.add_column("Action")
-    table.add_column("Path")
-    table.add_column("Applied")
-    table.add_column("Digest")
-    table.add_column("Message")
-    for action in result.actions:
-        table.add_row(
-            action.action,
-            action.path,
-            str(action.applied),
-            action.digest,
-            action.message,
-        )
-    return table
-
-
-def _agent_doctor_table(report: AgentDoctorReport) -> Table:
-    table = Table(title=f"Agent Pack Doctor ({report.scope})")
-    table.add_column("Check")
-    table.add_column("OK")
-    table.add_column("Message")
-    for check in report.checks:
-        table.add_row(check.key, str(check.ok), check.message)
-    return table
-
-
-def _validate_agent_target(target: str) -> None:
-    if target != OPENCODE_TARGET:
-        raise ValueError("agent target must be opencode")
-
-
-def _resolve_latent_mode(
-    *,
-    latent: Literal["off", "summary", "record", "stats"],
-    latent_db: Path | None,
-    show_stats: bool,
-) -> Literal["off", "summary", "record", "stats"]:
-    if show_stats:
-        return "stats"
-    if latent == "summary" and latent_db is not None:
-        return "record"
-    return latent
 
 
 def _output() -> OutputRenderer:

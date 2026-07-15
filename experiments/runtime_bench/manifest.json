@@ -1,0 +1,36 @@
+{
+  "benchmark": "runtime-bench",
+  "version": 1,
+  "status": "reproducible-runtime-acceptance-baseline",
+  "probes": [
+    "api",
+    "worker",
+    "restart-fencing",
+    "quota",
+    "recovery",
+    "rootless-container"
+  ],
+  "metrics": [
+    "passed_count",
+    "skipped_count",
+    "wall_seconds",
+    "call_seconds",
+    "slowest_call_seconds",
+    "test_timings"
+  ],
+  "identity": [
+    "base_sha",
+    "source_tree_digest",
+    "uv_lock_digest",
+    "containerfile_digest",
+    "compose_digest",
+    "probe_argv",
+    "probe_environment_overrides",
+    "probe_output_digest"
+  ],
+  "recorded_artifact": "wp25-recorded.json",
+  "requires_rootless_podman_for_complete_report": true,
+  "raw_probe_output_retained": false,
+  "inferential": false,
+  "product_default_changed": false
+}

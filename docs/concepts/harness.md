@@ -1,73 +1,20 @@
 ---
 node: concepts/harness
-kind: concept
+kind: historical-concept
 edges:
-  consumes:
-    - concepts/world-model
-    - concepts/nesy
-  dispatches:
-    - concepts/runtime-adapters
-  produces:
-    - concepts/traces
-  records:
-    - spec/bcp-0026-telemetry-ledger
-  introduces:
-    - guides/latent-harness-quickstart
+  retired-by:
+    - spec/bcp-0034-evolutionary-runtime
+  replaced-by:
+    - architecture
 ---
 
-# Harness Runtime
+# Retired Prototype Harness
 
-> **Historical prototype:** the fixed dry-run harness is retained for compatibility while the
-> Repository Operator becomes the canonical loop. See `../architecture.md`.
+The July 6 dry-run harness combined repository observation, generated agent plans, a generic event
+store, and deterministic latent-transition sketches. It was valuable characterization evidence,
+but it created coordination and persistence paths separate from the canonical kernel.
 
-The harness turns world state into an explicit plan and then dispatches that
-plan through a runtime adapter.
-
-## Core Objects
-
-- `AgentSpec`: role, objective, sandbox posture
-- `PlanStep`: a single step in the harness loop
-- `HarnessPlan`: goal plus agents plus steps
-- `RunTrace`: append-only record of what happened during dispatch
-
-The dry-run harness also emits a compact latent prediction summary. When run
-with `--latent-db <path>`, it records the simulated latent transition in the
-local SQLite ledger and uses prior ledger transitions to label confidence.
-Use `--show-stats` with `--latent-db` to fold action-level latent stats into the
-same dry-run output.
-
-`--latent off|summary|record|stats` controls this behavior explicitly. The older
-`--latent-db` and `--show-stats` flags remain compatible shortcuts for `record`
-and `stats` behavior.
-
-For copy-paste commands and ledger inspection, see
-`../guides/latent-harness-quickstart.md`.
-
-The generic local ledger foundation is tracked in
-`../spec/bcp-0026-telemetry-ledger.md`. It provides local SQLite run/event
-inspection commands (`ledger init`, `ledger runs`, `ledger events`) and optional
-dry-run trace capture with `harness run --ledger-db <path>` without remote export
-or server infrastructure.
-
-## First Slice
-
-The first slice includes a dry-run runtime only. That keeps the architecture
-visible before the project commits to automation depth.
-
-```mermaid
-sequenceDiagram
-    participant R as Repo
-    participant W as World Model
-    participant N as NeSy Rules
-    participant H as Harness
-    participant A as Adapter
-    participant T as Trace
-
-    R->>W: observe
-    W->>N: derive facts
-    N->>H: validate constraints
-    H->>A: dispatch plan
-    A->>T: emit events
-    H->>T: attach latent prediction summary
-    T->>W: update state
-```
+WP26 removed the harness and its public commands after the gateway-owned Daily Operator v2,
+durable role DAG, independent outcome evaluation, and live-free replay paths were accepted. No
+compatibility shim or dual write remains. Historical design context survives in the superseded
+BCP-0026/0027 documents and the WP26 characterization artifact.

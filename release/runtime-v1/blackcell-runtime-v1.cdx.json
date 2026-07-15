@@ -1,0 +1,927 @@
+{
+  "$schema": "https://cyclonedx.org/schema/bom-1.7.schema.json",
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:pypi/anyio@4.14.2",
+      "name": "anyio",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/anyio@4.14.2",
+      "scope": "required",
+      "type": "library",
+      "version": "4.14.2"
+    },
+    {
+      "bom-ref": "pkg:pypi/attrs@26.1.0",
+      "name": "attrs",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/attrs@26.1.0",
+      "scope": "required",
+      "type": "library",
+      "version": "26.1.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/certifi@2026.6.17",
+      "name": "certifi",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/certifi@2026.6.17",
+      "scope": "required",
+      "type": "library",
+      "version": "2026.6.17"
+    },
+    {
+      "bom-ref": "pkg:pypi/cffi@2.1.0",
+      "name": "cffi",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/cffi@2.1.0",
+      "scope": "required",
+      "type": "library",
+      "version": "2.1.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/charset-normalizer@3.4.9",
+      "name": "charset-normalizer",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/charset-normalizer@3.4.9",
+      "scope": "required",
+      "type": "library",
+      "version": "3.4.9"
+    },
+    {
+      "bom-ref": "pkg:pypi/click@8.4.2",
+      "name": "click",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/click@8.4.2",
+      "scope": "required",
+      "type": "library",
+      "version": "8.4.2"
+    },
+    {
+      "bom-ref": "pkg:pypi/clingo@5.8.0",
+      "name": "clingo",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/clingo@5.8.0",
+      "scope": "required",
+      "type": "library",
+      "version": "5.8.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/colorama@0.4.6",
+      "name": "colorama",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/colorama@0.4.6",
+      "scope": "required",
+      "type": "library",
+      "version": "0.4.6"
+    },
+    {
+      "bom-ref": "pkg:pypi/cyclopts@4.20.0",
+      "name": "cyclopts",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/cyclopts@4.20.0",
+      "scope": "required",
+      "type": "library",
+      "version": "4.20.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/docstring-parser@0.18.0",
+      "name": "docstring-parser",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/docstring-parser@0.18.0",
+      "scope": "required",
+      "type": "library",
+      "version": "0.18.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/faker@40.28.1",
+      "name": "faker",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/faker@40.28.1",
+      "scope": "required",
+      "type": "library",
+      "version": "40.28.1"
+    },
+    {
+      "bom-ref": "pkg:pypi/googleapis-common-protos@1.75.0",
+      "name": "googleapis-common-protos",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/googleapis-common-protos@1.75.0",
+      "scope": "required",
+      "type": "library",
+      "version": "1.75.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/granian@2.7.9",
+      "name": "granian",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/granian@2.7.9",
+      "scope": "required",
+      "type": "library",
+      "version": "2.7.9"
+    },
+    {
+      "bom-ref": "pkg:pypi/h11@0.16.0",
+      "name": "h11",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/h11@0.16.0",
+      "scope": "required",
+      "type": "library",
+      "version": "0.16.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/httpcore@1.0.9",
+      "name": "httpcore",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/httpcore@1.0.9",
+      "scope": "required",
+      "type": "library",
+      "version": "1.0.9"
+    },
+    {
+      "bom-ref": "pkg:pypi/httpx@0.28.1",
+      "name": "httpx",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/httpx@0.28.1",
+      "scope": "required",
+      "type": "library",
+      "version": "0.28.1"
+    },
+    {
+      "bom-ref": "pkg:pypi/idna@3.18",
+      "name": "idna",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/idna@3.18",
+      "scope": "required",
+      "type": "library",
+      "version": "3.18"
+    },
+    {
+      "bom-ref": "pkg:pypi/litestar@2.24.0",
+      "name": "litestar",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/litestar@2.24.0",
+      "scope": "required",
+      "type": "library",
+      "version": "2.24.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/litestar-htmx@0.5.0",
+      "name": "litestar-htmx",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/litestar-htmx@0.5.0",
+      "scope": "required",
+      "type": "library",
+      "version": "0.5.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/markdown-it-py@4.2.0",
+      "name": "markdown-it-py",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/markdown-it-py@4.2.0",
+      "scope": "required",
+      "type": "library",
+      "version": "4.2.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/mdurl@0.1.2",
+      "name": "mdurl",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/mdurl@0.1.2",
+      "scope": "required",
+      "type": "library",
+      "version": "0.1.2"
+    },
+    {
+      "bom-ref": "pkg:pypi/msgspec@0.21.1",
+      "name": "msgspec",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/msgspec@0.21.1",
+      "scope": "required",
+      "type": "library",
+      "version": "0.21.1"
+    },
+    {
+      "bom-ref": "pkg:pypi/multidict@6.7.1",
+      "name": "multidict",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/multidict@6.7.1",
+      "scope": "required",
+      "type": "library",
+      "version": "6.7.1"
+    },
+    {
+      "bom-ref": "pkg:pypi/multipart@1.3.1",
+      "name": "multipart",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/multipart@1.3.1",
+      "scope": "required",
+      "type": "library",
+      "version": "1.3.1"
+    },
+    {
+      "bom-ref": "pkg:pypi/opentelemetry-api@1.43.0",
+      "name": "opentelemetry-api",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/opentelemetry-api@1.43.0",
+      "scope": "required",
+      "type": "library",
+      "version": "1.43.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.43.0",
+      "name": "opentelemetry-exporter-otlp-proto-common",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.43.0",
+      "scope": "required",
+      "type": "library",
+      "version": "1.43.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.43.0",
+      "name": "opentelemetry-exporter-otlp-proto-http",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.43.0",
+      "scope": "required",
+      "type": "library",
+      "version": "1.43.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/opentelemetry-proto@1.43.0",
+      "name": "opentelemetry-proto",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/opentelemetry-proto@1.43.0",
+      "scope": "required",
+      "type": "library",
+      "version": "1.43.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/opentelemetry-sdk@1.43.0",
+      "name": "opentelemetry-sdk",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/opentelemetry-sdk@1.43.0",
+      "scope": "required",
+      "type": "library",
+      "version": "1.43.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/opentelemetry-semantic-conventions@0.64b0",
+      "name": "opentelemetry-semantic-conventions",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/opentelemetry-semantic-conventions@0.64b0",
+      "scope": "required",
+      "type": "library",
+      "version": "0.64b0"
+    },
+    {
+      "bom-ref": "pkg:pypi/polyfactory@3.3.0",
+      "name": "polyfactory",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/polyfactory@3.3.0",
+      "scope": "required",
+      "type": "library",
+      "version": "3.3.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/protobuf@7.35.1",
+      "name": "protobuf",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/protobuf@7.35.1",
+      "scope": "required",
+      "type": "library",
+      "version": "7.35.1"
+    },
+    {
+      "bom-ref": "pkg:pypi/pycparser@3.0",
+      "name": "pycparser",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/pycparser@3.0",
+      "scope": "required",
+      "type": "library",
+      "version": "3.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/pygments@2.20.0",
+      "name": "pygments",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/pygments@2.20.0",
+      "scope": "required",
+      "type": "library",
+      "version": "2.20.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/pyyaml@6.0.3",
+      "name": "pyyaml",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/pyyaml@6.0.3",
+      "scope": "required",
+      "type": "library",
+      "version": "6.0.3"
+    },
+    {
+      "bom-ref": "pkg:pypi/requests@2.34.2",
+      "name": "requests",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/requests@2.34.2",
+      "scope": "required",
+      "type": "library",
+      "version": "2.34.2"
+    },
+    {
+      "bom-ref": "pkg:pypi/rich@15.0.0",
+      "name": "rich",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/rich@15.0.0",
+      "scope": "required",
+      "type": "library",
+      "version": "15.0.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/rich-click@1.9.8",
+      "name": "rich-click",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/rich-click@1.9.8",
+      "scope": "required",
+      "type": "library",
+      "version": "1.9.8"
+    },
+    {
+      "bom-ref": "pkg:pypi/rich-rst@2.1.0",
+      "name": "rich-rst",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/rich-rst@2.1.0",
+      "scope": "required",
+      "type": "library",
+      "version": "2.1.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/sniffio@1.3.1",
+      "name": "sniffio",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/sniffio@1.3.1",
+      "scope": "required",
+      "type": "library",
+      "version": "1.3.1"
+    },
+    {
+      "bom-ref": "pkg:pypi/typing-extensions@4.16.0",
+      "name": "typing-extensions",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/typing-extensions@4.16.0",
+      "scope": "required",
+      "type": "library",
+      "version": "4.16.0"
+    },
+    {
+      "bom-ref": "pkg:pypi/tzdata@2026.3",
+      "name": "tzdata",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/tzdata@2026.3",
+      "scope": "required",
+      "type": "library",
+      "version": "2026.3"
+    },
+    {
+      "bom-ref": "pkg:pypi/urllib3@2.7.0",
+      "name": "urllib3",
+      "properties": [
+        {
+          "name": "blackcell:uv-lock-source",
+          "value": "registry:https://pypi.org/simple"
+        }
+      ],
+      "purl": "pkg:pypi/urllib3@2.7.0",
+      "scope": "required",
+      "type": "library",
+      "version": "2.7.0"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [
+        "pkg:pypi/idna@3.18"
+      ],
+      "ref": "pkg:pypi/anyio@4.14.2"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/attrs@26.1.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/clingo@5.8.0",
+        "pkg:pypi/cyclopts@4.20.0",
+        "pkg:pypi/granian@2.7.9",
+        "pkg:pypi/litestar@2.24.0",
+        "pkg:pypi/msgspec@0.21.1",
+        "pkg:pypi/opentelemetry-api@1.43.0",
+        "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.43.0",
+        "pkg:pypi/opentelemetry-sdk@1.43.0",
+        "pkg:pypi/pyyaml@6.0.3",
+        "pkg:pypi/rich@15.0.0"
+      ],
+      "ref": "pkg:pypi/blackcell@0.2.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/certifi@2026.6.17"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/pycparser@3.0"
+      ],
+      "ref": "pkg:pypi/cffi@2.1.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/charset-normalizer@3.4.9"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/colorama@0.4.6"
+      ],
+      "ref": "pkg:pypi/click@8.4.2"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/cffi@2.1.0"
+      ],
+      "ref": "pkg:pypi/clingo@5.8.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/colorama@0.4.6"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/attrs@26.1.0",
+        "pkg:pypi/docstring-parser@0.18.0",
+        "pkg:pypi/rich-rst@2.1.0",
+        "pkg:pypi/rich@15.0.0"
+      ],
+      "ref": "pkg:pypi/cyclopts@4.20.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/docstring-parser@0.18.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/tzdata@2026.3"
+      ],
+      "ref": "pkg:pypi/faker@40.28.1"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/protobuf@7.35.1"
+      ],
+      "ref": "pkg:pypi/googleapis-common-protos@1.75.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/click@8.4.2"
+      ],
+      "ref": "pkg:pypi/granian@2.7.9"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/h11@0.16.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/certifi@2026.6.17",
+        "pkg:pypi/h11@0.16.0"
+      ],
+      "ref": "pkg:pypi/httpcore@1.0.9"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/anyio@4.14.2",
+        "pkg:pypi/certifi@2026.6.17",
+        "pkg:pypi/httpcore@1.0.9",
+        "pkg:pypi/idna@3.18"
+      ],
+      "ref": "pkg:pypi/httpx@0.28.1"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/idna@3.18"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/anyio@4.14.2",
+        "pkg:pypi/click@8.4.2",
+        "pkg:pypi/httpx@0.28.1",
+        "pkg:pypi/litestar-htmx@0.5.0",
+        "pkg:pypi/msgspec@0.21.1",
+        "pkg:pypi/multidict@6.7.1",
+        "pkg:pypi/multipart@1.3.1",
+        "pkg:pypi/polyfactory@3.3.0",
+        "pkg:pypi/pyyaml@6.0.3",
+        "pkg:pypi/rich-click@1.9.8",
+        "pkg:pypi/rich@15.0.0",
+        "pkg:pypi/sniffio@1.3.1",
+        "pkg:pypi/typing-extensions@4.16.0"
+      ],
+      "ref": "pkg:pypi/litestar@2.24.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/litestar-htmx@0.5.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/mdurl@0.1.2"
+      ],
+      "ref": "pkg:pypi/markdown-it-py@4.2.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/mdurl@0.1.2"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/msgspec@0.21.1"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/multidict@6.7.1"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/multipart@1.3.1"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/typing-extensions@4.16.0"
+      ],
+      "ref": "pkg:pypi/opentelemetry-api@1.43.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/opentelemetry-proto@1.43.0"
+      ],
+      "ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.43.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/googleapis-common-protos@1.75.0",
+        "pkg:pypi/opentelemetry-api@1.43.0",
+        "pkg:pypi/opentelemetry-exporter-otlp-proto-common@1.43.0",
+        "pkg:pypi/opentelemetry-proto@1.43.0",
+        "pkg:pypi/opentelemetry-sdk@1.43.0",
+        "pkg:pypi/requests@2.34.2",
+        "pkg:pypi/typing-extensions@4.16.0"
+      ],
+      "ref": "pkg:pypi/opentelemetry-exporter-otlp-proto-http@1.43.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/protobuf@7.35.1"
+      ],
+      "ref": "pkg:pypi/opentelemetry-proto@1.43.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/opentelemetry-api@1.43.0",
+        "pkg:pypi/opentelemetry-semantic-conventions@0.64b0",
+        "pkg:pypi/typing-extensions@4.16.0"
+      ],
+      "ref": "pkg:pypi/opentelemetry-sdk@1.43.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/opentelemetry-api@1.43.0",
+        "pkg:pypi/typing-extensions@4.16.0"
+      ],
+      "ref": "pkg:pypi/opentelemetry-semantic-conventions@0.64b0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/faker@40.28.1",
+        "pkg:pypi/typing-extensions@4.16.0"
+      ],
+      "ref": "pkg:pypi/polyfactory@3.3.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/protobuf@7.35.1"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/pycparser@3.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/pygments@2.20.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/pyyaml@6.0.3"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/certifi@2026.6.17",
+        "pkg:pypi/charset-normalizer@3.4.9",
+        "pkg:pypi/idna@3.18",
+        "pkg:pypi/urllib3@2.7.0"
+      ],
+      "ref": "pkg:pypi/requests@2.34.2"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/markdown-it-py@4.2.0",
+        "pkg:pypi/pygments@2.20.0"
+      ],
+      "ref": "pkg:pypi/rich@15.0.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/click@8.4.2",
+        "pkg:pypi/colorama@0.4.6",
+        "pkg:pypi/rich@15.0.0"
+      ],
+      "ref": "pkg:pypi/rich-click@1.9.8"
+    },
+    {
+      "dependsOn": [
+        "pkg:pypi/pygments@2.20.0",
+        "pkg:pypi/rich@15.0.0"
+      ],
+      "ref": "pkg:pypi/rich-rst@2.1.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/sniffio@1.3.1"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/typing-extensions@4.16.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/tzdata@2026.3"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:pypi/urllib3@2.7.0"
+    }
+  ],
+  "metadata": {
+    "component": {
+      "bom-ref": "pkg:pypi/blackcell@0.2.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "blackcell",
+      "properties": [
+        {
+          "name": "blackcell:sbom-scope",
+          "value": "locked-python-runtime"
+        },
+        {
+          "name": "blackcell:lockfile",
+          "value": "uv.lock"
+        },
+        {
+          "name": "blackcell:lockfile-sha256",
+          "value": "sha256:0ad9fc24eeeafaa74b2b76a73d43df2f11ab617aa111c0f23e913ae8b2a50c85"
+        }
+      ],
+      "purl": "pkg:pypi/blackcell@0.2.0",
+      "type": "application",
+      "version": "0.2.0"
+    },
+    "lifecycles": [
+      {
+        "phase": "pre-build"
+      }
+    ],
+    "timestamp": "2026-07-14T00:00:00Z",
+    "tools": {
+      "components": [
+        {
+          "name": "blackcell-release-evidence",
+          "type": "application",
+          "version": "1"
+        }
+      ]
+    }
+  },
+  "serialNumber": "urn:uuid:fc7495b4-dda8-5700-82e8-3fc69a258c5a",
+  "specVersion": "1.7",
+  "version": 1
+}

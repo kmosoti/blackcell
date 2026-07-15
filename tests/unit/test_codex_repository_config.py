@@ -39,7 +39,7 @@ def test_project_config_and_named_agents_are_explicit() -> None:
         "enabled": True,
         "max_concurrent_threads_per_session": 9,
         "hide_spawn_agent_metadata": False,
-        "non_code_mode_only": False,
+        "non_code_mode_only": True,
         "tool_namespace": "agents",
     }
     assert "suppress_unstable_features_warning" not in config
@@ -95,6 +95,9 @@ def test_repo_instructions_and_skills_require_no_history_spawns() -> None:
     assert "alternate Git refspec" in agents_text
     assert "`functions.agents__spawn_agent`" in agents_text
     assert "live spawn schema includes `agent_type`" in agents_text
+    assert "MultiAgentV2 collaboration tools are direct-model-only" in agents_text
+    assert "`non_code_mode_only = true`" in agents_text
+    assert "do not call `tools.agents__*` from inside `functions.exec`" in agents_text
     assert "Do not set the direct `model`, `reasoning_effort`, or `service_tier`" in agents_text
     assert "Optional delegation stays on the Terra root" in agents_text
 
@@ -224,7 +227,7 @@ def test_contract_validator_enforces_result_scope_and_size_limits(
     packet["limits"]["max_summary_chars"] = 10
     result = contract_tree["result"]
     result["summary"] = "This summary is deliberately longer than ten characters."
-    result["changed_files"] = ["src/blackcell/agents/opencode.py"]
+    result["changed_files"] = ["src/blackcell/operator/repository_adapters.py"]
     _write_json(contract_tree["packet_path"], packet)
     _write_json(contract_tree["result_path"], result)
 
@@ -493,15 +496,15 @@ def contract_tree() -> Iterator[dict[str, Any]]:
     change_spec_path = work_root / "change-spec.json"
     packet_path = workers / "worker-01.json"
     result_path = results / "worker-01.json"
-    verification_argv = ["uv", "run", "pytest", "tests/unit/test_agents.py"]
+    verification_argv = ["uv", "run", "pytest", "tests/unit/test_operator_facade.py"]
     change_spec: dict[str, Any] = {
         "schema_version": "blackcell-change-spec/v1",
         "work_id": work_id,
-        "objective": "Map the existing OpenCode agent projection without changing it.",
+        "objective": "Map the canonical Repository Operator facade without changing it.",
         "base_sha": "a" * 40,
         "acceptance_criteria": ["Return exact path and line evidence."],
-        "in_scope": ["src/blackcell/agents"],
-        "out_of_scope": ["src/blackcell/agents/registry.py"],
+        "in_scope": ["src/blackcell/operator/facade.py"],
+        "out_of_scope": ["src/blackcell/operator/repository_adapters.py"],
         "constraints": ["Read-only evidence."],
         "assumptions": [],
         "unknowns": [],
@@ -512,18 +515,18 @@ def contract_tree() -> Iterator[dict[str, Any]]:
         "worker_id": "worker-01",
         "mode": "evidence",
         "change_spec_path": str(change_spec_path),
-        "task": "Identify the OpenCode artifact rendering entry point.",
-        "allowed_paths": ["src/blackcell/agents/opencode.py"],
-        "forbidden_paths": ["src/blackcell/agents/registry.py"],
+        "task": "Identify the canonical Repository Operator entry point.",
+        "allowed_paths": ["src/blackcell/operator/facade.py"],
+        "forbidden_paths": ["src/blackcell/operator/repository_adapters.py"],
         "required_reads": [
             {
-                "path": "src/blackcell/agents/opencode.py",
-                "symbol": "render_opencode_artifacts",
-                "reason": "This function owns artifact rendering.",
+                "path": "src/blackcell/operator/facade.py",
+                "symbol": "RepositoryOperator",
+                "reason": "This class owns the canonical product facade.",
             }
         ],
         "verification_commands": [
-            {"argv": verification_argv, "reason": "Check the existing agent contract."}
+            {"argv": verification_argv, "reason": "Check the canonical operator contract."}
         ],
         "result_schema_path": str((ORCHESTRATION_ROOT / "worker-result.schema.json").resolve()),
         "limits": {
@@ -537,17 +540,17 @@ def contract_tree() -> Iterator[dict[str, Any]]:
         "work_id": work_id,
         "worker_id": "worker-01",
         "status": "completed",
-        "summary": "The OpenCode module owns the artifact rendering entry point.",
+        "summary": "The Repository Operator class owns the canonical product facade.",
         "observations": [
             {
                 "kind": "fact",
-                "summary": "render_opencode_artifacts returns the managed artifacts.",
+                "summary": "RepositoryOperator exposes the canonical product entry point.",
                 "evidence": [
                     {
-                        "path": "src/blackcell/agents/opencode.py",
-                        "symbol": "render_opencode_artifacts",
-                        "line_start": 47,
-                        "line_end": 54,
+                        "path": "src/blackcell/operator/facade.py",
+                        "symbol": "RepositoryOperator",
+                        "line_start": 121,
+                        "line_end": 124,
                     }
                 ],
             }
@@ -556,7 +559,7 @@ def contract_tree() -> Iterator[dict[str, Any]]:
         "unknowns": [],
         "changed_files": [],
         "verification": [
-            {"argv": verification_argv, "exit_code": 0, "summary": "Agent tests passed."}
+            {"argv": verification_argv, "exit_code": 0, "summary": "Operator tests passed."}
         ],
     }
     _write_json(change_spec_path, change_spec)

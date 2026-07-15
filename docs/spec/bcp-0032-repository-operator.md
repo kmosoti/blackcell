@@ -10,15 +10,15 @@ edges:
 
 # BCP-0032: Repository Operator Loop
 
-Status: product accepted — public facade delegates to canonical Daily Operator v2
+Status: product accepted — public facade delegates to canonical Daily Operator v2; predecessor retired
 
 Connect observation ingestion, state projection, ContextFrame construction, model proposal,
 policy evaluation, one bounded affordance, outcome observation, evaluation, and event append.
 
 The public `RepositoryOperator` composes `DailyOperatorV2Workflow`, the model gateway, typed
 repository status adapters, canonical state/context inspection, and read-only replay. The
-characterized predecessor remains available only as `LegacyRepositoryOperator` until the later
-retirement gate; the CLI no longer writes its `operator.*` event grammar.
+characterized predecessor and its `operator.*` writer were removed by WP26. Immutable
+`daily-operator/v1` history remains readable only through the live-free replay adapter.
 
 Acceptance:
 

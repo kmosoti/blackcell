@@ -167,6 +167,24 @@ verified bundle off-volume, stop writers, restore to an absent target, select it
 disaster recovery without claiming offsite transport, encryption, filesystem hard quotas, or
 power-loss behavior on untested storage.
 
+## Runtime benchmark boundary
+
+RuntimeBench composes the existing API, worker, scheduler restart/fencing, quota, recovery, and
+rootless-container acceptance tests without introducing another runtime path. Each direct probe
+runs in a secret-minimized environment and retains exact argv, declared overrides, pass/skip
+counts, call and subprocess timings, output digests, and a source/environment fingerprint. Raw
+probe logs are captured only in memory and are not written into the report.
+
+The rootless acceptance test explicitly drives the image-declared Podman healthchecks while
+polling. This preserves health validation on hosts, including the recorded WSL2 environment,
+where the rootless engine cannot install user-systemd health timers. Compose still declares the
+worker's healthy-API dependency; the test starts the worker with `--no-deps` only after it has
+independently established API health.
+
+The retained WP25 artifact is a reproducible single-host reliability baseline before optimization.
+Its pytest and process timings are not service SLOs, sustained throughput, production RTO/RPO, or
+evidence for changing runtime defaults.
+
 ## Command, event, projection, and artifact separation
 
 Commands request work and use imperative names. Events record accepted facts in past tense.
@@ -202,7 +220,7 @@ content. Artifact reads verify the digest before returning bytes.
 
 The target ContextFrame codec serializes the exact identity payload, so its kernel artifact digest
 is also its `frame_id`. A rebuildable SQLite index stores discovery metadata only; it never stores a
-second JSON payload. `DailyOperatorWorkflow` persists and verifies this artifact before model
+second JSON payload. `DailyOperatorV2Workflow` persists and verifies this artifact before model
 reasoning. The bounded durable-run protocol links that exact artifact, proposal, proof bundle,
 authorization, execution result, and causal trace into one create-only run stream. Proposal, proof,
 and authorization artifacts use explicit feature-owned codecs; the execution journal remains the
@@ -214,7 +232,7 @@ orphan artifact. It must never create an event whose artifact was not committed 
 
 ## Durable run and execution protocol
 
-One `DailyOperatorRequest.run_id` owns one `daily-operator-run:{run_id}` stream and one canonical
+One `DailyOperatorV2Request.run_id` owns one `daily-operator-run:{run_id}` stream and one canonical
 request digest. A terminal duplicate, an interrupted duplicate, and changed input under the same
 run ID all fail before ingestion, reasoning, or execution. Run events share the run correlation ID
 and form one immediate-predecessor causation chain. Observation events are caused by `run.started`;
@@ -244,7 +262,7 @@ ContextFrame. It creates a new experiment and correlation ID. It is not determin
 
 ## Action protocol
 
-The integrated `daily-operator/v1` grammar remains:
+The immutable `daily-operator/v1` grammar remains readable for historical replay only:
 
 ```text
 run.started
@@ -267,7 +285,13 @@ request/attempt/response evidence before the proposal, and records `run.outcome-
 outcome-state snapshot, evaluation, and optional observed transition after authorization/execution.
 Version-one history is never reinterpreted. Version-two writing is now active through the public
 Repository Operator facade after composer, replay verifier, and compatibility characterization
-landed together; the predecessor remains explicitly importable only for migration testing.
+landed together. WP26 removed the version-one public writer and predecessor coordinator while
+retaining its strict decoder, artifact verification, and projection findings behind the live-free
+replay port.
+
+WP26 also removed the prototype world, NeSy, harness, latent, generic-ledger, generated-agent, and
+adapter-discovery surfaces. The kernel database and its owned journals/projections are now the only
+runtime write authority; historical v1 decoding is not a second store or execution path.
 
 ## Model boundary
 
@@ -298,6 +322,14 @@ WP11 deliberately adds no local-model adapter. The repository has neither an ins
 predictor runtime nor a configured prediction route or matched WP10 evaluation. Promotion requires
 a pinned deployment, gateway-owned resource bounds, and a like-for-like outcome-scoring comparison;
 the machine-readable deferral is recorded in `docs/decisions/runtime-v1/wp11-local-predictor.json`.
+
+WP24 retains a matched eight-scenario PredictionBench report over state persistence and an
+experiment-only developer-declared-effect baseline. Both use the same source/action/target/horizon,
+canonical outcome, and scorer; the declared-effect fixture contains an explicit failed expectation
+so it is not an outcome oracle. The local-neural and hybrid-neural-symbolic candidates remain
+unavailable with null measures. Their deferral, and the prohibition on learned-world-model or
+neuro-symbolic-system claims, is recorded in
+`docs/decisions/runtime-v1/wp24-prediction-experiments.json`.
 
 ## Constraint solver boundary
 

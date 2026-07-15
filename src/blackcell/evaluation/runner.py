@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
-from blackcell.evaluation.contexts import build_context
+from blackcell.evaluation.contexts import build_trial_context
 from blackcell.evaluation.types import (
     BenchmarkScenario,
     BenchmarkTask,
+    ContextCondition,
     ExecutionOutcome,
     PolicyVerdict,
     ScenarioExecutor,
@@ -15,6 +16,7 @@ from blackcell.evaluation.types import (
     Trial,
     TrialOutcome,
 )
+from blackcell.features.retrieve_evidence import EvidenceRetriever
 from blackcell.models import ActionProposal, DecisionModel
 
 
@@ -51,17 +53,19 @@ class ModelScenarioRunner:
         policy: ScenarioPolicy | None = None,
         executor: ScenarioExecutor | None = None,
         clock: Callable[[], float] = time.monotonic,
+        retrievers: Mapping[ContextCondition, EvidenceRetriever] | None = None,
     ) -> None:
         self._model = model
         self._policy = policy or FixturePolicy()
         self._executor = executor or FixtureExecutor()
         self._clock = clock
+        self._retrievers = dict(retrievers or {})
 
     def run(self, scenario: BenchmarkScenario, trial: Trial) -> TrialOutcome:
         if scenario.scenario_id != trial.scenario_id:
             raise ValueError("trial does not belong to scenario")
-        context = build_context(scenario, trial.condition, latest_n=trial.latest_n)
         started = self._clock()
+        context = build_trial_context(scenario, trial, retrievers=self._retrievers)
         decision = self._model.decide(context, correlation_id=trial.trial_id)
         policy = self._policy.evaluate(scenario.task, decision.proposal)
         execution = (
@@ -89,14 +93,16 @@ class FixtureScenarioRunner:
         *,
         policy: ScenarioPolicy | None = None,
         executor: ScenarioExecutor | None = None,
+        retrievers: Mapping[ContextCondition, EvidenceRetriever] | None = None,
     ) -> None:
         self._policy = policy or FixturePolicy()
         self._executor = executor or FixtureExecutor()
+        self._retrievers = dict(retrievers or {})
 
     def run(self, scenario: BenchmarkScenario, trial: Trial) -> TrialOutcome:
         if scenario.scenario_id != trial.scenario_id:
             raise ValueError("trial does not belong to scenario")
-        context = build_context(scenario, trial.condition, latest_n=trial.latest_n)
+        context = build_trial_context(scenario, trial, retrievers=self._retrievers)
         proposal = scenario.fixture_proposal
         policy = self._policy.evaluate(scenario.task, proposal)
         execution = (

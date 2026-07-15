@@ -14,5 +14,5 @@ interrupt_message = false
 enabled = true
 max_concurrent_threads_per_session = 9
 hide_spawn_agent_metadata = false
-non_code_mode_only = false
+non_code_mode_only = true
 tool_namespace = "agents"

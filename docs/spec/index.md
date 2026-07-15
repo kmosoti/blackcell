@@ -23,7 +23,7 @@ edges:
 2. `BCP-0029`: unified event and artifact kernel.
 3. `BCP-0030`: repository evidence and state projection.
 4. `BCP-0031`: context projection and symbolic control.
-5. `BCP-0032`: legacy Repository Operator acceptance surface.
+5. `BCP-0032`: Repository Operator acceptance surface over canonical Daily Operator v2.
 6. `BCP-0033`: deterministic OperatorBench fixture pilot.
 
 ## Active runtime-v1 program

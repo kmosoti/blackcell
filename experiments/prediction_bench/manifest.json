@@ -1,0 +1,48 @@
+{
+  "benchmark": "prediction-bench",
+  "version": 1,
+  "status": "matched-deterministic-baselines",
+  "hypothesis": "Developer-declared action effects improve one-step target prediction over state persistence when evaluated with the same advisory schema and canonical outcomes.",
+  "conditions": [
+    "state-persistence",
+    "declared-effects"
+  ],
+  "controls": [
+    "source snapshot",
+    "action identity",
+    "prediction targets",
+    "horizon",
+    "actual snapshot",
+    "scorer",
+    "latency repetitions"
+  ],
+  "scenario_tags": [
+    "persistence",
+    "declared-effect",
+    "unexpected-outcome",
+    "unmodeled-change",
+    "source-missing",
+    "source-conflict",
+    "actual-missing",
+    "actual-conflict"
+  ],
+  "metrics": [
+    "exact_match_rate",
+    "brier_score",
+    "target_match_rate",
+    "scored_coverage",
+    "actual_missing_count",
+    "actual_conflict_count",
+    "prediction_unknown_count",
+    "mean_latency_ms",
+    "p95_latency_ms",
+    "input_tokens",
+    "output_tokens",
+    "provider_cost_usd"
+  ],
+  "recorded_artifact": "wp24-recorded.json",
+  "inferential": false,
+  "product_default_changed": false,
+  "neural_candidate_available": false,
+  "neuro_symbolic_candidate_available": false
+}

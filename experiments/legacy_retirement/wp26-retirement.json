@@ -1,0 +1,107 @@
+{
+  "schema_version": "legacy-retirement-report/v1",
+  "recorded_on": "2026-07-14",
+  "base_sha": "2e0c4d26f7c0df8da92df5d5da4cc3f3738aa0ee",
+  "characterization": {
+    "path": "experiments/legacy_retirement/wp26-characterization.json",
+    "digest": "sha256:e55ec6584932dde152726f4e1d654544da622a6743d5beb976f0bafea01cec52",
+    "tests_passed_before_deletion": 106
+  },
+  "source_after_retirement": {
+    "python_file_count": 211,
+    "source_tree_digest": "sha256:2b0f0237c2f65b58882f003c31915de9c75d3669eee82ceb4554bf39112a7ce5",
+    "legacy_root_count": 0,
+    "allowed_import_violation_count": 0
+  },
+  "removed": {
+    "prototype_package_roots": [
+      "blackcell.agents",
+      "blackcell.harness",
+      "blackcell.latent",
+      "blackcell.ledger",
+      "blackcell.nesy",
+      "blackcell.world"
+    ],
+    "partial_legacy_modules": [
+      "blackcell.runtime.models",
+      "blackcell.runtime.service"
+    ],
+    "predecessor_writers": [
+      "blackcell.operator.service.RepositoryOperator",
+      "blackcell.workflows.daily_operator.DailyOperatorWorkflow"
+    ],
+    "tracked_opencode_agent_files": 6,
+    "tracked_opencode_command_files": 4,
+    "top_level_cli_surfaces": [
+      "adapters",
+      "agents",
+      "doctor",
+      "harness",
+      "latent",
+      "ledger",
+      "nesy",
+      "world"
+    ],
+    "independent_sqlite_defaults": [
+      ".blackcell/latent.sqlite3",
+      ".blackcell/ledger.sqlite3"
+    ],
+    "aliases_or_tombstone_commands_added": false
+  },
+  "retained": {
+    "top_level_cli_surfaces": [
+      "bench",
+      "events",
+      "operator"
+    ],
+    "runtime_quota_contracts": [
+      "RuntimeStorageQuota",
+      "StorageQuotaPort"
+    ],
+    "canonical_write_authority": "blackcell.kernel",
+    "daily_operator_v1": "read-only historical decoder and verifier",
+    "daily_operator_v2": "canonical execution and replay"
+  },
+  "focused_verification": {
+    "tests_passed": 118,
+    "failed": 0,
+    "wall_seconds": 99.26,
+    "includes": [
+      "legacy absence and architecture debt",
+      "canonical CLI and JSON/rich output",
+      "Repository Operator v2 facade and CLI",
+      "daily-operator/v1 completed live-free replay",
+      "daily-operator/v2 exact-state no-write replay",
+      "runtime quotas and benchmark CLI",
+      "Daily Operator v2 workflow and request identity"
+    ],
+    "ruff": "pass",
+    "ty": "pass"
+  },
+  "live_product_probe": {
+    "command": "blackcell operator run --model recorded",
+    "status": "completed",
+    "workflow_version": "daily-operator/v2",
+    "outcome": "executed",
+    "authorization_outcome": "allow",
+    "execution_status": "succeeded",
+    "evaluation_verdict": "pass",
+    "transition_recorded": true,
+    "run_event_count": 17,
+    "artifact_count": 19,
+    "replay": {
+      "classification": "completed",
+      "protocol_version": "daily-operator/v2",
+      "initial_projection": "verified",
+      "outcome_projection": "verified",
+      "finding": null
+    },
+    "temporary_state_removed": true
+  },
+  "boundaries": {
+    "tracked_or_external_user_data_migrated": false,
+    "historical_events_rewritten": false,
+    "runtime_default_changed": false,
+    "release_or_publication_performed": false
+  }
+}

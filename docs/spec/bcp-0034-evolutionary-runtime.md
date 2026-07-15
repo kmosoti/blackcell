@@ -89,7 +89,6 @@ src/blackcell/
 │   ├── http/contracts/
 │   ├── http/v1/
 │   └── cli/
-├── compatibility/          # temporary facades for old public paths
 └── bootstrap/              # CLI, worker, HTTP composition roots
 ```
 
@@ -179,6 +178,12 @@ route, or matched WP10 evaluation exists. Its machine-readable decision records 
 gateway-boundary, calibration, latency, and resource-evidence prerequisites for reconsideration;
 no speculative adapter or dependency is added.
 
+WP24 compares state persistence with an experiment-only developer-declared-effect baseline over
+eight matched one-step synthetic scenarios. The retained report covers exact match, Brier,
+missing/conflict findings, latency, tokens, cost, identities, and environment. The author-crafted
+result is descriptive; the unavailable local-neural and hybrid candidates retain null measures,
+so WP11 deferral and the learned-world-model and neuro-symbolic claim gates continue.
+
 `solve_constraints` keeps deterministic Python policy as its semantic reference and default. The
 promoted Clingo 5.8 adapter sits behind the feature-owned solver port and independently checks each
 decisive predicate after Blackcell has selected current evidence. It returns the exact reference
@@ -186,9 +191,27 @@ proofs and explanations on parity and fails closed without evidence content on d
 failure. Freshness, conflicts, unknowns, provenance, proof identity, and authorization remain
 Blackcell-owned; a denied constraint cannot be bypassed by model confidence or adapter selection.
 
-Retrieval begins with SQLite FTS5 and provenance-preserving ranking. LightRAG or another graph/RAG
-adapter may be evaluated only against the same retrieval port, scenarios, and context budget. It
-does not own the operational belief state.
+WP23a promotes an explicit ephemeral SQLite FTS5 adapter behind the feature-owned retrieval port.
+It indexes only the supplied immutable SignalPacket, preserves Blackcell-owned evidence policy and
+provenance, and leaves deterministic retrieval as the canonical workflow and replay default.
+WP23 adds a matched five-treatment OperatorBench contract and records a revise decision: the
+six-scenario replayed artifact is descriptive, does not establish a live model effect, and changes
+no default. LightRAG or another graph/RAG adapter may be evaluated only against the same retrieval
+port, scenarios, and context budget. It does not own the operational belief state.
+
+WP25 records a complete six-probe RuntimeBench artifact over the authenticated API, five-role
+worker, scheduler restart/fencing, quota admission, verified recovery, and live rootless-container
+deployment. The report preserves exact direct test argv, environment and source fingerprints,
+output digests, and per-test/process timings without retaining raw logs. It is a reproducible
+single-host reliability baseline before optimization, not a service SLO, capacity result,
+production RTO/RPO, or default-change trigger.
+
+WP26 records the 106-test predecessor characterization before removing the prototype world, NeSy,
+harness, latent, generic-ledger, generated-agent, and runtime-discovery packages and commands. It
+also removes the predecessor Repository Operator and Daily Operator v1 public writers. The kernel
+database is the sole runtime write authority; immutable v1 histories remain available only to the
+read-only replay decoder and verifier. Architecture debt is empty, and no alias or tombstone
+command preserves the removed surfaces.
 
 ## API and deployment
 
@@ -319,15 +342,15 @@ flowchart TD
     G06d --> C09
 
     C09 --> T10[WP10 deterministic transition baseline]
-    T10 --> T11[WP11 local-model promote-or-defer]
-    C09 --> N12[WP12 Clingo promote-or-defer]
+    T10 --> T11[WP11 local-model defer decision]
+    C09 --> N12[WP12 promoted Clingo adapter]
     C09 --> F23[WP23a FTS5 baseline]
 
     C09 --> D14[WP14 DAG contracts and role policy]
     D14 --> D15[WP15 deterministic failure simulation]
     D15 --> D13a[WP13a transactional kernel session]
     D13a --> D13b[WP13b durable SQLite scheduler]
-    D13b --> D16[reviewed Daily Operator role DAG]
+    D13b --> D16[WP19 reviewed Daily Operator role DAG]
 
     C09 --> SEC22[WP22a security and data boundary]
     SEC22 --> A18[WP18 Litestar and msgspec API]
@@ -354,18 +377,64 @@ flowchart TD
     RET26 --> REL27
 ```
 
-### Remaining bounded nodes
+For remaining dependency calculation, WP11 is satisfied by its recorded defer decision rather
+than a speculative adapter. The reviewed Daily Operator role DAG identified as `D16` above is
+landed WP19 evidence.
+
+### Runtime-v1 completion DAG
+
+WP24 is satisfied by the bounded defer record in
+[`wp24-prediction-experiments.json`](../decisions/runtime-v1/wp24-prediction-experiments.json):
+matched deterministic measurements are retained, while local-neural and hybrid-neural-symbolic
+candidates remain unavailable. WP23 is already satisfied by its bounded revise record. WP25 is
+satisfied by the complete retained baseline in
+[`wp25-runtime-benchmark.json`](../decisions/runtime-v1/wp25-runtime-benchmark.json). WP26 is
+satisfied by the source-only retirement evidence in
+[`wp26-legacy-retirement.json`](../decisions/runtime-v1/wp26-legacy-retirement.json).
+
+```mermaid
+flowchart LR
+    C09[WP09b satisfied] --> F23[WP23a FTS5 baseline satisfied]
+    F23 --> X23[WP23 context retrieval experiments satisfied]
+
+    T10[WP10 satisfied] --> X24[WP24 prediction NeSy experiments satisfied]
+    T11[WP11 defer decision satisfied] --> X24
+    N12[WP12 satisfied] --> X24
+
+    D19[WP19 role DAG satisfied] --> PERF25[WP25 reliability performance satisfied]
+    P20[WP20 satisfied] --> PERF25
+
+    C09 --> RET26[WP26 legacy retirement satisfied]
+    R17[WP17 satisfied] --> RET26
+    X23 --> RET26
+    X24 --> RET26
+
+    REC22[WP22b satisfied] --> REL27[WP27 runtime-v1 release evidence]
+    PERF25 --> REL27
+    RET26 --> REL27
+
+    classDef satisfied fill:#d9e8fb,stroke:#4f6f8f,color:#111
+    classDef ready fill:#fff1b8,stroke:#9a6b00,color:#111
+    classDef selected fill:#c9efcf,stroke:#27753a,stroke-width:3px,color:#111
+    classDef waiting fill:#eeeeee,stroke:#777,color:#111
+    class C09,F23,X23,T10,T11,N12,X24,D19,P20,R17,REC22,PERF25,RET26,REL27 satisfied
+```
+
+### Completed bounded nodes
 
 | Node | Deliverable | Acceptance evidence |
 | --- | --- | --- |
-| WP23a | FTS5 baseline | matched retrieval evidence and explicit promote-or-defer record |
-| WP23-WP27 | experiments, profiling, retirement, release evidence | matched ablations, no dual writes, SBOM and reproducible verification |
+| WP27 | runtime-v1 release evidence | maintained documentation and isolated examples, deterministic CycloneDX 1.7 Python-runtime SBOM, and a hash-bound reproducible verification manifest |
+
+WP27 is satisfied and no bounded runtime-v1 DAG node remains. Its evidence is deliberately
+unpublished: completion does not authorize or imply a package/image build, tag, release, signature,
+provenance attestation, vulnerability result, commit, push, or parallel writers on shared state.
 
 The landed dependency join includes protocol-v2, WP04c-WP05c, WP06c-WP06f, WP08b, WP09b-WP09c,
-WP10, WP12-WP15, WP16a-WP16c, and WP17-WP22. WP09b is the product-accepted public composition over those
-integrated contracts; WP10 consumes its recorded initial/outcome state and action identities
-without entering the product control path, while WP12 remains an explicitly injected policy-edge
-adapter.
+WP10, WP12-WP15, WP16a-WP16c, WP17-WP22, WP23a, WP23, WP24, WP25, WP26, and WP27. WP09b is the product-accepted
+public composition over those integrated contracts; WP10 consumes its recorded initial/outcome
+state and action identities without entering the product control path, while WP12 remains an
+explicitly injected policy-edge adapter.
 
 ## Delivery and review protocol
 
