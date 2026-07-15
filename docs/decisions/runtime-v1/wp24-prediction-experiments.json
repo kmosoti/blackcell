@@ -1,0 +1,135 @@
+{
+  "schema_version": "runtime-v1-decision/v1",
+  "work_package": "WP24",
+  "decision": "defer",
+  "recorded_on": "2026-07-14",
+  "subject": "local-neural and hybrid-neural-symbolic transition prediction",
+  "recorded_artifact": {
+    "path": "experiments/prediction_bench/wp24-recorded.json",
+    "schema_version": "prediction-bench-report/v1",
+    "report_id": "sha256:441d07e0985008ac7ea471e9446e349e66dfc5a735fb591295ed6bca75abfbb3",
+    "scenario_digest": "sha256:5d009a0f7900e099c2afea6cc5dd20156771957c1df45e7ed71c744dfeb2a27d",
+    "scenario_count": 8,
+    "trial_count": 16,
+    "latency_repetitions_per_trial": 50,
+    "inferential": false,
+    "environment": {
+      "clock": "time.perf_counter_ns",
+      "implementation": "CPython",
+      "machine": "x86_64",
+      "python": "3.14.6",
+      "system": "Linux"
+    }
+  },
+  "controls": {
+    "conditions": [
+      "state-persistence",
+      "declared-effects"
+    ],
+    "paired_by": "synthetic scenario and target",
+    "shared_inputs": [
+      "source snapshot",
+      "action identity",
+      "prediction target",
+      "horizon",
+      "actual snapshot",
+      "TransitionPredictionScorer",
+      "latency repetition count"
+    ],
+    "advisory_schema": "transition-prediction/v1",
+    "score_schema": "transition-prediction-score/v1"
+  },
+  "descriptive_results": {
+    "state-persistence": {
+      "exact_match_rate": 0.25,
+      "brier_score": 0.4375,
+      "target_match_rate": 0.125,
+      "scored_coverage": 0.5,
+      "prediction_unknown_count": 2,
+      "actual_missing_count": 1,
+      "actual_conflict_count": 1,
+      "mean_latency_ms": 0.17016741500000002,
+      "p95_latency_ms": 0.221468,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "provider_cost_usd": 0.0
+    },
+    "declared-effects": {
+      "exact_match_rate": 0.6666666666666666,
+      "brier_score": 0.23666666666666666,
+      "target_match_rate": 0.5,
+      "scored_coverage": 0.75,
+      "prediction_unknown_count": 0,
+      "actual_missing_count": 1,
+      "actual_conflict_count": 1,
+      "mean_latency_ms": 0.238521945,
+      "p95_latency_ms": 0.28109,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "provider_cost_usd": 0.0
+    },
+    "paired_declared_effect_delta": {
+      "exact_match_rate": 0.41666666666666663,
+      "brier_score": -0.20083333333333334,
+      "target_match_rate": 0.375,
+      "scored_coverage": 0.25,
+      "mean_latency_ms": 0.06835453,
+      "wins": 3,
+      "losses": 0,
+      "ties": 5
+    }
+  },
+  "candidate_availability": [
+    {
+      "candidate": "local-neural",
+      "status": "unavailable",
+      "measurements": null,
+      "reason": "No installed offline runtime, configured gateway prediction route, or pinned predictor exists."
+    },
+    {
+      "candidate": "hybrid-neural-symbolic",
+      "status": "unavailable",
+      "measurements": null,
+      "reason": "No neural transition predictor exists, and WP12 Clingo validates action policy rather than predicting outcomes."
+    }
+  ],
+  "promotion_boundary": {
+    "state_persistence_baseline": "retained",
+    "declared_effect_predictor": "experiment-only",
+    "local_neural_predictor": "deferred",
+    "hybrid_neural_symbolic_predictor": "deferred",
+    "wp11_deferral": "continues",
+    "learned_world_model_claim": false,
+    "neuro_symbolic_reasoning_system_claim": false,
+    "workflow_default_changed": false
+  },
+  "reason": "The deterministic declared-effect baseline improves descriptive one-step metrics on an author-crafted dataset, but it is neither neural nor learned and has no held-out or downstream-planning evidence. The candidates required for a neural or hybrid comparison remain unavailable, so zero model usage for deterministic baselines cannot be imputed to absent candidates.",
+  "promotion_prerequisites": [
+    "install or deploy a pinned offline predictor through a gateway-owned route with explicit time, token, memory, and output bounds",
+    "define a neural-only candidate and, only if symbolic inference materially participates in prediction, a separately ablated hybrid candidate",
+    "evaluate persistence, declared-effect, empirical, neural, and justified hybrid baselines over identical held-out scenario families and canonical outcomes",
+    "report exact match, missing/conflict coverage, calibration, latency, token usage, provider and resource cost, multi-step rollout error, and downstream planning utility",
+    "promote only when paired held-out evidence justifies the new runtime and model dependency"
+  ],
+  "verification": {
+    "focused_tests": [
+      "tests/unit/test_prediction_bench.py",
+      "tests/unit/test_transition_prediction.py",
+      "tests/unit/test_runtime_cli.py",
+      "tests/unit/test_runtime_v1_decisions.py",
+      "tests/unit/test_runtime_v1_plan.py"
+    ],
+    "policy_cases": [
+      "matched-source-action-target-horizon-outcome",
+      "declared-effect-not-outcome-oracle",
+      "source-missing-and-conflict",
+      "actual-missing-and-conflict",
+      "advisory-only-content-identities",
+      "zero-deterministic-model-usage",
+      "null-unavailable-candidate-measures",
+      "owner-only-exclusive-artifact",
+      "no-product-default-change"
+    ],
+    "status": "pass"
+  }
+}

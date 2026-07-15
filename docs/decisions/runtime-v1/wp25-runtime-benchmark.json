@@ -1,0 +1,123 @@
+{
+  "schema_version": "runtime-v1-decision/v1",
+  "work_package": "WP25",
+  "decision": "accept",
+  "recorded_on": "2026-07-14",
+  "subject": "reproducible runtime-v1 reliability baseline",
+  "recorded_artifact": {
+    "path": "experiments/runtime_bench/wp25-recorded.json",
+    "schema_version": "runtime-benchmark-report/v1",
+    "report_id": "sha256:835386a6dc66c92fcc03fa89197d7cdbcf66a75d724ad4d412147e75a81a75c7",
+    "complete": true,
+    "total_passed": 28,
+    "total_skipped": 0,
+    "total_wall_seconds": 59.528030215995386,
+    "total_call_seconds": 54.61,
+    "environment": {
+      "base_sha": "2e0c4d26f7c0df8da92df5d5da4cc3f3738aa0ee",
+      "source_tree_digest": "sha256:bd961cde30ce81eb902c5abe45f9e38fa0711d5ed263aeb2bfd560c3f76ff488",
+      "uv_lock_digest": "sha256:0ad9fc24eeeafaa74b2b76a73d43df2f11ab617aa111c0f23e913ae8b2a50c85",
+      "containerfile_digest": "sha256:bf7cabc69ab652137b4bb0b61a8d17a4dceec61a39377544c107ca9717415eff",
+      "compose_digest": "sha256:4fe1dc347b8706ace3e7b18f3a3698402167c8869438c02dc423bd90c2f98aa0",
+      "python": "3.14.6",
+      "pytest": "9.1.1",
+      "uv": "uv 0.11.25 (x86_64-unknown-linux-gnu)",
+      "podman": "4.9.3",
+      "podman_rootless": true,
+      "system": "Linux",
+      "release": "6.18.33.2-microsoft-standard-WSL2",
+      "machine": "x86_64",
+      "cpu_count": 8,
+      "memory_bytes": 12542652416
+    }
+  },
+  "probe_results": [
+    {
+      "probe_id": "api",
+      "passed_count": 3,
+      "skipped_count": 0,
+      "wall_seconds": 7.482686339993961,
+      "call_seconds": 6.430000000000001
+    },
+    {
+      "probe_id": "worker",
+      "passed_count": 7,
+      "skipped_count": 0,
+      "wall_seconds": 7.6347174840047956,
+      "call_seconds": 6.7299999999999995
+    },
+    {
+      "probe_id": "restart-fencing",
+      "passed_count": 3,
+      "skipped_count": 0,
+      "wall_seconds": 0.9307442249846645,
+      "call_seconds": 0.26
+    },
+    {
+      "probe_id": "quota",
+      "passed_count": 7,
+      "skipped_count": 0,
+      "wall_seconds": 0.9320021810126491,
+      "call_seconds": 0.14
+    },
+    {
+      "probe_id": "recovery",
+      "passed_count": 7,
+      "skipped_count": 0,
+      "wall_seconds": 7.628819234989351,
+      "call_seconds": 6.64
+    },
+    {
+      "probe_id": "rootless-container",
+      "passed_count": 1,
+      "skipped_count": 0,
+      "wall_seconds": 34.919060751009965,
+      "call_seconds": 34.41
+    }
+  ],
+  "rootless_compatibility": {
+    "host_health_scheduler_available": false,
+    "observed_failure": "Podman could not connect to the rootless user systemd health-timer service.",
+    "acceptance_behavior": "The test drives each image-declared healthcheck with podman healthcheck run while polling and starts the already-dependent worker with --no-deps after API health is proven.",
+    "compose_dependency_contract_retained": true,
+    "image_healthcheck_contract_retained": true
+  },
+  "acceptance_boundary": {
+    "reproducible_harness": "accepted",
+    "recorded_single_host_baseline": "retained",
+    "runtime_optimization_triggered": false,
+    "service_slo_claim": false,
+    "throughput_claim": false,
+    "production_rto_rpo_claim": false,
+    "runtime_default_changed": false
+  },
+  "reason": "All required API, worker, scheduler restart and fencing, quota, recovery, and live rootless-container probes passed with exact argv, environment, source fingerprints, timings, and output digests retained. The single-host profile establishes a reproducible reliability baseline before optimization, but its harness timings do not justify performance targets, capacity claims, or default changes.",
+  "limitations": [
+    "pytest call durations and subprocess wall time include fixture and harness behavior and are not service SLOs",
+    "the profile is one run on one host without controlled cache state or concurrent load",
+    "the benchmark reports reliability acceptance, not sustained throughput or tail latency",
+    "the recovery probe establishes integrity and replay, not a production RTO or RPO",
+    "the rootless probe builds a local test image and validates one API restart, not long-running availability",
+    "no optimization or runtime default changes are justified by this baseline alone"
+  ],
+  "verification": {
+    "focused_tests": [
+      "tests/unit/test_runtime_benchmark.py",
+      "tests/unit/test_runtime_cli.py",
+      "tests/integration/test_podman_runtime.py",
+      "tests/unit/test_runtime_v1_decisions.py",
+      "tests/unit/test_runtime_v1_plan.py"
+    ],
+    "policy_cases": [
+      "exact-direct-probe-argv",
+      "secret-free-probe-environment",
+      "raw-output-not-retained",
+      "owner-only-exclusive-artifact",
+      "complete-only-with-rootless-probe",
+      "rootless-health-without-host-scheduler",
+      "source-and-environment-fingerprints",
+      "no-optimization-or-default-change"
+    ],
+    "status": "pass"
+  }
+}

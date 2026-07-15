@@ -8,12 +8,17 @@ edges:
 
 # BCP-0033: OperatorBench and Ablations
 
-Status: partial — deterministic fixture-contract pilot implemented; comparative experiment pending
+Status: contract complete — deterministic pilot and matched comparison workflow implemented;
+live model effect remains unmeasured
 
-Provide deterministic public scenarios, raw/latest-N/structured-context conditions, and exact
-fixture-contract grading. Promote it to a comparative benchmark only after the same decision
-model consumes each condition under a matched budget and its citations are graded against
-visible evidence.
+Provide deterministic public scenarios, raw/latest-N/structured/term-retrieval/FTS5-retrieval
+conditions, exact fixture grading, and a canonical paired report. The same decision-model instance
+consumes every condition under one hard context ceiling and action schema; every full context,
+proposal, invocation, score, and content identity is retained.
+
+The recorded WP23 artifact validates that contract but does not estimate a live model effect.
+Promotion of any intervention still requires the preregistered scenario and stochastic-replicate
+minimums in the evaluation methodology.
 
 Acceptance:
 
@@ -22,4 +27,7 @@ Acceptance:
 - fixture metrics cover outcomes, evidence visibility, policy, context size, and latency;
 - Repository Operator tests independently cover artifact and projection replay integrity;
 - recorded fixtures run without credentials or network access;
-- live-model trials remain explicitly separate from deterministic CI.
+- live-model trials remain explicitly separate from deterministic CI and require a pinned model,
+  at least three replicates, and an exclusively reserved artifact path;
+- paired Wilson and bootstrap uncertainty, limitations, and the non-promotion decision are
+  retained in `docs/decisions/runtime-v1/wp23-context-retrieval.json`.

@@ -11,6 +11,7 @@ from blackcell.evaluation import (
     Trial,
     aggregate_scores,
     operator_bench_scenarios,
+    paired_bootstrap_delta,
     paired_delta,
     wilson_interval,
 )
@@ -73,4 +74,59 @@ def test_paired_delta_requires_pairs() -> None:
             left=ContextCondition.RAW_CHRONOLOGICAL,
             right=ContextCondition.STRUCTURED,
             metric="success",
+        )
+
+
+def test_paired_bootstrap_delta_is_seeded_bounded_and_paired() -> None:
+    scores = [
+        _score(ContextCondition.RAW_CHRONOLOGICAL, success=False, scenario_id="one"),
+        _score(ContextCondition.STRUCTURED, success=True, scenario_id="one"),
+        _score(ContextCondition.RAW_CHRONOLOGICAL, success=True, scenario_id="two"),
+        _score(ContextCondition.STRUCTURED, success=True, scenario_id="two"),
+    ]
+
+    first = paired_bootstrap_delta(
+        scores,
+        left=ContextCondition.RAW_CHRONOLOGICAL,
+        right=ContextCondition.STRUCTURED,
+        metric="success",
+        samples=200,
+        seed=23,
+    )
+    second = paired_bootstrap_delta(
+        scores,
+        left=ContextCondition.RAW_CHRONOLOGICAL,
+        right=ContextCondition.STRUCTURED,
+        metric="success",
+        samples=200,
+        seed=23,
+    )
+
+    assert first == second
+    assert first.pair_count == 2
+    assert first.lower <= first.mean_delta <= first.upper
+    assert first.samples == 200
+    assert first.confidence == 0.95
+
+
+@pytest.mark.parametrize(
+    ("samples", "confidence", "message"),
+    ((0, 0.95, "samples"), (10, 0, "confidence"), (10, 1, "confidence")),
+)
+def test_paired_bootstrap_delta_rejects_invalid_design(
+    samples: int,
+    confidence: float,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        paired_bootstrap_delta(
+            [
+                _score(ContextCondition.RAW_CHRONOLOGICAL, success=True),
+                _score(ContextCondition.STRUCTURED, success=True),
+            ],
+            left=ContextCondition.RAW_CHRONOLOGICAL,
+            right=ContextCondition.STRUCTURED,
+            metric="success",
+            samples=samples,
+            confidence=confidence,
         )

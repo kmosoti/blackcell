@@ -2,9 +2,6 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path
-
-import pytest
 
 from blackcell.cli.app import app
 from blackcell.cli.output import OutputMode, OutputRenderer
@@ -43,27 +40,17 @@ def test_output_renderer_serializes_runtime_types() -> None:
     }
 
 
-def test_agents_list_jsonl_outputs_one_record_per_line() -> None:
-    result = runner.invoke(app, ["--jsonl", "agents", "list"], catch_exceptions=False)
+def test_bench_list_jsonl_outputs_one_record_per_line() -> None:
+    result = runner.invoke(app, ["--jsonl", "bench", "list"], catch_exceptions=False)
 
     assert result.exit_code == 0
     records = [json.loads(line) for line in result.stdout.splitlines()]
     assert records
-    assert records[0]["key"].startswith("blackcell-")
+    assert records[0]["scenarios"][0]["scenario_id"] == "dependencies-before-change"
 
 
-def test_world_facts_renders_rich_when_requested(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _write_repo(tmp_path)
-    monkeypatch.chdir(tmp_path)
-
-    result = runner.invoke(app, ["--rich", "world", "facts"], catch_exceptions=False)
+def test_bench_list_renders_rich_when_requested() -> None:
+    result = runner.invoke(app, ["--rich", "bench", "list"], catch_exceptions=False)
 
     assert result.exit_code == 0
-    assert "Facts" in result.stdout
-
-
-def _write_repo(path: Path) -> None:
-    (path / ".git").mkdir()
-    (path / "README.md").write_text("# Test\n", encoding="utf-8")
+    assert "OperatorBench Scenarios" in result.stdout

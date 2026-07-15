@@ -1,8 +1,11 @@
+import re
 from pathlib import Path
 
 import yaml
 
 DOCS_ROOT = Path("docs")
+ROOT = Path(__file__).parents[2]
+README_PATH = ROOT / "README.md"
 
 
 def test_docs_graph_entrypoints_exist() -> None:
@@ -27,6 +30,7 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/spec/bcp-0032-repository-operator.md",
         "docs/spec/bcp-0033-operator-bench.md",
         "docs/spec/bcp-0034-evolutionary-runtime.md",
+        "docs/guides/runtime-v1-release.md",
     }
 
     assert all(Path(path).exists() for path in expected)
@@ -50,6 +54,25 @@ def test_docs_graph_map_links_canonical_nodes() -> None:
     assert "Runtime Architecture" in text
     assert "Scientific Basis" in text
     assert "OperatorBench" in text
+
+
+def test_readme_local_links_and_recorded_quickstart_are_maintained() -> None:
+    text = README_PATH.read_text(encoding="utf-8")
+    local_targets = {
+        target.split("#", maxsplit=1)[0]
+        for target in re.findall(r"(?<!!)\[[^]]+\]\(([^)]+)\)", text)
+        if target and not target.startswith(("https://", "http://", "mailto:", "#"))
+    }
+
+    assert local_targets
+    for target in sorted(local_targets):
+        path = (ROOT / target).resolve()
+        assert path.is_relative_to(ROOT.resolve()), f"README link escapes repository: {target}"
+        assert path.exists(), f"missing README link target: {target}"
+
+    assert "uv sync --locked --all-groups" in text
+    assert "bash examples/runtime-v1/recorded-operator.sh" in text
+    assert '"schema_version": "runtime-v1-recorded-example/v1"' in text
 
 
 def _frontmatter(path: Path) -> dict[str, object]:

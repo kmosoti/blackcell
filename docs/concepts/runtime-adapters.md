@@ -1,33 +1,19 @@
 ---
 node: concepts/runtime-adapters
-kind: concept
+kind: historical-concept
 edges:
-  used-by:
-    - concepts/harness
-  targets:
-    - targets/opencode
-    - targets/containers
+  retired-by:
+    - spec/bcp-0034-evolutionary-runtime
+  replaced-by:
+    - architecture
 ---
 
-# Runtime Adapters
+# Retired Prototype Runtime Adapters
 
-BlackCell treats runtimes as adapters behind a stable harness interface.
+The prototype exposed dry-run and OpenCode discovery as runtime adapters. WP26 removed that
+surface: developer tools are not Blackcell runtime adapters, and capability selection belongs to
+the model gateway or an explicitly injected execution edge.
 
-## Principles
-
-- The runtime is not the product.
-- The harness should survive runtime churn.
-- Adapters should advertise availability and capability clearly.
-- Traces should normalize runtime output into a common event shape.
-
-## Current Adapters
-
-- `dry-run`: always available, no external dispatch
-- `opencode`: preferred local OpenCode adapter when installed
-
-## Future Adapters
-
-- local shell task runners
-- MCP-backed execution surfaces
-- remote agent orchestration backends
-- evaluation-only replay runtimes
+The canonical product process is `blackcell-runtime` in API or worker mode. Its accepted
+container, quota, recovery, telemetry, model, and execution boundaries are documented in
+`../architecture.md`; the Blackcell CLI no longer exposes adapter discovery or a generic doctor.

@@ -1,13 +1,29 @@
 {
   "benchmark": "operator-bench",
-  "version": 1,
-  "status": "fixture-contract-pilot",
+  "version": 2,
+  "status": "matched-comparison-contract",
   "hypothesis": "A provenance-aware structured context improves evidence-grounded task success per unit of context over raw chronological and latest-N evidence.",
   "conditions": [
     "raw-chronological",
     "latest-n",
-    "structured"
+    "structured",
+    "term-retrieval",
+    "fts5-retrieval"
   ],
+  "matched_design": {
+    "context_character_budget": 12000,
+    "latest_n": 1,
+    "retrieval_result_limit": 2,
+    "paired_by": [
+      "scenario",
+      "replicate"
+    ],
+    "uncertainty": "deterministic paired bootstrap",
+    "recorded_artifact": "wp23-recorded.json",
+    "recorded_inferential": false,
+    "live_minimum_scenarios": 20,
+    "live_minimum_replicates": 3
+  },
   "controls": [
     "scenario",
     "model",

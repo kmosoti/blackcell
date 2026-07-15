@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import random
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -36,6 +37,22 @@ class PairedDelta:
     right: ContextCondition
     pair_count: int
     mean_delta: float
+    wins: int
+    ties: int
+    losses: int
+
+
+@dataclass(frozen=True, slots=True)
+class PairedBootstrapInterval:
+    metric: str
+    left: ContextCondition
+    right: ContextCondition
+    pair_count: int
+    mean_delta: float
+    lower: float
+    upper: float
+    confidence: float
+    samples: int
     wins: int
     ties: int
     losses: int
@@ -132,6 +149,73 @@ def paired_delta(
         ties=sum(abs(delta) <= epsilon for delta in deltas),
         losses=sum(delta < -epsilon for delta in deltas),
     )
+
+
+def paired_bootstrap_delta(
+    scores: Iterable[TrialScore],
+    *,
+    left: ContextCondition,
+    right: ContextCondition,
+    metric: str,
+    samples: int = 2_000,
+    confidence: float = 0.95,
+    seed: int = 0,
+) -> PairedBootstrapInterval:
+    if samples < 1:
+        raise ValueError("bootstrap samples must be positive")
+    if not 0 < confidence < 1:
+        raise ValueError("bootstrap confidence must be between zero and one")
+    rows = tuple(scores)
+    deltas = _paired_deltas(rows, left=left, right=right, metric=metric)
+    point = paired_delta(rows, left=left, right=right, metric=metric)
+    generator = random.Random(seed)
+    means = sorted(
+        sum(generator.choice(deltas) for _ in deltas) / len(deltas) for _ in range(samples)
+    )
+    tail = (1 - confidence) / 2
+    return PairedBootstrapInterval(
+        metric=metric,
+        left=left,
+        right=right,
+        pair_count=point.pair_count,
+        mean_delta=point.mean_delta,
+        lower=_quantile(means, tail),
+        upper=_quantile(means, 1 - tail),
+        confidence=confidence,
+        samples=samples,
+        wins=point.wins,
+        ties=point.ties,
+        losses=point.losses,
+    )
+
+
+def _paired_deltas(
+    scores: Iterable[TrialScore],
+    *,
+    left: ContextCondition,
+    right: ContextCondition,
+    metric: str,
+) -> list[float]:
+    rows = list(scores)
+    left_rows = {(row.scenario_id, row.replicate): row for row in rows if row.condition is left}
+    right_rows = {(row.scenario_id, row.replicate): row for row in rows if row.condition is right}
+    common = sorted(left_rows.keys() & right_rows.keys())
+    if not common:
+        raise ValueError("no paired trials for the requested conditions")
+    return [
+        _numeric_metric(right_rows[key], metric) - _numeric_metric(left_rows[key], metric)
+        for key in common
+    ]
+
+
+def _quantile(values: list[float], probability: float) -> float:
+    position = (len(values) - 1) * probability
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return values[lower]
+    weight = position - lower
+    return values[lower] * (1 - weight) + values[upper] * weight
 
 
 def _numeric_metric(score: TrialScore, metric: str) -> float:

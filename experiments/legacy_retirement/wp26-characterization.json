@@ -1,0 +1,136 @@
+{
+  "schema_version": "legacy-retirement-characterization/v1",
+  "captured_on": "2026-07-14",
+  "base_sha": "2e0c4d26f7c0df8da92df5d5da4cc3f3738aa0ee",
+  "source_only_retirement": true,
+  "tracked_user_data_present": false,
+  "characterization_test": {
+    "argv": [
+      "uv",
+      "run",
+      "pytest",
+      "-q",
+      "tests/unit/test_operator_service.py",
+      "tests/unit/test_daily_operator_workflow.py",
+      "tests/unit/test_daily_operator_identity.py",
+      "tests/unit/test_run_replay.py",
+      "tests/unit/test_harness_cli.py",
+      "tests/unit/test_agents_cli.py",
+      "tests/unit/test_agents.py",
+      "tests/unit/test_latent.py",
+      "tests/unit/test_ledger.py",
+      "tests/unit/test_nesy.py",
+      "tests/unit/test_world_model.py",
+      "tests/unit/test_runtime_adapters.py"
+    ],
+    "collected": 106,
+    "passed": 106,
+    "failed": 0,
+    "wall_seconds": 52.18
+  },
+  "prototype_package_roots": [
+    "blackcell.agents",
+    "blackcell.harness",
+    "blackcell.latent",
+    "blackcell.ledger",
+    "blackcell.nesy",
+    "blackcell.world"
+  ],
+  "partially_legacy_roots": [
+    {
+      "package": "blackcell.runtime",
+      "retire": [
+        "models.py",
+        "service.py",
+        "adapter discovery and doctor exports"
+      ],
+      "retain": [
+        "RuntimeStorageQuota",
+        "StorageQuotaPort"
+      ]
+    },
+    {
+      "package": "blackcell.operator",
+      "retire": [
+        "service.py",
+        "LegacyRepositoryOperator",
+        "legacy-only result DTOs"
+      ],
+      "retain": [
+        "RepositoryOperator Daily Operator v2 facade",
+        "repository adapters",
+        "canonical product DTOs"
+      ]
+    }
+  ],
+  "obsolete_public_commands": [
+    "blackcell adapters list",
+    "blackcell agents list",
+    "blackcell agents render",
+    "blackcell agents install",
+    "blackcell agents check-drift",
+    "blackcell agents doctor",
+    "blackcell doctor",
+    "blackcell harness plan",
+    "blackcell harness run",
+    "blackcell latent encode",
+    "blackcell latent predict",
+    "blackcell latent errors",
+    "blackcell latent record",
+    "blackcell latent ledger",
+    "blackcell latent stats",
+    "blackcell ledger init",
+    "blackcell ledger runs",
+    "blackcell ledger events",
+    "blackcell nesy validate",
+    "blackcell world observe",
+    "blackcell world facts"
+  ],
+  "pre_retirement_top_level_cli_groups": [
+    "adapters",
+    "agents",
+    "bench",
+    "doctor",
+    "events",
+    "harness",
+    "latent",
+    "ledger",
+    "nesy",
+    "operator",
+    "world"
+  ],
+  "independent_sqlite_write_paths": [
+    {
+      "owner": "blackcell.ledger",
+      "default": ".blackcell/ledger.sqlite3",
+      "status": "obsolete"
+    },
+    {
+      "owner": "blackcell.latent",
+      "default": ".blackcell/latent.sqlite3",
+      "status": "obsolete"
+    }
+  ],
+  "canonical_write_authority": {
+    "owner": "blackcell.kernel",
+    "default": ".git/blackcell/kernel.sqlite3",
+    "journals_and_projections_share_canonical_database": true
+  },
+  "obsolete_coordinators": [
+    "blackcell.operator.service.RepositoryOperator",
+    "blackcell.workflows.daily_operator.DailyOperatorWorkflow",
+    "blackcell.harness.service.run_harness"
+  ],
+  "generated_coordination_artifacts": {
+    "root": ".opencode",
+    "tracked_agent_files": 6,
+    "tracked_command_files": 4,
+    "status": "obsolete"
+  },
+  "replay_boundary": {
+    "daily_operator_v1_history": "retain read-only decoding and verification",
+    "daily_operator_v1_writer": "retire",
+    "daily_operator_v2_execution_and_replay": "retain",
+    "live_model_or_action_allowed_during_replay": false
+  }
+}

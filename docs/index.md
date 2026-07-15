@@ -11,6 +11,7 @@ edges:
     - evaluation-methodology
     - implementation-baseline
     - migration-ledger
+    - guides/runtime-v1-release
     - spec/index
 ---
 
@@ -18,12 +19,13 @@ edges:
 
 ## Canonical documents
 
-- `charter.md`: identity, scope, claim gates, and Phase 1 acceptance criteria
+- `charter.md`: identity, scope, claim gates, accepted Phase 1, and completed runtime-v1 boundaries
 - `scientific-basis.md`: terminology and research promotion rules
 - `architecture.md`: event, projection, model, policy, execution, and replay boundaries
-- `evaluation-methodology.md`: OperatorBench conditions, measures, and trial protocol
+- `evaluation-methodology.md`: OperatorBench, PredictionBench, and RuntimeBench contracts
 - `implementation-baseline.md`: measured starting point and preservation boundaries
 - `migration-ledger.md`: strangler map from current packages to target feature ownership
+- `guides/runtime-v1-release.md`: executable runtime-v1 walkthrough and unpublished evidence bundle
 - `adr/`: accepted architectural decisions
 
 The current durability boundary is defined by
@@ -36,6 +38,10 @@ pre-storage redaction before HTTP exposure.
 
 The local recovery and quota runbook is `targets/recovery.md`: verified immutable bundles,
 non-destructive cutover, verified-only retention, and the exact request/storage admission limits.
+
+Runtime-v1 release evidence is complete and unpublished. The maintained guide is
+`guides/runtime-v1-release.md`; the deterministic SBOM and verification manifest live under
+`../release/runtime-v1/`.
 
 ## Proposed developer-workflow research
 
@@ -55,6 +61,7 @@ non-destructive cutover, verified-only retention, and the exact request/storage 
 
 ## Prototype archive
 
-Other documents under `concepts/`, `guides/latent-harness-quickstart.md`, `research/`, and the
-older BCP-0026/0027 specifications describe the July 6 prototype. They are retained temporarily
-for migration history and are not the current architecture contract.
+Historical documents under `concepts/`, `research/`, and the older BCP-0026/0027 specifications
+describe the July 6 prototype or later research questions. WP26 removed their executable packages,
+commands, independent stores, and generated agent artifacts. The retained documents are not the
+current architecture contract and do not define compatibility surfaces.

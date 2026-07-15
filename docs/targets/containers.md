@@ -1,10 +1,7 @@
 ---
 node: targets/containers
 kind: target
-edges:
-  supports:
-    - targets/opencode
-    - concepts/runtime-adapters
+edges: {}
 ---
 
 # Containers
@@ -31,7 +28,9 @@ podman info --format json | python -c \
 
 `podman compose` delegates to an installed Compose provider. If that provider reports a missing
 Podman socket, start the user socket with `systemctl --user start podman.socket` or run
-`podman system service --time=0` in another terminal for the deployment session.
+`podman system service --time=0` in another terminal for the deployment session. On a rootless
+host without a user-systemd health scheduler, the acceptance test drives the configured image
+healthchecks explicitly while polling.
 
 Supply the service token at runtime, select the Git worktree to observe, and start both services:
 

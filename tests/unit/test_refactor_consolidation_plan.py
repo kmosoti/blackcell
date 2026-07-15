@@ -28,6 +28,7 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
     assert "runtime-v1" in program["runtime_v1_context"]
+    assert program["evidence_transition"]["runtime_v1_manifest"] == "historical-read-only"
     assert set(plan["planning_dimensions"]) == REQUIRED_DIMENSIONS
     assert plan["issue_delivery"]["repository"] == "kmosoti/blackcell"
     assert plan["issue_delivery"]["parent"]["issue_number"] == 63
@@ -122,7 +123,7 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     assert isinstance(plan, dict)
     program = plan["architecture_consolidation"]
 
-    assert plan["runtime_v1"]["status"] == "foundational-history"
+    assert plan["runtime_v1"]["status"] == "evidence-complete"
     assert program["branch"] == "refactor/consolidation"
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
@@ -138,3 +139,10 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     assert program["delivery_metadata"]["development_branch"] == "refactor/consolidation"
     assert program["delivery_metadata"]["assignee"] == "kmosoti"
     assert program["delivery_metadata"]["labels"]["documentation"] == ["AC00", "AC06"]
+    assert program["evidence_transition"]["observed_status"] == (
+        "expected-drift-after-program-registration"
+    )
+    assert (
+        "--ignore=tests/unit/test_release_evidence.py"
+        in program["verification"]["pre_ac00_full_gate"]
+    )

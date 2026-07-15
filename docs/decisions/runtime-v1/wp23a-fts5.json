@@ -1,0 +1,82 @@
+{
+  "schema_version": "runtime-v1-decision/v1",
+  "work_package": "WP23a",
+  "decision": "promote",
+  "recorded_on": "2026-07-14",
+  "subject": "ephemeral SQLite FTS5 evidence-retrieval adapter",
+  "compatibility_probe": {
+    "argv": [
+      "uv",
+      "run",
+      "python",
+      "-c",
+      "import json, platform, sqlite3; connection=sqlite3.connect(':memory:'); connection.execute('CREATE VIRTUAL TABLE probe USING fts5(body)'); print(json.dumps({'python': platform.python_version(), 'sqlite': sqlite3.sqlite_version, 'fts5': True}, sort_keys=True)); connection.close()"
+    ],
+    "result": {
+      "fts5": true,
+      "python": "3.14.6",
+      "sqlite": "3.53.1"
+    },
+    "status": "pass"
+  },
+  "promotion_boundary": {
+    "feature_port": "blackcell.features.retrieve_evidence.EvidenceRetriever",
+    "adapter": "blackcell.adapters.retrieval.Fts5EvidenceRetriever",
+    "dependency": "Python standard-library sqlite3 with FTS5 enabled",
+    "explicit_experiment_only": true,
+    "persistent_index": false,
+    "workflow_default": "DeterministicEvidenceRetriever"
+  },
+  "semantic_contract": [
+    "the adapter creates and closes one in-memory FTS5 index for the immutable observed claims supplied by a SignalPacket",
+    "the feature-owned RankedEvidenceRetriever validates every adapter match against exact source-event and claim identities",
+    "required evidence, conflicts, confidence, staleness, epistemic unknowns, typed omissions, result caps, fallback, and selection identity remain Blackcell-owned",
+    "untrusted objectives are reduced to quoted canonical terms rather than executed as raw FTS5 query syntax",
+    "SQLite and FTS5 failures fail closed with a content-free adapter error and never silently fall back",
+    "the adapter does not persist state, dual-write operational evidence, or alter canonical replay"
+  ],
+  "matched_comparison": {
+    "test": "tests/unit/test_fts5_evidence_retriever.py::test_fts5_matches_term_baseline_at_the_same_result_and_context_budgets",
+    "controls": {
+      "context_character_budget": "identical exact integer derived before the paired bounded projection",
+      "objective": "identical",
+      "result_limit": "identical",
+      "signal_packet": "identical immutable packet",
+      "model_call": "none"
+    },
+    "observations": [
+      "both retrievers select the same source-event and claim identity in the matched lexical fixture",
+      "both ContextFrames fit the same explicit model-payload character budget and expose the same evidence content and provenance",
+      "the FTS5 selection remains separately auditable through its fts5-objective-match reason"
+    ],
+    "status": "pass"
+  },
+  "verification": {
+    "focused_tests": [
+      "tests/unit/test_fts5_evidence_retriever.py",
+      "tests/unit/test_context_pipeline_features.py",
+      "tests/unit/test_runtime_v1_decisions.py",
+      "tests/unit/test_runtime_v1_plan.py"
+    ],
+    "policy_cases": [
+      "matched-result-and-context-budget",
+      "required-over-result-limit",
+      "conflict-preservation",
+      "unknown-never-positive",
+      "unknown-required-gap",
+      "state-fallback",
+      "deterministic-ranking",
+      "untrusted-objective-compilation",
+      "foreign-identity-rejection",
+      "content-free-failure"
+    ],
+    "status": "pass"
+  },
+  "limitations": [
+    "promotion makes FTS5 available as an explicit experiment adapter; it does not change a canonical workflow default",
+    "the matched lexical fixture establishes contract parity, not superior retrieval or downstream outcome quality",
+    "canonical replay does not yet persist retrieval-strategy identity, so injecting FTS5 into DailyOperatorV2 would be unsafe",
+    "WP23 records the matched comparison and a revise decision; live-model effects, latency distributions, and any graph or vector promotion remain unproven",
+    "deployments whose SQLite build omits FTS5 receive a typed failure and must retain the deterministic default"
+  ]
+}

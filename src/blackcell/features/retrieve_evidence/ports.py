@@ -2,6 +2,11 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Protocol
 
+from blackcell.features.retrieve_evidence.command import RetrieveEvidence
+from blackcell.features.retrieve_evidence.models import (
+    EvidenceObjectiveMatch,
+    EvidenceSelection,
+)
 from blackcell.kernel import JsonScalar
 
 
@@ -90,3 +95,21 @@ class SignalPacketLike(Protocol):
 
     @property
     def conflicts(self) -> Sequence[SignalConflictLike]: ...
+
+
+class EvidenceObjectiveMatcher(Protocol):
+    """Rank objective-relevant observed claims without owning evidence policy."""
+
+    def match(
+        self,
+        objective: str,
+        claims: Sequence[SignalClaimLike],
+    ) -> Sequence[EvidenceObjectiveMatch]: ...
+
+
+class EvidenceRetriever(Protocol):
+    def handle(
+        self,
+        query: RetrieveEvidence,
+        packet: SignalPacketLike,
+    ) -> EvidenceSelection: ...

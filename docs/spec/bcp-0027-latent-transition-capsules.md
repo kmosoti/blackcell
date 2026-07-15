@@ -10,7 +10,12 @@ edges:
 
 # BCP-0027: Latent Transition Capsules
 
-Status: superseded by BCP-0028 through BCP-0033
+Status: retired by runtime-v1 WP26 after supersession by BCP-0028 through BCP-0033
+
+This page records the historical prototype contract. It is not an executable guide: WP26 removed
+the latent package, its independent SQLite store, and the latent and harness CLI surfaces. The
+canonical runtime is the Repository Operator and Daily Operator v2 path described by BCP-0032 and
+BCP-0034. Historical protocol decoding remains read-only where replay requires it.
 
 Goal: make BlackCell capable of encoding state, predicting next state, measuring
 error, and revising from surprise.
@@ -32,23 +37,10 @@ error, and revising from surprise.
 - GPU-bound predictor training;
 - opaque single-vector-only state.
 
-## Acceptance
+## Historical Acceptance
 
-- A dry-run harness execution can produce `z_t`, an action, `z_hat_next`,
-  `z_next`, prediction error, and a self-supervision sample.
-- `blackcell latent record` can persist a simulated transition locally and
-  `blackcell latent ledger` can summarize stored capsules.
-- `blackcell latent predict --db <path>` can use stored transitions as
-  non-parametric memory and only raise confidence for matching actions/states.
-- `blackcell latent stats --db <path>` can summarize action-level sample counts,
-  semantic error, surprise counts, and confidence labels.
-- `blackcell latent predict --db <path>` includes those labels in prediction
-  output so cold actions remain explicit planning risks.
-- `blackcell harness run --runtime dry-run --latent-db <path>` records a latent
-  transition and includes a compact latent summary in the run trace.
-- `blackcell harness run --runtime dry-run --latent-db <path> --show-stats`
-  folds action-level latent stats into the same run trace.
-- `blackcell harness run --runtime dry-run --latent off|summary|record|stats`
-  selects the latent harness policy explicitly.
-- The predictor reports confidence and sample count.
-- The implementation is explicitly labeled non-parametric and JEPA-inspired.
+The retired prototype encoded simulated transitions, reported prediction error and confidence,
+and could store non-parametric samples in a dedicated local database. Its harness integration
+selected whether to summarize, record, or aggregate those samples. These statements describe the
+former acceptance boundary; none of the removed commands or database paths is supported after
+WP26.

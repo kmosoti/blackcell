@@ -7,7 +7,12 @@ program:
   superseded_branch: refactor/architecture-consolidation
   base_ref: origin/main
   merge_policy: One final reviewed pull request merges this integration branch into main after AC00-AC07 close.
-  runtime_v1_context: runtime-v1 is foundational historical context, not the active program or this branch's evidence target.
+  runtime_v1_context: runtime-v1 evidence is available as foundational history, not the active program or architecture-consolidation evidence target.
+  evidence_transition:
+    runtime_v1_manifest: historical-read-only
+    observed_status: expected-drift-after-program-registration
+    resolution: AC00 ratifies consolidation candidate identity and evidence reuse; AC07 publishes final evidence.
+    pre_ac00_full_gate: uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
   thesis: Remove false boundaries while preserving real trust, time, persistence, and failure boundaries.
   success: A simpler modular monolith has explicit composition ownership, one canonical owner per current concept, and no regression of authority, replay, durability, recovery, CLI, or HTTP contracts.
 
@@ -61,7 +66,7 @@ planning_dimensions:
     advisory_metrics:
       - Structural Protocol field breadth and mirrored record-shape clusters.
       - Import breadth, constructor fan-in, integration hotspot size, and package co-change frequency.
-    evidence_policy: AC00 records a current-project baseline. A project candidate or SBOM is introduced only when AC00 establishes a supported source and verification mechanism on this branch.
+    evidence_policy: AC00 records a current-project baseline. Existing runtime-v1 evidence remains historical; a consolidation candidate or SBOM claim is introduced only after AC00 establishes its source and verification mechanism.
 
 issue_delivery:
   repository: kmosoti/blackcell
@@ -117,9 +122,13 @@ work_packages:
         symbol: legacy-canonical
         test: tests/architecture/test_dependencies.py
         observation: Current root classifications are ambiguous and require a canonical-owner decision.
+      - path: tools/release_evidence.py
+        symbol: 'Path("blackcell.plan.yaml")'
+        test: tests/unit/test_release_evidence.py
+        observation: The historical runtime-v1 manifest hashes the plan, so consolidation registration produces expected drift that AC00 must resolve without overwriting historical evidence.
     acceptance:
       - Baseline inventory covers construction sites, service state, Protocol breadth, mirrored records, import breadth, co-change, and public schema owners.
-      - The project evidence policy is explicit and does not claim absent runtime-v1 release artifacts are current.
+      - The project evidence policy distinguishes available runtime-v1 historical evidence from architecture-consolidation candidate evidence.
     stop_conditions:
       - The baseline requires a runtime behavior, schema, or dependency change to collect evidence.
     scenarios:

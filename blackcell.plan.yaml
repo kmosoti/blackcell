@@ -27,7 +27,7 @@ phase_1:
     - BCP-0034
 
 runtime_v1:
-  status: foundational-history
+  status: evidence-complete
   branch: agent/runtime-v1
   note: Runtime-v1 is the delivered foundation for current runtime surfaces; architecture consolidation is a separate Blackcell project program.
   delivery:
@@ -46,6 +46,32 @@ runtime_v1:
     - durable-dag
     - operator-platform
     - release-evidence
+  remaining_dag:
+    selected_next: null
+    satisfied_dependencies:
+      - WP09b
+      - WP10
+      - WP11-decision
+      - WP12
+      - WP17
+      - WP19-role-dag
+      - WP20
+      - WP22b
+      - WP23a
+      - WP23
+      - WP24
+      - WP25
+      - WP26
+      - WP27
+    nodes: []
+  release_evidence:
+    status: complete-unpublished
+    config: release/runtime-v1/release.toml
+    guide: docs/guides/runtime-v1-release.md
+    examples: examples/runtime-v1
+    sbom: release/runtime-v1/blackcell-runtime-v1.cdx.json
+    verification_manifest: release/runtime-v1/verification-manifest.json
+    publication_performed: false
 
 active_surfaces:
   cli:
@@ -56,6 +82,9 @@ active_surfaces:
     - blackcell events list
     - blackcell bench list
     - blackcell bench run --condition structured --trials 1
+    - blackcell bench compare --model recorded
+    - blackcell bench predict
+    - blackcell bench runtime --repo-root .
   packages:
     - blackcell.kernel
     - blackcell.domains.repository
@@ -73,18 +102,42 @@ active_surfaces:
     - blackcell.features.solve_constraints
     - blackcell.features.authorize_action
     - blackcell.features.execute_affordance
+    - blackcell.features.predict_transition
     - blackcell.gateway
     - blackcell.workflows
+    - blackcell.orchestration
+    - blackcell.runtime
+    - blackcell.interfaces
+    - blackcell.bootstrap
+    - blackcell.adapters.persistence.sqlite
+    - blackcell.adapters.reasoning
+    - blackcell.adapters.retrieval
+    - blackcell.adapters.execution.local_process
+    - blackcell.adapters.telemetry
+    - blackcell.adapters.recovery
+    - blackcell.config
 
-compatibility_surfaces:
-  status: retained-temporarily
+retired_surfaces:
+  work_package: WP26
   packages:
     - blackcell.world
     - blackcell.nesy
     - blackcell.harness
     - blackcell.latent
     - blackcell.agents
-  note: These surfaces describe the July 6 prototype and do not define the current architecture.
+    - blackcell.ledger
+  commands:
+    - blackcell world
+    - blackcell nesy
+    - blackcell harness
+    - blackcell latent
+    - blackcell ledger
+    - blackcell adapters
+    - blackcell agents
+    - blackcell doctor
+  retained_history:
+    - daily-operator/v1 read-only replay
+  note: No package, command, writer, generated artifact, alias, or dual store remains for these prototype surfaces.
 
 architecture_consolidation:
   status: planned
@@ -107,6 +160,14 @@ architecture_consolidation:
       status: Todo
       type: refactor
     development_branch: refactor/consolidation
+  evidence_transition:
+    runtime_v1_manifest: historical-read-only
+    observed_status: expected-drift-after-program-registration
+    cause: blackcell.plan.yaml is a runtime-v1 release material and now declares the consolidation program.
+    resolution: AC00 ratifies candidate identity and evidence reuse; AC07 publishes consolidation evidence.
+  verification:
+    pre_ac00_full_gate: uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
+    historical_runtime_v1_gate: expected-drift
   planning_model:
     - strategic
     - logistics
@@ -123,10 +184,12 @@ architecture_consolidation:
     - AC06
     - AC07
   historical_context:
-    - Runtime-v1 release artifacts are historical only when absent from this branch.
-    - AC00 establishes the current-project evidence policy before any candidate or SBOM claim.
+    - Runtime-v1 release artifacts are historical foundation evidence, not architecture-consolidation candidate evidence.
+    - AC00 establishes the current-project evidence policy and candidate identity before reusing release tooling or SBOM claims.
 
 verification:
+  - uv run python tools/release_evidence.py verify --repo-root .
+  - bash examples/runtime-v1/recorded-operator.sh
   - uv run ruff format --check .
   - uv run ruff check .
   - uv run pytest --cov=blackcell --cov-report=term-missing
@@ -134,3 +197,6 @@ verification:
   - uv run blackcell operator run --model recorded --repo .
   - uv run blackcell operator replay
   - uv run blackcell bench run --condition structured --trials 1
+  - uv run blackcell bench compare --model recorded
+  - uv run blackcell bench predict
+  - uv run blackcell bench runtime --repo-root .
