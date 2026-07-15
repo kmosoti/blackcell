@@ -282,6 +282,32 @@ def _aware(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def _validated_git_directory(repo_root: Path) -> Path:
+    """Resolve the Git metadata directory for a repository or linked worktree."""
+
+    if not repo_root.is_dir():
+        raise ValueError(f"repository root does not exist or is not a directory: {repo_root}")
+    marker = repo_root / ".git"
+    if marker.is_dir():
+        return marker
+    if marker.is_file():
+        try:
+            declaration = marker.read_text(encoding="utf-8").strip()
+        except OSError as error:
+            raise ValueError(f"cannot read Git worktree marker: {marker}") from error
+        prefix = "gitdir:"
+        if declaration.casefold().startswith(prefix):
+            candidate = Path(declaration[len(prefix) :].strip())
+            resolved = (
+                candidate.resolve()
+                if candidate.is_absolute()
+                else (repo_root / candidate).resolve()
+            )
+            if resolved.is_dir():
+                return resolved
+    raise ValueError(f"repository root is not a Git worktree: {repo_root}")
+
+
 __all__ = [
     "REPOSITORY_MODEL_ADAPTER_ID",
     "REPOSITORY_OUTCOME_CONTRACT_VERSION",

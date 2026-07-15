@@ -25,7 +25,9 @@ def test_every_package_root_is_classified() -> None:
     classified = set(rules["classified_roots"])
     reserved = set(rules["reserved_target_roots"])
     actual = {
-        path.name for path in SOURCE_ROOT.iterdir() if path.is_dir() and path.name != "__pycache__"
+        path.name
+        for path in SOURCE_ROOT.iterdir()
+        if path.is_dir() and (path / "__init__.py").is_file()
     }
 
     unclassified = sorted(actual - classified - reserved)
@@ -229,6 +231,16 @@ def test_architecture_debt_is_precise_and_shrinkable() -> None:
         assert (SOURCE_ROOT / package.removeprefix("blackcell.")).is_dir()
         assert entry["target"].startswith("blackcell.")
         assert entry["remove_by"].startswith("WP")
+
+
+def test_wp26_has_retired_all_legacy_package_debt() -> None:
+    debt = _load_json(DEBT_PATH)
+
+    assert debt == {
+        "schema_version": 1,
+        "legacy_roots": [],
+        "allowed_import_violations": [],
+    }
 
 
 def _imports() -> tuple[ImportEdge, ...]:

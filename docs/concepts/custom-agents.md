@@ -1,46 +1,21 @@
 ---
 node: concepts/custom-agents
-kind: concept
+kind: historical-concept
 edges:
-  rendered-to:
-    - targets/opencode
-  planned-by:
-    - concepts/harness
-  refined-by:
-    - concepts/agent-operating-model
+  retired-by:
+    - spec/bcp-0034-evolutionary-runtime
 ---
 
-# Custom Agents
+# Retired Generated Agent Pack
 
-> **Optional legacy adapter:** the OpenCode agent pack is not part of the Phase 1 kernel or
-> research intervention. The model/execution boundary is defined in
-> `../adr/0003-model-execution-boundary.md`.
+The July 6 source-owned agent registry and generated OpenCode prompt pack were retired in WP26.
+They depended on the prototype world, NeSy, harness, and adapter surfaces and were not part of the
+Blackcell runtime or model gateway.
 
-BlackCell ships a small cosmic/organic agent pack that can be rendered into
-runtime-specific configuration.
+Repository developer-tool collaboration now lives directly in `AGENTS.md`, `.agents/skills/`, and
+`.codex/`. Those files configure Codex for work on this repository; they do not configure the
+Blackcell product runtime, and no Blackcell CLI command projects or installs them.
 
-## First Pack
-
-| Agent | Role |
-| --- | --- |
-| `blackcell-astrophage` | Primary planner that turns world state into constrained work packets. |
-| `blackcell-mycelium` | Documentation graph curator. |
-| `blackcell-spore` | Read-only repository observer and typed fact extractor. |
-| `blackcell-lumen` | NeSy and contract constraint reviewer. |
-| `blackcell-umbra` | Quality and security reviewer. |
-| `blackcell-chimera` | Guarded write-capable executor for explicit implementation tasks. |
-
-Generated artifacts are managed with BlackCell digest markers. Installs default
-to dry-run; writes require `--apply`.
-
-The generated prompts follow the shared
-[`agent-operating-model`](agent-operating-model.md): role-specific workflows,
-evidence rules, constraint rules, handoff protocols, output formats, stop
-conditions, and failure handling.
-
-```bash
-uv run blackcell agents list
-uv run blackcell agents install --target opencode --scope project
-uv run blackcell agents install --target opencode --scope project --apply
-uv run blackcell agents check-drift --target opencode --scope project
-```
+Historical role names and generated prompt bodies are intentionally not kept as executable
+artifacts. The pre-retirement inventory is retained in
+`../../experiments/legacy_retirement/wp26-characterization.json`.

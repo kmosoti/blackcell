@@ -1,0 +1,2491 @@
+{
+  "artifacts": [
+    {
+      "media_type": "application/vnd.cyclonedx+json",
+      "path": "release/runtime-v1/blackcell-runtime-v1.cdx.json",
+      "schema_version": "CycloneDX/1.7",
+      "sha256": "sha256:e5fbdc1ee88f37a0ee1f63f67948c590e62ca132c27ad61ca266bfc7d121bb02",
+      "size": 23108
+    }
+  ],
+  "boundaries": {
+    "container_image_built": false,
+    "package_built": false,
+    "provenance_attestation_created": false,
+    "publication_performed": false,
+    "signed": false,
+    "vulnerability_scan_performed": false
+  },
+  "evidence": [
+    {
+      "mode": "0664",
+      "path": "docs/decisions/runtime-v1/wp25-runtime-benchmark.json",
+      "sha256": "sha256:f25f71a3128373fa591132a5e25a814832cedf5b81c858f96decdd4a32662de9",
+      "size": 4896
+    },
+    {
+      "mode": "0600",
+      "path": "experiments/runtime_bench/wp25-recorded.json",
+      "sha256": "sha256:464d81bad94f31320c4e663ad5be1cc58cc96fd2fe1b67a6ef8339172d411f70",
+      "size": 12368
+    },
+    {
+      "mode": "0664",
+      "path": "docs/decisions/runtime-v1/wp26-legacy-retirement.json",
+      "sha256": "sha256:49bc5693f57d72da260cb7503d3af1fcb83095ab96a87ae019c9688df3d41f23",
+      "size": 4358
+    },
+    {
+      "mode": "0664",
+      "path": "experiments/legacy_retirement/wp26-characterization.json",
+      "sha256": "sha256:e55ec6584932dde152726f4e1d654544da622a6743d5beb976f0bafea01cec52",
+      "size": 3640
+    },
+    {
+      "mode": "0664",
+      "path": "experiments/legacy_retirement/wp26-retirement.json",
+      "sha256": "sha256:9e6baa80fd9095da1431c917435ce7b5d918a271337387148f8aa51e6c2ad6e8",
+      "size": 3213
+    }
+  ],
+  "release": {
+    "base_sha": "2e0c4d26f7c0df8da92df5d5da4cc3f3738aa0ee",
+    "candidate_id": "sha256:2813ed5a34bcf42495bb4ec7734aa4df48b0432b3336bebf3152bf4964754463",
+    "project_version": "0.2.0",
+    "publication_performed": false,
+    "recorded_on": "2026-07-14",
+    "release_id": "runtime-v1",
+    "status": "evidence-complete-unpublished"
+  },
+  "schema_version": "runtime-v1-verification-manifest/v1",
+  "scope": {
+    "excluded": [
+      "development-only Python dependencies",
+      "unbuilt container and operating-system packages",
+      "host packages and services",
+      "vulnerability analysis"
+    ],
+    "runtime_component_count_including_blackcell": 44,
+    "sbom": "pre-build locked Python runtime dependency closure"
+  },
+  "source": {
+    "material_count": 387,
+    "materials": [
+      {
+        "mode": "0644",
+        "path": ".github/blackcell.env",
+        "sha256": "sha256:53b6e3d8a60b8cf7946bfe612e0f365718ee57b0af4af90193bcf7aad59071ba",
+        "size": 42
+      },
+      {
+        "mode": "0644",
+        "path": ".github/workflows/ci.yml",
+        "sha256": "sha256:ce05edde1d81926335dee55a65b68b7ad3b9ef1ef1b172804161e76b5af08c19",
+        "size": 745
+      },
+      {
+        "mode": "0644",
+        "path": ".python-version",
+        "sha256": "sha256:a876e0b10411037a012498b9fe18d9bc1df32ed8b722a13564dc944ddcfd9135",
+        "size": 5
+      },
+      {
+        "mode": "0664",
+        "path": "Containerfile",
+        "sha256": "sha256:bf7cabc69ab652137b4bb0b61a8d17a4dceec61a39377544c107ca9717415eff",
+        "size": 2055
+      },
+      {
+        "mode": "0644",
+        "path": "LICENSE",
+        "sha256": "sha256:ef8986bf39bcd52e49062930f5b04a9a569ce477603f756907dc88121c66b833",
+        "size": 1071
+      },
+      {
+        "mode": "0664",
+        "path": "README.md",
+        "sha256": "sha256:084b60d252a863b8a764864291c683f80112fb047ef8307b90207ec53f27a847",
+        "size": 6808
+      },
+      {
+        "mode": "0644",
+        "path": "architecture/dependency_debt.json",
+        "sha256": "sha256:b6c24331e4bd8f913529f2db1bdba946c7db0e2798787af13851038f5b1a596d",
+        "size": 83
+      },
+      {
+        "mode": "0644",
+        "path": "architecture/dependency_rules.json",
+        "sha256": "sha256:e98a86d23173b060bc64a58742837d70a356cde6e7b32b493458b344bb010e5e",
+        "size": 772
+      },
+      {
+        "mode": "0644",
+        "path": "blackcell.plan.yaml",
+        "sha256": "sha256:6448599ad4ca04145b43820d88e3fc415c4503ddd7e98957ad3446c82cf3c06a",
+        "size": 4579
+      },
+      {
+        "mode": "0664",
+        "path": "compose.yaml",
+        "sha256": "sha256:4fe1dc347b8706ace3e7b18f3a3698402167c8869438c02dc423bd90c2f98aa0",
+        "size": 1613
+      },
+      {
+        "mode": "0644",
+        "path": "docs/adr/0001-event-sourced-kernel.md",
+        "sha256": "sha256:9331bfcc6a812b3ce02a5a0fd2febec38df6ced3d70203ef931d5226d122d187",
+        "size": 914
+      },
+      {
+        "mode": "0644",
+        "path": "docs/adr/0002-domain-scoped-state.md",
+        "sha256": "sha256:45d561e8ae15feb4cd702941b37ff01d2e84f04c084d58ddf8b9c086b1d4d498",
+        "size": 736
+      },
+      {
+        "mode": "0644",
+        "path": "docs/adr/0003-model-execution-boundary.md",
+        "sha256": "sha256:84794a9073e5d04628b01ff0a88be3ce3d9093e85a01dab6a788be01f39cb5bb",
+        "size": 1045
+      },
+      {
+        "mode": "0644",
+        "path": "docs/adr/0004-evolutionary-runtime-architecture.md",
+        "sha256": "sha256:77d48d9cd3c2ea9220993223119f9d0fba41271a7149365a7206413c73e1bdf6",
+        "size": 5383
+      },
+      {
+        "mode": "0644",
+        "path": "docs/adr/0005-durable-run-and-execution-protocol.md",
+        "sha256": "sha256:4bb289d883d5d6f45c47b4705729ac4f447ea29ebab2e7907e92351ecf20a76c",
+        "size": 7270
+      },
+      {
+        "mode": "0644",
+        "path": "docs/adr/0006-versioned-run-feedback-protocol.md",
+        "sha256": "sha256:865552cfce2eff6645d64fb2f032c220b6474f33f4cab42216fa3018628b0351",
+        "size": 9934
+      },
+      {
+        "mode": "0664",
+        "path": "docs/adr/0007-runtime-security-boundary.md",
+        "sha256": "sha256:5b8f4926949d73fea91b3e2935436ec343ec17153e67021a27a206e52c2ceaf0",
+        "size": 8716
+      },
+      {
+        "mode": "0644",
+        "path": "docs/architecture.md",
+        "sha256": "sha256:ef21c35d70b37409202499cce8fc0ed6853a9a2ca2f1c70d76199c0cf08f6232",
+        "size": 22669
+      },
+      {
+        "mode": "0644",
+        "path": "docs/atlas/decisions.md",
+        "sha256": "sha256:16b001af4838b0df569300b0fe5645686e6e6709f6d67b5965d41178cdb45228",
+        "size": 1686
+      },
+      {
+        "mode": "0644",
+        "path": "docs/atlas/glossary.md",
+        "sha256": "sha256:099b8fd271c322408f7bf4b37b60a2844bed65e701a5545dec20c5a1a73bd987",
+        "size": 1229
+      },
+      {
+        "mode": "0644",
+        "path": "docs/atlas/graph.md",
+        "sha256": "sha256:615cad8246c2e82059233be1780d8b45f00a890cae262c79d1df5f1267499256",
+        "size": 1301
+      },
+      {
+        "mode": "0644",
+        "path": "docs/charter.md",
+        "sha256": "sha256:58b3b26d2ce237c9f813062c78c8ce005c53efaa3613a382de6b8ba19c3e05a5",
+        "size": 7459
+      },
+      {
+        "mode": "0664",
+        "path": "docs/concepts/agent-operating-model.md",
+        "sha256": "sha256:aaf9297cabeceb0f016b255358d0712529a850e380c92d59d77516f7578c438e",
+        "size": 670
+      },
+      {
+        "mode": "0664",
+        "path": "docs/concepts/custom-agents.md",
+        "sha256": "sha256:3d85ed14ec1af2741a7c4bb1891f16e3cfb0fe6c56581807a0d1a6ed363720af",
+        "size": 877
+      },
+      {
+        "mode": "0664",
+        "path": "docs/concepts/harness.md",
+        "sha256": "sha256:ee985d84cf11945ba8588dbdc51b2b52496ebfd8236459e7ff886b1fc5e7490f",
+        "size": 810
+      },
+      {
+        "mode": "0644",
+        "path": "docs/concepts/nesy.md",
+        "sha256": "sha256:8fabb7376994f471c6c1c902cc4790285ce737c50e8338ce55ef975e24314812",
+        "size": 1216
+      },
+      {
+        "mode": "0664",
+        "path": "docs/concepts/runtime-adapters.md",
+        "sha256": "sha256:37d8256042e71ad1ed8f56080d72fea3092c641dab7688c48350583e13dd72bd",
+        "size": 725
+      },
+      {
+        "mode": "0644",
+        "path": "docs/concepts/traces.md",
+        "sha256": "sha256:5ea099047b6a3654eaa0f58ea83bfd7f21d1b288512c4afc0f6c7e3ca6dd26fc",
+        "size": 449
+      },
+      {
+        "mode": "0644",
+        "path": "docs/concepts/world-model.md",
+        "sha256": "sha256:07dd73ae7368bc160788e96ba205e4b11621f7a5317be8fa329051b8f9893a5f",
+        "size": 1914
+      },
+      {
+        "mode": "0664",
+        "path": "docs/decisions/runtime-v1/wp11-local-predictor.json",
+        "sha256": "sha256:c3b286b662b7fdc13cc129457773421a4f8a7b6693712fca529072ffab603216",
+        "size": 2061
+      },
+      {
+        "mode": "0664",
+        "path": "docs/decisions/runtime-v1/wp12-clingo.json",
+        "sha256": "sha256:b14f1caad49678fc965f045f943df25eba0ce7bae26627556ac9880226c4735f",
+        "size": 2169
+      },
+      {
+        "mode": "0664",
+        "path": "docs/decisions/runtime-v1/wp23-context-retrieval.json",
+        "sha256": "sha256:12f6b7b09a532bfac60f451e7fb9eeaaf6349fcfd4985228bb59e531cf1e7e37",
+        "size": 4915
+      },
+      {
+        "mode": "0664",
+        "path": "docs/decisions/runtime-v1/wp23a-fts5.json",
+        "sha256": "sha256:2793877d7a2160c87da3098eecdc7afcde4ec704945a518db50831609514d02f",
+        "size": 3970
+      },
+      {
+        "mode": "0664",
+        "path": "docs/decisions/runtime-v1/wp24-prediction-experiments.json",
+        "sha256": "sha256:8f8ea4e3f37fe09f1efeee74db979d2a17a900c10230de0eb5829f57bc3da2ef",
+        "size": 5217
+      },
+      {
+        "mode": "0664",
+        "path": "docs/decisions/runtime-v1/wp25-runtime-benchmark.json",
+        "sha256": "sha256:f25f71a3128373fa591132a5e25a814832cedf5b81c858f96decdd4a32662de9",
+        "size": 4896
+      },
+      {
+        "mode": "0664",
+        "path": "docs/decisions/runtime-v1/wp26-legacy-retirement.json",
+        "sha256": "sha256:49bc5693f57d72da260cb7503d3af1fcb83095ab96a87ae019c9688df3d41f23",
+        "size": 4358
+      },
+      {
+        "mode": "0644",
+        "path": "docs/evaluation-methodology.md",
+        "sha256": "sha256:05fbcaecf8d0b0b77e7849ccf2b92c5da3d6968986d87f0972b2e4acd3815e4e",
+        "size": 8115
+      },
+      {
+        "mode": "0664",
+        "path": "docs/guides/runtime-v1-release.md",
+        "sha256": "sha256:b156c0d05fc60c2dcba24631b9a0d8b2f6525986c0b7fbfd1f51f63a96d542d7",
+        "size": 4134
+      },
+      {
+        "mode": "0644",
+        "path": "docs/implementation-baseline.md",
+        "sha256": "sha256:62096f931b8066c3b30f759f0103cc5aa07ae215d0ca349644be61078fcf6818",
+        "size": 7175
+      },
+      {
+        "mode": "0644",
+        "path": "docs/index.md",
+        "sha256": "sha256:8eebe4f2871b496e086016e5fa8bc4336c7aca507707764e610f1aa933f10567",
+        "size": 2765
+      },
+      {
+        "mode": "0644",
+        "path": "docs/migration-ledger.md",
+        "sha256": "sha256:c9a29a95d74057a243acc0eff35dfca8bb2e7ccfd06e6bedea387302899a0a6f",
+        "size": 15932
+      },
+      {
+        "mode": "0644",
+        "path": "docs/research/nesy-implementations.md",
+        "sha256": "sha256:4f77a918ad8a1abed33b383581562331648cf60c8887a6907501bf7b549c96a7",
+        "size": 563
+      },
+      {
+        "mode": "0644",
+        "path": "docs/research/spark-repository-perception.md",
+        "sha256": "sha256:8ac707f5219434c421c63a51422eb0bf0e3423bbc78a5fa233c6a60ed9b2c012",
+        "size": 6956
+      },
+      {
+        "mode": "0644",
+        "path": "docs/research/world-models.md",
+        "sha256": "sha256:70fed980cc390a828e6cf01b2166afe25a67e2b38a5b0956a7d611d83fc91adb",
+        "size": 2368
+      },
+      {
+        "mode": "0644",
+        "path": "docs/scientific-basis.md",
+        "sha256": "sha256:c2672ccb7e045e4483d749f698776b7c7dbe6a470668004ea43f66e293cc3306",
+        "size": 4887
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/bcp-0026-telemetry-ledger.md",
+        "sha256": "sha256:2020dad3cda06976d75ee21aaaa3082ce3b0eb685f0c018de73929c3beca7321",
+        "size": 1347
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/bcp-0027-latent-transition-capsules.md",
+        "sha256": "sha256:8f9a092db16b7252235518a09d9bf15f12e9467689a4a46d2a6d99a1299fa9cc",
+        "size": 1636
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/bcp-0028-charter-reset.md",
+        "sha256": "sha256:90d4b79ed6126987bbb85c6c08b266b92016797f7d26de61e9b6b0b10b3f2d42",
+        "size": 645
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/bcp-0029-event-kernel.md",
+        "sha256": "sha256:2a75cda147e0b3ee4bc1871b0444a446f25b8cb7b98185932be2f0e6159d28f6",
+        "size": 753
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/bcp-0030-repository-state.md",
+        "sha256": "sha256:0e7581779e34c732c03ed2e6d62d5d8a868ae489c3bb7635ae7d6842a8717b87",
+        "size": 1438
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/bcp-0031-context-and-control.md",
+        "sha256": "sha256:f33fadfb71aa7f2985055625eeca936aafe5f4b820605a0df30fea2332124187",
+        "size": 1382
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/bcp-0032-repository-operator.md",
+        "sha256": "sha256:d189b2b2c8d76a80e85aec245968e4adb65a30b186ffc112ff57d26fb2cd509c",
+        "size": 1541
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/bcp-0033-operator-bench.md",
+        "sha256": "sha256:1c0f58b3af2b5fd594b94c246c834d462eaa4afa063bf7bb321b187dab72b53d",
+        "size": 1607
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/bcp-0034-evolutionary-runtime.md",
+        "sha256": "sha256:6d042b46339ea5a10b6da05cf64649d6a354f796b6defddc7952ea201c1be842",
+        "size": 28106
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/index.md",
+        "sha256": "sha256:ea00540ff4dbb74452f26981471672554ec42eaebdb66ffba418f26c4f314f20",
+        "size": 1556
+      },
+      {
+        "mode": "0644",
+        "path": "docs/spec/jepa-latent-prediction.md",
+        "sha256": "sha256:0e522d2131d8b53fbe99191f2cba2c335aa108442876eac91c026da74d1ceec0",
+        "size": 2790
+      },
+      {
+        "mode": "0664",
+        "path": "docs/targets/containers.md",
+        "sha256": "sha256:892c9dc6ada64b225c89c87ac9e69f531cea4077061e655759c9541bd9e46337",
+        "size": 3824
+      },
+      {
+        "mode": "0664",
+        "path": "docs/targets/opencode.md",
+        "sha256": "sha256:8db89b015f0379a08c685c23d30b0a7c647293c88c79d320c8adc62405db7467",
+        "size": 661
+      },
+      {
+        "mode": "0664",
+        "path": "docs/targets/recovery.md",
+        "sha256": "sha256:ba1b0a3b3f7c0bb198794e3582cfb5f815a3288ccbb84427ae5386f27cc23b4e",
+        "size": 5831
+      },
+      {
+        "mode": "0644",
+        "path": "examples/gateway/local-first.yaml",
+        "sha256": "sha256:b92ddbd2ce118af201389b5e4bfd66d209cb64fd984d5cb834f6a818a8503c95",
+        "size": 937
+      },
+      {
+        "mode": "0664",
+        "path": "examples/runtime-v1/README.md",
+        "sha256": "sha256:ca71d9c803210d7ebc35e5cce4d4f75d042649fee0c78ae5bf75c1718c20bfc0",
+        "size": 745
+      },
+      {
+        "mode": "0755",
+        "path": "examples/runtime-v1/recorded-operator.sh",
+        "sha256": "sha256:97cd906a6cbe8b1dffeecf8afb4a66432917d68e05796911df7544c7a1a8c682",
+        "size": 2075
+      },
+      {
+        "mode": "0644",
+        "path": "experiments/baseline/wp00.json",
+        "sha256": "sha256:ac00bf68001dc1f6ceed1fa0c6e51c7479df023f3a6ddded230e25235399df6f",
+        "size": 1068
+      },
+      {
+        "mode": "0664",
+        "path": "experiments/legacy_retirement/wp26-characterization.json",
+        "sha256": "sha256:e55ec6584932dde152726f4e1d654544da622a6743d5beb976f0bafea01cec52",
+        "size": 3640
+      },
+      {
+        "mode": "0664",
+        "path": "experiments/legacy_retirement/wp26-retirement.json",
+        "sha256": "sha256:9e6baa80fd9095da1431c917435ce7b5d918a271337387148f8aa51e6c2ad6e8",
+        "size": 3213
+      },
+      {
+        "mode": "0644",
+        "path": "experiments/operator_bench/README.md",
+        "sha256": "sha256:a6e9b6cb0a6b5c22b3d41830a4642a4e5e4cbf29cdb6c6bb9ea0b1540dcdf48c",
+        "size": 2555
+      },
+      {
+        "mode": "0644",
+        "path": "experiments/operator_bench/manifest.json",
+        "sha256": "sha256:e7a2b9cf2fe1611b4471436e61bdde6c6afdf63ce77df3ef2234b6e779ab9ec1",
+        "size": 1391
+      },
+      {
+        "mode": "0600",
+        "path": "experiments/operator_bench/wp23-recorded.json",
+        "sha256": "sha256:1bf3058a08dba6e726a1f8576a86a1ad75615acf9d63bcc1120858afd5e63e10",
+        "size": 135165
+      },
+      {
+        "mode": "0664",
+        "path": "experiments/prediction_bench/README.md",
+        "sha256": "sha256:0faf4ef1d6bab52c543db2bb14a36589d69ef1511cda279939357bff71e84c20",
+        "size": 1737
+      },
+      {
+        "mode": "0664",
+        "path": "experiments/prediction_bench/manifest.json",
+        "sha256": "sha256:e7329300563b1cb8390cc731ce0be847d99dd60158fc58c4709e9f114fc4608b",
+        "size": 1231
+      },
+      {
+        "mode": "0600",
+        "path": "experiments/prediction_bench/wp24-recorded.json",
+        "sha256": "sha256:bfb7112059e8fcfe0a5f313a46c07f7fc14040b4ea12173cb0c98a9b8e837e0e",
+        "size": 99063
+      },
+      {
+        "mode": "0664",
+        "path": "experiments/runtime_bench/README.md",
+        "sha256": "sha256:a008408c8f0d05acafde3b10c08f0c36f7e5ef386626b75c814c322e76809cb0",
+        "size": 1556
+      },
+      {
+        "mode": "0664",
+        "path": "experiments/runtime_bench/manifest.json",
+        "sha256": "sha256:68d90ea88c887544cd244ed4866ac84c4de2245dc35fcac662b98e49b2f3c97c",
+        "size": 789
+      },
+      {
+        "mode": "0600",
+        "path": "experiments/runtime_bench/wp25-recorded.json",
+        "sha256": "sha256:464d81bad94f31320c4e663ad5be1cc58cc96fd2fe1b67a6ef8339172d411f70",
+        "size": 12368
+      },
+      {
+        "mode": "0644",
+        "path": "pyproject.toml",
+        "sha256": "sha256:8f437419b3af92adc04a878daeb02c9d83d641eeb0aae1fd38bf01581e1cf1bd",
+        "size": 1314
+      },
+      {
+        "mode": "0664",
+        "path": "release/runtime-v1/README.md",
+        "sha256": "sha256:353d43912135e9fbd15d3c53bbdbff4c4d35831b9756e2343015884f6523d490",
+        "size": 990
+      },
+      {
+        "mode": "0664",
+        "path": "release/runtime-v1/release.toml",
+        "sha256": "sha256:bde90f2e4e0d760999d7b93a240123d1f7b30d8cc6a70a34f067acac75eac743",
+        "size": 262
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/__init__.py",
+        "sha256": "sha256:d5af07cd1c9ee34d56bdec58d412ab25b1c140507c6ddc223cb491175a1c190e",
+        "size": 93
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/__init__.py",
+        "sha256": "sha256:6155637c95454c5b845c1916b51ea57b57b619bd071d5b650f53d8cfc6d1938a",
+        "size": 57
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/config/__init__.py",
+        "sha256": "sha256:fc71227cbe9963138b1d8dd1a5fd3da596e0a79c76207d1a492b9388969261fc",
+        "size": 193
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/config/gateway_yaml.py",
+        "sha256": "sha256:de594bf55933e5915e8dfe37ae54b20e1ee28c55694686af40dacce4770632a4",
+        "size": 4766
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/execution/__init__.py",
+        "sha256": "sha256:ba3f70a44e8352622f340e3be40921877b3e03c441ef711663d2ddfb94d5d66c",
+        "size": 652
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/execution/local_process/__init__.py",
+        "sha256": "sha256:6ca24d138d43a6f271bdf853d04ba7bc428c7365ef9a4312bd6afada88348fbd",
+        "size": 2232
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/execution/local_process/adapter.py",
+        "sha256": "sha256:9983f72b421442d25896dd002fbc2de62743f6598c7043a9b361e75c0706d35a",
+        "size": 16827
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/execution/local_process/configuration.py",
+        "sha256": "sha256:220f75b1e6c8bc42a1a3e6b86370d34231f51626c90b5fe554ef43fe7e06e548",
+        "size": 19495
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/execution/local_process/runner.py",
+        "sha256": "sha256:e45526277691eae27553958a99a792fecdd0895969535eb736fab9203b11ea19",
+        "size": 20138
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/models/__init__.py",
+        "sha256": "sha256:bc2228bada9c384642971c2eb37b13da4e7d37acd9095aafb890193d31f0f673",
+        "size": 570
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/models/codex_cli.py",
+        "sha256": "sha256:78d9f0a1f0c92604f20146a6e37a09517f1655a51261c2530326a37e08cd4a0d",
+        "size": 11076
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/models/gateway_decision.py",
+        "sha256": "sha256:b9490c53a68e769704422637a0d9b2bdcbf39937ac675ceeb7057de1b18557ad",
+        "size": 7369
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/models/recorded.py",
+        "sha256": "sha256:8adb4e444c2275d03eb5658bc2f6e350053018d83720ffc0efc944c751a50a84",
+        "size": 1512
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/persistence/__init__.py",
+        "sha256": "sha256:46ce5902c1e06d31d605d920f9298ac433c1ba581b9aa691d8b1b88015d57b42",
+        "size": 223
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/persistence/sqlite/__init__.py",
+        "sha256": "sha256:5b6a1527789d6f888c7872f70e162f9f54f64a5c3ca9c6a31156d965f661bada",
+        "size": 912
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/persistence/sqlite/context_frames.py",
+        "sha256": "sha256:313f67968bb63fecaeb87d91bd5a4601b24471566b4b0cc5cc3050786fdd09c3",
+        "size": 9867
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/persistence/sqlite/decision_attempts.py",
+        "sha256": "sha256:b9eaacc12fed3f999cdb9a3088c6a7336c2e9300a5d130cb6650272a1ce221b2",
+        "size": 54394
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/persistence/sqlite/execution_journal.py",
+        "sha256": "sha256:1aecdb396869d5cccf6d285faf0e2ff7f45dd907c64249a62d51e4421678d799",
+        "size": 38868
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/persistence/sqlite/orchestration.py",
+        "sha256": "sha256:46461e1a14b1bbf34bad5e59453179f709d7f18f5bff792a55f12969c32325cd",
+        "size": 54254
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/persistence/sqlite/run_records.py",
+        "sha256": "sha256:9fee520fb9642f4f54d8d0b8c35d7506a05a8ce13f6d6c5506000fc2e20ab6ab",
+        "size": 30085
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/adapters/persistence/sqlite/run_records_v2.py",
+        "sha256": "sha256:e750d0a4304adef18b4fb24d1d933975bbbb62b1f814b2f72f9a4c4799799faa",
+        "size": 117345
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/persistence/sqlite/run_replay.py",
+        "sha256": "sha256:2b2f8461efdd0d5574ed55a78f4f7738f880765133172928654e85dab30ae630",
+        "size": 10025
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/persistence/sqlite/session.py",
+        "sha256": "sha256:f416e0dc4c6234fbe5526f3f76932184aa5f42b277a623b6648428006ed73294",
+        "size": 3522
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/reasoning/__init__.py",
+        "sha256": "sha256:dbb787b4b5d1cbe0461b840300298c7e414d972c208610dc1bd4cfe8146ec8df",
+        "size": 254
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/reasoning/clingo.py",
+        "sha256": "sha256:a724405ff83b278244e8b688b9f9c93631a57a361beafef262857179eca380e0",
+        "size": 4512
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/recovery/__init__.py",
+        "sha256": "sha256:21a320148ed8688ec6fbdcd74d9abaf7693423a71afaeac86e6d146cb192667c",
+        "size": 367
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/recovery/local.py",
+        "sha256": "sha256:5a4aa14e6249e44eaceb6997cf48248dd873a1fecfabdd8b4a1ea74506e499f7",
+        "size": 27416
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/retrieval/__init__.py",
+        "sha256": "sha256:bd50beec4c369b37e841464b5fa6b94415a794a6dc4526a47c79b357d43a0340",
+        "size": 238
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/retrieval/fts5/__init__.py",
+        "sha256": "sha256:1631bfbff7caf8c787d845cf8ca71398ee39bfdb51eb99337ac31477405b3d65",
+        "size": 217
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/retrieval/fts5/adapter.py",
+        "sha256": "sha256:346f3bf69f898d0ea888d3e57ca74531e4443d7beb3b0383acf6f21b21994a52",
+        "size": 3503
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/telemetry/__init__.py",
+        "sha256": "sha256:87112df35ba4d5e7ba9fc582c4431dce192b3e26a990eb1a6272118550710a62",
+        "size": 386
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/telemetry/otel.py",
+        "sha256": "sha256:d71c1e458f7e626e1667ae83aaa4d032269287f7b8344fa6ac4be4f9faacc4aa",
+        "size": 7207
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/telemetry/runtime.py",
+        "sha256": "sha256:ef0fc436275d47ab17507bcbee0d33c889d1eb776501863f3e0b933c1888dcff",
+        "size": 2633
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/adapters/telemetry/workflow.py",
+        "sha256": "sha256:681b76cd86435d525bb2a9224c20764c1b224454faf577e38598ddae0f3cec65",
+        "size": 788
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/bootstrap/__init__.py",
+        "sha256": "sha256:4ccd64680a24b5946cbb2588794c99fd8d4d17b9435b074334a47edaf0054f3c",
+        "size": 1006
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/bootstrap/granian.py",
+        "sha256": "sha256:9a8827cb86c5f948480d3456c03840f8a79158e6e5110a266163bb26b40722b7",
+        "size": 2903
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/bootstrap/process.py",
+        "sha256": "sha256:113d75a744dc7e40b08957efa37d28ebf9ca120ed4dcff76215ddf057adc8e35",
+        "size": 4903
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/bootstrap/role_dag.py",
+        "sha256": "sha256:2ac13370e8f50df9c217ad99f8a16705323496bf84b5ea4dbad07d23ae5552ab",
+        "size": 3662
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/bootstrap/runtime_api.py",
+        "sha256": "sha256:e10263d7a6759a32eca9c862ed5af6eebdba374a4d7bb895908f160d1dde5055",
+        "size": 17821
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/bootstrap/worker.py",
+        "sha256": "sha256:3576243aef06cd068a6e2b624c09f151898c89478c107ec8d34ece303044580e",
+        "size": 13749
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/cli/__init__.py",
+        "sha256": "sha256:d28bb3e79049150b43cae3ac30021a23e448d2f096a997e8b3a385d650dcfe3b",
+        "size": 38
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/cli/app.py",
+        "sha256": "sha256:d9a7aa7d308927889e4816dd89b7ee853778a26c92f240fddd912893e097961b",
+        "size": 26030
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/cli/output.py",
+        "sha256": "sha256:7f5561802431782ad3c30b57ce5dbd28f2802380838d5455fe0f4bb391258dd3",
+        "size": 3750
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/config/__init__.py",
+        "sha256": "sha256:f5945fe0512660b69dd560e00496503d155855712cdea02c263d6b180e3cc379",
+        "size": 2279
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/config/loader.py",
+        "sha256": "sha256:5c3385685e806a267483bd705ff57c37f28985ab88cf63b958d59c2cbb9e29be",
+        "size": 427
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/config/process.py",
+        "sha256": "sha256:358555955ba605254ca727e17aeeb05e73c68792e5357308b2c2b8ec51458567",
+        "size": 10425
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/config/recovery.py",
+        "sha256": "sha256:a2b33608f94ccd3137f9fafbd8908fce013ff0c9aeaa223dc5a9f6bf4795056e",
+        "size": 1867
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/config/runtime.py",
+        "sha256": "sha256:440d53c9a2d8dfc7f2d1860af0b972fc54358ecfa3d5ff8811f6ae65329574c4",
+        "size": 7615
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/config/secrets.py",
+        "sha256": "sha256:48671e356d17abd719f0495fa7100b296f740cd81447d8a10ea222ecaba8c0ee",
+        "size": 5974
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/context/__init__.py",
+        "sha256": "sha256:bd302608352ffbf5153b68ad1a38d17762c38b7125cde2bca1565f60b2008269",
+        "size": 923
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/context/baselines.py",
+        "sha256": "sha256:16b695a44ca7817f342fda20c626cb599846cde062bf89b8d8c750e90adff211",
+        "size": 4895
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/context/models.py",
+        "sha256": "sha256:2ee89231d2d08280d304179857d26a276fe4a3983117a9b6e2b541f965e24849",
+        "size": 5300
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/context/projector.py",
+        "sha256": "sha256:dfe530d271828ca37ec456d02ed0f166b74aeaaeccf4a05a265c3f958a8fe070",
+        "size": 9385
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/context/signals.py",
+        "sha256": "sha256:a486814dcfaffc8a7de34a19e961866777bd64b4a8c062d7ad807f8c94fd519a",
+        "size": 3929
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/control/__init__.py",
+        "sha256": "sha256:d8835f31afcabfdd178af8a6ce1f153c1fb6e65b8148031534a4b0001f570e90",
+        "size": 1752
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/control/executor.py",
+        "sha256": "sha256:076f6433e534245a88c28e0ea6165edc90892d1753c99c866be4be73c8d904d5",
+        "size": 12436
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/control/models.py",
+        "sha256": "sha256:8843a2b2e6ebd4c4b78b363675f482422e032eeaab49a466f129435a116d8a9d",
+        "size": 10305
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/control/policies.py",
+        "sha256": "sha256:30c536b5e368d15a4a19cf0296182e62ff33f3404aa89113284a0a2b9e696fc5",
+        "size": 9737
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/domains/__init__.py",
+        "sha256": "sha256:d23f0ed9e9c5f034355bec4cd484128c00cf1605fd860e20cf31152db3cac1ea",
+        "size": 54
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/domains/repository/__init__.py",
+        "sha256": "sha256:c81b403b21a3d24350e7bb310e93a44f39b4143d7acce33f4cd4335b53736296",
+        "size": 1452
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/domains/repository/adapter.py",
+        "sha256": "sha256:f3ed5a95dccb885516d5f9d42251ff278e1e0bc79278872b058eec1dcf51470c",
+        "size": 12138
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/domains/repository/events.py",
+        "sha256": "sha256:e5c386738c03d2674024167c4e7eebc08507728ea6183079f7a5f488f8f47442",
+        "size": 1799
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/domains/repository/models.py",
+        "sha256": "sha256:c89221af3563fc77c8997d0fc268d43a8415ee1e17ee0b35d33ed12f12d013ef",
+        "size": 6847
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/domains/repository/projector.py",
+        "sha256": "sha256:d34f0dfd88e10021b988f869246f4d7411bd74323006a7abda771ed29877ef90",
+        "size": 13877
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/evaluation/__init__.py",
+        "sha256": "sha256:56a01e87e073ae8d1fac0ccd1f2157ea3718c2b077d604da9dbe7fba87e5e683",
+        "size": 4487
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/evaluation/aggregation.py",
+        "sha256": "sha256:f9383a1bc3d7a52f08cc1aa7fcacf162e79382b3d103020b1a7369a24422f89f",
+        "size": 7644
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/evaluation/comparative.py",
+        "sha256": "sha256:0020069cec5475e73ab33a8a53991c5859a4be6a5a689160eae2427336536560",
+        "size": 14168
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/evaluation/contexts.py",
+        "sha256": "sha256:c182c14c7114883a6a79b04d9fdd04a1840890d94e7a481aced37608aa9bc93d",
+        "size": 7899
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/evaluation/grading.py",
+        "sha256": "sha256:83124f3df133a8e609650f219f7767a024b0dcff7612908f35703ce7937ca7ec",
+        "size": 4013
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/evaluation/prediction.py",
+        "sha256": "sha256:d872bb1f83619b59ade13922a140b4e76c2c631dc8fcc19302958db21ad29f49",
+        "size": 38132
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/evaluation/runner.py",
+        "sha256": "sha256:46720bf7f4b082d844a41a36466adc8cd89caa25cad9a02b2779bd1b53e8269e",
+        "size": 4242
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/evaluation/runtime_benchmark.py",
+        "sha256": "sha256:b3896ed324f8c6ce0361603edb8bf75a6e7616aef7b66866a9ef740fa27ef29d",
+        "size": 19869
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/evaluation/scenarios.py",
+        "sha256": "sha256:903570b2fa2cee70d936248fe41d6f2969eba694ac8e33dede6f1fe749aca5a6",
+        "size": 13156
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/evaluation/types.py",
+        "sha256": "sha256:a609200f40115e5fdca1d7dbebcfbded2ef98a3e4939232d74dc98b8207942c1",
+        "size": 4239
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/__init__.py",
+        "sha256": "sha256:640546d38cd5d554ef321fc6a68295b08e45343601efe81f76ba10d90b689806",
+        "size": 43
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/accept_state_transition/__init__.py",
+        "sha256": "sha256:c9e740d4c8f8e83a3081ffc7da62799486fe7c319a96280ad0c9b9bf1be07dba",
+        "size": 2088
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/accept_state_transition/artifacts.py",
+        "sha256": "sha256:209e87ad19f750e79be30e6bebc5c0814ddd47f61f8b44dce79cdac14c2a2d75",
+        "size": 26788
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/accept_state_transition/command.py",
+        "sha256": "sha256:6cefe06b1effd9a05ab2e85bfbbc1b012c42999c821cb690b90a552bd1042d91",
+        "size": 1869
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/accept_state_transition/handler.py",
+        "sha256": "sha256:edfd3c9d31bc7cb8dc7f73e1bfdfe26a4edf56b23b4b639a8cf0109f48d91f6f",
+        "size": 17983
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/accept_state_transition/models.py",
+        "sha256": "sha256:aff969d85a4650226ef0d421223864f8cb9d50bf02de5a68c8c7e33c3645a923",
+        "size": 53385
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/authorize_action/__init__.py",
+        "sha256": "sha256:0bf48e1dcc203155578ae80108a9f23ff6012ce922adfad63f98ece2bff79bd9",
+        "size": 1166
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/authorize_action/artifacts.py",
+        "sha256": "sha256:f48ce95f9fc2221335a79215d8b332129ece1507fe59d88ec0102f5ee629dd7b",
+        "size": 12451
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/authorize_action/command.py",
+        "sha256": "sha256:dc9ec13bfe8bb76f0e44662d62739da7897facc2e42f11b949c6ad7b90d7101f",
+        "size": 885
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/authorize_action/handler.py",
+        "sha256": "sha256:feb7546c72011ac274972bf129c9c651031e3f404fc657eec158211079abfbfa",
+        "size": 8159
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/authorize_action/models.py",
+        "sha256": "sha256:542b3f1fbe3cd2b6792aac406185d1ee5fe6c71ede05d6213c59f752bd2c7e8d",
+        "size": 8869
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/authorize_action/ports.py",
+        "sha256": "sha256:aee8ec76e40dbc055d11cbecc28e4afc978a38ca161e3e29d52c97e5a16828a7",
+        "size": 765
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/build_context/__init__.py",
+        "sha256": "sha256:e9f6fd53499c859d6e6aaf0518cc55c28a6a25291daa10587f2778b395b43143",
+        "size": 2020
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/build_context/artifacts.py",
+        "sha256": "sha256:3d6b379fe031468c79d1ab6024cf4dbc3d38f1a1fbcef51f142043f2958636a2",
+        "size": 21356
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/build_context/command.py",
+        "sha256": "sha256:e2322f3b9374f75e18e2be4b654067a446bf54e09c56526f1d55b148a1fcff7a",
+        "size": 858
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/build_context/handler.py",
+        "sha256": "sha256:20a14119dcc83357a9ee87470429c309a44ef5708d3cd8eae7275bc70e38c627",
+        "size": 7708
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/build_context/models.py",
+        "sha256": "sha256:701ea3f336f4d2f69d922506f9b323c3c278d48a2647bf9366eaa07364b76a21",
+        "size": 19630
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/build_context/ports.py",
+        "sha256": "sha256:db40060dc935183543b9bd2f6b052f60133742e8692778111a3a8ce5f61ff40a",
+        "size": 2481
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/build_context/storage.py",
+        "sha256": "sha256:1b14a502ff04cbc53704dd859208f7234c1e57a64e13fc8665b1154c2c42209f",
+        "size": 932
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/derive_signal_packet/__init__.py",
+        "sha256": "sha256:e13a5264d2e94bac297891fc087471f8761e29e914864473b7a50c94eedd85be",
+        "size": 584
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/derive_signal_packet/command.py",
+        "sha256": "sha256:a19242334e543e9392bd8ebf04ccbc58278f75a907337a583a0c3ce4bdef5931",
+        "size": 647
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/derive_signal_packet/handler.py",
+        "sha256": "sha256:1d8d940a9bfd0c41f4547cee7ba782f6d34fd34bbb67da5df1a5a80ef89d4755",
+        "size": 4109
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/derive_signal_packet/models.py",
+        "sha256": "sha256:e2beb78499a8eaa0b1b667ab0b3b8353843a43bd9fbb75cbf329821afdebc6a3",
+        "size": 9585
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/derive_signal_packet/ports.py",
+        "sha256": "sha256:6f47a6b1ace49b4ab41261c9ee39a898777bff932e7a97fe8703d07d8143fd79",
+        "size": 1922
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/evaluate_outcome/__init__.py",
+        "sha256": "sha256:ef928da6337ec766d8ce8c392f7c6cfb02e8700cf41673c98bfd994c72d96940",
+        "size": 1726
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/evaluate_outcome/artifacts.py",
+        "sha256": "sha256:89cdc31a7487205a977ece18c08f06c583e2f1e5c4d31fbea3abd330bc6765ca",
+        "size": 15281
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/evaluate_outcome/command.py",
+        "sha256": "sha256:1fc14af08b766346f5424ee30f554c59ee7998befec9b868e3d055b11d6e75cf",
+        "size": 5155
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/evaluate_outcome/handler.py",
+        "sha256": "sha256:5d6344b169635187dc0579b6e99bef28b7a8fa02c457eddd81255e1df6851512",
+        "size": 7703
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/evaluate_outcome/models.py",
+        "sha256": "sha256:5bd935424264379c99a9e9c3e1390ffbbf57873f2c0d8ebb2ab135a116eba807",
+        "size": 26327
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/execute_affordance/__init__.py",
+        "sha256": "sha256:4a7ece2f5e3c88b64e69fa0e4582b908d93ae58b66bbeb397c19c247a811ddac",
+        "size": 2656
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/execute_affordance/errors.py",
+        "sha256": "sha256:1a49202214eeef69fc9bb3741c6eab3347e3577ea56dda61df8605ebf8d11d34",
+        "size": 1302
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/execute_affordance/handler.py",
+        "sha256": "sha256:9b4cd0bda682c418fd474bb19fe2c9c67c90da06d729e35cd6001046b369e623",
+        "size": 7164
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/execute_affordance/models.py",
+        "sha256": "sha256:eb1ff1e5ec9d1b552ae771ad9aecb058cfe8caa735266faab0ae9921baa7e2a6",
+        "size": 32741
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/execute_affordance/ports.py",
+        "sha256": "sha256:8c7f3f174e431774d0e8000ac2881e21fc6df63f07d280a5c79af2477f5a5a95",
+        "size": 2652
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/execute_affordance/recovery.py",
+        "sha256": "sha256:368c6be37cae5d4196bc1f38129d66b6512fe07311cbd011bc9f78c01b1d66fe",
+        "size": 3585
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/ingest_observation/__init__.py",
+        "sha256": "sha256:b5c3a2b36096e0e73942528bf8d1f11728d2866553ef656b606e373de3826639",
+        "size": 583
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/ingest_observation/command.py",
+        "sha256": "sha256:380ddbe0b890f6615c570e57dc0bd26c2e78a1b970b5d1f48880597eecd67271",
+        "size": 7483
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/ingest_observation/events.py",
+        "sha256": "sha256:894ade424e3c0d3ddbeb52cfac18c38627331f4e45b5f919629c651ad86bfb5d",
+        "size": 3543
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/ingest_observation/handler.py",
+        "sha256": "sha256:bb2cac9497d03c23d767e6cc3e74858e909934d6b17e2f0bb5b7a08658f4d4a2",
+        "size": 1392
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/ingest_observation/ports.py",
+        "sha256": "sha256:43961677264f08ed8bda9c490220a99be4097fbcc8acc7f8cd598bb85cb0b718",
+        "size": 323
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/observe_outcome/__init__.py",
+        "sha256": "sha256:73ec20fdbe2c0096a58c3314d7c7abed9cc6ef2a7e4b2a36362284e1d6a64eb2",
+        "size": 1375
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/observe_outcome/artifacts.py",
+        "sha256": "sha256:d8545f1fc8aebfe18805b12a188d540830c7d157a194c066f1115b5c315a03f2",
+        "size": 12703
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/observe_outcome/command.py",
+        "sha256": "sha256:ba0d1a46b522a33f714714ae659d39b817b8070908ef138bd2f27fddb38cd314",
+        "size": 1422
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/observe_outcome/handler.py",
+        "sha256": "sha256:5c5a1ad31c00e3cedf889197f2f3c7aff950ee067566491892ff1c25ab6736b0",
+        "size": 2658
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/observe_outcome/models.py",
+        "sha256": "sha256:1a705884396d405d96c1a93614ed5d27bcbf47fdf04a8b2f2cc8d3f66f7ace74",
+        "size": 11171
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/observe_outcome/ports.py",
+        "sha256": "sha256:f75402ac5f6f1796583f13561467f33e4587570ba5534c51256d375e39ca29d0",
+        "size": 392
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/features/predict_transition/__init__.py",
+        "sha256": "sha256:a7304ec2c0743cb45a3e0c9963cbd0ea7e8c9956c20b928a136471fe833803ca",
+        "size": 1326
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/features/predict_transition/command.py",
+        "sha256": "sha256:6bcec09f46c63e53b01c5d2ad80183f0d218e452e817aea4e9fc5dbb459bd6c4",
+        "size": 2838
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/features/predict_transition/handler.py",
+        "sha256": "sha256:982d2b80096f8c8666a9d7d959bd8d176bbc1edd4c4f1d588ec2643c7fdd6bad",
+        "size": 8285
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/features/predict_transition/models.py",
+        "sha256": "sha256:8fb6978d05e04acf4853fbef7b562ace329600a59e998294580731c1dd3e481b",
+        "size": 13912
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/features/predict_transition/ports.py",
+        "sha256": "sha256:b2a10fd564663fdc1e29b03f1afe945881ac53be1b49a2c0aaaeae87ecc7e2f1",
+        "size": 1745
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/project_operational_state/__init__.py",
+        "sha256": "sha256:e101ad23f2795813a56c3d7f910aa7b246d24e1820c89a82209e2d807fac37a8",
+        "size": 1675
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/project_operational_state/artifacts.py",
+        "sha256": "sha256:471b83c27a06da0ccc80cf7afec812accb4de8b5b3b33a2630e38fe2a1362a10",
+        "size": 26925
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/project_operational_state/command.py",
+        "sha256": "sha256:f61bb76b3d6d9a893631faf289d03ec4170210370ad9ec93c9205f262ead19a7",
+        "size": 1020
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/project_operational_state/fold.py",
+        "sha256": "sha256:6185a646f23d76029811173a75053e3b507cd937fad33fdee78e1649a7f5f0dd",
+        "size": 30320
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/project_operational_state/handler.py",
+        "sha256": "sha256:cc497c8da8e18b90b68e419adc27f3d4c9739640b7befb3877076d729fd6d121",
+        "size": 3567
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/project_operational_state/models.py",
+        "sha256": "sha256:ed85114b341ad630c05e3b162013ef71b0f17e4b78ccdfd9ea2f37d8bae445dc",
+        "size": 20743
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/project_operational_state/ports.py",
+        "sha256": "sha256:f6d98004ac0f88b873bbf891959ab33a9edf997bfb1a4d6327ba979e5521f9d1",
+        "size": 733
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/project_operational_state/projection.py",
+        "sha256": "sha256:061513852bbc1a21f2905ac7970d87e6da3f882dd3cef69e14f12bf5ba605c70",
+        "size": 4505
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/features/replay_run/__init__.py",
+        "sha256": "sha256:556e341346de9ac3a4528657cd4c156cec38a7fe5804697d5fc78bbc310da74e",
+        "size": 1157
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/features/replay_run/command.py",
+        "sha256": "sha256:36da1f5f928ee8b0378313640b1c6d96d5eb61e293d9f2266f7a2a4f33005927",
+        "size": 317
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/features/replay_run/handler.py",
+        "sha256": "sha256:99d70ba1bb6c4d145a213928fe3758d6bb8e3147ef2ace0195056457d79d658a",
+        "size": 3031
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/features/replay_run/models.py",
+        "sha256": "sha256:87077f569811c1ac1eaff3f6ea8ad791304400c13b3492f03c39a648679d75d8",
+        "size": 7327
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/features/replay_run/ports.py",
+        "sha256": "sha256:ce5ba0bb897e65615deabebf0ecef0d8f6553966d687575debe953a5e2c4638c",
+        "size": 1215
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/request_decision/__init__.py",
+        "sha256": "sha256:86369d8a40d4ac5d2b8c670c392df4c12da4706d055f24f8994f92aeb35b2280",
+        "size": 3503
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/request_decision/artifacts.py",
+        "sha256": "sha256:9722f7662bd6f3dc4e3191c4fb3e83305e08a30138514b7bf56496ad98d3b090",
+        "size": 20014
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/request_decision/command.py",
+        "sha256": "sha256:c45758299f4c7e403f18342e1f2bbbcd60bf2122657437ffbf23f43e32c1850c",
+        "size": 8676
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/request_decision/errors.py",
+        "sha256": "sha256:ee2e2e0510fb8e528ae18c74e044a03f97075ac09a6a17971eb0e5fe76e7f580",
+        "size": 1930
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/request_decision/handler.py",
+        "sha256": "sha256:bec5a7e3a3de82a7cc92c27b2adb2f50cc63db674c84f83072661d6561547312",
+        "size": 12151
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/request_decision/models.py",
+        "sha256": "sha256:21e986a19f6651a7e8b4273429f5a408996cdc2773b4c5ea1e26ea8d7c1e77eb",
+        "size": 25091
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/request_decision/ports.py",
+        "sha256": "sha256:0cb635ff8fa5f95e27dd9dbc0c8b1e1710e999e4a5bfd8967aca4c46a0774e7c",
+        "size": 3408
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/retrieve_evidence/__init__.py",
+        "sha256": "sha256:47f959760f0ed466df2630a23fbf9d836aae1d1cac1c1dc180a240be54844d71",
+        "size": 1398
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/retrieve_evidence/command.py",
+        "sha256": "sha256:6459b267589ef5d0fc2da25b2ccc3e599596e6ab904b59160d3a11dc7316a749",
+        "size": 954
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/retrieve_evidence/handler.py",
+        "sha256": "sha256:9367d45aa263f3dc1d63056ce479476fc11dbb7b7d1bd47293853175706603ef",
+        "size": 14051
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/retrieve_evidence/models.py",
+        "sha256": "sha256:d804682d1bed623a141ae3c1cc74573bbfcbecb486e79bc328bd95c4f7a464ec",
+        "size": 22713
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/retrieve_evidence/ports.py",
+        "sha256": "sha256:bc454e662916eae6ee68c00c6050d0d1f9b2309c60c68f1ad886833f43a95f28",
+        "size": 2406
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/solve_constraints/__init__.py",
+        "sha256": "sha256:8373836732fcb257d72cb268203fbee0630059a4d59ca2a46b67878379434caf",
+        "size": 1068
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/solve_constraints/artifacts.py",
+        "sha256": "sha256:f1d4ff774976706078d5596a75c8836cae3f661b39193b2d509c9ddb691a3de6",
+        "size": 8090
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/solve_constraints/command.py",
+        "sha256": "sha256:0cada640bda0ecfb9aadadf37f17c599b99f24b833e2f721ac40a348ffd42721",
+        "size": 783
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/solve_constraints/handler.py",
+        "sha256": "sha256:abd395c464604df0ba471875904e4087756a872ad9560f9f857f967b32ecc647",
+        "size": 5902
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/solve_constraints/models.py",
+        "sha256": "sha256:a4b09b71728c62ac74f261af59bb8292dbdb3bc0fc97dbde5a8372a0644ede11",
+        "size": 6765
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/features/solve_constraints/ports.py",
+        "sha256": "sha256:a27b4c4dd0c6f2ac1f653863c39b9e046c02860fac873fc5c88699b27ebc690b",
+        "size": 1032
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/gateway/__init__.py",
+        "sha256": "sha256:2aac6a748545e88783d8b77aef269509edad5245a1dbef7ad71241c42521241f",
+        "size": 930
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/gateway/configuration.py",
+        "sha256": "sha256:327d8229eb1ce806e823dd03b2366f38b03291552a68261b386c11e8f502702e",
+        "size": 716
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/gateway/models.py",
+        "sha256": "sha256:b3c9e612d80939b0902e7d77d8ea31b9f793b002bfdf544b04109bb425022b88",
+        "size": 6464
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/gateway/ports.py",
+        "sha256": "sha256:d692430f2c1641938c886db9c24184f848de58fad002ffe45119ad45f0f158ae",
+        "size": 781
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/gateway/profiles.py",
+        "sha256": "sha256:22c38498311211f80b257667751539ecf26499c653866a23dd13e39c55628207",
+        "size": 980
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/gateway/router.py",
+        "sha256": "sha256:5f7664cf7a54fbaf705e62eb4b4e52091728149091aa4cd7963d5324813baf3e",
+        "size": 9824
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/gateway/schema.py",
+        "sha256": "sha256:5e95e6eb576f9ecb1c0889684320f52ccd7c3ba621c20d22bf58195d6ff84649",
+        "size": 12638
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/interfaces/__init__.py",
+        "sha256": "sha256:2a4a0a7aa38c0e86148298a9f5138d90649bbb363de375f3a86b654fc56c9e39",
+        "size": 619
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/interfaces/auth.py",
+        "sha256": "sha256:5e95141308591c050ae5769b7fa72dd2d9f813c6de52408b37ba615d0efa0767",
+        "size": 4362
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/interfaces/http/__init__.py",
+        "sha256": "sha256:ffb585f9dcf10d7520da56dd43caba70d8d04b5a58e02f38e4db300e981c7396",
+        "size": 1595
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/interfaces/http/app.py",
+        "sha256": "sha256:bc9990621ebce0cbb4289b65744c24a705530e486dadb1b4ce88cf97e2b85b0b",
+        "size": 13141
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/interfaces/http/contracts.py",
+        "sha256": "sha256:d48f2456d9fdb697e3cc0091e58e87ab0c2a4de04ce7c37110fe53e47c61d092",
+        "size": 11309
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/interfaces/http/ports.py",
+        "sha256": "sha256:1a0206333fab6b0a08be0a5edc8b385454b48c09eae57523dac6c2b3dac3e878",
+        "size": 1941
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/interfaces/http/quota.py",
+        "sha256": "sha256:fad34c5fc43b7fd3576306857af1793cf7d16f42a873d0f0d2b1bae4afa81aad",
+        "size": 1333
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/kernel/__init__.py",
+        "sha256": "sha256:7b40eefca9d5bceaa8643e306acc7ff522ab5ca55d0e98089809cdc7418a6ca8",
+        "size": 1455
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/kernel/_json.py",
+        "sha256": "sha256:50989e89ccbae971590b4e11b7861cd05d785d2460b66c62c3bf6bee70d3701b",
+        "size": 2333
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/kernel/artifacts.py",
+        "sha256": "sha256:e851f1f8c349d923eb07ae56e1f90507b38aa7e7c1a3c220acd6ef01d35c0814",
+        "size": 8891
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/kernel/database.py",
+        "sha256": "sha256:f07a72cee111154bd3d6e65f1a2f4dadae81596f7a35948003dea5a67435106e",
+        "size": 6394
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/kernel/errors.py",
+        "sha256": "sha256:409b763a2a4dc3e23374add5cf63b09d2cc040ec4edefc5cf00d3575b5b34986",
+        "size": 1550
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/kernel/events.py",
+        "sha256": "sha256:d6914d9e098d4bc9563e48d7749e28ee80468dfe2ccc04fb150e5992d5806480",
+        "size": 6046
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/kernel/projections.py",
+        "sha256": "sha256:d5c36b375d32c2a590573173ff4babdfb4e1025c1f48db3adb8eb449730d9487",
+        "size": 12815
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/kernel/store.py",
+        "sha256": "sha256:3dfcb5aab354258ee005de949bebfe5ae65ae35243f200bf6b6f0be429ec82f6",
+        "size": 16182
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/models/__init__.py",
+        "sha256": "sha256:86ee6195fab10ac5fdb00d936acbf570a56ed848661f0b353c67aa5f670e3174",
+        "size": 1083
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/models/base.py",
+        "sha256": "sha256:80ac90e1c3824ae3f7a179e178ef1c4f3b337ed68029cccaa318f6f761509d23",
+        "size": 10977
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/models/codex_exec.py",
+        "sha256": "sha256:fa42eed0e252d10cc9473926fba3d1818f3ef2d878d2f7c77b5039f155dbee5c",
+        "size": 12274
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/models/recorded.py",
+        "sha256": "sha256:1c9785728c47e8de0893792441f3f646811888be92d08c0093b5d93c9b94d4ab",
+        "size": 4487
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/operator/__init__.py",
+        "sha256": "sha256:7c976e8a8ef8180ce23db1d046282f6aeaa86556c2b2c0d3269b76391a38047c",
+        "size": 596
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/operator/facade.py",
+        "sha256": "sha256:55036f25f60f4b5dd0e045cd9aa27e4c52acf62195178db7dcb8d40dffbc9a4d",
+        "size": 21615
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/operator/models.py",
+        "sha256": "sha256:84543e0d075232586781c0a9e9180935911bc4dc10eb15b144748240bad3e946",
+        "size": 1274
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/operator/repository_adapters.py",
+        "sha256": "sha256:8dae8826849dd890bc6d2a8afa8876944828c2061e5c4153d0632fcb721dea6b",
+        "size": 12376
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/operator/serialization.py",
+        "sha256": "sha256:497de4e038fb3c90d2c34e53f041fab9b11920d1925db013e276c6fff243b6d6",
+        "size": 1067
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/orchestration/__init__.py",
+        "sha256": "sha256:20842f6ed45d574ecc7189c0d2b4b1dbafd160cf216be56893a50c2e9f8fff61",
+        "size": 2503
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/orchestration/dag.py",
+        "sha256": "sha256:5df52cfbac15e1f9e6281579f1a1fa7677af16c9c9c78ac77387bc8d82453d88",
+        "size": 2119
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/orchestration/models.py",
+        "sha256": "sha256:6b72fb5b457cc6b517ba4e536a6b091cea5a60dfad32da7ebd6c4b7f0a5388a8",
+        "size": 16766
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/orchestration/roles.py",
+        "sha256": "sha256:10867dc6e6fd4b384912d8f62cceb395b56a9bdcd1d6c73158bde06727e64a19",
+        "size": 4588
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/orchestration/scheduler.py",
+        "sha256": "sha256:bbd3407f7aaa22e38f37499ef66f88ee39d97742c231affaa109fd2ba7474b2a",
+        "size": 6051
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/orchestration/simulation.py",
+        "sha256": "sha256:638e9acafa9e38adf644090933a38adacd9d0bbdf7a471cb4e04bbe3c0ea8b95",
+        "size": 11835
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/runtime/__init__.py",
+        "sha256": "sha256:c59d20118ee12681709ca2be05ca5a02742b9f75677f958c6f504851aab9583e",
+        "size": 154
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/runtime/quotas.py",
+        "sha256": "sha256:5c644e0f9db590a983a29e118f9ee30f942656550147a5b5d5f006285d8ae8b1",
+        "size": 2899
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/telemetry/__init__.py",
+        "sha256": "sha256:0af44dd1a98f0fab0c53990b1d255c8a38948d12d3631e6f568421927b12ad3f",
+        "size": 414
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/telemetry/policy.py",
+        "sha256": "sha256:1bf76daf79bb49835f2a765b1d716843c9adb2e43586f9e5cea01e3fbe89e4e2",
+        "size": 5732
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/telemetry/recorder.py",
+        "sha256": "sha256:011b3842b4905f86369668f40197c87b910ddf0ba68b2d5596a8e76a79828830",
+        "size": 7974
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/telemetry/types.py",
+        "sha256": "sha256:5394ba6371891fa41b0f5a8d55647d00f13ea1e2daf69ab2cc691e10e0cc9dd0",
+        "size": 1027
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/workflows/__init__.py",
+        "sha256": "sha256:617f5e6d7417e41e638d9606bb3c365391c0f7a888462936a80ce40a25a8f556",
+        "size": 1514
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/workflows/daily_operator_v2.py",
+        "sha256": "sha256:fc59ae087eca7e533fb38dc4ace09486dfd99279184402b62c4140f358b23e9d",
+        "size": 21582
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/workflows/daily_operator_v2_evidence.py",
+        "sha256": "sha256:74406dbabdfa29780014d0c5f48899cac350b05b32459a2701a74fb5958a8494",
+        "size": 4958
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/workflows/daily_operator_v2_identity.py",
+        "sha256": "sha256:fa4bcc9d58bc8c09d8634d970855382abbca0414cbda5694e68f7dc2cfce7eb3",
+        "size": 28792
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/workflows/daily_operator_v2_request.py",
+        "sha256": "sha256:ad10f5a7bab630d29de0e982faaa80673741d47a72515a58d89eba769908ee13",
+        "size": 7442
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/workflows/decision_bridge.py",
+        "sha256": "sha256:3e040238898d3d0c2505fb65c7f461d4a27a7d30e230d7f8a42153ba98074a9f",
+        "size": 1151
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/workflows/outcome_evidence.py",
+        "sha256": "sha256:9854a42111506ea7e8cb7dcbc900306bba595b00aa754b335ae384086a543a84",
+        "size": 18898
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/workflows/run_grammar.py",
+        "sha256": "sha256:38f0f776e2094c345521a450a2c7044124ce87e541a8b3ffd0925b50f0b1090a",
+        "size": 13752
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/workflows/run_protocol.py",
+        "sha256": "sha256:65ab5cc9f893f68ecdec5bb2fef404951faf20ea7afa4f7e8cfec7051bcd6cd3",
+        "size": 6417
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/workflows/run_protocol_v2.py",
+        "sha256": "sha256:e7a21751ee5a9c1215c68bfcaacec981192fa42a916e128f5eb93d76353eb2f9",
+        "size": 10441
+      },
+      {
+        "mode": "0644",
+        "path": "src/blackcell/workflows/state_transition.py",
+        "sha256": "sha256:d86f7569749115412bb82dd49d966e7923766308577bf5bd503694b3e3d838fa",
+        "size": 70767
+      },
+      {
+        "mode": "0664",
+        "path": "src/blackcell/workflows/telemetry.py",
+        "sha256": "sha256:800824b2f48c80d966f3e9db604033357b6cdaed94d7527035fc98e404be2918",
+        "size": 1185
+      },
+      {
+        "mode": "0644",
+        "path": "tests/__init__.py",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      {
+        "mode": "0644",
+        "path": "tests/architecture/__init__.py",
+        "sha256": "sha256:0ca52f813b77cda7e5b81cede0b2f9414e1138ca016867819cc6bbf5036e6349",
+        "size": 45
+      },
+      {
+        "mode": "0644",
+        "path": "tests/architecture/test_dependencies.py",
+        "sha256": "sha256:513db18d1f0ee2468eee0e878abdc84203c653a0149e826f198889398da08e28",
+        "size": 8374
+      },
+      {
+        "mode": "0644",
+        "path": "tests/cli_runner.py",
+        "sha256": "sha256:36ccf4af5c83cf1ba78807a340c7658d89a4ecdf832be0f047930e6e9d31fdd0",
+        "size": 1279
+      },
+      {
+        "mode": "0664",
+        "path": "tests/integration/test_granian_process.py",
+        "sha256": "sha256:89e31fc2526ac784689949dae801b89e375e367e9a2fef69ee2813f4b50d2988",
+        "size": 4247
+      },
+      {
+        "mode": "0644",
+        "path": "tests/integration/test_local_process_posix.py",
+        "sha256": "sha256:b15a1ab2d864eff5c52b3acc57434cd03091040075c943880e7be1c4ab35daaa",
+        "size": 5830
+      },
+      {
+        "mode": "0664",
+        "path": "tests/integration/test_otel_export.py",
+        "sha256": "sha256:d8842b7acdca7afd09777969b694598db8bee7a3f604b125160b65c8f431cdcf",
+        "size": 4087
+      },
+      {
+        "mode": "0664",
+        "path": "tests/integration/test_podman_runtime.py",
+        "sha256": "sha256:8f39d49f3a76a2d8da903292c859084e637c6a6b5665ef9738b7644e0b9b2a67",
+        "size": 12384
+      },
+      {
+        "mode": "0664",
+        "path": "tests/integration/test_runtime_api.py",
+        "sha256": "sha256:d29b63096b7e86cf3c868453251c78c6867416c966c1bdb07c768248b6410ffb",
+        "size": 7541
+      },
+      {
+        "mode": "0664",
+        "path": "tests/integration/test_runtime_disaster_recovery.py",
+        "sha256": "sha256:8bb1e48ea03781e433f4d5ab6aeee0add0fbf4421d18f3da05b5e88cc3c2e9fd",
+        "size": 2566
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/__init__.py",
+        "sha256": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_accept_state_transition_feature.py",
+        "sha256": "sha256:f4d61c7e440aeddda8991d6c888a2875fbe93ece70503dd89003a654a8a7021c",
+        "size": 55525
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_action_authorization_feature.py",
+        "sha256": "sha256:fb0cf75f54f3b65d8ab50e79edcd56819b03c2489f6133e3ad5d233a61758000",
+        "size": 7729
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_affordance_execution_feature.py",
+        "sha256": "sha256:8c1c1ae0cd8fe4afc29d024d93fc3b1b14d8a2773745664c8337a7730943a271",
+        "size": 15311
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_cli_output.py",
+        "sha256": "sha256:b041276118519c4cb431d0bb979dad97a49fc0f6ef19872748a5519f0fcc3eca",
+        "size": 1591
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_clingo_constraint_solver.py",
+        "sha256": "sha256:3489bb0789da911d321aee562d3daaa4704d925db92f844309b7320302b52e6f",
+        "size": 6244
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_codex_cli_model_adapter.py",
+        "sha256": "sha256:e76c9b8a8509fb23ee3884e54cb0a9b140e547f3bf968f5bb7211d80ecadcf6b",
+        "size": 8845
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_codex_repository_config.py",
+        "sha256": "sha256:ec03ebd67265ea01a854c3316fc9a5da99f5dd8accb76154d404bc5503d5687a",
+        "size": 23016
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_constraint_solver_feature.py",
+        "sha256": "sha256:3700a637c3b62f2e729d11d5ac2787a2caa9119215040c8e577c2daf59b56842",
+        "size": 11121
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_container_files.py",
+        "sha256": "sha256:10f2145bf1f043932cb645c5ad0b5c85a51663f3f5a52e80967bb8c326c223dc",
+        "size": 5378
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_context_baselines.py",
+        "sha256": "sha256:f028e3007576db0e0116acb4f63059d256e81c8db7378324636eee8ca89f948d",
+        "size": 1536
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_context_frame_store.py",
+        "sha256": "sha256:e53ad381f6966cf317e5fecd8ed04f34b23ebfd36a04a8bfc9be0d5a5f896dd1",
+        "size": 17099
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_context_pipeline_features.py",
+        "sha256": "sha256:b279210d07a70d21c016f6ed6376cd70cd13cbc6bc2cef39675960b801ff9c1c",
+        "size": 26348
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_context_projection.py",
+        "sha256": "sha256:cd7ad1b8ce9add06dc6e71e79872c84e2197ed4f8e2c019d533f729d49886c00",
+        "size": 3415
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_control_executor.py",
+        "sha256": "sha256:4cac46633e183b4497ebcb397559f58ec3e29f535646e07ab0812c93b43b8fba",
+        "size": 4389
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_control_policies.py",
+        "sha256": "sha256:f7cf052ca23cd3a2ac7fe2d35bb26effc6133d9d6e77e7f0e61d3f4029eec808",
+        "size": 5857
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_daily_operator_v2.py",
+        "sha256": "sha256:04bb038dbb7a9b1d37d8eee27259f3b754423f5bb4d27fb27a2db11ef8f8cb37",
+        "size": 20165
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_daily_operator_v2_request.py",
+        "sha256": "sha256:605abf73c9234091942326f3ba95d5fc9e258ba3fb4a8cfd4787264262a063bf",
+        "size": 19316
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_decision_attempt_journal.py",
+        "sha256": "sha256:3dac5b105930b0830ce5dbf02d6e144ef870d8b56f0370bd189d32b126cd3707",
+        "size": 42918
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_decision_bridge.py",
+        "sha256": "sha256:c84eb46f9feaffe0bd0693191a9f6b10f7d857f9025a8c5dc33d259e4dd70810",
+        "size": 2209
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_derive_signal_packet_feature.py",
+        "sha256": "sha256:89594900c69e5377992b87ddfae6d389f1ad0716efffb52752dea034546c0af3",
+        "size": 4974
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_docs_graph.py",
+        "sha256": "sha256:087dbe96d0d1147d0a5fef64149708f9d95f97129421007b290b2f3bf96abb4b",
+        "size": 2901
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_evaluate_outcome_feature.py",
+        "sha256": "sha256:0ffd4598a345f4d6b38ce31f69846efd61f3bd46a27f8bc1fbe6ab7d8932e393",
+        "size": 28308
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_evaluation_aggregation.py",
+        "sha256": "sha256:de71ff1842e77a54e53c2fad0803fe4d6af4ae23203dbdb580fc699927e8a243",
+        "size": 4273
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_evaluation_scenarios.py",
+        "sha256": "sha256:b4db2034aaaa3683cd80de7a5fe67d91c0d7a1eea13c23ab1646fde976166573",
+        "size": 3061
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_execution_contract_boundaries.py",
+        "sha256": "sha256:8f0e54d2cd2a9a1ee28628395e26c184a363866e899049e16fd549b36b4312ae",
+        "size": 25596
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_execution_journal.py",
+        "sha256": "sha256:fa97709bd30a92315f19586cbc126cdd1e5595fb5135a819d4bbf96a5dc0e2b0",
+        "size": 18325
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_execution_journal_boundaries.py",
+        "sha256": "sha256:2c9e9d25502a9d35109cfb394a6d17d1e746396c242c9ad603b621f1a3fb966e",
+        "size": 18748
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_fts5_evidence_retriever.py",
+        "sha256": "sha256:a1cd9a108436f498697f552e28cb11d760a326605d1e04bc57a663fb7ef3d974",
+        "size": 9647
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_gateway_config.py",
+        "sha256": "sha256:f313ba8d42cfc0230fc9e0fdef9bb2a1f1ad6a480d92d5564c6aa6d848c27c5f",
+        "size": 1727
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_gateway_decision_adapter.py",
+        "sha256": "sha256:b24eae7df22586ea9c21e6c7d43ecbb103cf505f8ecb3d5626671745af55d328",
+        "size": 13748
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_granian_bootstrap.py",
+        "sha256": "sha256:f7e1e4dcdb018c42eb66e81e0d16ae66ad894666d72c6c6b684909863294e99a",
+        "size": 4218
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_http_api.py",
+        "sha256": "sha256:ed20789dcb255df983618bb10848dc8e40ab692569b9a48bd616e2bffc680841",
+        "size": 12508
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_http_contracts.py",
+        "sha256": "sha256:8a9697a56d0394050c99e0fbc66315ad45da1d68cb81d8cd5ef865265c587335",
+        "size": 3259
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_ingest_observation_feature.py",
+        "sha256": "sha256:1531717cbb406d94cb2c1bf58d9b9d1c0bb71039e90d1d86ec8c510edc6407fb",
+        "size": 4651
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_kernel_artifacts.py",
+        "sha256": "sha256:3da1a033f7965355a778dd4802c5e687ac03168ab6d0e255f326f1484c982327",
+        "size": 2729
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_kernel_database_concurrency.py",
+        "sha256": "sha256:c9fca1d71df0ed957adb45d76fba6d4dbc8639c0a6a944c80d1bc23b54749d2d",
+        "size": 3098
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_kernel_events.py",
+        "sha256": "sha256:595caa6d3fd3a250699e7713bda1252fd7ed98e7ac5a3bc4607026465e790b93",
+        "size": 10805
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_kernel_projections.py",
+        "sha256": "sha256:47fc13dca744fbfa08bb2f7ea37c2e951b11fe9c3f3ae1026c2fc2b45f2b130c",
+        "size": 5103
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_kernel_session.py",
+        "sha256": "sha256:640b323377ddfc8409726a7edf2fcc770e79ecb363bc1b80f250db53ea6a4f14",
+        "size": 5269
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_legacy_retirement.py",
+        "sha256": "sha256:46db62752bf1fb879c38bd8e605ba6574668fefcb70bc8c59509f63bc30a0faf",
+        "size": 4290
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_local_process_adapter.py",
+        "sha256": "sha256:6687164f685a290a527ba34f006c65dc88b0560f8a26023756ea5a496e594ed9",
+        "size": 20359
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_local_process_configuration.py",
+        "sha256": "sha256:d30b688a786f5f1c463b3a3451ed0f6327f952d88d8eb4f9d593b98d22888818",
+        "size": 12399
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_local_process_runner.py",
+        "sha256": "sha256:d0d6f5988a13fa158da6ed902f48aeb362d142904e6169b70a753a05a9f73b9b",
+        "size": 14869
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_model_gateway.py",
+        "sha256": "sha256:c6bc50394d69d51985aabb36758443b8b8d47f2ce8cdea683941496228f49b20",
+        "size": 13968
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_models_codex_exec.py",
+        "sha256": "sha256:7429d62789d7feca9611ba4b0647271476f0986cf1ed049e9332c5fc1128a511",
+        "size": 6178
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_models_recorded.py",
+        "sha256": "sha256:dbd0e44b519ace3e19804da9283535fc9b5cd84dba3a35048f69264b94b180f5",
+        "size": 2393
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_observe_outcome_feature.py",
+        "sha256": "sha256:138072f70f21c70aa256ec69dd3f844be6c49aabc7841a701b191f3722858813",
+        "size": 11474
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_operational_state_artifacts.py",
+        "sha256": "sha256:f7faf6f7786e463be4f16ed139a9d686a8539906cdd0046b2f4bda076a298cd6",
+        "size": 29715
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_operational_state_corrections.py",
+        "sha256": "sha256:87a3200efcf8a6da0e6148a4f01b65ae46500cfa4880d24f56d6ac9c778f4e93",
+        "size": 11084
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_operational_state_expiry_checkpoints.py",
+        "sha256": "sha256:46b4472b94c92df8251cdc0abb42bb7433cadc4f0f849ee01b25d6a1c1a29261",
+        "size": 13226
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_operator_bench_comparison.py",
+        "sha256": "sha256:1cde1be37367eaf0b4878464419bc9089fcbdf8319e2a75d28bceb98960e7155",
+        "size": 7946
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_operator_cli.py",
+        "sha256": "sha256:1770037228902f6eb97a71c943070fec49cccebf81d27d02e3e4d5f6ed9334e2",
+        "size": 4126
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_operator_facade.py",
+        "sha256": "sha256:e4d9236d457fdc8b27bca1c00aef22bdcd93b27e61113cb0ea39687bd785bf99",
+        "size": 9097
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_orchestration_contracts.py",
+        "sha256": "sha256:8e688a00fb9d36e458d9ed1df750a021c1f581357ded14d38baf621538c8c4c2",
+        "size": 8725
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_orchestration_scheduler.py",
+        "sha256": "sha256:b6251a53bddeb13af090fb619ca9d57fad4590ead3ae555ebe14532bb4e353b6",
+        "size": 20401
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_orchestration_simulation.py",
+        "sha256": "sha256:b3e0d0421708ceb298ee60cf46555fc87aef18362d06f91f577a486e7ef0e25a",
+        "size": 8171
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_otel_telemetry.py",
+        "sha256": "sha256:fb778850844192b6342a5c7450ae96ad4abbdc282a78432360ee926e32f069c7",
+        "size": 5138
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_outcome_evidence_binding.py",
+        "sha256": "sha256:ccb50fe4fededbb0fbdc40c963013057e03b9201a84f9ca496c133a4a38a2961",
+        "size": 24598
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_prediction_bench.py",
+        "sha256": "sha256:2972fd16e3bf10ea5aab13555c48f5630eecc15852a3f548a6264d4f0ef91342",
+        "size": 7321
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_project_operational_state_feature.py",
+        "sha256": "sha256:499ae697cd049f772450a8600a5c8c4f49fe12d4fa5a6410af487d468f60e8cb",
+        "size": 16932
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_release_evidence.py",
+        "sha256": "sha256:5f22332bd11d359c12af09437c7d8a31817dc8e759a720deda9c86e2d809b15f",
+        "size": 8622
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_replay_run_feature.py",
+        "sha256": "sha256:b471bdb2212eb07b599de2b5377a7864a441327e18924231518291e4ebefbc2d",
+        "size": 6088
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_repository_adapter.py",
+        "sha256": "sha256:c27bae9e8944015d1f16e3c28543b823ca1667d8f05fb0aa9bba564d73ecd6a9",
+        "size": 3085
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_repository_projector.py",
+        "sha256": "sha256:bbddeb57c7118212ed1711b962acc3b6a8d0f6834489f69083aff901f0afd31f",
+        "size": 5722
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_request_decision_feature.py",
+        "sha256": "sha256:5f54d3d0b9155dda23b25b1070be7f2a0ee8ee439b8f4db3a7a5d8ec01625532",
+        "size": 34177
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_run_artifact_codecs.py",
+        "sha256": "sha256:46766cd44de0993bfe971e8ea609446d0cd10078db05dfd73492615edd07f1a0",
+        "size": 5234
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_run_grammar_v2.py",
+        "sha256": "sha256:81dfbfd465e59479f7a0a08aaa64e74ea788135d98cf3fa54b2504fdead97d46",
+        "size": 12032
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_run_protocol.py",
+        "sha256": "sha256:b9f8547a53a86665891204fed77ee0030297974b5f56dc93d59d53eab02132b7",
+        "size": 14087
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_run_records_boundaries.py",
+        "sha256": "sha256:569ac46a3c4227699d3a0239ff0de9262de48aec81e909609025c21009988eca",
+        "size": 27403
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_run_records_v2.py",
+        "sha256": "sha256:f821a43bd71de10eccead9e290ad2dc495d55b87cf865534320b71e85a7fde76",
+        "size": 55180
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_run_records_v2_branches.py",
+        "sha256": "sha256:b631c2d41f627096c80570952e3a606262695c5f98dfa8d0c4580e18098b637a",
+        "size": 20196
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_run_replay.py",
+        "sha256": "sha256:e5a4efba880341312824076ed732af101df35e54adab149882888e3ced0a2363",
+        "size": 15528
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_runtime_benchmark.py",
+        "sha256": "sha256:b56d74f921ed08cc0e60b62d9bce0f1f859e8724174e202b7ef6bddddb9b2700",
+        "size": 6800
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_runtime_cli.py",
+        "sha256": "sha256:97000cc4060e20ef3db5d157f7db1899cb2936aed9c1e4a85e2efd207eba5511",
+        "size": 6766
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_runtime_process_config.py",
+        "sha256": "sha256:a5ed8e49594e2e23f529df220ba512771de926cd020439c62cdc794ce4b1ec92",
+        "size": 8844
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_runtime_quotas.py",
+        "sha256": "sha256:e552089ff84c2c104deb08ec7d9a18d09b1ecdfbfddfdea82585b2cb9fd7317d",
+        "size": 3220
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_runtime_recovery.py",
+        "sha256": "sha256:f024289e9a6906691da0a678466689791504b76646f2b463ed2b28eb9661e423",
+        "size": 7956
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_runtime_security_config.py",
+        "sha256": "sha256:bc0305816d2eb41402237367ceddb382369368efa924cea71c803b1bfa2f2071",
+        "size": 7340
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_runtime_v1_decisions.py",
+        "sha256": "sha256:267220e232720d040850130d9b1cba11631ed53610a3fa18ef0d7d820c0848c0",
+        "size": 10799
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_runtime_v1_plan.py",
+        "sha256": "sha256:75a569794cba3263fc51445da1c4d3f268733ad0355845c1e33b5449482b0f6c",
+        "size": 3339
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_runtime_worker.py",
+        "sha256": "sha256:5fde48d006071a5dd83246ca7c52361074864154dcaea6bd58a1a4e984cfb6d7",
+        "size": 11162
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_service_auth.py",
+        "sha256": "sha256:7af47545383e6f7c5e8e07fccf224220bebaded03cf087ec5870a61ea36e82a9",
+        "size": 3841
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_signal_packets.py",
+        "sha256": "sha256:74e8d0b5d2219891508a38f4a757fce4670197bdc307f4f22dbfbdfe4a51e20c",
+        "size": 1138
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_state_transition_binding.py",
+        "sha256": "sha256:d8aa8f7610f67ec6ac86ed461ef39ef4f3abdbafc1e1451fa995f42710eca92c",
+        "size": 87130
+      },
+      {
+        "mode": "0644",
+        "path": "tests/unit/test_telemetry_recorder.py",
+        "sha256": "sha256:b51e689e2365ae0ba233ae6b349d5e96136071758a8d415b670b14aaa5397682",
+        "size": 6015
+      },
+      {
+        "mode": "0664",
+        "path": "tests/unit/test_transition_prediction.py",
+        "sha256": "sha256:852e103f0f6a11d7bd53697a3deac330c7304e0fbe2801d2896497282106d1cc",
+        "size": 12930
+      },
+      {
+        "mode": "0755",
+        "path": "tools/release_evidence.py",
+        "sha256": "sha256:7b9e4be9459ffd69ed000b4f3b10fec01961f839405f8df02616838e6f39f8df",
+        "size": 19712
+      },
+      {
+        "mode": "0644",
+        "path": "uv.lock",
+        "sha256": "sha256:0ad9fc24eeeafaa74b2b76a73d43df2f11ab617aa111c0f23e913ae8b2a50c85",
+        "size": 135329
+      }
+    ],
+    "materials_digest": "sha256:2813ed5a34bcf42495bb4ec7734aa4df48b0432b3336bebf3152bf4964754463"
+  },
+  "verification": [
+    {
+      "argv": [
+        "uv",
+        "sync",
+        "--locked",
+        "--all-groups"
+      ],
+      "expected_exit_code": 0,
+      "id": "locked-environment"
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "python",
+        "tools/release_evidence.py",
+        "verify",
+        "--repo-root",
+        "."
+      ],
+      "expected_exit_code": 0,
+      "id": "release-evidence"
+    },
+    {
+      "argv": [
+        "bash",
+        "examples/runtime-v1/recorded-operator.sh"
+      ],
+      "expected_exit_code": 0,
+      "id": "recorded-operator-example"
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "ruff",
+        "format",
+        "--check",
+        "."
+      ],
+      "expected_exit_code": 0,
+      "id": "ruff-format"
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "ruff",
+        "check",
+        "."
+      ],
+      "expected_exit_code": 0,
+      "id": "ruff-check"
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "ty",
+        "check"
+      ],
+      "expected_exit_code": 0,
+      "id": "types"
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "pytest",
+        "--cov=blackcell",
+        "--cov-report=term-missing"
+      ],
+      "expected_exit_code": 0,
+      "id": "full-suite"
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "pytest",
+        "-q",
+        "tests/integration/test_podman_runtime.py"
+      ],
+      "environment": {
+        "BLACKCELL_RUN_PODMAN_TESTS": "1"
+      },
+      "expected_exit_code": 0,
+      "id": "rootless-podman",
+      "requirement": "Linux rootless Podman; recorded WP25 evidence remains authoritative."
+    }
+  ]
+}

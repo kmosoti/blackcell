@@ -1,0 +1,116 @@
+{
+  "schema_version": "runtime-v1-decision/v1",
+  "work_package": "WP23",
+  "decision": "revise",
+  "recorded_on": "2026-07-14",
+  "subject": "matched OperatorBench context and lexical-retrieval comparison",
+  "recorded_artifact": {
+    "path": "experiments/operator_bench/wp23-recorded.json",
+    "schema_version": "operator-bench-comparison/v1",
+    "report_id": "sha256:ea94c90a0bc24bd28d363632da74615dbc3746d92dd0f36ba4da8e675577de6a",
+    "scenario_digest": "4afef76d680ef60c8b3b628af247d37e40076ff19d87995c72d2019eddffc288",
+    "action_schema_digest": "sha256:2635c2829415122089e6d8b8c6cffc1908eb8630082a1e83743a3ce21cd0231f",
+    "model": "operator-bench-recorded",
+    "provider": "recorded",
+    "replayed": true,
+    "inferential": false,
+    "scenario_count": 6,
+    "trial_count": 30
+  },
+  "controls": {
+    "conditions": [
+      "raw-chronological",
+      "latest-n",
+      "structured",
+      "term-retrieval",
+      "fts5-retrieval"
+    ],
+    "context_character_budget": 12000,
+    "latest_n": 1,
+    "retrieval_result_limit": 2,
+    "replicates_per_scenario": 1,
+    "bootstrap_samples": 2000,
+    "bootstrap_confidence": 0.95,
+    "paired_by": [
+      "scenario",
+      "replicate"
+    ],
+    "grader": "DeterministicGrader/v1"
+  },
+  "descriptive_results": {
+    "raw-chronological": {
+      "success": 0.8333333333333334,
+      "evidence_recall": 1.0,
+      "evidence_precision": 1.0,
+      "mean_context_characters": 761.5
+    },
+    "latest-n": {
+      "success": 0.0,
+      "evidence_recall": 0.08333333333333333,
+      "evidence_precision": 0.16666666666666666,
+      "mean_context_characters": 412.8333333333333
+    },
+    "structured": {
+      "success": 0.8333333333333334,
+      "evidence_recall": 1.0,
+      "evidence_precision": 1.0,
+      "mean_context_characters": 363.6666666666667
+    },
+    "term-retrieval": {
+      "success": 0.3333333333333333,
+      "evidence_recall": 0.4166666666666667,
+      "evidence_precision": 0.5,
+      "mean_context_characters": 941.3333333333334
+    },
+    "fts5-retrieval": {
+      "success": 0.5,
+      "evidence_recall": 0.5833333333333334,
+      "evidence_precision": 0.6666666666666666,
+      "mean_context_characters": 999.3333333333334
+    }
+  },
+  "paired_observations": [
+    "structured and raw contexts have identical fixed-proposal success while structured uses 397.83 fewer mean characters; the paired 95 percent bootstrap interval is [-445.5, -327.0] characters",
+    "structured exceeds latest-N fixed-proposal success by 0.8333; the paired 95 percent bootstrap interval is [0.5, 1.0]",
+    "FTS5 exceeds deterministic term retrieval fixed-proposal success by 0.1667, but its paired 95 percent bootstrap interval [-0.3333, 0.6667] crosses zero",
+    "FTS5 uses 58 more mean characters than deterministic term retrieval; its paired 95 percent bootstrap interval is [1.8333, 165.0] characters",
+    "recorded latency is deliberately zeroed for reproducibility and supplies no latency comparison"
+  ],
+  "promotion_boundary": {
+    "comparison_contract": "promoted",
+    "recorded_fixture_artifact": "retained",
+    "live_model_quality_claim": false,
+    "retrieval_adapter_quality_promotion": false,
+    "workflow_default": "DeterministicEvidenceRetriever",
+    "default_changed": false
+  },
+  "reason": "The matched experiment, artifact, and uncertainty contracts are reproducible, but six synthetic scenarios with replayed fixed proposals cannot estimate a model-dependent context effect. The lexical retrieval difference is uncertain and FTS5 consumes more context in this fixture set.",
+  "promotion_prerequisites": [
+    "expand to at least 20 preregistered scenarios spanning chronology and scenario families",
+    "run at least three paired replicates for each stochastic model condition",
+    "pin one explicit model identifier, model configuration, action schema, context ceiling, retrieval cap, and grader version across treatments",
+    "retain the canonical live report before provider calls and report non-zero end-to-end latency, token usage, and provider cost when available",
+    "promote an intervention only when paired uncertainty supports improved success or materially smaller context at non-inferior success"
+  ],
+  "verification": {
+    "focused_tests": [
+      "tests/unit/test_operator_bench_comparison.py",
+      "tests/unit/test_evaluation_aggregation.py",
+      "tests/unit/test_evaluation_scenarios.py",
+      "tests/unit/test_runtime_cli.py",
+      "tests/unit/test_runtime_v1_decisions.py",
+      "tests/unit/test_runtime_v1_plan.py"
+    ],
+    "policy_cases": [
+      "same-model-single-instance",
+      "same-action-schema",
+      "shared-hard-context-ceiling",
+      "paired-bootstrap-uncertainty",
+      "conflict-and-correction-provenance",
+      "owner-only-exclusive-artifact",
+      "live-model-id-and-replicate-guard",
+      "recorded-noninferential-boundary"
+    ],
+    "status": "pass"
+  }
+}

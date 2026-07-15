@@ -97,6 +97,32 @@ Until a work package explicitly replaces them with tested compatibility:
 - current public event and context contracts remain readable;
 - the 151-test suite and 86% combined coverage form the initial quality floor.
 
+## WP26 retirement delta
+
+WP26 closed the temporary preservation boundary after a retained 106-test characterization. The
+prototype `world`, `nesy`, `harness`, `latent`, generic `ledger`, and generated `agents` packages,
+their public CLI commands, and the tracked OpenCode projections are removed. The legacy runtime
+adapter-discovery service and predecessor Repository Operator/Daily Operator v1 writers are also
+removed. `blackcell.runtime` now retains only canonical quota contracts.
+
+The kernel database and its owned journals/projections are the only runtime write authority.
+Immutable `daily-operator/v1` histories remain readable through the same live-free replay use case
+as v2; their writer is not public or composed. The exact before/after evidence is recorded in
+`experiments/legacy_retirement/wp26-characterization.json` and the WP26 decision.
+
+## WP27 release-evidence delta
+
+WP27 closes the runtime-v1 DAG with an unpublished evidence bundle under `release/runtime-v1/`.
+The maintained guide and isolated recorded-model example cover the canonical product and replay
+path. A deterministic CycloneDX 1.7 pre-build SBOM derives the transitive non-development Python
+runtime closure from `uv.lock`; it does not inventory an unbuilt container or host.
+
+The verification manifest records the complete declared candidate-material inventory with modes,
+sizes, and SHA-256 digests, binds the SBOM and retained WP25/WP26 evidence, and stores exact argv for
+locked setup, static checks, the full suite, the recorded example, and the opt-in rootless gate. Its
+verifier regenerates both documents in memory and fails closed on byte or material drift. No build,
+publication, signing, attestation, or vulnerability result is included.
+
 ## Known debt accepted at baseline
 
 - overlapping runtime and persistence implementations;

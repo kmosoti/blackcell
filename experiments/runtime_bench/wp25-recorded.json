@@ -1,0 +1,352 @@
+{
+  "complete": true,
+  "design": {
+    "experiment_id": "wp25-runtime-performance-reliability",
+    "include_rootless_podman": true
+  },
+  "environment": {
+    "base_sha": "2e0c4d26f7c0df8da92df5d5da4cc3f3738aa0ee",
+    "compose_digest": "sha256:4fe1dc347b8706ace3e7b18f3a3698402167c8869438c02dc423bd90c2f98aa0",
+    "containerfile_digest": "sha256:bf7cabc69ab652137b4bb0b61a8d17a4dceec61a39377544c107ca9717415eff",
+    "cpu_count": 8,
+    "implementation": "CPython",
+    "machine": "x86_64",
+    "memory_bytes": 12542652416,
+    "podman": "4.9.3",
+    "podman_rootless": true,
+    "pytest": "9.1.1",
+    "python": "3.14.6",
+    "release": "6.18.33.2-microsoft-standard-WSL2",
+    "source_tree_digest": "sha256:bd961cde30ce81eb902c5abe45f9e38fa0711d5ed263aeb2bfd560c3f76ff488",
+    "system": "Linux",
+    "uv": "uv 0.11.25 (x86_64-unknown-linux-gnu)",
+    "uv_lock_digest": "sha256:0ad9fc24eeeafaa74b2b76a73d43df2f11ab617aa111c0f23e913ae8b2a50c85",
+    "worktree_dirty_path_count": 49
+  },
+  "experiment_id": "wp25-runtime-performance-reliability",
+  "limitations": [
+    "pytest call durations and subprocess wall time include fixture and harness behavior and are not service SLOs",
+    "the profile is one run on one host without controlled cache state or concurrent load",
+    "the benchmark reports reliability acceptance, not sustained throughput or tail latency",
+    "the recovery probe establishes integrity and replay, not a production RTO or RPO",
+    "the rootless probe builds a local test image and validates one API restart, not long-running availability",
+    "no optimization or runtime default changes are justified by this baseline alone"
+  ],
+  "omitted_probe_ids": [],
+  "probes": [
+    {
+      "argv": [
+        "uv",
+        "run",
+        "pytest",
+        "-q",
+        "--disable-warnings",
+        "--durations=0",
+        "--durations-min=0",
+        "tests/integration/test_runtime_api.py"
+      ],
+      "call_seconds": 6.430000000000001,
+      "environment_overrides": {
+        "PYTHONHASHSEED": "0"
+      },
+      "output_digest": "sha256:1d51be71b46036e2ca4db0b48311f7fbac2d83c6e90fa575d1709bd426d1daf7",
+      "passed_count": 3,
+      "probe_id": "api",
+      "skipped_count": 0,
+      "slowest_call_seconds": 6.23,
+      "status": "pass",
+      "surfaces": [
+        "authenticated HTTP",
+        "live-free replay",
+        "storage admission"
+      ],
+      "test_timings": [
+        {
+          "duration_seconds": 6.23,
+          "node_id": "tests/integration/test_runtime_api.py::test_http_composition_shares_operator_use_cases_and_replays_live_free"
+        },
+        {
+          "duration_seconds": 0.13,
+          "node_id": "tests/integration/test_runtime_api.py::test_http_observation_ingest_and_scheduler_approval_use_authenticated_identity"
+        },
+        {
+          "duration_seconds": 0.07,
+          "node_id": "tests/integration/test_runtime_api.py::test_storage_exhaustion_fails_readiness_and_mutations_but_preserves_reads"
+        }
+      ],
+      "wall_seconds": 7.482686339993961
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "pytest",
+        "-q",
+        "--disable-warnings",
+        "--durations=0",
+        "--durations-min=0",
+        "tests/unit/test_runtime_worker.py"
+      ],
+      "call_seconds": 6.7299999999999995,
+      "environment_overrides": {
+        "PYTHONHASHSEED": "0"
+      },
+      "output_digest": "sha256:e5717d87363bd4406162a9732652186dce2e82a3a52e967fa0f6bcd2f024f41d",
+      "passed_count": 7,
+      "probe_id": "worker",
+      "skipped_count": 0,
+      "slowest_call_seconds": 6.22,
+      "status": "pass",
+      "surfaces": [
+        "five-role worker",
+        "restart continuity",
+        "artifact verification"
+      ],
+      "test_timings": [
+        {
+          "duration_seconds": 6.22,
+          "node_id": "tests/unit/test_runtime_worker.py::test_worker_survives_restarts_and_verification_replays_with_repository_offline"
+        },
+        {
+          "duration_seconds": 0.15,
+          "node_id": "tests/unit/test_runtime_worker.py::test_worker_rejects_unknown_handlers_and_budget_overruns"
+        },
+        {
+          "duration_seconds": 0.13,
+          "node_id": "tests/unit/test_runtime_worker.py::test_worker_rejects_malformed_dependency_artifacts"
+        },
+        {
+          "duration_seconds": 0.1,
+          "node_id": "tests/unit/test_runtime_worker.py::test_stale_worker_completion_cannot_escape_scheduler_fencing"
+        },
+        {
+          "duration_seconds": 0.07,
+          "node_id": "tests/unit/test_runtime_worker.py::test_worker_does_not_recover_or_acquire_when_storage_is_exhausted"
+        },
+        {
+          "duration_seconds": 0.06,
+          "node_id": "tests/unit/test_runtime_worker.py::test_worker_serve_always_closes_its_process_telemetry"
+        },
+        {
+          "duration_seconds": 0.0,
+          "node_id": "tests/unit/test_runtime_worker.py::test_repository_role_dag_is_the_canonical_five_role_contract"
+        }
+      ],
+      "wall_seconds": 7.6347174840047956
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "pytest",
+        "-q",
+        "--disable-warnings",
+        "--durations=0",
+        "--durations-min=0",
+        "tests/unit/test_orchestration_scheduler.py::test_submit_is_content_idempotent_and_reconstructs_after_restart",
+        "tests/unit/test_orchestration_scheduler.py::test_retry_backoff_fencing_and_exact_failure_are_enforced",
+        "tests/unit/test_orchestration_scheduler.py::test_expired_leases_retry_then_fail_and_block_descendants"
+      ],
+      "call_seconds": 0.26,
+      "environment_overrides": {
+        "PYTHONHASHSEED": "0"
+      },
+      "output_digest": "sha256:27747a31febe2e2d89174a4cbed44392b182993982432cc50573e3b4872457e3",
+      "passed_count": 3,
+      "probe_id": "restart-fencing",
+      "skipped_count": 0,
+      "slowest_call_seconds": 0.1,
+      "status": "pass",
+      "surfaces": [
+        "scheduler restart",
+        "retry fencing",
+        "expired lease recovery"
+      ],
+      "test_timings": [
+        {
+          "duration_seconds": 0.1,
+          "node_id": "tests/unit/test_orchestration_scheduler.py::test_expired_leases_retry_then_fail_and_block_descendants"
+        },
+        {
+          "duration_seconds": 0.09,
+          "node_id": "tests/unit/test_orchestration_scheduler.py::test_retry_backoff_fencing_and_exact_failure_are_enforced"
+        },
+        {
+          "duration_seconds": 0.07,
+          "node_id": "tests/unit/test_orchestration_scheduler.py::test_submit_is_content_idempotent_and_reconstructs_after_restart"
+        }
+      ],
+      "wall_seconds": 0.9307442249846645
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "pytest",
+        "-q",
+        "--disable-warnings",
+        "--durations=0",
+        "--durations-min=0",
+        "tests/unit/test_runtime_quotas.py",
+        "tests/unit/test_http_api.py::test_request_quota_counts_failed_authentication_and_exempts_health"
+      ],
+      "call_seconds": 0.14,
+      "environment_overrides": {
+        "PYTHONHASHSEED": "0"
+      },
+      "output_digest": "sha256:5e366a975099970340d819d439fe713bbbf51dd3eac30ba7fdf00cd5654c8371",
+      "passed_count": 7,
+      "probe_id": "quota",
+      "skipped_count": 0,
+      "slowest_call_seconds": 0.05,
+      "status": "pass",
+      "surfaces": [
+        "request quota",
+        "active storage quota",
+        "artifact quota"
+      ],
+      "test_timings": [
+        {
+          "duration_seconds": 0.05,
+          "node_id": "tests/unit/test_runtime_quotas.py::test_artifact_quota_is_exact_shared_and_duplicate_idempotent"
+        },
+        {
+          "duration_seconds": 0.04,
+          "node_id": "tests/unit/test_http_api.py::test_request_quota_counts_failed_authentication_and_exempts_health"
+        },
+        {
+          "duration_seconds": 0.04,
+          "node_id": "tests/unit/test_runtime_quotas.py::test_artifact_quota_serializes_competing_store_instances"
+        },
+        {
+          "duration_seconds": 0.01,
+          "node_id": "tests/unit/test_runtime_quotas.py::test_sliding_request_quota_serializes_concurrent_admission"
+        },
+        {
+          "duration_seconds": 0.0,
+          "node_id": "tests/unit/test_runtime_quotas.py::test_active_storage_quota_reserves_mutation_headroom_and_excludes_backups"
+        },
+        {
+          "duration_seconds": 0.0,
+          "node_id": "tests/unit/test_runtime_quotas.py::test_active_storage_quota_fails_closed_on_symlinked_entries"
+        },
+        {
+          "duration_seconds": 0.0,
+          "node_id": "tests/unit/test_runtime_quotas.py::test_sliding_request_quota_has_exact_boundary_and_recovers_after_window"
+        }
+      ],
+      "wall_seconds": 0.9320021810126491
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "pytest",
+        "-q",
+        "--disable-warnings",
+        "--durations=0",
+        "--durations-min=0",
+        "tests/unit/test_runtime_recovery.py",
+        "tests/integration/test_runtime_disaster_recovery.py"
+      ],
+      "call_seconds": 6.64,
+      "environment_overrides": {
+        "PYTHONHASHSEED": "0"
+      },
+      "output_digest": "sha256:fdc9d59488c9c396ed897deeafaf596a01f0c6cc492d4b85c66dfc5c2d9b0d43",
+      "passed_count": 7,
+      "probe_id": "recovery",
+      "skipped_count": 0,
+      "slowest_call_seconds": 5.87,
+      "status": "pass",
+      "surfaces": [
+        "online backup",
+        "verification",
+        "external restore",
+        "live-free replay"
+      ],
+      "test_timings": [
+        {
+          "duration_seconds": 5.87,
+          "node_id": "tests/integration/test_runtime_disaster_recovery.py::test_external_bundle_restores_live_free_replay_after_active_state_loss"
+        },
+        {
+          "duration_seconds": 0.18,
+          "node_id": "tests/unit/test_runtime_recovery.py::test_backup_is_verifiable_tamper_evident_and_retains_only_verified_count"
+        },
+        {
+          "duration_seconds": 0.17,
+          "node_id": "tests/unit/test_runtime_recovery.py::test_online_backup_is_self_consistent_during_concurrent_appends"
+        },
+        {
+          "duration_seconds": 0.13,
+          "node_id": "tests/unit/test_runtime_recovery.py::test_retention_preserves_the_new_bundle_when_the_clock_moves_backward"
+        },
+        {
+          "duration_seconds": 0.11,
+          "node_id": "tests/unit/test_runtime_recovery.py::test_recovery_cli_is_json_first_and_does_not_require_service_secrets"
+        },
+        {
+          "duration_seconds": 0.09,
+          "node_id": "tests/unit/test_runtime_recovery.py::test_restore_never_overwrites_an_existing_target"
+        },
+        {
+          "duration_seconds": 0.09,
+          "node_id": "tests/unit/test_runtime_recovery.py::test_verification_rejects_extra_symlinks_and_permissive_modes"
+        }
+      ],
+      "wall_seconds": 7.628819234989351
+    },
+    {
+      "argv": [
+        "uv",
+        "run",
+        "pytest",
+        "-q",
+        "--disable-warnings",
+        "--durations=0",
+        "--durations-min=0",
+        "tests/integration/test_podman_runtime.py"
+      ],
+      "call_seconds": 34.41,
+      "environment_overrides": {
+        "BLACKCELL_RUN_PODMAN_TESTS": "1",
+        "PYTHONHASHSEED": "0"
+      },
+      "output_digest": "sha256:fd88fdde0981e6008414f4bea047c68c23f7efee3c7402ea8dc1a760b7089e08",
+      "passed_count": 1,
+      "probe_id": "rootless-container",
+      "skipped_count": 0,
+      "slowest_call_seconds": 34.41,
+      "status": "pass",
+      "surfaces": [
+        "rootless Podman",
+        "health",
+        "read-only roots",
+        "restart persistence"
+      ],
+      "test_timings": [
+        {
+          "duration_seconds": 34.41,
+          "node_id": "tests/integration/test_podman_runtime.py::test_rootless_compose_runtime_is_restricted_healthy_and_persistent"
+        }
+      ],
+      "wall_seconds": 34.919060751009965
+    }
+  ],
+  "recorded_at": "2026-07-14T21:03:24.408772+00:00",
+  "report_id": "sha256:835386a6dc66c92fcc03fa89197d7cdbcf66a75d724ad4d412147e75a81a75c7",
+  "required_probe_ids": [
+    "api",
+    "worker",
+    "restart-fencing",
+    "quota",
+    "recovery",
+    "rootless-container"
+  ],
+  "schema_version": "runtime-benchmark-report/v1",
+  "total_call_seconds": 54.61,
+  "total_passed": 28,
+  "total_skipped": 0,
+  "total_wall_seconds": 59.528030215995386
+}

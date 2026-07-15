@@ -1,0 +1,86 @@
+{
+  "schema_version": "runtime-v1-decision/v1",
+  "work_package": "WP27",
+  "decision": "accept",
+  "recorded_on": "2026-07-14",
+  "subject": "runtime-v1 documentation, examples, SBOM, and reproducible verification evidence",
+  "release_candidate": {
+    "release_id": "runtime-v1",
+    "project_version": "0.2.0",
+    "base_sha": "2e0c4d26f7c0df8da92df5d5da4cc3f3738aa0ee",
+    "candidate_id": "sha256:2813ed5a34bcf42495bb4ec7734aa4df48b0432b3336bebf3152bf4964754463",
+    "status": "evidence-complete-unpublished"
+  },
+  "evidence": {
+    "guide": {
+      "path": "docs/guides/runtime-v1-release.md",
+      "covers": [
+        "recorded product walkthrough",
+        "rootless API and worker boundary",
+        "live-free replay",
+        "recovery boundary",
+        "SBOM scope",
+        "release non-claims"
+      ]
+    },
+    "examples": {
+      "root": "examples/runtime-v1",
+      "recorded_operator": "examples/runtime-v1/recorded-operator.sh",
+      "isolated_temporary_state": true,
+      "credentials_required": false,
+      "live_dependency_required": false
+    },
+    "sbom": {
+      "path": "release/runtime-v1/blackcell-runtime-v1.cdx.json",
+      "schema_version": "CycloneDX/1.7",
+      "digest": "sha256:e5fbdc1ee88f37a0ee1f63f67948c590e62ca132c27ad61ca266bfc7d121bb02",
+      "runtime_component_count_including_blackcell": 44,
+      "scope": "pre-build locked Python runtime dependency closure"
+    },
+    "verification_manifest": {
+      "path": "release/runtime-v1/verification-manifest.json",
+      "schema_version": "runtime-v1-verification-manifest/v1",
+      "digest": "sha256:1bf8eb424bc93998eb9827d5a94d6dac1d608c4722dd889877a056febd9cc1b9",
+      "material_count": 387,
+      "candidate_id": "sha256:2813ed5a34bcf42495bb4ec7734aa4df48b0432b3336bebf3152bf4964754463"
+    }
+  },
+  "readiness_boundary": {
+    "documentation": "accepted",
+    "examples": "accepted",
+    "python_runtime_sbom": "accepted",
+    "reproducible_verification_manifest": "accepted",
+    "remaining_runtime_v1_dag_nodes": 0,
+    "runtime_behavior_changed": false,
+    "project_version_changed": false,
+    "dependency_changed": false
+  },
+  "publication_boundary": {
+    "package_built": false,
+    "container_image_built": false,
+    "tag_created": false,
+    "release_created": false,
+    "signed": false,
+    "provenance_attestation_created": false,
+    "vulnerability_scan_claimed": false,
+    "commit_or_push_performed": false
+  },
+  "reason": "The only remaining runtime-v1 node required inspectable documentation, runnable local examples, a scoped software inventory, and exact reproducibility evidence. The retained bundle now binds the declared candidate materials and locked Python runtime graph without inventing an installed-image inventory or crossing the separately authorized publication, signing, attestation, and vulnerability-analysis boundaries.",
+  "verification": {
+    "focused_tests_passed": 29,
+    "release_evidence_verifier": "pass",
+    "recorded_operator_example": "pass",
+    "official_cyclonedx_1_7_schema": "pass",
+    "full_gate": {
+      "tests_passed": 1278,
+      "tests_skipped": 1,
+      "coverage_percent": 86.55,
+      "warnings": 14,
+      "ruff_format": "pass",
+      "ruff_check": "pass",
+      "ty": "pass",
+      "status": "pass"
+    },
+    "status": "pass"
+  }
+}

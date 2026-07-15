@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import datetime
 
 from blackcell.features.retrieve_evidence.command import RetrieveEvidence
@@ -9,6 +10,7 @@ from blackcell.features.retrieve_evidence.models import (
     EvidenceClaimIdentity,
     EvidenceEpistemicStatus,
     EvidenceKey,
+    EvidenceObjectiveMatch,
     EvidenceOmission,
     EvidenceOmissionReason,
     EvidenceSelection,
@@ -18,12 +20,44 @@ from blackcell.features.retrieve_evidence.models import (
     RequiredEvidenceGapReason,
     UnknownEvidenceSupport,
 )
-from blackcell.features.retrieve_evidence.ports import SignalClaimLike, SignalPacketLike
+from blackcell.features.retrieve_evidence.ports import (
+    EvidenceObjectiveMatcher,
+    SignalClaimLike,
+    SignalPacketLike,
+)
 
 _TOKEN = re.compile(r"[a-z0-9_./:-]+")
 
 
-class DeterministicEvidenceRetriever:
+class DeterministicObjectiveMatcher:
+    """The original exact-term overlap baseline."""
+
+    def match(
+        self,
+        objective: str,
+        claims: Sequence[SignalClaimLike],
+    ) -> tuple[EvidenceObjectiveMatch, ...]:
+        objective_tokens = _tokens(objective)
+        matches: list[EvidenceObjectiveMatch] = []
+        for claim in claims:
+            overlap = objective_tokens & _tokens(f"{claim.subject} {claim.predicate} {claim.value}")
+            if overlap:
+                matches.append(
+                    EvidenceObjectiveMatch(
+                        identity=_claim_identity(claim),
+                        score=100 * len(overlap),
+                        reason="objective-overlap",
+                    )
+                )
+        return tuple(matches)
+
+
+class RankedEvidenceRetriever:
+    """Apply feature-owned evidence policy around a replaceable objective matcher."""
+
+    def __init__(self, matcher: EvidenceObjectiveMatcher) -> None:
+        self._matcher = matcher
+
     def handle(self, query: RetrieveEvidence, packet: SignalPacketLike) -> EvidenceSelection:
         required = {(key.subject, key.predicate) for key in query.required_keys}
         state_effective_time = getattr(packet, "state_effective_time", None)
@@ -49,9 +83,20 @@ class DeterministicEvidenceRetriever:
             (claim.subject, claim.predicate) in required for claim in observed_claims
         )
         conflict_keys = {(item.subject, item.predicate) for item in packet.conflicts}
-        objective_tokens = _tokens(query.objective)
+        objective_matches = _validated_matches(
+            self._matcher.match(query.objective, observed_claims),
+            observed_claims,
+        )
         considered = tuple(
-            (claim, _candidate(claim, objective_tokens, required, conflict_keys))
+            (
+                claim,
+                _candidate(
+                    claim,
+                    objective_matches.get(_claim_identity(claim)),
+                    required,
+                    conflict_keys,
+                ),
+            )
             for claim in observed_claims
         )
         ranked = tuple(
@@ -125,23 +170,26 @@ class DeterministicEvidenceRetriever:
         )
 
 
+class DeterministicEvidenceRetriever(RankedEvidenceRetriever):
+    def __init__(self) -> None:
+        super().__init__(DeterministicObjectiveMatcher())
+
+
 def _candidate(
     claim: SignalClaimLike,
-    objective_tokens: frozenset[str],
+    objective_match: EvidenceObjectiveMatch | None,
     required: set[tuple[str, str]],
     conflict_keys: set[tuple[str, str]],
 ) -> EvidenceCandidate | None:
     key = (claim.subject, claim.predicate)
-    claim_tokens = _tokens(f"{claim.subject} {claim.predicate} {claim.value}")
-    overlap = objective_tokens & claim_tokens
     reasons: list[str] = []
     score = 0
     if key in required:
         reasons.append("required")
         score += 1_000
-    if overlap:
-        reasons.append("objective-overlap")
-        score += 100 * len(overlap)
+    if objective_match is not None:
+        reasons.append(objective_match.reason)
+        score += objective_match.score
     if key in conflict_keys:
         reasons.append("conflict")
         score += 200
@@ -151,6 +199,28 @@ def _candidate(
     if claim.stale:
         score -= 25
     return _copy_candidate(claim, score, tuple(reasons), key in conflict_keys)
+
+
+def _validated_matches(
+    matches: Sequence[EvidenceObjectiveMatch],
+    observed_claims: tuple[SignalClaimLike, ...],
+) -> dict[EvidenceClaimIdentity, EvidenceObjectiveMatch]:
+    known = {_claim_identity(claim) for claim in observed_claims}
+    validated: dict[EvidenceClaimIdentity, EvidenceObjectiveMatch] = {}
+    try:
+        for match in matches:
+            if not isinstance(match, EvidenceObjectiveMatch):
+                raise ValueError
+            if match.identity not in known or match.identity in validated:
+                raise ValueError
+            validated[match.identity] = match
+    except TypeError, ValueError:
+        raise ValueError("evidence objective matcher returned invalid results") from None
+    return validated
+
+
+def _claim_identity(claim: SignalClaimLike) -> EvidenceClaimIdentity:
+    return EvidenceClaimIdentity(claim.source_event_id, claim.claim_id)
 
 
 def _fallback(

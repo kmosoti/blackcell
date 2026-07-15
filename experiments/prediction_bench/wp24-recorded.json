@@ -1,0 +1,3128 @@
+{
+  "aggregates": [
+    {
+      "actual_conflict_count": 1,
+      "actual_missing_count": 1,
+      "brier_score": 0.4375,
+      "condition": "state-persistence",
+      "exact_match_rate": 0.25,
+      "input_tokens": 0,
+      "matched_count": 1,
+      "mean_latency_ms": 0.17016741500000002,
+      "mismatch_count": 3,
+      "output_tokens": 0,
+      "p95_latency_ms": 0.221468,
+      "prediction_unknown_count": 2,
+      "provider_cost_usd": 0.0,
+      "scenario_count": 8,
+      "scored_count": 4,
+      "scored_coverage": 0.5,
+      "target_count": 8,
+      "target_match_rate": 0.125
+    },
+    {
+      "actual_conflict_count": 1,
+      "actual_missing_count": 1,
+      "brier_score": 0.23666666666666666,
+      "condition": "declared-effects",
+      "exact_match_rate": 0.6666666666666666,
+      "input_tokens": 0,
+      "matched_count": 4,
+      "mean_latency_ms": 0.238521945,
+      "mismatch_count": 2,
+      "output_tokens": 0,
+      "p95_latency_ms": 0.28109,
+      "prediction_unknown_count": 0,
+      "provider_cost_usd": 0.0,
+      "scenario_count": 8,
+      "scored_count": 6,
+      "scored_coverage": 0.75,
+      "target_count": 8,
+      "target_match_rate": 0.5
+    }
+  ],
+  "design": {
+    "conditions": [
+      "state-persistence",
+      "declared-effects"
+    ],
+    "experiment_id": "wp24-prediction-bench",
+    "latency_repetitions": 50
+  },
+  "environment": {
+    "clock": "time.perf_counter_ns",
+    "implementation": "CPython",
+    "machine": "x86_64",
+    "python": "3.14.6",
+    "system": "Linux"
+  },
+  "experiment_id": "wp24-prediction-bench",
+  "inferential": false,
+  "limitations": [
+    "the dataset contains 8 author-crafted synthetic one-step scenarios",
+    "declared effects are developer-authored inputs, not learned estimates or hidden outcomes",
+    "the comparison has no held-out scenario families and is not inferential",
+    "microbenchmark latency is environment-specific and excludes provider, network, and model cost",
+    "deterministic conditions use zero model tokens and zero provider cost; unavailable neural candidates retain null measures",
+    "the experiment does not test multi-step rollout quality or downstream planning utility"
+  ],
+  "paired_comparison": {
+    "brier_score_delta": -0.20083333333333334,
+    "exact_match_rate_delta": 0.41666666666666663,
+    "left": "state-persistence",
+    "losses": 0,
+    "mean_latency_ms_delta": 0.06835453,
+    "right": "declared-effects",
+    "scenario_count": 8,
+    "scored_coverage_delta": 0.25,
+    "target_match_rate_delta": 0.375,
+    "ties": 5,
+    "wins": 3
+  },
+  "report_id": "sha256:441d07e0985008ac7ea471e9446e349e66dfc5a735fb591295ed6bca75abfbb3",
+  "scenario_count": 8,
+  "scenario_digest": "sha256:5d009a0f7900e099c2afea6cc5dd20156771957c1df45e7ed71c744dfeb2a27d",
+  "scenarios": [
+    {
+      "action_digest": "sha256:50400471f05d7db40f9da95c5b5f3f1dc467d375eaac5b55a5bad5402b799a5f",
+      "action_kind": "inspect",
+      "actual_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:stable-state:status-actual",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:stable-state",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T12:01:00+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 2,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T12:01:00+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:stable-state:status-actual",
+            "stream_id": "prediction-bench:stable-state",
+            "stream_sequence": 2,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "ready"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 2,
+        "effective_time_cutoff": "2026-07-14T12:01:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 2,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:stable-state"
+        },
+        "superseded_claims": []
+      },
+      "declared_effects": [],
+      "description": "A read-only inspection leaves current state stable.",
+      "scenario_id": "stable-state",
+      "source_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:stable-state:status",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:stable-state",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 1,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:stable-state:status",
+            "stream_id": "prediction-bench:stable-state",
+            "stream_sequence": 1,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "ready"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 1,
+        "effective_time_cutoff": "2026-07-14T12:00:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 1,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:stable-state"
+        },
+        "superseded_claims": []
+      },
+      "tags": [
+        "persistence"
+      ],
+      "targets": [
+        {
+          "predicate": "status",
+          "subject": "project"
+        }
+      ]
+    },
+    {
+      "action_digest": "sha256:35a43681537839d6f4752955276693a3b3815b493e323e8c8f03445cecd98b79",
+      "action_kind": "start",
+      "actual_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:declared-change:status-actual",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:declared-change",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T12:01:00+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 3,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T12:01:00+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:declared-change:status-actual",
+            "stream_id": "prediction-bench:declared-change",
+            "stream_sequence": 3,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "running"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 3,
+        "effective_time_cutoff": "2026-07-14T12:01:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 3,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:declared-change"
+        },
+        "superseded_claims": []
+      },
+      "declared_effects": [
+        {
+          "confidence": 0.85,
+          "source_claim_ids": [
+            "claim:declared-change:intent"
+          ],
+          "source_event_ids": [
+            "event:declared-change:intent"
+          ],
+          "target": {
+            "predicate": "status",
+            "subject": "project"
+          },
+          "value": "running"
+        }
+      ],
+      "description": "A declared start effect occurs.",
+      "scenario_id": "declared-change",
+      "source_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:declared-change:intent",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:declared-change",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 2,
+            "predicate": "declared-status",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:declared-change:intent",
+            "stream_id": "prediction-bench:declared-change",
+            "stream_sequence": 2,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "running"
+          },
+          {
+            "actor": "fixture",
+            "claim_id": "claim:declared-change:status",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:declared-change",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 1,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:declared-change:status",
+            "stream_id": "prediction-bench:declared-change",
+            "stream_sequence": 1,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "pending"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 2,
+        "effective_time_cutoff": "2026-07-14T12:00:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 2,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:declared-change"
+        },
+        "superseded_claims": []
+      },
+      "tags": [
+        "declared-effect",
+        "change"
+      ],
+      "targets": [
+        {
+          "predicate": "status",
+          "subject": "project"
+        }
+      ]
+    },
+    {
+      "action_digest": "sha256:e7e352c83e19c8d95b03dd15efde3ea26316d742300e95fa33102db26f436246",
+      "action_kind": "start",
+      "actual_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:declared-effect-miss:status-actual",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:declared-effect-miss",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T12:01:00+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 3,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T12:01:00+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:declared-effect-miss:status-actual",
+            "stream_id": "prediction-bench:declared-effect-miss",
+            "stream_sequence": 3,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "failed"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 3,
+        "effective_time_cutoff": "2026-07-14T12:01:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 3,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:declared-effect-miss"
+        },
+        "superseded_claims": []
+      },
+      "declared_effects": [
+        {
+          "confidence": 0.85,
+          "source_claim_ids": [
+            "claim:declared-effect-miss:intent"
+          ],
+          "source_event_ids": [
+            "event:declared-effect-miss:intent"
+          ],
+          "target": {
+            "predicate": "status",
+            "subject": "project"
+          },
+          "value": "running"
+        }
+      ],
+      "description": "A declared effect fails, proving that the symbolic baseline is not an oracle.",
+      "scenario_id": "declared-effect-miss",
+      "source_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:declared-effect-miss:intent",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:declared-effect-miss",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 2,
+            "predicate": "declared-status",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:declared-effect-miss:intent",
+            "stream_id": "prediction-bench:declared-effect-miss",
+            "stream_sequence": 2,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "running"
+          },
+          {
+            "actor": "fixture",
+            "claim_id": "claim:declared-effect-miss:status",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:declared-effect-miss",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 1,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:declared-effect-miss:status",
+            "stream_id": "prediction-bench:declared-effect-miss",
+            "stream_sequence": 1,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "pending"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 2,
+        "effective_time_cutoff": "2026-07-14T12:00:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 2,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:declared-effect-miss"
+        },
+        "superseded_claims": []
+      },
+      "tags": [
+        "declared-effect",
+        "unexpected-outcome"
+      ],
+      "targets": [
+        {
+          "predicate": "status",
+          "subject": "project"
+        }
+      ]
+    },
+    {
+      "action_digest": "sha256:a9e4e292f4973600094d46f7c7010f85463cb2733a2fd07d06f8b09e05061f7b",
+      "action_kind": "refresh",
+      "actual_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:unexpected-change:count-actual",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:unexpected-change",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T12:01:00+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 2,
+            "predicate": "count",
+            "recorded_at": "2026-07-14T12:01:00+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:unexpected-change:count-actual",
+            "stream_id": "prediction-bench:unexpected-change",
+            "stream_sequence": 2,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": 2
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 2,
+        "effective_time_cutoff": "2026-07-14T12:01:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 2,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:unexpected-change"
+        },
+        "superseded_claims": []
+      },
+      "declared_effects": [],
+      "description": "An undeclared external change defeats persistence.",
+      "scenario_id": "unexpected-change",
+      "source_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:unexpected-change:count",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:unexpected-change",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 1,
+            "predicate": "count",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:unexpected-change:count",
+            "stream_id": "prediction-bench:unexpected-change",
+            "stream_sequence": 1,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": 1
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 1,
+        "effective_time_cutoff": "2026-07-14T12:00:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 1,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:unexpected-change"
+        },
+        "superseded_claims": []
+      },
+      "tags": [
+        "unmodeled-change"
+      ],
+      "targets": [
+        {
+          "predicate": "count",
+          "subject": "project"
+        }
+      ]
+    },
+    {
+      "action_digest": "sha256:dd55b349acb67348d704b5335177e79684e97541120943da7058c0816034782e",
+      "action_kind": "create",
+      "actual_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:source-missing-created:status-actual",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:source-missing-created",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T12:01:00+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 2,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T12:01:00+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:source-missing-created:status-actual",
+            "stream_id": "prediction-bench:source-missing-created",
+            "stream_sequence": 2,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "created"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 2,
+        "effective_time_cutoff": "2026-07-14T12:01:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 2,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:source-missing-created"
+        },
+        "superseded_claims": []
+      },
+      "declared_effects": [
+        {
+          "confidence": 0.9,
+          "source_claim_ids": [
+            "claim:source-missing-created:intent"
+          ],
+          "source_event_ids": [
+            "event:source-missing-created:intent"
+          ],
+          "target": {
+            "predicate": "status",
+            "subject": "project"
+          },
+          "value": "created"
+        }
+      ],
+      "description": "A declared create effect supplies a target missing from source state.",
+      "scenario_id": "source-missing-created",
+      "source_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:source-missing-created:intent",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:source-missing-created",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 1,
+            "predicate": "declared-status",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:source-missing-created:intent",
+            "stream_id": "prediction-bench:source-missing-created",
+            "stream_sequence": 1,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "created"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 1,
+        "effective_time_cutoff": "2026-07-14T12:00:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 1,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:source-missing-created"
+        },
+        "superseded_claims": []
+      },
+      "tags": [
+        "source-missing",
+        "declared-effect"
+      ],
+      "targets": [
+        {
+          "predicate": "status",
+          "subject": "project"
+        }
+      ]
+    },
+    {
+      "action_digest": "sha256:8088bc51ece57034b05f00f4142d8c67a26bbff5188e6573a8cf8ec0772676b1",
+      "action_kind": "resolve",
+      "actual_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:source-conflict-resolved:mode-actual",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:source-conflict-resolved",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T12:01:00+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 4,
+            "predicate": "mode",
+            "recorded_at": "2026-07-14T12:01:00+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:source-conflict-resolved:mode-actual",
+            "stream_id": "prediction-bench:source-conflict-resolved",
+            "stream_sequence": 4,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "b"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 4,
+        "effective_time_cutoff": "2026-07-14T12:01:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 4,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:source-conflict-resolved"
+        },
+        "superseded_claims": []
+      },
+      "declared_effects": [
+        {
+          "confidence": 0.8,
+          "source_claim_ids": [
+            "claim:source-conflict-resolved:intent"
+          ],
+          "source_event_ids": [
+            "event:source-conflict-resolved:intent"
+          ],
+          "target": {
+            "predicate": "mode",
+            "subject": "project"
+          },
+          "value": "b"
+        }
+      ],
+      "description": "A declared resolution disambiguates conflicted source evidence.",
+      "scenario_id": "source-conflict-resolved",
+      "source_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:source-conflict-resolved:intent",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:source-conflict-resolved",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 3,
+            "predicate": "declared-mode",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:source-conflict-resolved:intent",
+            "stream_id": "prediction-bench:source-conflict-resolved",
+            "stream_sequence": 3,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "b"
+          },
+          {
+            "actor": "fixture",
+            "claim_id": "claim:source-conflict-resolved:mode-a",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:source-conflict-resolved",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 1,
+            "predicate": "mode",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:source-conflict-resolved:mode-a",
+            "stream_id": "prediction-bench:source-conflict-resolved",
+            "stream_sequence": 1,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "a"
+          },
+          {
+            "actor": "fixture",
+            "claim_id": "claim:source-conflict-resolved:mode-b",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:source-conflict-resolved",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 2,
+            "predicate": "mode",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:source-conflict-resolved:mode-b",
+            "stream_id": "prediction-bench:source-conflict-resolved",
+            "stream_sequence": 2,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "b"
+          }
+        ],
+        "conflicts": [
+          {
+            "claim_ids": [
+              "claim:source-conflict-resolved:mode-a",
+              "claim:source-conflict-resolved:mode-b"
+            ],
+            "predicate": "mode",
+            "source_event_ids": [
+              "event:source-conflict-resolved:mode-a",
+              "event:source-conflict-resolved:mode-b"
+            ],
+            "subject": "project",
+            "values": [
+              "a",
+              "b"
+            ]
+          }
+        ],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 3,
+        "effective_time_cutoff": "2026-07-14T12:00:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 3,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:source-conflict-resolved"
+        },
+        "superseded_claims": []
+      },
+      "tags": [
+        "source-conflict",
+        "declared-effect"
+      ],
+      "targets": [
+        {
+          "predicate": "mode",
+          "subject": "project"
+        }
+      ]
+    },
+    {
+      "action_digest": "sha256:809b52624c0f97e8e95a9b5c50db9777441316ec7804669a6435af2a30391663",
+      "action_kind": "expire",
+      "actual_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:actual-missing:other",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:actual-missing",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T12:01:00+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 2,
+            "predicate": "other",
+            "recorded_at": "2026-07-14T12:01:00+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:actual-missing:other",
+            "stream_id": "prediction-bench:actual-missing",
+            "stream_sequence": 2,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "retained"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 2,
+        "effective_time_cutoff": "2026-07-14T12:01:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 2,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:actual-missing"
+        },
+        "superseded_claims": []
+      },
+      "declared_effects": [],
+      "description": "The requested target is absent from the outcome snapshot.",
+      "scenario_id": "actual-missing",
+      "source_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:actual-missing:status",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:actual-missing",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 1,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:actual-missing:status",
+            "stream_id": "prediction-bench:actual-missing",
+            "stream_sequence": 1,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "present"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 1,
+        "effective_time_cutoff": "2026-07-14T12:00:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 1,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:actual-missing"
+        },
+        "superseded_claims": []
+      },
+      "tags": [
+        "actual-missing"
+      ],
+      "targets": [
+        {
+          "predicate": "status",
+          "subject": "project"
+        }
+      ]
+    },
+    {
+      "action_digest": "sha256:58c5db8bebeed109666e8bb2ec66f92b66464e444e88708d7903515a8424de7b",
+      "action_kind": "observe",
+      "actual_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:actual-conflict:running",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:actual-conflict",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T12:01:00+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 2,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T12:01:00+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:actual-conflict:running",
+            "stream_id": "prediction-bench:actual-conflict",
+            "stream_sequence": 2,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "running"
+          },
+          {
+            "actor": "fixture",
+            "claim_id": "claim:actual-conflict:failed",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:actual-conflict",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T12:01:00+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 3,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T12:01:00+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:actual-conflict:failed",
+            "stream_id": "prediction-bench:actual-conflict",
+            "stream_sequence": 3,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "failed"
+          }
+        ],
+        "conflicts": [
+          {
+            "claim_ids": [
+              "claim:actual-conflict:running",
+              "claim:actual-conflict:failed"
+            ],
+            "predicate": "status",
+            "source_event_ids": [
+              "event:actual-conflict:running",
+              "event:actual-conflict:failed"
+            ],
+            "subject": "project",
+            "values": [
+              "running",
+              "failed"
+            ]
+          }
+        ],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 3,
+        "effective_time_cutoff": "2026-07-14T12:01:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 3,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:actual-conflict"
+        },
+        "superseded_claims": []
+      },
+      "declared_effects": [],
+      "description": "The outcome contains contradictory target values.",
+      "scenario_id": "actual-conflict",
+      "source_snapshot": {
+        "applied_corrections": [],
+        "claims": [
+          {
+            "actor": "fixture",
+            "claim_id": "claim:actual-conflict:status",
+            "confidence": 1.0,
+            "correction_id": null,
+            "correlation_id": "scenario:actual-conflict",
+            "domain": "prediction-bench",
+            "effective_at": "2026-07-14T11:59:59+00:00",
+            "epistemic_status": "observed",
+            "expires_at": null,
+            "global_position": 1,
+            "predicate": "status",
+            "recorded_at": "2026-07-14T11:59:59+00:00",
+            "source": "prediction-bench",
+            "source_event_id": "event:actual-conflict:status",
+            "stream_id": "prediction-bench:actual-conflict",
+            "stream_sequence": 1,
+            "subject": "project",
+            "supersedes_claim_ids": [],
+            "unknown_reason": null,
+            "value": "pending"
+          }
+        ],
+        "conflicts": [],
+        "correction_replacement_claims": [],
+        "cutoff_global_position": 1,
+        "effective_time_cutoff": "2026-07-14T12:00:00+00:00",
+        "expired_claims": [],
+        "last_source_stream_sequence": 1,
+        "schema_version": "operational-state-snapshot/v1",
+        "scope": {
+          "domain": "prediction-bench",
+          "stream_id": "prediction-bench:actual-conflict"
+        },
+        "superseded_claims": []
+      },
+      "tags": [
+        "actual-conflict"
+      ],
+      "targets": [
+        {
+          "predicate": "status",
+          "subject": "project"
+        }
+      ]
+    }
+  ],
+  "schema_version": "prediction-bench-report/v1",
+  "trials": [
+    {
+      "actual_snapshot_digest": "sha256:fe02329907504baeacb84d0a723f58139e1ba1df4ef8b1ac781a56f615ab2149",
+      "condition": "state-persistence",
+      "latency_ns": [
+        242817,
+        193292,
+        176367,
+        188291,
+        192234,
+        166654,
+        167327,
+        163096,
+        186656,
+        193868,
+        162903,
+        164058,
+        162038,
+        161942,
+        160788,
+        182232,
+        168096,
+        163673,
+        175116,
+        164538,
+        166462,
+        166269,
+        165500,
+        164923,
+        165404,
+        165596,
+        184733,
+        194927,
+        168962,
+        168000,
+        167520,
+        172712,
+        179540,
+        167711,
+        166557,
+        165692,
+        166654,
+        184060,
+        173194,
+        166558,
+        238008,
+        167808,
+        167327,
+        201465,
+        201754,
+        166943,
+        166750,
+        168770,
+        192137,
+        168481
+      ],
+      "mean_latency_ms": 0.17592806,
+      "prediction": {
+        "action_digest": "sha256:50400471f05d7db40f9da95c5b5f3f1dc467d375eaac5b55a5bad5402b799a5f",
+        "action_kind": "inspect",
+        "facts": [
+          {
+            "assumptions": [
+              "action-effect-unmodeled",
+              "state-persistence"
+            ],
+            "confidence": 0.75,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:stable-state:status"
+            ],
+            "source_event_ids": [
+              "event:stable-state:status"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "ready"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:32fe14238c67d3550e5c4abc9fda3b11e315d93d4625775b7321a2df9865fd54",
+        "predictor_version": "state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 1,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:0216c5bbbcfb04c572c15b8ddc303ff51297772650023509e5a4530d0dab73a7",
+        "source_stream_id": "prediction-bench:stable-state",
+        "source_stream_sequence": 1
+      },
+      "scenario_id": "stable-state",
+      "score": {
+        "actual_cutoff_global_position": 2,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:fe02329907504baeacb84d0a723f58139e1ba1df4ef8b1ac781a56f615ab2149",
+        "actual_stream_sequence": 2,
+        "brier_score": 0.0625,
+        "exact_match_rate": 1.0,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:stable-state:status-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:stable-state:status-actual"
+            ],
+            "actual_values": [
+              "ready"
+            ],
+            "outcome": "match",
+            "predicted_confidence": 0.75,
+            "predicted_value": "ready",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 1,
+        "prediction_id": "sha256:32fe14238c67d3550e5c4abc9fda3b11e315d93d4625775b7321a2df9865fd54",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:70bf038615cbc02ae5f39ec92d678fe6bcc5f9125cbf529dbe01dce521d604d7",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 1
+      },
+      "source_snapshot_digest": "sha256:0216c5bbbcfb04c572c15b8ddc303ff51297772650023509e5a4530d0dab73a7"
+    },
+    {
+      "actual_snapshot_digest": "sha256:fe02329907504baeacb84d0a723f58139e1ba1df4ef8b1ac781a56f615ab2149",
+      "condition": "declared-effects",
+      "latency_ns": [
+        261472,
+        229257,
+        265511,
+        243971,
+        226469,
+        227142,
+        252529,
+        231180,
+        227045,
+        225314,
+        227430,
+        226372,
+        225699,
+        225795,
+        317056,
+        227622,
+        226469,
+        283590,
+        233969,
+        240027,
+        227045,
+        225122,
+        250125,
+        227911,
+        225699,
+        224545,
+        225026,
+        225218,
+        224929,
+        225603,
+        249932,
+        227719,
+        226276,
+        225122,
+        225315,
+        252529,
+        272436,
+        260415,
+        251856,
+        227623,
+        225892,
+        225892,
+        224930,
+        226949,
+        225891,
+        226468,
+        250702,
+        227142,
+        224545,
+        225892
+      ],
+      "mean_latency_ms": 0.23617336,
+      "prediction": {
+        "action_digest": "sha256:50400471f05d7db40f9da95c5b5f3f1dc467d375eaac5b55a5bad5402b799a5f",
+        "action_kind": "inspect",
+        "facts": [
+          {
+            "assumptions": [
+              "action-effect-unmodeled",
+              "state-persistence"
+            ],
+            "confidence": 0.75,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:stable-state:status"
+            ],
+            "source_event_ids": [
+              "event:stable-state:status"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "ready"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:cd720ec2d49cdc64875ffb445468a9d5e10dbe01ea598770ba4317f0377cf398",
+        "predictor_version": "declared-effects-plus-state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 1,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:0216c5bbbcfb04c572c15b8ddc303ff51297772650023509e5a4530d0dab73a7",
+        "source_stream_id": "prediction-bench:stable-state",
+        "source_stream_sequence": 1
+      },
+      "scenario_id": "stable-state",
+      "score": {
+        "actual_cutoff_global_position": 2,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:fe02329907504baeacb84d0a723f58139e1ba1df4ef8b1ac781a56f615ab2149",
+        "actual_stream_sequence": 2,
+        "brier_score": 0.0625,
+        "exact_match_rate": 1.0,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:stable-state:status-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:stable-state:status-actual"
+            ],
+            "actual_values": [
+              "ready"
+            ],
+            "outcome": "match",
+            "predicted_confidence": 0.75,
+            "predicted_value": "ready",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 1,
+        "prediction_id": "sha256:cd720ec2d49cdc64875ffb445468a9d5e10dbe01ea598770ba4317f0377cf398",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:b9ef24d7f73858999df7a768b33d282829635ff69a6d7afd7c33ac6182d6f8b2",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 1
+      },
+      "source_snapshot_digest": "sha256:0216c5bbbcfb04c572c15b8ddc303ff51297772650023509e5a4530d0dab73a7"
+    },
+    {
+      "actual_snapshot_digest": "sha256:b170604efb1070ae2431a069cca3dc79d8362ada9a9602649b3d7d6053ee4ffb",
+      "condition": "state-persistence",
+      "latency_ns": [
+        178483,
+        194927,
+        220699,
+        171269,
+        193291,
+        171655,
+        169443,
+        170500,
+        171654,
+        169635,
+        170020,
+        170020,
+        169828,
+        168577,
+        168865,
+        194445,
+        170115,
+        201754,
+        169154,
+        169443,
+        170596,
+        169057,
+        170115,
+        173963,
+        181751,
+        195792,
+        175212,
+        168577,
+        169731,
+        169539,
+        168961,
+        168480,
+        168769,
+        170212,
+        168096,
+        170116,
+        222045,
+        208774,
+        260992,
+        288398,
+        229642,
+        232046,
+        251087,
+        173578,
+        232912,
+        171943,
+        241470,
+        174347,
+        166558,
+        186272
+      ],
+      "mean_latency_ms": 0.18725616,
+      "prediction": {
+        "action_digest": "sha256:35a43681537839d6f4752955276693a3b3815b493e323e8c8f03445cecd98b79",
+        "action_kind": "start",
+        "facts": [
+          {
+            "assumptions": [
+              "action-effect-unmodeled",
+              "state-persistence"
+            ],
+            "confidence": 0.75,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:declared-change:status"
+            ],
+            "source_event_ids": [
+              "event:declared-change:status"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "pending"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:4d6768ad842c7fe0d327aa0a1dddc8927243438f43ef402bf742f43d2f6cf879",
+        "predictor_version": "state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 2,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:a60683cd98f1cb4b7c069c5df85b4e0cc30129fac923bec23bc4f54667358445",
+        "source_stream_id": "prediction-bench:declared-change",
+        "source_stream_sequence": 2
+      },
+      "scenario_id": "declared-change",
+      "score": {
+        "actual_cutoff_global_position": 3,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:b170604efb1070ae2431a069cca3dc79d8362ada9a9602649b3d7d6053ee4ffb",
+        "actual_stream_sequence": 3,
+        "brier_score": 0.5625,
+        "exact_match_rate": 0.0,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:declared-change:status-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:declared-change:status-actual"
+            ],
+            "actual_values": [
+              "running"
+            ],
+            "outcome": "mismatch",
+            "predicted_confidence": 0.75,
+            "predicted_value": "pending",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:4d6768ad842c7fe0d327aa0a1dddc8927243438f43ef402bf742f43d2f6cf879",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:d2ca27339612ca6b082ed8218907ff83028dd33500f82cb19ab7e981e5a323f3",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 1
+      },
+      "source_snapshot_digest": "sha256:a60683cd98f1cb4b7c069c5df85b4e0cc30129fac923bec23bc4f54667358445"
+    },
+    {
+      "actual_snapshot_digest": "sha256:b170604efb1070ae2431a069cca3dc79d8362ada9a9602649b3d7d6053ee4ffb",
+      "condition": "declared-effects",
+      "latency_ns": [
+        400623,
+        234931,
+        264935,
+        236181,
+        236277,
+        233969,
+        234354,
+        234931,
+        234161,
+        237527,
+        269165,
+        249356,
+        238586,
+        237912,
+        258203,
+        237335,
+        237239,
+        257337,
+        243297,
+        238777,
+        239835,
+        237912,
+        237431,
+        238778,
+        238873,
+        267146,
+        273878,
+        269261,
+        252240,
+        236950,
+        238777,
+        238008,
+        257530,
+        263011,
+        238201,
+        237047,
+        237527,
+        237046,
+        238393,
+        238778,
+        268781,
+        290706,
+        268877,
+        238105,
+        238585,
+        237335,
+        238682,
+        237912,
+        374562,
+        238778
+      ],
+      "mean_latency_ms": 0.25128082,
+      "prediction": {
+        "action_digest": "sha256:35a43681537839d6f4752955276693a3b3815b493e323e8c8f03445cecd98b79",
+        "action_kind": "start",
+        "facts": [
+          {
+            "assumptions": [
+              "developer-declared-action-effect",
+              "experiment-only"
+            ],
+            "confidence": 0.85,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:declared-change:intent"
+            ],
+            "source_event_ids": [
+              "event:declared-change:intent"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "running"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:9d89942a739b56fea4ab66652726d4f738e56595b9c44193bc187148f693dccd",
+        "predictor_version": "declared-effects-plus-state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 2,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:a60683cd98f1cb4b7c069c5df85b4e0cc30129fac923bec23bc4f54667358445",
+        "source_stream_id": "prediction-bench:declared-change",
+        "source_stream_sequence": 2
+      },
+      "scenario_id": "declared-change",
+      "score": {
+        "actual_cutoff_global_position": 3,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:b170604efb1070ae2431a069cca3dc79d8362ada9a9602649b3d7d6053ee4ffb",
+        "actual_stream_sequence": 3,
+        "brier_score": 0.022500000000000006,
+        "exact_match_rate": 1.0,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:declared-change:status-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:declared-change:status-actual"
+            ],
+            "actual_values": [
+              "running"
+            ],
+            "outcome": "match",
+            "predicted_confidence": 0.85,
+            "predicted_value": "running",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 1,
+        "prediction_id": "sha256:9d89942a739b56fea4ab66652726d4f738e56595b9c44193bc187148f693dccd",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:8ad7546c11c29d29534620d6e4149e9fe220fa8e0428c08c818e523993d54bc8",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 1
+      },
+      "source_snapshot_digest": "sha256:a60683cd98f1cb4b7c069c5df85b4e0cc30129fac923bec23bc4f54667358445"
+    },
+    {
+      "actual_snapshot_digest": "sha256:9fc8ce81229e1a772469d970cd6a8bb91a8f9fd1ee741639c4658105e60933a3",
+      "condition": "state-persistence",
+      "latency_ns": [
+        233392,
+        226853,
+        183963,
+        169058,
+        167904,
+        190118,
+        169058,
+        186656,
+        181848,
+        169250,
+        169251,
+        168577,
+        168577,
+        168096,
+        169731,
+        168962,
+        196657,
+        171655,
+        169346,
+        169346,
+        170116,
+        203197,
+        203966,
+        193772,
+        173193,
+        171750,
+        190695,
+        176271,
+        172327,
+        176655,
+        216660,
+        169827,
+        171077,
+        168289,
+        170597,
+        169347,
+        170789,
+        193195,
+        173193,
+        169442,
+        170981,
+        170116,
+        168096,
+        167519,
+        168962,
+        169346,
+        169346,
+        170885,
+        194734,
+        186656
+      ],
+      "mean_latency_ms": 0.17878594,
+      "prediction": {
+        "action_digest": "sha256:e7e352c83e19c8d95b03dd15efde3ea26316d742300e95fa33102db26f436246",
+        "action_kind": "start",
+        "facts": [
+          {
+            "assumptions": [
+              "action-effect-unmodeled",
+              "state-persistence"
+            ],
+            "confidence": 0.75,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:declared-effect-miss:status"
+            ],
+            "source_event_ids": [
+              "event:declared-effect-miss:status"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "pending"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:39838d881107ee9e8d7df2772486a239de5b45ba22d8bd8b8a4303fdf6692660",
+        "predictor_version": "state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 2,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:c2ef7e5047831f6e42e1407e3c5f226ad74cb607588d2aaf54c3343d137a6aa0",
+        "source_stream_id": "prediction-bench:declared-effect-miss",
+        "source_stream_sequence": 2
+      },
+      "scenario_id": "declared-effect-miss",
+      "score": {
+        "actual_cutoff_global_position": 3,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:9fc8ce81229e1a772469d970cd6a8bb91a8f9fd1ee741639c4658105e60933a3",
+        "actual_stream_sequence": 3,
+        "brier_score": 0.5625,
+        "exact_match_rate": 0.0,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:declared-effect-miss:status-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:declared-effect-miss:status-actual"
+            ],
+            "actual_values": [
+              "failed"
+            ],
+            "outcome": "mismatch",
+            "predicted_confidence": 0.75,
+            "predicted_value": "pending",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:39838d881107ee9e8d7df2772486a239de5b45ba22d8bd8b8a4303fdf6692660",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:9ff3da10bcaa2f14c300a243a253dde1fec8b14bda565e53269f84507f85f5c8",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 1
+      },
+      "source_snapshot_digest": "sha256:c2ef7e5047831f6e42e1407e3c5f226ad74cb607588d2aaf54c3343d137a6aa0"
+    },
+    {
+      "actual_snapshot_digest": "sha256:9fc8ce81229e1a772469d970cd6a8bb91a8f9fd1ee741639c4658105e60933a3",
+      "condition": "declared-effects",
+      "latency_ns": [
+        252529,
+        250895,
+        239450,
+        235892,
+        234835,
+        237046,
+        260414,
+        238777,
+        236661,
+        235700,
+        234065,
+        234450,
+        235027,
+        235412,
+        260030,
+        235796,
+        235892,
+        255318,
+        278109,
+        251375,
+        379659,
+        266569,
+        267531,
+        235604,
+        240893,
+        235796,
+        235508,
+        235700,
+        256183,
+        241181,
+        236084,
+        235796,
+        263300,
+        264261,
+        235219,
+        233681,
+        259645,
+        237431,
+        233585,
+        233681,
+        235316,
+        235027,
+        233681,
+        233777,
+        260222,
+        237047,
+        233489,
+        235412,
+        238393,
+        282821
+      ],
+      "mean_latency_ms": 0.2466033,
+      "prediction": {
+        "action_digest": "sha256:e7e352c83e19c8d95b03dd15efde3ea26316d742300e95fa33102db26f436246",
+        "action_kind": "start",
+        "facts": [
+          {
+            "assumptions": [
+              "developer-declared-action-effect",
+              "experiment-only"
+            ],
+            "confidence": 0.85,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:declared-effect-miss:intent"
+            ],
+            "source_event_ids": [
+              "event:declared-effect-miss:intent"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "running"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:72ef2b385cecdf7348a1f0160a50b811c0ab4c5bde011d4ea9e4ad726725f9db",
+        "predictor_version": "declared-effects-plus-state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 2,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:c2ef7e5047831f6e42e1407e3c5f226ad74cb607588d2aaf54c3343d137a6aa0",
+        "source_stream_id": "prediction-bench:declared-effect-miss",
+        "source_stream_sequence": 2
+      },
+      "scenario_id": "declared-effect-miss",
+      "score": {
+        "actual_cutoff_global_position": 3,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:9fc8ce81229e1a772469d970cd6a8bb91a8f9fd1ee741639c4658105e60933a3",
+        "actual_stream_sequence": 3,
+        "brier_score": 0.7224999999999999,
+        "exact_match_rate": 0.0,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:declared-effect-miss:status-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:declared-effect-miss:status-actual"
+            ],
+            "actual_values": [
+              "failed"
+            ],
+            "outcome": "mismatch",
+            "predicted_confidence": 0.85,
+            "predicted_value": "running",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:72ef2b385cecdf7348a1f0160a50b811c0ab4c5bde011d4ea9e4ad726725f9db",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:177d3bb7a709d243847b4fcedc6952d013525d6582afb163c4637e4edff0dad3",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 1
+      },
+      "source_snapshot_digest": "sha256:c2ef7e5047831f6e42e1407e3c5f226ad74cb607588d2aaf54c3343d137a6aa0"
+    },
+    {
+      "actual_snapshot_digest": "sha256:591bf433e67d26a11650c904a9932d35d70d17567270b5036692b4e6fb9e6864",
+      "condition": "state-persistence",
+      "latency_ns": [
+        176847,
+        193772,
+        171943,
+        186560,
+        180886,
+        166269,
+        184348,
+        172713,
+        168385,
+        166269,
+        167423,
+        199350,
+        223487,
+        166365,
+        168000,
+        167230,
+        167519,
+        166558,
+        170693,
+        211852,
+        164827,
+        163961,
+        185695,
+        170789,
+        165692,
+        165789,
+        165596,
+        165115,
+        166077,
+        165788,
+        166653,
+        166942,
+        166846,
+        165019,
+        190407,
+        167712,
+        166750,
+        165500,
+        165596,
+        165307,
+        165788,
+        170789,
+        179059,
+        214159,
+        357637,
+        212429,
+        180791,
+        186079,
+        178963,
+        164923
+      ],
+      "mean_latency_ms": 0.17906294,
+      "prediction": {
+        "action_digest": "sha256:a9e4e292f4973600094d46f7c7010f85463cb2733a2fd07d06f8b09e05061f7b",
+        "action_kind": "refresh",
+        "facts": [
+          {
+            "assumptions": [
+              "action-effect-unmodeled",
+              "state-persistence"
+            ],
+            "confidence": 0.75,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:unexpected-change:count"
+            ],
+            "source_event_ids": [
+              "event:unexpected-change:count"
+            ],
+            "target": {
+              "predicate": "count",
+              "subject": "project"
+            },
+            "value": 1
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:a0c0b4eeb08a526e9b9736c45e8cf1871895668b0bf8a4a13d4c430b7aa79bd3",
+        "predictor_version": "state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 1,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:3d53026d43c501c25516efa54f8780aae74538d62533ba42b9caa18c967a3ef3",
+        "source_stream_id": "prediction-bench:unexpected-change",
+        "source_stream_sequence": 1
+      },
+      "scenario_id": "unexpected-change",
+      "score": {
+        "actual_cutoff_global_position": 2,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:591bf433e67d26a11650c904a9932d35d70d17567270b5036692b4e6fb9e6864",
+        "actual_stream_sequence": 2,
+        "brier_score": 0.5625,
+        "exact_match_rate": 0.0,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:unexpected-change:count-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:unexpected-change:count-actual"
+            ],
+            "actual_values": [
+              2
+            ],
+            "outcome": "mismatch",
+            "predicted_confidence": 0.75,
+            "predicted_value": 1,
+            "target": {
+              "predicate": "count",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:a0c0b4eeb08a526e9b9736c45e8cf1871895668b0bf8a4a13d4c430b7aa79bd3",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:64355718d6279a6e12ad840fa34e760e2ff44adc27238299bc744c432494882a",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 1
+      },
+      "source_snapshot_digest": "sha256:3d53026d43c501c25516efa54f8780aae74538d62533ba42b9caa18c967a3ef3"
+    },
+    {
+      "actual_snapshot_digest": "sha256:591bf433e67d26a11650c904a9932d35d70d17567270b5036692b4e6fb9e6864",
+      "condition": "declared-effects",
+      "latency_ns": [
+        247817,
+        260030,
+        317441,
+        240894,
+        222141,
+        222044,
+        241566,
+        237143,
+        290033,
+        388602,
+        231181,
+        270128,
+        223391,
+        220987,
+        222141,
+        238296,
+        224449,
+        245221,
+        232143,
+        226469,
+        227141,
+        226949,
+        226373,
+        227815,
+        322730,
+        330904,
+        241566,
+        222237,
+        221756,
+        221468,
+        234065,
+        224449,
+        227526,
+        251568,
+        227142,
+        227237,
+        227141,
+        225987,
+        226276,
+        225892,
+        225988,
+        289360,
+        267916,
+        226180,
+        227237,
+        229930,
+        227046,
+        226661,
+        225699,
+        245220
+      ],
+      "mean_latency_ms": 0.24319152,
+      "prediction": {
+        "action_digest": "sha256:a9e4e292f4973600094d46f7c7010f85463cb2733a2fd07d06f8b09e05061f7b",
+        "action_kind": "refresh",
+        "facts": [
+          {
+            "assumptions": [
+              "action-effect-unmodeled",
+              "state-persistence"
+            ],
+            "confidence": 0.75,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:unexpected-change:count"
+            ],
+            "source_event_ids": [
+              "event:unexpected-change:count"
+            ],
+            "target": {
+              "predicate": "count",
+              "subject": "project"
+            },
+            "value": 1
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:21f8dc85106aaf358db8e1c5e2667ae13ae32bfb22cfb4a48554381bc2c51b11",
+        "predictor_version": "declared-effects-plus-state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 1,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:3d53026d43c501c25516efa54f8780aae74538d62533ba42b9caa18c967a3ef3",
+        "source_stream_id": "prediction-bench:unexpected-change",
+        "source_stream_sequence": 1
+      },
+      "scenario_id": "unexpected-change",
+      "score": {
+        "actual_cutoff_global_position": 2,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:591bf433e67d26a11650c904a9932d35d70d17567270b5036692b4e6fb9e6864",
+        "actual_stream_sequence": 2,
+        "brier_score": 0.5625,
+        "exact_match_rate": 0.0,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:unexpected-change:count-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:unexpected-change:count-actual"
+            ],
+            "actual_values": [
+              2
+            ],
+            "outcome": "mismatch",
+            "predicted_confidence": 0.75,
+            "predicted_value": 1,
+            "target": {
+              "predicate": "count",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:21f8dc85106aaf358db8e1c5e2667ae13ae32bfb22cfb4a48554381bc2c51b11",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:15b0feaf4e5f98105cb9d4b8c37a4836a90f6ff59a0c85e9199e908d4b741a08",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 1
+      },
+      "source_snapshot_digest": "sha256:3d53026d43c501c25516efa54f8780aae74538d62533ba42b9caa18c967a3ef3"
+    },
+    {
+      "actual_snapshot_digest": "sha256:ea337f01f124dbf59774db3f00966c1f0338a73f6621bbdbcdd6f98b2b80d2ce",
+      "condition": "state-persistence",
+      "latency_ns": [
+        153864,
+        145016,
+        175309,
+        175501,
+        142997,
+        141651,
+        273685,
+        143189,
+        141459,
+        220891,
+        173866,
+        144728,
+        142132,
+        141266,
+        153383,
+        141939,
+        140689,
+        153384,
+        138958,
+        136747,
+        138766,
+        150210,
+        148382,
+        139631,
+        154248,
+        139920,
+        141939,
+        141074,
+        139824,
+        140978,
+        141555,
+        140208,
+        140016,
+        140690,
+        140112,
+        169058,
+        153287,
+        142421,
+        141555,
+        141170,
+        140786,
+        141843,
+        139727,
+        140978,
+        161364,
+        141843,
+        141651,
+        141555,
+        164539,
+        142228
+      ],
+      "mean_latency_ms": 0.15044423999999998,
+      "prediction": {
+        "action_digest": "sha256:dd55b349acb67348d704b5335177e79684e97541120943da7058c0816034782e",
+        "action_kind": "create",
+        "facts": [
+          {
+            "assumptions": [
+              "no-current-observation"
+            ],
+            "confidence": 0.0,
+            "disposition": "unknown",
+            "source_claim_ids": [],
+            "source_event_ids": [],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": null
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:ab682c9ae990d559ea2fac7cf2090caf7ef5ea6e255c4ba499c9b3671c1549c9",
+        "predictor_version": "state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 1,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:5076ecfc444fd1360440fc7faf5ed4fdfc284601cfec2a5600d441c9c31a8170",
+        "source_stream_id": "prediction-bench:source-missing-created",
+        "source_stream_sequence": 1
+      },
+      "scenario_id": "source-missing-created",
+      "score": {
+        "actual_cutoff_global_position": 2,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:ea337f01f124dbf59774db3f00966c1f0338a73f6621bbdbcdd6f98b2b80d2ce",
+        "actual_stream_sequence": 2,
+        "brier_score": null,
+        "exact_match_rate": null,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:source-missing-created:status-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:source-missing-created:status-actual"
+            ],
+            "actual_values": [
+              "created"
+            ],
+            "outcome": "prediction-unknown",
+            "predicted_confidence": 0.0,
+            "predicted_value": null,
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:ab682c9ae990d559ea2fac7cf2090caf7ef5ea6e255c4ba499c9b3671c1549c9",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:105bcbb9a535678ff19ba60d5f43a800d0f1c01e9f96c8d191d42661e379599f",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 0
+      },
+      "source_snapshot_digest": "sha256:5076ecfc444fd1360440fc7faf5ed4fdfc284601cfec2a5600d441c9c31a8170"
+    },
+    {
+      "actual_snapshot_digest": "sha256:ea337f01f124dbf59774db3f00966c1f0338a73f6621bbdbcdd6f98b2b80d2ce",
+      "condition": "declared-effects",
+      "latency_ns": [
+        231565,
+        224545,
+        227334,
+        225988,
+        256664,
+        221949,
+        245413,
+        228487,
+        235796,
+        222045,
+        239643,
+        235700,
+        254548,
+        243297,
+        245798,
+        224738,
+        221083,
+        221083,
+        223391,
+        221853,
+        224160,
+        223103,
+        233103,
+        232238,
+        249933,
+        249836,
+        222045,
+        223968,
+        222429,
+        221564,
+        245413,
+        245797,
+        223775,
+        222622,
+        222237,
+        222526,
+        222141,
+        405335,
+        243875,
+        226084,
+        222718,
+        240509,
+        224930,
+        221372,
+        221949,
+        222718,
+        221468,
+        264935,
+        225218,
+        221948
+      ],
+      "mean_latency_ms": 0.23441738,
+      "prediction": {
+        "action_digest": "sha256:dd55b349acb67348d704b5335177e79684e97541120943da7058c0816034782e",
+        "action_kind": "create",
+        "facts": [
+          {
+            "assumptions": [
+              "developer-declared-action-effect",
+              "experiment-only"
+            ],
+            "confidence": 0.9,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:source-missing-created:intent"
+            ],
+            "source_event_ids": [
+              "event:source-missing-created:intent"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "created"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:4c575a2415df26fb0c3c340eac17cffec62b7142756502e835f28d14f434cd7f",
+        "predictor_version": "declared-effects-plus-state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 1,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:5076ecfc444fd1360440fc7faf5ed4fdfc284601cfec2a5600d441c9c31a8170",
+        "source_stream_id": "prediction-bench:source-missing-created",
+        "source_stream_sequence": 1
+      },
+      "scenario_id": "source-missing-created",
+      "score": {
+        "actual_cutoff_global_position": 2,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:ea337f01f124dbf59774db3f00966c1f0338a73f6621bbdbcdd6f98b2b80d2ce",
+        "actual_stream_sequence": 2,
+        "brier_score": 0.009999999999999995,
+        "exact_match_rate": 1.0,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:source-missing-created:status-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:source-missing-created:status-actual"
+            ],
+            "actual_values": [
+              "created"
+            ],
+            "outcome": "match",
+            "predicted_confidence": 0.9,
+            "predicted_value": "created",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 1,
+        "prediction_id": "sha256:4c575a2415df26fb0c3c340eac17cffec62b7142756502e835f28d14f434cd7f",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:3fbbe413ec8986f2693b4269d5f086f66730796afa9d55da7a44a0d0c416e7dd",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 1
+      },
+      "source_snapshot_digest": "sha256:5076ecfc444fd1360440fc7faf5ed4fdfc284601cfec2a5600d441c9c31a8170"
+    },
+    {
+      "actual_snapshot_digest": "sha256:5c8ce017aef90cbef9df130ac8782a1f9357a95fa0be365a6aa573eeebbe8b7d",
+      "condition": "state-persistence",
+      "latency_ns": [
+        160210,
+        152325,
+        184829,
+        150113,
+        201369,
+        153864,
+        150113,
+        149152,
+        146748,
+        182136,
+        164923,
+        147421,
+        146171,
+        147324,
+        147517,
+        147324,
+        147324,
+        170404,
+        167519,
+        150017,
+        148478,
+        148382,
+        146843,
+        146748,
+        147133,
+        147421,
+        149152,
+        150787,
+        149825,
+        170404,
+        149152,
+        148286,
+        147421,
+        148671,
+        154249,
+        171558,
+        151171,
+        148190,
+        180598,
+        148094,
+        146459,
+        169346,
+        150979,
+        148383,
+        167039,
+        148383,
+        147613,
+        148383,
+        148286,
+        148286
+      ],
+      "mean_latency_ms": 0.15485046,
+      "prediction": {
+        "action_digest": "sha256:8088bc51ece57034b05f00f4142d8c67a26bbff5188e6573a8cf8ec0772676b1",
+        "action_kind": "resolve",
+        "facts": [
+          {
+            "assumptions": [
+              "source-state-conflicted"
+            ],
+            "confidence": 0.0,
+            "disposition": "unknown",
+            "source_claim_ids": [
+              "claim:source-conflict-resolved:mode-a",
+              "claim:source-conflict-resolved:mode-b"
+            ],
+            "source_event_ids": [
+              "event:source-conflict-resolved:mode-a",
+              "event:source-conflict-resolved:mode-b"
+            ],
+            "target": {
+              "predicate": "mode",
+              "subject": "project"
+            },
+            "value": null
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:299351fd21ff4fa8442b88f9ef258b740a3f2b2ae9f2bd399272aecb00c53c9b",
+        "predictor_version": "state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 3,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:b8104744373d143afe3973f73fcfc678924a2b42c5d9bb7fb4c35bd59e188d60",
+        "source_stream_id": "prediction-bench:source-conflict-resolved",
+        "source_stream_sequence": 3
+      },
+      "scenario_id": "source-conflict-resolved",
+      "score": {
+        "actual_cutoff_global_position": 4,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:5c8ce017aef90cbef9df130ac8782a1f9357a95fa0be365a6aa573eeebbe8b7d",
+        "actual_stream_sequence": 4,
+        "brier_score": null,
+        "exact_match_rate": null,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:source-conflict-resolved:mode-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:source-conflict-resolved:mode-actual"
+            ],
+            "actual_values": [
+              "b"
+            ],
+            "outcome": "prediction-unknown",
+            "predicted_confidence": 0.0,
+            "predicted_value": null,
+            "target": {
+              "predicate": "mode",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:299351fd21ff4fa8442b88f9ef258b740a3f2b2ae9f2bd399272aecb00c53c9b",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:0809a05789a06e8ab644c9266f4fb016bccc389c4e98acee6f7791bcf7ef6341",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 0
+      },
+      "source_snapshot_digest": "sha256:b8104744373d143afe3973f73fcfc678924a2b42c5d9bb7fb4c35bd59e188d60"
+    },
+    {
+      "actual_snapshot_digest": "sha256:5c8ce017aef90cbef9df130ac8782a1f9357a95fa0be365a6aa573eeebbe8b7d",
+      "condition": "declared-effects",
+      "latency_ns": [
+        246952,
+        257818,
+        240893,
+        234162,
+        262627,
+        237816,
+        304458,
+        232623,
+        231277,
+        286763,
+        264069,
+        253490,
+        232239,
+        339655,
+        253875,
+        230700,
+        254068,
+        232335,
+        231085,
+        231084,
+        230603,
+        281090,
+        230507,
+        229353,
+        254741,
+        231661,
+        230412,
+        248106,
+        232335,
+        230988,
+        231661,
+        231469,
+        253780,
+        297726,
+        231950,
+        263877,
+        230989,
+        248009,
+        233585,
+        232238,
+        241855,
+        229546,
+        266376,
+        246471,
+        236758,
+        230412,
+        231180,
+        247240,
+        237047,
+        248779
+      ],
+      "mean_latency_ms": 0.24657466,
+      "prediction": {
+        "action_digest": "sha256:8088bc51ece57034b05f00f4142d8c67a26bbff5188e6573a8cf8ec0772676b1",
+        "action_kind": "resolve",
+        "facts": [
+          {
+            "assumptions": [
+              "developer-declared-action-effect",
+              "experiment-only"
+            ],
+            "confidence": 0.8,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:source-conflict-resolved:intent"
+            ],
+            "source_event_ids": [
+              "event:source-conflict-resolved:intent"
+            ],
+            "target": {
+              "predicate": "mode",
+              "subject": "project"
+            },
+            "value": "b"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:cb4c7c067f6e774758673f038f98d3b772a77e5b6b232218488f465305e1afcd",
+        "predictor_version": "declared-effects-plus-state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 3,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:b8104744373d143afe3973f73fcfc678924a2b42c5d9bb7fb4c35bd59e188d60",
+        "source_stream_id": "prediction-bench:source-conflict-resolved",
+        "source_stream_sequence": 3
+      },
+      "scenario_id": "source-conflict-resolved",
+      "score": {
+        "actual_cutoff_global_position": 4,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:5c8ce017aef90cbef9df130ac8782a1f9357a95fa0be365a6aa573eeebbe8b7d",
+        "actual_stream_sequence": 4,
+        "brier_score": 0.03999999999999998,
+        "exact_match_rate": 1.0,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:source-conflict-resolved:mode-actual"
+            ],
+            "actual_source_event_ids": [
+              "event:source-conflict-resolved:mode-actual"
+            ],
+            "actual_values": [
+              "b"
+            ],
+            "outcome": "match",
+            "predicted_confidence": 0.8,
+            "predicted_value": "b",
+            "target": {
+              "predicate": "mode",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 1,
+        "prediction_id": "sha256:cb4c7c067f6e774758673f038f98d3b772a77e5b6b232218488f465305e1afcd",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:041e08111e33fdebd039eec1a9f89a49593bdc890894d3cef26911d5d5a24b45",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 1
+      },
+      "source_snapshot_digest": "sha256:b8104744373d143afe3973f73fcfc678924a2b42c5d9bb7fb4c35bd59e188d60"
+    },
+    {
+      "actual_snapshot_digest": "sha256:65b686a31ee393ae129c88a423d9d46997ccf713dcfd8bd55473bf1c4e684602",
+      "condition": "state-persistence",
+      "latency_ns": [
+        155980,
+        143285,
+        147901,
+        221468,
+        141555,
+        157614,
+        145882,
+        140304,
+        172424,
+        139631,
+        139343,
+        139343,
+        140304,
+        154922,
+        145305,
+        139920,
+        140305,
+        139631,
+        158480,
+        145786,
+        141748,
+        139824,
+        140209,
+        139728,
+        139632,
+        139150,
+        141171,
+        138958,
+        139536,
+        166173,
+        168096,
+        158095,
+        144535,
+        139535,
+        139343,
+        139054,
+        139054,
+        188964,
+        170982,
+        152518,
+        170885,
+        163673,
+        144440,
+        139151,
+        150979,
+        139824,
+        139247,
+        138477,
+        140016,
+        139440
+      ],
+      "mean_latency_ms": 0.1488364,
+      "prediction": {
+        "action_digest": "sha256:809b52624c0f97e8e95a9b5c50db9777441316ec7804669a6435af2a30391663",
+        "action_kind": "expire",
+        "facts": [
+          {
+            "assumptions": [
+              "action-effect-unmodeled",
+              "state-persistence"
+            ],
+            "confidence": 0.75,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:actual-missing:status"
+            ],
+            "source_event_ids": [
+              "event:actual-missing:status"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "present"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:f914ab155c96b089c0f9c480d7088d9e138edd154578cea6a62c86e064d59053",
+        "predictor_version": "state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 1,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:1c386335b018d348b02f3427fad9acb9a3f91aedd338449569acf9a41674ea73",
+        "source_stream_id": "prediction-bench:actual-missing",
+        "source_stream_sequence": 1
+      },
+      "scenario_id": "actual-missing",
+      "score": {
+        "actual_cutoff_global_position": 2,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:65b686a31ee393ae129c88a423d9d46997ccf713dcfd8bd55473bf1c4e684602",
+        "actual_stream_sequence": 2,
+        "brier_score": null,
+        "exact_match_rate": null,
+        "findings": [
+          {
+            "actual_claim_ids": [],
+            "actual_source_event_ids": [],
+            "actual_values": [],
+            "outcome": "actual-missing",
+            "predicted_confidence": 0.75,
+            "predicted_value": "present",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:f914ab155c96b089c0f9c480d7088d9e138edd154578cea6a62c86e064d59053",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:2eca131a9f4c73def97490b8b85cb9fe622b9b9754a14a6074d31b37b757727f",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 0
+      },
+      "source_snapshot_digest": "sha256:1c386335b018d348b02f3427fad9acb9a3f91aedd338449569acf9a41674ea73"
+    },
+    {
+      "actual_snapshot_digest": "sha256:65b686a31ee393ae129c88a423d9d46997ccf713dcfd8bd55473bf1c4e684602",
+      "condition": "declared-effects",
+      "latency_ns": [
+        203678,
+        196849,
+        198292,
+        203485,
+        230411,
+        196850,
+        197619,
+        197138,
+        216948,
+        209062,
+        230026,
+        195984,
+        218199,
+        218679,
+        199926,
+        196850,
+        197908,
+        197234,
+        197138,
+        196273,
+        196850,
+        195408,
+        201850,
+        264453,
+        198773,
+        197234,
+        196368,
+        196945,
+        197138,
+        195599,
+        196368,
+        197523,
+        222525,
+        218294,
+        198485,
+        197523,
+        198484,
+        198003,
+        196849,
+        196465,
+        197427,
+        210216,
+        220603,
+        197427,
+        197235,
+        195119,
+        295515,
+        197715,
+        197523,
+        195407
+      ],
+      "mean_latency_ms": 0.20527746,
+      "prediction": {
+        "action_digest": "sha256:809b52624c0f97e8e95a9b5c50db9777441316ec7804669a6435af2a30391663",
+        "action_kind": "expire",
+        "facts": [
+          {
+            "assumptions": [
+              "action-effect-unmodeled",
+              "state-persistence"
+            ],
+            "confidence": 0.75,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:actual-missing:status"
+            ],
+            "source_event_ids": [
+              "event:actual-missing:status"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "present"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:4680d2f6589c19f16dc62044646e1cd0db0ae478f8cffb7ff49dbb8d86841d2a",
+        "predictor_version": "declared-effects-plus-state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 1,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:1c386335b018d348b02f3427fad9acb9a3f91aedd338449569acf9a41674ea73",
+        "source_stream_id": "prediction-bench:actual-missing",
+        "source_stream_sequence": 1
+      },
+      "scenario_id": "actual-missing",
+      "score": {
+        "actual_cutoff_global_position": 2,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:65b686a31ee393ae129c88a423d9d46997ccf713dcfd8bd55473bf1c4e684602",
+        "actual_stream_sequence": 2,
+        "brier_score": null,
+        "exact_match_rate": null,
+        "findings": [
+          {
+            "actual_claim_ids": [],
+            "actual_source_event_ids": [],
+            "actual_values": [],
+            "outcome": "actual-missing",
+            "predicted_confidence": 0.75,
+            "predicted_value": "present",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:4680d2f6589c19f16dc62044646e1cd0db0ae478f8cffb7ff49dbb8d86841d2a",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:39264d460157c3b4b02a8f03296a40e84b0a7eab9f1c74a099edd0cd391e5161",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 0
+      },
+      "source_snapshot_digest": "sha256:1c386335b018d348b02f3427fad9acb9a3f91aedd338449569acf9a41674ea73"
+    },
+    {
+      "actual_snapshot_digest": "sha256:3254606d51ef47db6c9aa0ad7aacbcafe88820f058322ca617d8ab2b4bcd04ae",
+      "condition": "state-persistence",
+      "latency_ns": [
+        189637,
+        178194,
+        198099,
+        176848,
+        174251,
+        173866,
+        249355,
+        237238,
+        199253,
+        181655,
+        291956,
+        201657,
+        174539,
+        173385,
+        175886,
+        173674,
+        175405,
+        172232,
+        196465,
+        175597,
+        174539,
+        172616,
+        173866,
+        172808,
+        231853,
+        176271,
+        174924,
+        172327,
+        189733,
+        179925,
+        180598,
+        244451,
+        176944,
+        173481,
+        173962,
+        174058,
+        173866,
+        171846,
+        173000,
+        196946,
+        174251,
+        173289,
+        174635,
+        173193,
+        174443,
+        172232,
+        173770,
+        195407,
+        177424,
+        192906
+      ],
+      "mean_latency_ms": 0.18617512,
+      "prediction": {
+        "action_digest": "sha256:58c5db8bebeed109666e8bb2ec66f92b66464e444e88708d7903515a8424de7b",
+        "action_kind": "observe",
+        "facts": [
+          {
+            "assumptions": [
+              "action-effect-unmodeled",
+              "state-persistence"
+            ],
+            "confidence": 0.75,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:actual-conflict:status"
+            ],
+            "source_event_ids": [
+              "event:actual-conflict:status"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "pending"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:faa568a58d7fbd480a71905e1c2433aa23401fab0e96988154b67ab495332c30",
+        "predictor_version": "state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 1,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:342d73063be9517699e3aa4d177664f9353a959549f0a3389fb85cc5547d4318",
+        "source_stream_id": "prediction-bench:actual-conflict",
+        "source_stream_sequence": 1
+      },
+      "scenario_id": "actual-conflict",
+      "score": {
+        "actual_cutoff_global_position": 3,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:3254606d51ef47db6c9aa0ad7aacbcafe88820f058322ca617d8ab2b4bcd04ae",
+        "actual_stream_sequence": 3,
+        "brier_score": null,
+        "exact_match_rate": null,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:actual-conflict:failed",
+              "claim:actual-conflict:running"
+            ],
+            "actual_source_event_ids": [
+              "event:actual-conflict:failed",
+              "event:actual-conflict:running"
+            ],
+            "actual_values": [
+              "failed",
+              "running"
+            ],
+            "outcome": "actual-conflict",
+            "predicted_confidence": 0.75,
+            "predicted_value": "pending",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:faa568a58d7fbd480a71905e1c2433aa23401fab0e96988154b67ab495332c30",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:16549528ec963c23db592bb687a4ac546fb91b3ed1188cbbf09e61849f57ed74",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 0
+      },
+      "source_snapshot_digest": "sha256:342d73063be9517699e3aa4d177664f9353a959549f0a3389fb85cc5547d4318"
+    },
+    {
+      "actual_snapshot_digest": "sha256:3254606d51ef47db6c9aa0ad7aacbcafe88820f058322ca617d8ab2b4bcd04ae",
+      "condition": "declared-effects",
+      "latency_ns": [
+        245029,
+        249548,
+        240604,
+        232431,
+        232142,
+        232239,
+        263973,
+        275993,
+        247048,
+        233296,
+        233873,
+        232431,
+        233969,
+        231469,
+        232046,
+        271089,
+        233873,
+        257529,
+        261088,
+        233103,
+        236566,
+        231758,
+        247048,
+        242817,
+        233970,
+        266280,
+        232046,
+        232622,
+        234066,
+        232239,
+        249932,
+        239355,
+        376582,
+        247625,
+        236181,
+        230507,
+        232815,
+        231661,
+        258395,
+        232527,
+        232046,
+        231758,
+        232046,
+        230219,
+        231565,
+        230507,
+        256568,
+        265127,
+        265030,
+        260222
+      ],
+      "mean_latency_ms": 0.24465706,
+      "prediction": {
+        "action_digest": "sha256:58c5db8bebeed109666e8bb2ec66f92b66464e444e88708d7903515a8424de7b",
+        "action_kind": "observe",
+        "facts": [
+          {
+            "assumptions": [
+              "action-effect-unmodeled",
+              "state-persistence"
+            ],
+            "confidence": 0.75,
+            "disposition": "predicted",
+            "source_claim_ids": [
+              "claim:actual-conflict:status"
+            ],
+            "source_event_ids": [
+              "event:actual-conflict:status"
+            ],
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            },
+            "value": "pending"
+          }
+        ],
+        "generated_at": "2026-07-14T12:00:01+00:00",
+        "horizon_seconds": 60,
+        "prediction_id": "sha256:06dfb94371d27728652885d3cb6a688d1471de91b8d724974ae6cd1ccc67b1a4",
+        "predictor_version": "declared-effects-plus-state-persistence/v1",
+        "schema_version": "transition-prediction/v1",
+        "source_cutoff_global_position": 1,
+        "source_domain": "prediction-bench",
+        "source_effective_time": "2026-07-14T12:00:00+00:00",
+        "source_snapshot_digest": "sha256:342d73063be9517699e3aa4d177664f9353a959549f0a3389fb85cc5547d4318",
+        "source_stream_id": "prediction-bench:actual-conflict",
+        "source_stream_sequence": 1
+      },
+      "scenario_id": "actual-conflict",
+      "score": {
+        "actual_cutoff_global_position": 3,
+        "actual_effective_time": "2026-07-14T12:01:00+00:00",
+        "actual_snapshot_digest": "sha256:3254606d51ef47db6c9aa0ad7aacbcafe88820f058322ca617d8ab2b4bcd04ae",
+        "actual_stream_sequence": 3,
+        "brier_score": null,
+        "exact_match_rate": null,
+        "findings": [
+          {
+            "actual_claim_ids": [
+              "claim:actual-conflict:failed",
+              "claim:actual-conflict:running"
+            ],
+            "actual_source_event_ids": [
+              "event:actual-conflict:failed",
+              "event:actual-conflict:running"
+            ],
+            "actual_values": [
+              "failed",
+              "running"
+            ],
+            "outcome": "actual-conflict",
+            "predicted_confidence": 0.75,
+            "predicted_value": "pending",
+            "target": {
+              "predicate": "status",
+              "subject": "project"
+            }
+          }
+        ],
+        "matched_count": 0,
+        "prediction_id": "sha256:06dfb94371d27728652885d3cb6a688d1471de91b8d724974ae6cd1ccc67b1a4",
+        "schema_version": "transition-prediction-score/v1",
+        "score_id": "sha256:8ad5181e51388d6cb9d91818d2fe573c9f63140b8d79ffdb66482405fbec930b",
+        "scored_at": "2026-07-14T12:01:01+00:00",
+        "scored_count": 0
+      },
+      "source_snapshot_digest": "sha256:342d73063be9517699e3aa4d177664f9353a959549f0a3389fb85cc5547d4318"
+    }
+  ],
+  "unavailable_candidates": [
+    {
+      "brier_score": null,
+      "candidate": "local-neural",
+      "exact_match_rate": null,
+      "input_tokens": null,
+      "mean_latency_ms": null,
+      "output_tokens": null,
+      "provider_cost_usd": null,
+      "reason": "WP11 found no installed offline runtime, configured gateway prediction route, or pinned predictor to evaluate",
+      "status": "unavailable"
+    },
+    {
+      "brier_score": null,
+      "candidate": "hybrid-neural-symbolic",
+      "exact_match_rate": null,
+      "input_tokens": null,
+      "mean_latency_ms": null,
+      "output_tokens": null,
+      "provider_cost_usd": null,
+      "reason": "no neural transition predictor exists, and the WP12 Clingo adapter validates action policy rather than predicting outcomes",
+      "status": "unavailable"
+    }
+  ]
+}

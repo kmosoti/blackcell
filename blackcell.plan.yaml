@@ -27,7 +27,7 @@ phase_1:
     - BCP-0034
 
 runtime_v1:
-  status: active
+  status: evidence-complete
   branch: agent/runtime-v1
   delivery:
     pull_requests: 1
@@ -45,6 +45,32 @@ runtime_v1:
     - durable-dag
     - operator-platform
     - release-evidence
+  remaining_dag:
+    selected_next: null
+    satisfied_dependencies:
+      - WP09b
+      - WP10
+      - WP11-decision
+      - WP12
+      - WP17
+      - WP19-role-dag
+      - WP20
+      - WP22b
+      - WP23a
+      - WP23
+      - WP24
+      - WP25
+      - WP26
+      - WP27
+    nodes: []
+  release_evidence:
+    status: complete-unpublished
+    config: release/runtime-v1/release.toml
+    guide: docs/guides/runtime-v1-release.md
+    examples: examples/runtime-v1
+    sbom: release/runtime-v1/blackcell-runtime-v1.cdx.json
+    verification_manifest: release/runtime-v1/verification-manifest.json
+    publication_performed: false
 
 active_surfaces:
   cli:
@@ -55,6 +81,9 @@ active_surfaces:
     - blackcell events list
     - blackcell bench list
     - blackcell bench run --condition structured --trials 1
+    - blackcell bench compare --model recorded
+    - blackcell bench predict
+    - blackcell bench runtime --repo-root .
   packages:
     - blackcell.kernel
     - blackcell.domains.repository
@@ -72,20 +101,46 @@ active_surfaces:
     - blackcell.features.solve_constraints
     - blackcell.features.authorize_action
     - blackcell.features.execute_affordance
+    - blackcell.features.predict_transition
     - blackcell.gateway
     - blackcell.workflows
+    - blackcell.orchestration
+    - blackcell.runtime
+    - blackcell.interfaces
+    - blackcell.bootstrap
+    - blackcell.adapters.persistence.sqlite
+    - blackcell.adapters.reasoning
+    - blackcell.adapters.retrieval
+    - blackcell.adapters.execution.local_process
+    - blackcell.adapters.telemetry
+    - blackcell.adapters.recovery
+    - blackcell.config
 
-compatibility_surfaces:
-  status: retained-temporarily
+retired_surfaces:
+  work_package: WP26
   packages:
     - blackcell.world
     - blackcell.nesy
     - blackcell.harness
     - blackcell.latent
     - blackcell.agents
-  note: These surfaces describe the July 6 prototype and do not define the current architecture.
+    - blackcell.ledger
+  commands:
+    - blackcell world
+    - blackcell nesy
+    - blackcell harness
+    - blackcell latent
+    - blackcell ledger
+    - blackcell adapters
+    - blackcell agents
+    - blackcell doctor
+  retained_history:
+    - daily-operator/v1 read-only replay
+  note: No package, command, writer, generated artifact, alias, or dual store remains for these prototype surfaces.
 
 verification:
+  - uv run python tools/release_evidence.py verify --repo-root .
+  - bash examples/runtime-v1/recorded-operator.sh
   - uv run ruff format --check .
   - uv run ruff check .
   - uv run pytest --cov=blackcell --cov-report=term-missing
@@ -93,3 +148,6 @@ verification:
   - uv run blackcell operator run --model recorded --repo .
   - uv run blackcell operator replay
   - uv run blackcell bench run --condition structured --trials 1
+  - uv run blackcell bench compare --model recorded
+  - uv run blackcell bench predict
+  - uv run blackcell bench runtime --repo-root .

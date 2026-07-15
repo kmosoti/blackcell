@@ -1,41 +1,5 @@
 {
   "schema_version": 1,
-  "legacy_roots": [
-    {
-      "package": "blackcell.agents",
-      "target": "blackcell.gateway",
-      "remove_by": "WP14"
-    },
-    {
-      "package": "blackcell.harness",
-      "target": "blackcell.orchestration",
-      "remove_by": "WP15"
-    },
-    {
-      "package": "blackcell.latent",
-      "target": "blackcell.features.predict_transition",
-      "remove_by": "WP24"
-    },
-    {
-      "package": "blackcell.ledger",
-      "target": "blackcell.kernel",
-      "remove_by": "WP26"
-    },
-    {
-      "package": "blackcell.nesy",
-      "target": "blackcell.features.solve_constraints",
-      "remove_by": "WP24"
-    },
-    {
-      "package": "blackcell.runtime",
-      "target": "blackcell.adapters.execution",
-      "remove_by": "WP26"
-    },
-    {
-      "package": "blackcell.world",
-      "target": "blackcell.features.project_operational_state",
-      "remove_by": "WP24"
-    }
-  ],
+  "legacy_roots": [],
   "allowed_import_violations": []
 }

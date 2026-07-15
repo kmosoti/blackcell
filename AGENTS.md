@@ -43,6 +43,11 @@ normal source of worker model, reasoning effort, sandbox, and instructions. Do n
 `model`, `reasoning_effort`, or `service_tier` spawn fields unless the user explicitly requests
 that override.
 
+MultiAgentV2 collaboration tools are direct-model-only. Keep `non_code_mode_only = true` and do
+not call `tools.agents__*` from inside `functions.exec`; Codex 0.144.1 does not preserve encrypted
+message arguments through that nested path. Reconsider this restriction only after an upgraded
+client passes both direct and nested encrypted-handoff controls.
+
 If `agent_type` is absent, never substitute `task_name`, a generic worker, or root self-review.
 Optional delegation stays on the Terra root and records the capability fallback. A requested Spark
 sweep or any workflow requiring independent review or verification stops as `blocked` and names

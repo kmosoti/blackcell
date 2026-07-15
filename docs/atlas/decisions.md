@@ -3,9 +3,7 @@ node: atlas/decisions
 kind: decision-log
 edges:
   records:
-    - targets/opencode
     - targets/containers
-    - concepts/custom-agents
     - adr/0004-evolutionary-runtime-architecture
     - adr/0005-durable-run-and-execution-protocol
     - adr/0006-versioned-run-feedback-protocol
@@ -16,9 +14,8 @@ edges:
 
 - Keep the Python package/import name as `blackcell`.
 - Treat runtime integrations as adapters, not the product identity.
-- Prefer OpenCode for generated agent packs and remove legacy Codex projections.
-- Use `project` scope for git-tracked `.opencode` artifacts by default.
-- Keep `global` scope explicit and user-local under `~/.config/opencode`.
+- Retire source-owned generated OpenCode agent packs; developer-tool configuration is separate
+  from Blackcell runtime and gateway configuration.
 - Keep credentials and provider auth out of repo files and container images.
 - Use Cyclopts for the CLI surface.
 - Use a modular monolith with inward dependencies, vertical feature slices, and one event-driven

@@ -59,21 +59,24 @@ def test_rootless_compose_runtime_is_restricted_healthy_and_persistent() -> None
             timeout=120,
         )
         api = _wait_for_container("blackcell-api", environment)
-        _wait_until(
-            lambda: _inspect(api, "{{.State.Health.Status}}") == "healthy",
-            description="API container health",
-        )
+        _wait_for_container_health(api, description="API container health")
+        # The dependency is already proven healthy above. Avoid asking the Docker-compatible
+        # provider to recreate it because this rootless host has no autonomous health scheduler.
         _run(
-            ("podman", "compose", "up", "--detach", "blackcell-worker"),
+            (
+                "podman",
+                "compose",
+                "up",
+                "--detach",
+                "--no-deps",
+                "blackcell-worker",
+            ),
             environment=environment,
             timeout=120,
         )
         api = _wait_for_container("blackcell-api", environment)
         worker = _wait_for_container("blackcell-worker", environment)
-        _wait_until(
-            lambda: _inspect(worker, "{{.State.Health.Status}}") == "healthy",
-            description="worker container health",
-        )
+        _wait_for_container_health(worker, description="worker container health")
         _wait_until(
             lambda: _health_ready(port),
             description="published API readiness",
@@ -159,10 +162,7 @@ def test_rootless_compose_runtime_is_restricted_healthy_and_persistent() -> None
             timeout=120,
         )
         api = _wait_for_container("blackcell-api", environment)
-        _wait_until(
-            lambda: _inspect(api, "{{.State.Health.Status}}") == "healthy",
-            description="restarted API container health",
-        )
+        _wait_for_container_health(api, description="restarted API container health")
         _wait_until(
             lambda: _health_ready(port),
             description="restarted published API readiness",
@@ -235,6 +235,21 @@ def _wait_for_container(service: str, environment: dict[str, str]) -> str:
 
     _wait_until(resolve, description=f"{service} container creation")
     return container
+
+
+def _wait_for_container_health(container: str, *, description: str) -> None:
+    """Drive the declared check when rootless Podman has no health scheduler."""
+
+    def healthy() -> bool:
+        if _inspect(container, "{{.State.Status}}") != "running":
+            return False
+        current = _inspect(container, "{{.State.Health.Status}}")
+        if current == "healthy":
+            return True
+        _run(("podman", "healthcheck", "run", container), check=False)
+        return _inspect(container, "{{.State.Health.Status}}") == "healthy"
+
+    _wait_until(healthy, description=description)
 
 
 def _wait_until(check: Callable[[], bool], *, description: str) -> None:

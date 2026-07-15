@@ -1,0 +1,7 @@
+schema_version = "runtime-v1-release-config/v1"
+release_id = "runtime-v1"
+project_version = "0.2.0"
+recorded_on = "2026-07-14"
+base_sha = "2e0c4d26f7c0df8da92df5d5da4cc3f3738aa0ee"
+candidate_status = "evidence-complete-unpublished"
+publication_performed = false

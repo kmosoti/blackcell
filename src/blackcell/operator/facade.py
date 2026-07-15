@@ -91,8 +91,8 @@ from blackcell.operator.repository_adapters import (
     RepositoryStatusExecutionAdapter,
     RepositoryStatusOutcomeObserver,
     RepositoryStatusReader,
+    _validated_git_directory,
 )
-from blackcell.operator.service import _validated_git_directory
 from blackcell.workflows import (
     DailyOperatorV2Request,
     DailyOperatorV2Workflow,
@@ -310,7 +310,7 @@ class RepositoryOperator:
         replacement = correction.replacement
         evidence = tuple(
             EvidencePointer(
-                locator=item.locator or f"blackcell://legacy-evidence/{item.event_id}",
+                locator=item.locator or f"blackcell://evidence/{item.event_id}",
                 artifact_id=item.artifact_id,
                 digest=item.digest,
             )

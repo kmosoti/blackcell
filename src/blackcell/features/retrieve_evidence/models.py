@@ -37,6 +37,23 @@ class EvidenceClaimIdentity:
             raise ValueError("evidence claim identities must not be empty")
 
 
+@dataclass(frozen=True, slots=True)
+class EvidenceObjectiveMatch:
+    """One objective-relevance result returned by a retrieval adapter."""
+
+    identity: EvidenceClaimIdentity
+    score: int
+    reason: str
+
+    def __post_init__(self) -> None:
+        if self.score < 1:
+            raise ValueError("objective-match scores must be positive")
+        if not self.reason.strip():
+            raise ValueError("objective-match reasons must not be empty")
+        if self.reason in {"required", "conflict", "state-fallback"}:
+            raise ValueError("objective matchers cannot claim feature-owned selection reasons")
+
+
 @dataclass(frozen=True, slots=True, order=True)
 class UnknownEvidenceSupport:
     source_event_id: str
