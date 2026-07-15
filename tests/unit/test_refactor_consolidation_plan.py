@@ -10,6 +10,7 @@ PLAN_PATH = ROOT / "refactor-consolidation.plan.yaml"
 BLACKCELL_PLAN_PATH = ROOT / "blackcell.plan.yaml"
 REQUIRED_DIMENSIONS = {"strategic", "logistics", "human", "risk", "assessment"}
 EXPECTED_WORK_PACKAGES = {f"AC0{number}" for number in range(8)}
+EXPECTED_ISSUE_NUMBERS = {f"AC0{number}": number + 64 for number in range(8)}
 
 
 def _plan() -> dict[str, Any]:
@@ -28,6 +29,7 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
     assert "runtime-v1" in program["runtime_v1_context"]
     assert set(plan["planning_dimensions"]) == REQUIRED_DIMENSIONS
     assert plan["issue_delivery"]["repository"] == "kmosoti/blackcell"
+    assert plan["issue_delivery"]["parent"]["issue_number"] == 63
 
 
 def test_every_work_package_has_direct_evidence_and_three_scenarios() -> None:
@@ -37,6 +39,9 @@ def test_every_work_package_has_direct_evidence_and_three_scenarios() -> None:
 
     assert set(by_id) == EXPECTED_WORK_PACKAGES
     assert len(by_id) == len(packages)
+    assert {package_id: package["issue_number"] for package_id, package in by_id.items()} == (
+        EXPECTED_ISSUE_NUMBERS
+    )
     for package in packages:
         assert package["title"]
         assert package["boundary"]

@@ -65,12 +65,15 @@ planning_dimensions:
 issue_delivery:
   repository: kmosoti/blackcell
   parent:
+    issue_number: 63
+    url: https://github.com/kmosoti/blackcell/issues/63
     title: "Epic: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries"
     body_summary: Stable architectural contract for AC00-AC07. It treats runtime-v1 as historical foundation context and uses this plan as the current evidence map.
   child_linkage: Each child names the parent epic and plan ID; the parent task list is updated with created issue numbers and dependency order.
 
 work_packages:
   - id: AC00
+    issue_number: 64
     title: Ratify boundary criteria, baseline, and project evidence policy
     depends_on: []
     boundary: Architecture-consolidation criteria and current-baseline evidence.
@@ -99,6 +102,7 @@ work_packages:
       failure: A supposed false boundary proves to own authority, recovery, or durable semantics and is retained.
 
   - id: AC01
+    issue_number: 65
     title: Move concrete runtime composition into bootstrap and narrow RepositoryOperator
     depends_on: [AC00]
     boundary: Bootstrap composition versus product facade and explicit read/write capabilities.
@@ -131,6 +135,7 @@ work_packages:
       failure: Construction proves necessary for a public compatibility contract and the issue splits the migration.
 
   - id: AC02
+    issue_number: 66
     title: Consolidate the state-to-context pipeline
     depends_on: [AC00]
     boundary: State, signal, evidence-selection, and ContextFrame transformations.
@@ -169,6 +174,7 @@ work_packages:
       failure: Identity or omission semantics differ and the boundary is retained.
 
   - id: AC03
+    issue_number: 67
     title: Rationalize current contract vocabularies and isolate historical forms
     depends_on: [AC00]
     boundary: Gateway, decision, control, model, and historical vocabulary ownership.
@@ -206,6 +212,7 @@ work_packages:
       failure: Similar records encode different authority or persistence semantics and remain separate.
 
   - id: AC04
+    issue_number: 68
     title: Replace specifically approved stateless service objects with operations
     depends_on: [AC02, AC03]
     boundary: Pure operations versus resource, strategy, clock, journal, and recovery owners.
@@ -243,6 +250,7 @@ work_packages:
       failure: A conversion obscures strategy or lifecycle control and is rejected.
 
   - id: AC05
+    issue_number: 69
     title: Split run recording and state-transition verification by protocol phase
     depends_on: [AC01, AC03]
     boundary: Public protocol seam versus physically navigable internal phases.
@@ -275,6 +283,7 @@ work_packages:
       failure: Circular imports or replay drift reveal a necessary cohesive boundary.
 
   - id: AC06
+    issue_number: 70
     title: Ratify the SQLite trusted-kernel boundary
     depends_on: [AC00]
     boundary: Conceptual event portability versus supported runtime-v1 storage implementation.
@@ -307,6 +316,7 @@ work_packages:
       failure: A concrete second-backend requirement appears and becomes a separate architecture decision.
 
   - id: AC07
+    issue_number: 71
     title: Enforce architecture fitness rules and publish final consolidation evidence
     depends_on: [AC01, AC02, AC03, AC04, AC05, AC06]
     boundary: Binary architecture rules versus advisory evolutionary-coupling measurements.
