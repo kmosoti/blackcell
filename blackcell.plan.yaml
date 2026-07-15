@@ -140,7 +140,7 @@ retired_surfaces:
   note: No package, command, writer, generated artifact, alias, or dual store remains for these prototype surfaces.
 
 architecture_consolidation:
-  status: planned
+  status: in-progress
   branch: refactor/consolidation
   superseded_branch: refactor/architecture-consolidation
   base_ref: origin/main
@@ -157,7 +157,11 @@ architecture_consolidation:
         - AC06
     project:
       title: BlackCell
-      status: Todo
+      status:
+        epic: In Progress
+        active:
+          AC00: In Progress
+        queued: Todo
       type: refactor
     development_branch: refactor/consolidation
   evidence_transition:

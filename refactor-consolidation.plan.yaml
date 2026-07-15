@@ -2,6 +2,7 @@ schema_version: blackcell-refactor-consolidation-plan/v1
 
 program:
   name: architecture-consolidation
+  status: in-progress
   title: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries
   branch: refactor/consolidation
   superseded_branch: refactor/architecture-consolidation
@@ -79,7 +80,11 @@ issue_delivery:
     documentation: [AC00, AC06]
   project:
     title: BlackCell
-    status: Todo
+    status:
+      epic: In Progress
+      active:
+        AC00: In Progress
+      queued: Todo
     type: refactor
   parent:
     issue_number: 63

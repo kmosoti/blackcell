@@ -24,6 +24,7 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
     program = plan["program"]
 
     assert plan["schema_version"] == "blackcell-refactor-consolidation-plan/v1"
+    assert program["status"] == "in-progress"
     assert program["branch"] == "refactor/consolidation"
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
@@ -43,7 +44,11 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
     }
     assert delivery["project"] == {
         "title": "BlackCell",
-        "status": "Todo",
+        "status": {
+            "epic": "In Progress",
+            "active": {"AC00": "In Progress"},
+            "queued": "Todo",
+        },
         "type": "refactor",
     }
     assert delivery["relationships"] == {
@@ -124,6 +129,7 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     program = plan["architecture_consolidation"]
 
     assert plan["runtime_v1"]["status"] == "evidence-complete"
+    assert program["status"] == "in-progress"
     assert program["branch"] == "refactor/consolidation"
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
