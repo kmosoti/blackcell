@@ -13,6 +13,8 @@ from typing import Any
 
 import pytest
 
+from tools import release_evidence
+
 ROOT = Path(__file__).parents[2]
 SBOM_PATH = ROOT / "release/runtime-v1/blackcell-runtime-v1.cdx.json"
 MANIFEST_PATH = ROOT / "release/runtime-v1/verification-manifest.json"
@@ -69,6 +71,41 @@ def test_release_evidence_verifier_reproduces_canonical_bytes() -> None:
         "schema_version": "runtime-v1-release-evidence-result/v1",
         "status": "pass",
     }
+
+
+def test_release_materials_exclude_git_ignored_local_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    github = tmp_path / ".github"
+    workflows = github / "workflows"
+    workflows.mkdir(parents=True)
+    (tmp_path / ".gitignore").write_text(".github/*.env\n", encoding="utf-8")
+    (workflows / "ci.yml").write_text("name: CI\n", encoding="utf-8")
+    (github / "new.yml").write_text("name: candidate\n", encoding="utf-8")
+    (github / "blackcell.env").write_text("LOCAL_ONLY=true\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "init", "--quiet"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "add", ".gitignore", ".github/workflows/ci.yml"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    monkeypatch.setattr(release_evidence, "MATERIAL_FILES", ())
+    monkeypatch.setattr(release_evidence, "MATERIAL_DIRECTORIES", (Path(".github"),))
+    monkeypatch.setattr(release_evidence, "EXCLUDED_MATERIALS", frozenset())
+
+    assert release_evidence._material_paths(tmp_path) == (
+        Path(".github/new.yml"),
+        Path(".github/workflows/ci.yml"),
+    )
 
 
 @pytest.mark.parametrize(

@@ -50,7 +50,7 @@
   ],
   "release": {
     "base_sha": "2e0c4d26f7c0df8da92df5d5da4cc3f3738aa0ee",
-    "candidate_id": "sha256:2813ed5a34bcf42495bb4ec7734aa4df48b0432b3336bebf3152bf4964754463",
+    "candidate_id": "sha256:90131115ef92179166e2cc63682787748b2fadc71e1ceabb2b79fa6e3cbbf18e",
     "project_version": "0.2.0",
     "publication_performed": false,
     "recorded_on": "2026-07-14",
@@ -69,14 +69,8 @@
     "sbom": "pre-build locked Python runtime dependency closure"
   },
   "source": {
-    "material_count": 387,
+    "material_count": 386,
     "materials": [
-      {
-        "mode": "0644",
-        "path": ".github/blackcell.env",
-        "sha256": "sha256:53b6e3d8a60b8cf7946bfe612e0f365718ee57b0af4af90193bcf7aad59071ba",
-        "size": 42
-      },
       {
         "mode": "0644",
         "path": ".github/workflows/ci.yml",
@@ -2228,8 +2222,8 @@
       {
         "mode": "0664",
         "path": "tests/unit/test_release_evidence.py",
-        "sha256": "sha256:5f22332bd11d359c12af09437c7d8a31817dc8e759a720deda9c86e2d809b15f",
-        "size": 8622
+        "sha256": "sha256:bbfb20ffd395b9a277ccd7d70575fdd4142a5a5f9655b74931f00d610f06622d",
+        "size": 9899
       },
       {
         "mode": "0664",
@@ -2384,8 +2378,8 @@
       {
         "mode": "0755",
         "path": "tools/release_evidence.py",
-        "sha256": "sha256:7b9e4be9459ffd69ed000b4f3b10fec01961f839405f8df02616838e6f39f8df",
-        "size": 19712
+        "sha256": "sha256:7fb0f6ade78832ecd724bd4eec15714cfe8365599a28760883d28b72767bb443",
+        "size": 21079
       },
       {
         "mode": "0644",
@@ -2394,7 +2388,7 @@
         "size": 135329
       }
     ],
-    "materials_digest": "sha256:2813ed5a34bcf42495bb4ec7734aa4df48b0432b3336bebf3152bf4964754463"
+    "materials_digest": "sha256:90131115ef92179166e2cc63682787748b2fadc71e1ceabb2b79fa6e3cbbf18e"
   },
   "verification": [
     {

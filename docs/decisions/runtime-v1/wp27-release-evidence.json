@@ -8,7 +8,7 @@
     "release_id": "runtime-v1",
     "project_version": "0.2.0",
     "base_sha": "2e0c4d26f7c0df8da92df5d5da4cc3f3738aa0ee",
-    "candidate_id": "sha256:2813ed5a34bcf42495bb4ec7734aa4df48b0432b3336bebf3152bf4964754463",
+    "candidate_id": "sha256:90131115ef92179166e2cc63682787748b2fadc71e1ceabb2b79fa6e3cbbf18e",
     "status": "evidence-complete-unpublished"
   },
   "evidence": {
@@ -40,9 +40,9 @@
     "verification_manifest": {
       "path": "release/runtime-v1/verification-manifest.json",
       "schema_version": "runtime-v1-verification-manifest/v1",
-      "digest": "sha256:1bf8eb424bc93998eb9827d5a94d6dac1d608c4722dd889877a056febd9cc1b9",
-      "material_count": 387,
-      "candidate_id": "sha256:2813ed5a34bcf42495bb4ec7734aa4df48b0432b3336bebf3152bf4964754463"
+      "digest": "sha256:0b7de6c30fd0215594d9754fd7f12f0de1e417da4fcd39f458d66cd67e499697",
+      "material_count": 386,
+      "candidate_id": "sha256:90131115ef92179166e2cc63682787748b2fadc71e1ceabb2b79fa6e3cbbf18e"
     }
   },
   "readiness_boundary": {
@@ -67,14 +67,14 @@
   },
   "reason": "The only remaining runtime-v1 node required inspectable documentation, runnable local examples, a scoped software inventory, and exact reproducibility evidence. The retained bundle now binds the declared candidate materials and locked Python runtime graph without inventing an installed-image inventory or crossing the separately authorized publication, signing, attestation, and vulnerability-analysis boundaries.",
   "verification": {
-    "focused_tests_passed": 29,
+    "focused_tests_passed": 17,
     "release_evidence_verifier": "pass",
     "recorded_operator_example": "pass",
     "official_cyclonedx_1_7_schema": "pass",
     "full_gate": {
-      "tests_passed": 1278,
+      "tests_passed": 1279,
       "tests_skipped": 1,
-      "coverage_percent": 86.55,
+      "coverage_percent": 86.59,
       "warnings": 14,
       "ruff_format": "pass",
       "ruff_check": "pass",

@@ -9,6 +9,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 import tomllib
 import uuid
@@ -356,7 +357,37 @@ def _build_sbom(repo_root: Path, config: JsonObject) -> tuple[JsonObject, int]:
     return sbom, len(selected)
 
 
+def _git_visible_paths(repo_root: Path) -> frozenset[Path] | None:
+    """Return tracked and non-ignored untracked paths when Git metadata is present."""
+    if not (repo_root / ".git").exists():
+        return None
+    try:
+        completed = subprocess.run(
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+            cwd=repo_root,
+            check=False,
+            capture_output=True,
+        )
+    except OSError as error:
+        raise ReleaseEvidenceError("cannot enumerate release materials with Git") from error
+    if completed.returncode != 0:
+        detail = os.fsdecode(completed.stderr).strip()
+        suffix = f": {detail}" if detail else ""
+        raise ReleaseEvidenceError(f"cannot enumerate release materials with Git{suffix}")
+
+    selected: set[Path] = set()
+    for raw_path in completed.stdout.split(b"\0"):
+        if not raw_path:
+            continue
+        relative = Path(os.fsdecode(raw_path))
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ReleaseEvidenceError(f"Git returned an unsafe material path: {relative}")
+        selected.add(relative)
+    return frozenset(selected)
+
+
 def _material_paths(repo_root: Path) -> tuple[Path, ...]:
+    git_visible_paths = _git_visible_paths(repo_root)
     selected: set[Path] = set()
     for relative in MATERIAL_FILES:
         path = repo_root / relative
@@ -371,6 +402,8 @@ def _material_paths(repo_root: Path) -> tuple[Path, ...]:
             )
         for path in root.rglob("*"):
             relative = path.relative_to(repo_root)
+            if git_visible_paths is not None and relative not in git_visible_paths:
+                continue
             if any(part in NON_MATERIAL_PARTS for part in relative.parts) or path.suffix == ".pyc":
                 continue
             if path.is_symlink():
