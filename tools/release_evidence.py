@@ -421,7 +421,7 @@ def _file_record(repo_root: Path, relative: Path) -> JsonObject:
     if path.is_symlink() or not path.is_file():
         raise ReleaseEvidenceError(f"release material is not a regular file: {relative}")
     raw = path.read_bytes()
-    mode = stat.S_IMODE(path.stat().st_mode)
+    mode = 0o755 if path.stat().st_mode & stat.S_IXUSR else 0o644
     return {
         "mode": f"{mode:04o}",
         "path": relative.as_posix(),

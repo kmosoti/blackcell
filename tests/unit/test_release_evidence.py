@@ -108,6 +108,18 @@ def test_release_materials_exclude_git_ignored_local_files(
     )
 
 
+def test_release_material_modes_are_independent_of_checkout_umask(tmp_path: Path) -> None:
+    regular = tmp_path / "regular.txt"
+    executable = tmp_path / "executable.sh"
+    regular.write_text("regular\n", encoding="utf-8")
+    executable.write_text("#!/bin/sh\n", encoding="utf-8")
+    regular.chmod(0o664)
+    executable.chmod(0o775)
+
+    assert release_evidence._file_record(tmp_path, Path("regular.txt"))["mode"] == "0644"
+    assert release_evidence._file_record(tmp_path, Path("executable.sh"))["mode"] == "0755"
+
+
 @pytest.mark.parametrize(
     "drift_path",
     (
@@ -202,7 +214,8 @@ def test_verification_manifest_binds_every_declared_material_and_output() -> Non
         path = ROOT / item["path"]
         payload = path.read_bytes()
         assert path.is_file() and not path.is_symlink()
-        assert item["mode"] == f"{stat.S_IMODE(path.stat().st_mode):04o}"
+        expected_mode = "0755" if path.stat().st_mode & stat.S_IXUSR else "0644"
+        assert item["mode"] == expected_mode
         assert item["size"] == len(payload)
         assert item["sha256"] == _sha256(payload)
 
