@@ -24,12 +24,41 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
     program = plan["program"]
 
     assert plan["schema_version"] == "blackcell-refactor-consolidation-plan/v1"
-    assert program["branch"] == "refactor/architecture-consolidation"
+    assert program["branch"] == "refactor/consolidation"
+    assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
     assert "runtime-v1" in program["runtime_v1_context"]
     assert set(plan["planning_dimensions"]) == REQUIRED_DIMENSIONS
     assert plan["issue_delivery"]["repository"] == "kmosoti/blackcell"
     assert plan["issue_delivery"]["parent"]["issue_number"] == 63
+    delivery = plan["issue_delivery"]
+    assert delivery["integration_branch"] == "refactor/consolidation"
+    assert delivery["superseded_branch"] == "refactor/architecture-consolidation"
+    assert delivery["assignee"] == "kmosoti"
+    assert delivery["labels"] == {
+        "default": ["enhancement"],
+        "documentation": ["AC00", "AC06"],
+    }
+    assert delivery["project"] == {
+        "title": "BlackCell",
+        "status": "Todo",
+        "type": "refactor",
+    }
+    assert delivery["relationships"] == {
+        "parent_issue": 63,
+        "ordered_children": list(range(64, 72)),
+        "blocked_by": {
+            65: [64],
+            66: [64],
+            67: [64],
+            68: [66, 67],
+            69: [65, 67],
+            70: [64],
+            71: [65, 66, 67, 68, 69, 70],
+            60: [65, 66, 67],
+            61: [60],
+        },
+    }
 
 
 def test_every_work_package_has_direct_evidence_and_three_scenarios() -> None:
@@ -92,7 +121,8 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     program = plan["architecture_consolidation"]
 
     assert plan["runtime_v1"]["status"] == "foundational-history"
-    assert program["branch"] == "refactor/architecture-consolidation"
+    assert program["branch"] == "refactor/consolidation"
+    assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
     assert program["plan"] == "refactor-consolidation.plan.yaml"
     assert program["planning_model"] == [
@@ -103,3 +133,6 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
         "assessment",
     ]
     assert program["work_packages"] == [f"AC0{number}" for number in range(8)]
+    assert program["delivery_metadata"]["development_branch"] == "refactor/consolidation"
+    assert program["delivery_metadata"]["assignee"] == "kmosoti"
+    assert program["delivery_metadata"]["labels"]["documentation"] == ["AC00", "AC06"]

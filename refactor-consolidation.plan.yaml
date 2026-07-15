@@ -3,7 +3,8 @@ schema_version: blackcell-refactor-consolidation-plan/v1
 program:
   name: architecture-consolidation
   title: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries
-  branch: refactor/architecture-consolidation
+  branch: refactor/consolidation
+  superseded_branch: refactor/architecture-consolidation
   base_ref: origin/main
   merge_policy: One final reviewed pull request merges this integration branch into main after AC00-AC07 close.
   runtime_v1_context: runtime-v1 is foundational historical context, not the active program or this branch's evidence target.
@@ -26,7 +27,7 @@ planning_dimensions:
         - AC04 follows AC02 and AC03.
         - AC01 and AC03 precede AC05.
         - AC00 ratifies baseline criteria before all implementation work.
-    integration: Child work branches target refactor/architecture-consolidation; integration merges are serialized even when investigation is parallel.
+    integration: All AC work commits to refactor/consolidation; integration merges are serialized even when investigation is parallel.
     review_checkpoints:
       - AC00 baseline and ADR acceptance.
       - AC03 canonical ownership review.
@@ -64,12 +65,35 @@ planning_dimensions:
 
 issue_delivery:
   repository: kmosoti/blackcell
+  integration_branch: refactor/consolidation
+  superseded_branch: refactor/architecture-consolidation
+  assignee: kmosoti
+  labels:
+    default: [enhancement]
+    documentation: [AC00, AC06]
+  project:
+    title: BlackCell
+    status: Todo
+    type: refactor
   parent:
     issue_number: 63
     url: https://github.com/kmosoti/blackcell/issues/63
     title: "Epic: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries"
     body_summary: Stable architectural contract for AC00-AC07. It treats runtime-v1 as historical foundation context and uses this plan as the current evidence map.
   child_linkage: Each child names the parent epic and plan ID; the parent task list is updated with created issue numbers and dependency order.
+  relationships:
+    parent_issue: 63
+    ordered_children: [64, 65, 66, 67, 68, 69, 70, 71]
+    blocked_by:
+      65: [64]
+      66: [64]
+      67: [64]
+      68: [66, 67]
+      69: [65, 67]
+      70: [64]
+      71: [65, 66, 67, 68, 69, 70]
+      60: [65, 66, 67]
+      61: [60]
 
 work_packages:
   - id: AC00

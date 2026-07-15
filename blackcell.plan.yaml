@@ -88,11 +88,25 @@ compatibility_surfaces:
 
 architecture_consolidation:
   status: planned
-  branch: refactor/architecture-consolidation
+  branch: refactor/consolidation
+  superseded_branch: refactor/architecture-consolidation
   base_ref: origin/main
   plan: refactor-consolidation.plan.yaml
   parent_epic: "Epic: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries"
   merge_policy: Merge to main only after AC00 through AC07 meet their recorded acceptance criteria.
+  delivery_metadata:
+    assignee: kmosoti
+    labels:
+      default:
+        - enhancement
+      documentation:
+        - AC00
+        - AC06
+    project:
+      title: BlackCell
+      status: Todo
+      type: refactor
+    development_branch: refactor/consolidation
   planning_model:
     - strategic
     - logistics

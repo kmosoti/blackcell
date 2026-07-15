@@ -25,7 +25,7 @@ SKILLS_ROOT = ROOT / ".agents/skills"
 def test_project_config_and_named_agents_are_explicit() -> None:
     config = tomllib.loads((CODEX_ROOT / "config.toml").read_text(encoding="utf-8"))
 
-    assert config["model"] == "gpt-5.6-terra"
+    assert config["model"] == "gpt-5.6-sol"
     assert config["model_reasoning_effort"] == "high"
     assert config["plan_mode_reasoning_effort"] == "high"
     assert config["model_verbosity"] == "low"
@@ -131,6 +131,9 @@ def test_lifecycle_skills_are_discoverable_and_bounded() -> None:
     plan = (SKILLS_ROOT / "blackcell-plan/SKILL.md").read_text(encoding="utf-8")
     assert "Do not edit tracked files" in plan
     assert "<proposed_plan>" in plan
+    assert "delivery-metadata map" in plan
+    assert "linked development branches" in plan
+    assert "required native mutation" in plan
 
     for skill_name, agent_name, packet_mode in (
         ("blackcell-review", "k_reviewer", "review"),

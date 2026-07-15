@@ -50,6 +50,13 @@ Use backward mapping before choosing an implementation sequence. For every bound
 record best-case, nominal, and failure scenarios. At each review checkpoint, test the plan against
 new evidence, revise only the affected package, and preserve the reason for the change.
 
+For a multi-issue program, the plan must also declare and validate a delivery-metadata map before
+implementation: assignee, labels, Project/status/type, parent and sub-issue order, blocking graph,
+and one integration branch. Planning reads current GitHub state and names the exact mutations and
+readback checks; planning itself does not materialize remote metadata. If the available client
+cannot perform a required native mutation, record it as blocked rather than substituting issue-body
+text, task lists, or a similarly named branch for the missing relationship.
+
 Plan from the active project and branch, not from a similarly named historical release or prior
 delivery branch. Historical artifacts may inform constraints, but they do not become current
 evidence unless the checked-out project explicitly carries and validates them.
@@ -109,16 +116,16 @@ every writer delta must match its validated result and allowed paths.
 
 ## Routing
 
-- Keep normal root work, synthesis, integration, and Spark fallback on Terra high.
+- Keep normal root work, synthesis, integration, and Spark fallback on the checked-in Sol high
+  default.
 - Use `k_spark_worker` first only for already-localized text evidence or one localized micro-edit.
 - Use `k_pr_explorer` when an ambiguous execution path survives targeted root inspection.
 - Use `k_reviewer` for consequential architecture, security, state, concurrency, policy, replay,
   or migration changes.
 - Use `k_verifier` to independently verify completed high-risk work without tracked-file edits.
-- Use Sol medium only as a deliberate root override for intentionally Sol-based ordinary
-  implementation. Use Sol high through `k_reviewer` or an explicit critical root session. Leave
-  Sol xhigh unconfigured. Sol Ultra always requires an explicit user choice for exceptional
-  full-repository architecture, review, or migration work.
+- Use Sol high for ordinary root implementation and critical architecture work. Leave Sol xhigh
+  unconfigured. Sol Ultra always requires an explicit user choice for exceptional full-repository
+  architecture, review, or migration work.
 
 ## Authorization
 
