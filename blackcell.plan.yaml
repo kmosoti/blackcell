@@ -27,8 +27,9 @@ phase_1:
     - BCP-0034
 
 runtime_v1:
-  status: active
+  status: foundational-history
   branch: agent/runtime-v1
+  note: Runtime-v1 is the delivered foundation for current runtime surfaces; architecture consolidation is a separate Blackcell project program.
   delivery:
     pull_requests: 1
     publish_each_node: true
@@ -84,6 +85,32 @@ compatibility_surfaces:
     - blackcell.latent
     - blackcell.agents
   note: These surfaces describe the July 6 prototype and do not define the current architecture.
+
+architecture_consolidation:
+  status: planned
+  branch: refactor/architecture-consolidation
+  base_ref: origin/main
+  plan: refactor-consolidation.plan.yaml
+  parent_epic: "Epic: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries"
+  merge_policy: Merge to main only after AC00 through AC07 meet their recorded acceptance criteria.
+  planning_model:
+    - strategic
+    - logistics
+    - human
+    - risk
+    - assessment
+  work_packages:
+    - AC00
+    - AC01
+    - AC02
+    - AC03
+    - AC04
+    - AC05
+    - AC06
+    - AC07
+  historical_context:
+    - Runtime-v1 release artifacts are historical only when absent from this branch.
+    - AC00 establishes the current-project evidence policy before any candidate or SBOM claim.
 
 verification:
   - uv run ruff format --check .

@@ -1,0 +1,340 @@
+schema_version: blackcell-refactor-consolidation-plan/v1
+
+program:
+  name: architecture-consolidation
+  title: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries
+  branch: refactor/architecture-consolidation
+  base_ref: origin/main
+  merge_policy: One final reviewed pull request merges this integration branch into main after AC00-AC07 close.
+  runtime_v1_context: runtime-v1 is foundational historical context, not the active program or this branch's evidence target.
+  thesis: Remove false boundaries while preserving real trust, time, persistence, and failure boundaries.
+  success: A simpler modular monolith has explicit composition ownership, one canonical owner per current concept, and no regression of authority, replay, durability, recovery, CLI, or HTTP contracts.
+
+planning_dimensions:
+  strategic:
+    objective: Reduce contract density, false boundaries, duplicated representations, and composition leakage without optimizing class count or module count.
+    non_goals:
+      - Rewrite Blackcell or split it into microservices.
+      - Add a dependency-injection framework, service locator, command bus, or generic workflow framework.
+      - Change persisted event or artifact schemas without a separate ADR and issue.
+      - Treat runtime-v1 branch artifacts as current project evidence.
+  logistics:
+    backward_map:
+      final: AC07 publishes final consolidation evidence and closes temporary compatibility paths.
+      prerequisites:
+        - AC05 and AC06 complete before final protocol and storage evidence.
+        - AC04 follows AC02 and AC03.
+        - AC01 and AC03 precede AC05.
+        - AC00 ratifies baseline criteria before all implementation work.
+    integration: Child work branches target refactor/architecture-consolidation; integration merges are serialized even when investigation is parallel.
+    review_checkpoints:
+      - AC00 baseline and ADR acceptance.
+      - AC03 canonical ownership review.
+      - AC07 final architecture and evidence review.
+  human:
+    roles:
+      program_owner: Accepts ADRs, stop conditions, and final merge readiness.
+      implementer: Makes one bounded architectural-axis change per pull request.
+      architecture_reviewer: Reviews AC01, AC02, AC03, AC05, AC06, and AC07 for replay, authority, persistence, and migration risks.
+      verifier: Independently runs declared final acceptance checks without source edits.
+    capacity_rule: One writer at a time; investigation may parallelize only after AC00 establishes non-overlapping evidence scope.
+  risk:
+    preserved_invariants:
+      - One authoritative immutable event ledger and content-addressed integrity-verified artifacts.
+      - Exact occurrence, stream, correlation, causation, replay, cutoff, and provenance semantics.
+      - Historical replay remains model-free and side-effect-free.
+      - Models retain no ambient execution authority; symbolic authorization precedes execution.
+      - Prepared execution, reconciliation, fencing, leases, retries, approvals, and recovery remain fail-closed.
+      - Existing CLI and HTTP behavior remains stable unless a separately ratified issue changes it.
+    global_stop_conditions:
+      - Persisted event or artifact schema change is required.
+      - Public CLI or HTTP behavior must change.
+      - A proposed simplification exposes an independent authority, failure, persistence, or recovery boundary.
+      - Temporary compatibility cannot be removed in the same bounded package.
+  assessment:
+    hard_metrics:
+      - No concrete adapter construction outside approved bootstrap composition.
+      - No API or worker store acquisition through RepositoryOperator attributes.
+      - No production dependency on compatibility or experiment implementation paths.
+      - Full architecture, replay, recovery, unit, integration, formatting, lint, type, and coverage gates pass.
+    advisory_metrics:
+      - Structural Protocol field breadth and mirrored record-shape clusters.
+      - Import breadth, constructor fan-in, integration hotspot size, and package co-change frequency.
+    evidence_policy: AC00 records a current-project baseline. A project candidate or SBOM is introduced only when AC00 establishes a supported source and verification mechanism on this branch.
+
+issue_delivery:
+  repository: kmosoti/blackcell
+  parent:
+    title: "Epic: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries"
+    body_summary: Stable architectural contract for AC00-AC07. It treats runtime-v1 as historical foundation context and uses this plan as the current evidence map.
+  child_linkage: Each child names the parent epic and plan ID; the parent task list is updated with created issue numbers and dependency order.
+
+work_packages:
+  - id: AC00
+    title: Ratify boundary criteria, baseline, and project evidence policy
+    depends_on: []
+    boundary: Architecture-consolidation criteria and current-baseline evidence.
+    desired_invariant: Every proposed consolidation is classified retain, consolidate, defer, or reject with direct evidence and preserved invariants.
+    scope:
+      - docs/adr/0008-architecture-consolidation.md
+      - docs/decisions/architecture-consolidation/ac00-baseline.json
+      - architecture baseline reports and plan validation
+    direct_evidence:
+      - path: docs/adr/0004-evolutionary-runtime-architecture.md
+        symbol: The composition root is the only place allowed to assemble concrete implementations.
+        test: tests/architecture/test_dependencies.py
+        observation: The accepted architecture already defines composition ownership.
+      - path: architecture/dependency_rules.json
+        symbol: legacy-canonical
+        test: tests/architecture/test_dependencies.py
+        observation: Current root classifications are ambiguous and require a canonical-owner decision.
+    acceptance:
+      - Baseline inventory covers construction sites, service state, Protocol breadth, mirrored records, import breadth, co-change, and public schema owners.
+      - The project evidence policy is explicit and does not claim absent runtime-v1 release artifacts are current.
+    stop_conditions:
+      - The baseline requires a runtime behavior, schema, or dependency change to collect evidence.
+    scenarios:
+      best: Evidence confirms independent work-package scopes and enables parallel investigation.
+      nominal: Some boundaries are retained or deferred with explicit justification.
+      failure: A supposed false boundary proves to own authority, recovery, or durable semantics and is retained.
+
+  - id: AC01
+    title: Move concrete runtime composition into bootstrap and narrow RepositoryOperator
+    depends_on: [AC00]
+    boundary: Bootstrap composition versus product facade and explicit read/write capabilities.
+    desired_invariant: Bootstrap owns concrete assembly and API or worker code receives explicit capabilities without RepositoryOperator store reach-through.
+    scope:
+      - src/blackcell/bootstrap
+      - src/blackcell/operator/facade.py
+      - src/blackcell/operator/repository_adapters.py
+    direct_evidence:
+      - path: src/blackcell/operator/facade.py
+        symbol: 'self.events = EventStore'
+        test: tests/unit/test_operator_facade.py
+        observation: RepositoryOperator currently constructs persistence, journals, adapters, gateway, workflow, and replay components.
+      - path: src/blackcell/bootstrap/runtime_api.py
+        symbol: 'self._events = operator.events'
+        test: tests/integration/test_runtime_api.py
+        observation: The API reaches through the facade for event storage.
+      - path: src/blackcell/bootstrap/worker.py
+        symbol: 'self._artifacts = operator.artifacts'
+        test: tests/unit/test_runtime_worker.py
+        observation: The worker reaches through the facade for artifact storage.
+    acceptance:
+      - RepositoryOperator no longer constructs concrete stores, journals, gateway, workflow, replay adapter, scheduler, or server.
+      - CLI, HTTP, worker, replay, and correction behavior remains characterized and unchanged.
+    stop_conditions:
+      - Explicit capabilities would weaken authority, recovery, or lifecycle ownership.
+    scenarios:
+      best: Bootstrap composes one RuntimeComponents value and all reach-throughs disappear.
+      nominal: A temporary delegating facade remains with an owner and removal condition.
+      failure: Construction proves necessary for a public compatibility contract and the issue splits the migration.
+
+  - id: AC02
+    title: Consolidate the state-to-context pipeline
+    depends_on: [AC00]
+    boundary: State, signal, evidence-selection, and ContextFrame transformations.
+    desired_invariant: One normalized internal evidence representation is used where semantics are identical while persisted ContextFrame bytes and frame IDs remain unchanged.
+    scope:
+      - src/blackcell/features/project_operational_state
+      - src/blackcell/features/derive_signal_packet
+      - src/blackcell/features/retrieve_evidence
+      - src/blackcell/features/build_context
+      - src/blackcell/context
+    direct_evidence:
+      - path: src/blackcell/context/signals.py
+        symbol: 'class SignalPacket'
+        test: tests/unit/test_signal_packets.py
+        observation: A legacy context SignalPacket remains beside feature-owned signal contracts.
+      - path: src/blackcell/features/derive_signal_packet/models.py
+        symbol: 'class SignalPacket'
+        test: tests/unit/test_derive_signal_packet_feature.py
+        observation: The feature pipeline owns another SignalPacket representation.
+      - path: src/blackcell/features/build_context/ports.py
+        symbol: 'class EvidenceSelectionLike'
+        test: tests/unit/test_context_pipeline_features.py
+        observation: Broad structural protocols bridge near-complete upstream evidence shapes.
+      - path: tests/unit/test_context_frame_store.py
+        symbol: test_feature_owned_context_codec_preserves_golden_bytes_and_identity
+        test: tests/unit/test_context_frame_store.py
+        observation: Context byte identity and frame IDs are already characterized.
+    acceptance:
+      - Deterministic and FTS5 retrievers remain independently selectable.
+      - Context provenance, unknown, conflict, required-evidence, omission, and identity semantics remain unchanged.
+    stop_conditions:
+      - A representation is a persisted, externally inspected, or independently substitutable contract.
+    scenarios:
+      best: Feature-owned pipeline absorbs duplicated implementation without public schema changes.
+      nominal: External names remain temporarily while implementation normalizes behind them.
+      failure: Identity or omission semantics differ and the boundary is retained.
+
+  - id: AC03
+    title: Rationalize current contract vocabularies and isolate historical forms
+    depends_on: [AC00]
+    boundary: Gateway, decision, control, model, and historical vocabulary ownership.
+    desired_invariant: Every current runtime concept has one documented canonical owner and production paths do not depend on historical or experimental implementation details.
+    scope:
+      - src/blackcell/gateway
+      - src/blackcell/features/request_decision
+      - src/blackcell/control
+      - src/blackcell/models
+    direct_evidence:
+      - path: src/blackcell/gateway/models.py
+        symbol: 'class GatewayBudget'
+        test: tests/unit/test_gateway_decision_adapter.py
+        observation: Gateway owns capability, classification, locality, and budget vocabulary.
+      - path: src/blackcell/features/request_decision/models.py
+        symbol: 'class DecisionBudget'
+        test: tests/unit/test_request_decision_feature.py
+        observation: Decision contracts duplicate closely related vocabulary and durable attempt records.
+      - path: src/blackcell/control/models.py
+        symbol: 'class ActionProposal'
+        test: tests/unit/test_control_policies.py
+        observation: Control and authorization own overlapping action proposals with potentially distinct durable semantics.
+      - path: architecture/dependency_rules.json
+        symbol: legacy-canonical
+        test: tests/architecture/test_dependencies.py
+        observation: Root classification currently conflates legacy and canonical status.
+    acceptance:
+      - A concept-ownership matrix distinguishes shared primitives from feature-owned durable records.
+      - No new common, shared, or base-model dumping-ground package is added.
+    stop_conditions:
+      - A historical decoder or alternate deployment contract needs long-lived independent ownership.
+    scenarios:
+      best: Shared primitives remove accidental duplication and CI rejects production historical imports.
+      nominal: Durable records retain distinct names with explicit mappings.
+      failure: Similar records encode different authority or persistence semantics and remain separate.
+
+  - id: AC04
+    title: Replace specifically approved stateless service objects with operations
+    depends_on: [AC02, AC03]
+    boundary: Pure operations versus resource, strategy, clock, journal, and recovery owners.
+    desired_invariant: Only operation objects without identity, state, resources, or meaningful substitution become functions or callables.
+    scope:
+      - src/blackcell/features/derive_signal_packet
+      - src/blackcell/features/build_context
+      - src/blackcell/features/authorize_action
+      - approved candidates from AC00
+    direct_evidence:
+      - path: src/blackcell/features/derive_signal_packet/handler.py
+        symbol: 'class SignalPacketProjector'
+        test: tests/unit/test_derive_signal_packet_feature.py
+        observation: The projector has no constructor state.
+      - path: src/blackcell/features/build_context/handler.py
+        symbol: 'class ContextFrameBuilder'
+        test: tests/unit/test_context_pipeline_features.py
+        observation: The builder has no constructor state.
+      - path: src/blackcell/features/authorize_action/handler.py
+        symbol: 'class ActionAuthorizer'
+        test: tests/unit/test_action_authorization_feature.py
+        observation: Authorization is a deterministic handle operation with no retained state.
+      - path: src/blackcell/features/evaluate_outcome/handler.py
+        symbol: 'self._clock = clock'
+        test: tests/unit/test_evaluate_outcome_feature.py
+        observation: Outcome evaluation has injected time behavior and is not automatically a pure-function candidate.
+    acceptance:
+      - Converted operations preserve deterministic outputs and tests.
+      - Resource, journal, checkpoint, matcher, and recovery owners remain explicit.
+    stop_conditions:
+      - Constructor injection provides meaningful lifetime, strategy, or retained state control.
+    scenarios:
+      best: Approved functions reduce construction noise with byte-identical outputs.
+      nominal: Some candidates remain classes after AC00 evidence.
+      failure: A conversion obscures strategy or lifecycle control and is rejected.
+
+  - id: AC05
+    title: Split run recording and state-transition verification by protocol phase
+    depends_on: [AC01, AC03]
+    boundary: Public protocol seam versus physically navigable internal phases.
+    desired_invariant: One public recorder and one public transition-acceptance operation retain the exact event grammar, artifact ownership, and replay interpretation.
+    scope:
+      - src/blackcell/adapters/persistence/sqlite/run_records_v2.py
+      - src/blackcell/workflows/state_transition.py
+      - src/blackcell/workflows/run_protocol_v2.py
+    direct_evidence:
+      - path: src/blackcell/adapters/persistence/sqlite/run_records_v2.py
+        symbol: 'class KernelFeedbackRunRecorder'
+        test: tests/unit/test_run_records_v2.py
+        observation: One recorder physically contains opening through accepted-transition phases.
+      - path: src/blackcell/workflows/run_protocol_v2.py
+        symbol: 'class FeedbackRunRecorder'
+        test: tests/unit/test_daily_operator_v2.py
+        observation: The public recorder protocol already defines a stable seam.
+      - path: src/blackcell/workflows/state_transition.py
+        symbol: 'def bind_and_accept_state_transition'
+        test: tests/unit/test_state_transition_binding.py
+        observation: Transition verification is a large public binding operation with exhaustive characterization.
+    acceptance:
+      - No generic command dispatcher, saga framework, or polymorphic state hierarchy is introduced.
+      - Event names, payload fields, codecs, replay classifications, and terminal semantics remain unchanged.
+    stop_conditions:
+      - A physical split requires a schema, artifact, or temporal-protocol change.
+    scenarios:
+      best: Phase modules improve navigation while public protocol seams remain unchanged.
+      nominal: Helper extraction reduces import breadth but leaves some protocol adjacency intact.
+      failure: Circular imports or replay drift reveal a necessary cohesive boundary.
+
+  - id: AC06
+    title: Ratify the SQLite trusted-kernel boundary
+    depends_on: [AC00]
+    boundary: Conceptual event portability versus supported runtime-v1 storage implementation.
+    desired_invariant: Documentation and code agree that SQLite is the trusted local kernel implementation until a second backend requirement is approved.
+    scope:
+      - docs/adr
+      - docs/architecture.md
+      - src/blackcell/kernel
+    direct_evidence:
+      - path: src/blackcell/kernel/database.py
+        symbol: 'import sqlite3'
+        test: tests/unit/test_kernel_database_concurrency.py
+        observation: Kernel database setup owns SQLite connection and WAL behavior.
+      - path: src/blackcell/kernel/store.py
+        symbol: 'import sqlite3'
+        test: tests/unit/test_kernel_events.py
+        observation: Event-store transaction semantics use SQLite connections directly.
+      - path: src/blackcell/kernel/artifacts.py
+        symbol: 'import sqlite3'
+        test: tests/unit/test_kernel_artifacts.py
+        observation: Artifact metadata and integrity behavior are SQLite-aware.
+    acceptance:
+      - No speculative storage hierarchy is added.
+      - Documentation states the supported boundary without promising an interchangeable backend.
+    stop_conditions:
+      - A real second backend, deployment, isolation, or availability requirement is approved.
+    scenarios:
+      best: ADR removes false replaceability claims with no runtime change.
+      nominal: Package documentation changes while kernel code remains unchanged.
+      failure: A concrete second-backend requirement appears and becomes a separate architecture decision.
+
+  - id: AC07
+    title: Enforce architecture fitness rules and publish final consolidation evidence
+    depends_on: [AC01, AC02, AC03, AC04, AC05, AC06]
+    boundary: Binary architecture rules versus advisory evolutionary-coupling measurements.
+    desired_invariant: CI fails only on unambiguous architecture violations and reports heuristic complexity without arbitrary class, line, or import thresholds.
+    scope:
+      - tests/architecture
+      - architecture
+      - docs/decisions/architecture-consolidation
+    direct_evidence:
+      - path: tests/architecture/test_dependencies.py
+        symbol: 'def test_kernel_has_no_outward_blackcell_dependencies'
+        test: tests/architecture/test_dependencies.py
+        observation: Current fitness tests focus on import direction and provider/framework placement.
+      - path: tests/architecture/test_dependencies.py
+        symbol: 'def test_replay_slice_cannot_reach_live_models_or_actions'
+        test: tests/architecture/test_dependencies.py
+        observation: Replay isolation already has a binary rule suitable for preservation.
+      - path: architecture/dependency_debt.json
+        symbol: 'legacy_roots'
+        test: tests/architecture/test_dependencies.py
+        observation: Existing debt tracking is precise but does not measure composition or semantic duplication.
+    acceptance:
+      - Tests enforce composition ownership, compatibility isolation, facade non-reach-through, and replay live-path isolation.
+      - Advisory reports cover record similarity, Protocol breadth, import breadth, co-change, module size, and constructor fan-in.
+      - The final project evidence identifies a source candidate and SBOM decision without changing historical runtime-v1 artifacts.
+    stop_conditions:
+      - A proposed hard rule cannot be expressed deterministically or would require arbitrary thresholds.
+    scenarios:
+      best: Binary checks prevent recurrence and advisory reports show a reduced semantic change surface.
+      nominal: Some measures remain advisory because repository history is insufficient.
+      failure: Metrics reward cosmetic code reduction and are removed or rewritten.
