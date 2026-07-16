@@ -59,7 +59,7 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
     program = plan["program"]
 
     assert plan["schema_version"] == "blackcell-refactor-consolidation-plan/v1"
-    assert program["status"] == "in-progress"
+    assert program["status"] == "evidence-complete-unpublished"
     assert program["branch"] == "refactor/consolidation"
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
@@ -81,7 +81,7 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
     assert delivery["project"] == {
         "title": "BlackCell",
         "status": {
-            "epic": "In Progress",
+            "epic": "Done",
             "completed": {
                 "AC00": "Done",
                 "AC01": "Done",
@@ -90,6 +90,7 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
                 "AC04": "Done",
                 "AC05": "Done",
                 "AC06": "Done",
+                "AC07": "Done",
             },
             "active": {},
             "queued": "Todo",
@@ -173,7 +174,7 @@ def test_work_package_dependencies_are_acyclic_and_backward_mapped() -> None:
     )
     assert (ROOT / by_id["AC00"]["adr"]).is_file()
     assert (ROOT / by_id["AC00"]["decision_artifact"]).is_file()
-    for package_id in ("AC01", "AC02", "AC03", "AC06"):
+    for package_id in ("AC01", "AC02", "AC03", "AC04", "AC05", "AC06"):
         package = by_id[package_id]
         assert package["status"] == "accepted"
         assert package["accepted_on"].isoformat() == "2026-07-16"
@@ -186,6 +187,11 @@ def test_work_package_dependencies_are_acyclic_and_backward_mapped() -> None:
         "AC05",
         "AC06",
     }
+    assert by_id["AC07"]["status"] == "accepted"
+    assert by_id["AC07"]["accepted_on"].isoformat() == "2026-07-16"
+    assert by_id["AC07"]["decision_artifact"] == (
+        "docs/decisions/architecture-consolidation/ac07-final-evidence.json"
+    )
 
 
 def test_blackcell_plan_declares_the_project_program_and_historical_context() -> None:
@@ -194,7 +200,7 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     program = plan["architecture_consolidation"]
 
     assert plan["runtime_v1"]["status"] == "evidence-complete"
-    assert program["status"] == "in-progress"
+    assert program["status"] == "evidence-complete-unpublished"
     assert program["branch"] == "refactor/consolidation"
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
@@ -212,7 +218,7 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     assert program["delivery_metadata"]["assignee"] == "kmosoti"
     assert program["delivery_metadata"]["labels"]["documentation"] == ["AC00", "AC06"]
     assert program["delivery_metadata"]["project"]["status"] == {
-        "epic": "In Progress",
+        "epic": "Done",
         "completed": {
             "AC00": "Done",
             "AC01": "Done",
@@ -221,6 +227,7 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
             "AC04": "Done",
             "AC05": "Done",
             "AC06": "Done",
+            "AC07": "Done",
         },
         "active": {},
         "queued": "Todo",
@@ -233,9 +240,13 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     )
     candidate = program["evidence_transition"]["consolidation_candidate"]
     assert candidate == {
-        "status": "candidate-scheme-ratified-not-issued",
+        "status": "evidence-complete-unpublished",
         "issuer": "AC07",
         "manifest": "release/architecture-consolidation/verification-manifest.json",
+        "decision": "docs/decisions/architecture-consolidation/ac07-final-evidence.json",
+        "identity_location": (
+            "The excluded manifest and decision record the exact source SHA and candidate ID."
+        ),
         "candidate_id_format": "sha256:<canonical-source-materials-digest>",
         "sbom_policy": ("Regenerate only if the locked production dependency closure changes."),
     }
@@ -249,4 +260,7 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     assert (
         program["verification"]["interim_full_gate"]
         == (program["verification"]["pre_ac00_full_gate"])
+    )
+    assert program["verification"]["final_evidence_gate"] == (
+        "uv run python tools/architecture_consolidation_evidence.py verify --repo-root ."
     )

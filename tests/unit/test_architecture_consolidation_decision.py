@@ -254,7 +254,7 @@ def test_runtime_v1_evidence_is_historical_and_byte_stable() -> None:
         assert hashlib.sha256(payload).hexdigest() == expected_digest
 
 
-def test_consolidation_candidate_scheme_is_ratified_but_not_issued() -> None:
+def test_consolidation_candidate_scheme_is_the_immutable_ac07_source_contract() -> None:
     candidate = _decision()["evidence_policy"]["architecture_consolidation"]
 
     assert candidate["status"] == "candidate-scheme-ratified-not-issued"
@@ -274,7 +274,6 @@ def test_consolidation_candidate_scheme_is_ratified_but_not_issued() -> None:
         "docs/decisions/architecture-consolidation/ac07-final-evidence.json",
         "release/architecture-consolidation/blackcell-architecture-consolidation.cdx.json",
     }
-    assert not (ROOT / candidate["manifest"]).exists()
     assert "regenerate only" in candidate["sbom_policy"]
 
     plan = cast(

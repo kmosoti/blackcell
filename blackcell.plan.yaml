@@ -140,7 +140,7 @@ retired_surfaces:
   note: No package, command, writer, generated artifact, alias, or dual store remains for these prototype surfaces.
 
 architecture_consolidation:
-  status: in-progress
+  status: evidence-complete-unpublished
   branch: refactor/consolidation
   superseded_branch: refactor/architecture-consolidation
   base_ref: origin/main
@@ -159,7 +159,7 @@ architecture_consolidation:
     project:
       title: BlackCell
       status:
-        epic: In Progress
+        epic: Done
         completed:
           AC00: Done
           AC01: Done
@@ -168,6 +168,7 @@ architecture_consolidation:
           AC04: Done
           AC05: Done
           AC06: Done
+          AC07: Done
         active: {}
         queued: Todo
       type: refactor
@@ -176,17 +177,20 @@ architecture_consolidation:
     runtime_v1_manifest: historical-read-only
     observed_status: expected-drift-after-program-registration
     cause: blackcell.plan.yaml is a runtime-v1 release material and now declares the consolidation program.
-    resolution: AC00 ratified candidate identity and evidence reuse; AC07 publishes consolidation evidence.
+    resolution: AC00 ratified candidate identity and evidence reuse; AC07 issues consolidation evidence without changing historical runtime-v1 artifacts.
     baseline: docs/decisions/architecture-consolidation/ac00-baseline.json
     consolidation_candidate:
-      status: candidate-scheme-ratified-not-issued
+      status: evidence-complete-unpublished
       issuer: AC07
       manifest: release/architecture-consolidation/verification-manifest.json
+      decision: docs/decisions/architecture-consolidation/ac07-final-evidence.json
+      identity_location: The excluded manifest and decision record the exact source SHA and candidate ID.
       candidate_id_format: sha256:<canonical-source-materials-digest>
       sbom_policy: Regenerate only if the locked production dependency closure changes.
   verification:
     pre_ac00_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
     interim_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
+    final_evidence_gate: uv run python tools/architecture_consolidation_evidence.py verify --repo-root .
     historical_runtime_v1_gate: expected-drift
   planning_model:
     - strategic
@@ -206,8 +210,10 @@ architecture_consolidation:
   historical_context:
     - Runtime-v1 release artifacts are historical foundation evidence, not architecture-consolidation candidate evidence.
     - AC00 established the current-project evidence policy and candidate identity scheme without issuing a candidate or reusing runtime-v1 verification claims.
+    - AC07 issues source-bound consolidation evidence while the branch remains unpublished and unmerged.
 
 verification:
+  - uv run python tools/architecture_consolidation_evidence.py verify --repo-root .
   - uv run python tools/release_evidence.py verify --repo-root .
   - bash examples/runtime-v1/recorded-operator.sh
   - uv run ruff format --check .

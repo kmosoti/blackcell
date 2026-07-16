@@ -43,6 +43,11 @@ semantics. Binary dependency, composition, compatibility, and replay rules may f
 similarity, Protocol breadth, module size, import breadth, constructor fan-in, and package co-change
 remain advisory and have no pass threshold.
 
+`tools/architecture_consolidation_evidence.py` reports those advisory measures and derives the
+consolidation candidate from an explicit Git source SHA. Its verifier reproduces the candidate,
+manifest, AC07 decision, and conditional SBOM decision without reading source bytes from the
+working tree. The historical runtime-v1 evidence bundle remains outside that verification claim.
+
 Current contract ownership is explicit:
 
 | Concept | Canonical owner | Boundary |

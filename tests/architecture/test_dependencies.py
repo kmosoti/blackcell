@@ -186,16 +186,34 @@ def test_current_runtime_does_not_import_historical_compatibility() -> None:
     violations = [
         edge
         for edge in _imports()
-        if edge.importer.startswith(current) and edge.imported.startswith(historical)
+        if _matches_root(edge.importer, current) and _matches_root(edge.imported, historical)
     ]
 
+    assert not violations, _format(violations)
+
+
+def test_production_runtime_does_not_import_compatibility_or_experiments() -> None:
+    rules = _load_json(RULES_PATH)
+    current = tuple(rules["current_runtime_roots"])
+    forbidden = tuple(rules["production_forbidden_roots"])
+    violations = [
+        edge
+        for edge in _imports()
+        if _matches_root(edge.importer, current) and _matches_root(edge.imported, forbidden)
+    ]
+
+    assert forbidden == (
+        "blackcell.compatibility",
+        "blackcell.context",
+        "blackcell.experiments",
+    )
     assert not violations, _format(violations)
 
 
 def test_current_contract_owners_are_unambiguous() -> None:
     rules = _load_json(RULES_PATH)
 
-    assert rules["schema_version"] == 2
+    assert rules["schema_version"] == 3
     assert "legacy-canonical" not in rules["classified_roots"].values()
     assert "blackcell.adapters" in rules["current_runtime_roots"]
     assert "blackcell.adapters" in rules["benchmark_model_forbidden_importers"]
@@ -235,6 +253,40 @@ def test_run_record_protocol_helpers_depend_on_artifact_helpers_one_way() -> Non
     ]
 
     assert not violations, _format(violations)
+
+
+def test_concrete_runtime_construction_stays_at_approved_sites() -> None:
+    approved = _load_json(RULES_PATH)["approved_construction_sites"]
+    observed: dict[str, set[str]] = {name: set() for name in approved}
+    violations: list[str] = []
+    for path in sorted(SOURCE_ROOT.rglob("*.py")):
+        relative = path.relative_to(ROOT / "src").with_suffix("")
+        importer = ".".join(relative.parts)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        aliases = {
+            alias.asname or alias.name: alias.name
+            for node in tree.body
+            if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+            if alias.name in approved
+        }
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            terminal = _terminal_name(node.func)
+            name = aliases.get(terminal, terminal)
+            if name not in approved:
+                continue
+            observed[name].add(importer)
+            if importer not in approved[name]:
+                violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: {name}")
+
+    expected = {name: set(sites) for name, sites in approved.items()}
+    assert observed == expected, (
+        f"construction approvals must exactly match observed sites: "
+        f"expected={expected}, observed={observed}"
+    )
+    assert not violations, "\n".join(violations)
 
 
 def test_repository_runtime_composition_is_owned_by_bootstrap() -> None:
@@ -421,6 +473,18 @@ def _load_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(value, dict)
     return value
+
+
+def _matches_root(value: str, roots: tuple[str, ...]) -> bool:
+    return any(value == root or value.startswith(f"{root}.") for root in roots)
+
+
+def _terminal_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
 
 
 def _format(edges: list[ImportEdge]) -> str:

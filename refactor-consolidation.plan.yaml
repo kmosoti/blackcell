@@ -2,7 +2,7 @@ schema_version: blackcell-refactor-consolidation-plan/v1
 
 program:
   name: architecture-consolidation
-  status: in-progress
+  status: evidence-complete-unpublished
   title: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries
   branch: refactor/consolidation
   superseded_branch: refactor/architecture-consolidation
@@ -13,16 +13,19 @@ program:
   evidence_transition:
     runtime_v1_manifest: historical-read-only
     observed_status: expected-drift-after-program-registration
-    resolution: AC00 ratified consolidation candidate identity and evidence reuse; AC07 publishes final evidence.
+    resolution: AC00 ratified consolidation candidate identity and evidence reuse; AC07 issues final source-bound evidence without changing historical runtime-v1 artifacts.
     baseline: docs/decisions/architecture-consolidation/ac00-baseline.json
     consolidation_candidate:
-      status: candidate-scheme-ratified-not-issued
+      status: evidence-complete-unpublished
       issuer: AC07
       manifest: release/architecture-consolidation/verification-manifest.json
+      decision: docs/decisions/architecture-consolidation/ac07-final-evidence.json
+      identity_location: The excluded manifest and decision record the exact source SHA and candidate ID.
       candidate_id_format: sha256:<canonical-source-materials-digest>
       sbom_policy: Regenerate only if the locked production dependency closure changes.
     pre_ac00_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
     interim_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
+    final_evidence_gate: uv run python tools/architecture_consolidation_evidence.py verify --repo-root .
   thesis: Remove false boundaries while preserving real trust, time, persistence, and failure boundaries.
   success: A simpler modular monolith has explicit composition ownership, one canonical owner per current concept, and no regression of authority, replay, durability, recovery, CLI, or HTTP contracts.
 
@@ -69,7 +72,7 @@ planning_dimensions:
       - Temporary compatibility cannot be removed in the same bounded package.
   assessment:
     hard_metrics:
-      - No concrete adapter construction outside approved bootstrap composition.
+      - Repository runtime assembly stays at explicit approved construction sites; bootstrap remains the sole product composition root while resource-owning adapters retain only their owned kernel helpers.
       - No API or worker store acquisition through RepositoryOperator attributes.
       - No production dependency on compatibility or experiment implementation paths.
       - Full architecture, replay, recovery, unit, integration, formatting, lint, type, and coverage gates pass.
@@ -90,7 +93,7 @@ issue_delivery:
   project:
     title: BlackCell
     status:
-      epic: In Progress
+      epic: Done
       completed:
         AC00: Done
         AC01: Done
@@ -99,6 +102,7 @@ issue_delivery:
         AC04: Done
         AC05: Done
         AC06: Done
+        AC07: Done
       active: {}
       queued: Todo
     type: refactor
@@ -396,6 +400,9 @@ work_packages:
   - id: AC07
     issue_number: 71
     title: Enforce architecture fitness rules and publish final consolidation evidence
+    status: accepted
+    accepted_on: 2026-07-16
+    decision_artifact: docs/decisions/architecture-consolidation/ac07-final-evidence.json
     depends_on: [AC01, AC02, AC03, AC04, AC05, AC06]
     boundary: Binary architecture rules versus advisory evolutionary-coupling measurements.
     desired_invariant: CI fails only on unambiguous architecture violations and reports heuristic complexity without arbitrary class, line, or import thresholds.
