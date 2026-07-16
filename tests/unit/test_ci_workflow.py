@@ -11,11 +11,14 @@ CHECKOUT_ACTION = "actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10"
 SETUP_UV_ACTION = "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b"
 
 
-def _job_steps(job_name: str) -> list[dict[str, Any]]:
+def _jobs() -> dict[str, Any]:
     workflow = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert isinstance(workflow, dict)
-    jobs = cast("dict[str, Any]", workflow["jobs"])
-    job = cast("dict[str, Any]", jobs[job_name])
+    return cast("dict[str, Any]", workflow["jobs"])
+
+
+def _job_steps(job_name: str) -> list[dict[str, Any]]:
+    job = cast("dict[str, Any]", _jobs()[job_name])
     return cast("list[dict[str, Any]]", job["steps"])
 
 
@@ -24,9 +27,21 @@ def _quality_steps() -> list[dict[str, Any]]:
 
 
 def test_ci_actions_are_pinned_to_immutable_node24_release_commits() -> None:
-    for job_name in ("quality", "types"):
-        actions = [step["uses"] for step in _job_steps(job_name) if "uses" in step]
-        assert actions == [CHECKOUT_ACTION, SETUP_UV_ACTION]
+    action_references = [
+        cast("str", step["uses"])
+        for job_name in _jobs()
+        for step in _job_steps(job_name)
+        if "uses" in step
+    ]
+
+    checkout_references = {
+        reference for reference in action_references if reference.startswith("actions/checkout@")
+    }
+    setup_uv_references = {
+        reference for reference in action_references if reference.startswith("astral-sh/setup-uv@")
+    }
+    assert checkout_references == {CHECKOUT_ACTION}
+    assert setup_uv_references == {SETUP_UV_ACTION}
 
     workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "actions/checkout@v" not in workflow_text
