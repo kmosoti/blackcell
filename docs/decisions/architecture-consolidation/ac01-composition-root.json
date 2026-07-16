@@ -1,0 +1,95 @@
+{
+  "schema_version": "architecture-consolidation-decision/v1",
+  "work_package": "AC01",
+  "issue_number": 65,
+  "base_sha": "1a249d8aaa1f5f230c8492ab249ea06d255f24ee",
+  "decision": "accept",
+  "boundary": "repository runtime composition ownership and capability exposure",
+  "preserved_invariants": [
+    "stable-cli-http-and-worker-behavior",
+    "single-authoritative-event-ledger",
+    "content-addressed-artifact-verification",
+    "journaled-decision-and-execution-recovery",
+    "live-free-historical-replay",
+    "repository-scoped-run-ownership"
+  ],
+  "decisions": [
+    {
+      "subject": "concrete repository runtime assembly",
+      "decision": "move",
+      "reason": "blackcell.bootstrap.repository is now the sole owner of store, journal, gateway, adapter, workflow, and replay construction for the repository runtime."
+    },
+    {
+      "subject": "RepositoryOperator application facade",
+      "decision": "retain",
+      "reason": "The facade remains the product use-case boundary but consumes composed capabilities instead of constructing infrastructure."
+    },
+    {
+      "subject": "API and worker store reach-through",
+      "decision": "reject",
+      "reason": "RuntimeApiService receives EventStore and RuntimeWorker receives ArtifactStore explicitly; RepositoryOperator exposes neither store publicly."
+    },
+    {
+      "subject": "repository subprocess, model, execution, and observation adapters",
+      "decision": "move",
+      "reason": "Concrete repository implementations now reside under blackcell.adapters.repository."
+    }
+  ],
+  "before": {
+    "composition_owner": "blackcell.operator.facade.RepositoryOperator.__init__",
+    "public_store_attributes": ["events", "artifacts"],
+    "repository_adapter_path": "src/blackcell/operator/repository_adapters.py"
+  },
+  "superseded_baseline_evidence": [
+    {
+      "path": "src/blackcell/operator/facade.py",
+      "symbol": "self.events = EventStore",
+      "replacement": {
+        "path": "src/blackcell/bootstrap/repository.py",
+        "symbol": "events = EventStore"
+      }
+    },
+    {
+      "path": "src/blackcell/bootstrap/runtime_api.py",
+      "symbol": "self._events = operator.events",
+      "replacement": {
+        "path": "src/blackcell/bootstrap/runtime_api.py",
+        "symbol": "events=components.events"
+      }
+    },
+    {
+      "path": "src/blackcell/bootstrap/worker.py",
+      "symbol": "self._artifacts = operator.artifacts",
+      "replacement": {
+        "path": "src/blackcell/bootstrap/worker.py",
+        "symbol": "artifacts=components.artifacts"
+      }
+    }
+  ],
+  "after": {
+    "composition_owner": "blackcell.bootstrap.repository.compose_repository_runtime",
+    "component_contract": "blackcell.bootstrap.repository.RepositoryRuntimeComponents",
+    "public_store_attributes": [],
+    "repository_adapter_path": "src/blackcell/adapters/repository/adapter.py",
+    "capability_binding": "API event storage and worker artifact storage must match the operator database and artifact root",
+    "shutdown_contract": "unchanged; no resource lifecycle was invented by this refactor"
+  },
+  "explicitly_changed": [
+    "Direct Python construction moves from RepositoryOperator(...) to compose_repository_runtime(...).operator.",
+    "Concrete RepositoryStatusReader imports move from blackcell.operator to blackcell.adapters.repository."
+  ],
+  "compatibility_decision": "The retired constructor and adapter import paths are internal composition surfaces, not preserved CLI or HTTP contracts. Retaining shims would reintroduce the concrete operator-to-adapter dependency and the false boundary AC01 removes.",
+  "explicitly_unchanged": [
+    "DailyOperatorV2 event names, payloads, ordering, and artifact codecs",
+    "decision and execution journal schemas",
+    "replay classifications and live-free behavior",
+    "repository status subprocess bounds",
+    "CLI, HTTP, worker, correction, and disaster-recovery behavior",
+    "database and artifact storage locations"
+  ],
+  "verification": {
+    "focused": "uv run pytest -q tests/unit/test_operator_facade.py tests/unit/test_runtime_worker.py tests/unit/test_transition_prediction.py tests/integration/test_runtime_disaster_recovery.py tests/integration/test_otel_export.py tests/integration/test_runtime_api.py tests/architecture/test_dependencies.py",
+    "focused_result": "26 passed before the architecture assertion was added",
+    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing"
+  }
+}

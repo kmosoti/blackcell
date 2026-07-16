@@ -7,6 +7,7 @@ program:
   branch: refactor/consolidation
   superseded_branch: refactor/architecture-consolidation
   base_ref: origin/main
+  implementation_base_sha: 1a249d8aaa1f5f230c8492ab249ea06d255f24ee
   merge_policy: One final reviewed pull request merges this integration branch into main after AC00-AC07 close.
   runtime_v1_context: runtime-v1 evidence is available as foundational history, not the active program or architecture-consolidation evidence target.
   evidence_transition:
@@ -20,8 +21,8 @@ program:
       manifest: release/architecture-consolidation/verification-manifest.json
       candidate_id_format: sha256:<canonical-source-materials-digest>
       sbom_policy: Regenerate only if the locked production dependency closure changes.
-    pre_ac00_full_gate: uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
-    interim_full_gate: uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
+    pre_ac00_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
+    interim_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
   thesis: Remove false boundaries while preserving real trust, time, persistence, and failure boundaries.
   success: A simpler modular monolith has explicit composition ownership, one canonical owner per current concept, and no regression of authority, replay, durability, recovery, CLI, or HTTP contracts.
 
@@ -92,6 +93,10 @@ issue_delivery:
       epic: In Progress
       completed:
         AC00: Done
+        AC01: Done
+        AC02: Done
+        AC03: Done
+        AC06: Done
       active: {}
       queued: Todo
     type: refactor
@@ -157,13 +162,16 @@ work_packages:
   - id: AC01
     issue_number: 65
     title: Move concrete runtime composition into bootstrap and narrow RepositoryOperator
+    status: accepted
+    accepted_on: 2026-07-16
+    decision_artifact: docs/decisions/architecture-consolidation/ac01-composition-root.json
     depends_on: [AC00]
     boundary: Bootstrap composition versus product facade and explicit read/write capabilities.
     desired_invariant: Bootstrap owns concrete assembly and API or worker code receives explicit capabilities without RepositoryOperator store reach-through.
     scope:
       - src/blackcell/bootstrap
       - src/blackcell/operator/facade.py
-      - src/blackcell/operator/repository_adapters.py
+      - src/blackcell/adapters/repository
     direct_evidence:
       - path: src/blackcell/operator/facade.py
         symbol: 'self.events = EventStore'
@@ -190,6 +198,9 @@ work_packages:
   - id: AC02
     issue_number: 66
     title: Consolidate the state-to-context pipeline
+    status: accepted
+    accepted_on: 2026-07-16
+    decision_artifact: docs/decisions/architecture-consolidation/ac02-context-pipeline.json
     depends_on: [AC00]
     boundary: State, signal, evidence-selection, and ContextFrame transformations.
     desired_invariant: One normalized internal evidence representation is used where semantics are identical while persisted ContextFrame bytes and frame IDs remain unchanged.
@@ -229,6 +240,9 @@ work_packages:
   - id: AC03
     issue_number: 67
     title: Rationalize current contract vocabularies and isolate historical forms
+    status: accepted
+    accepted_on: 2026-07-16
+    decision_artifact: docs/decisions/architecture-consolidation/ac03-contract-ownership.json
     depends_on: [AC00]
     boundary: Gateway, decision, control, model, and historical vocabulary ownership.
     desired_invariant: Every current runtime concept has one documented canonical owner and production paths do not depend on historical or experimental implementation details.
@@ -338,6 +352,9 @@ work_packages:
   - id: AC06
     issue_number: 70
     title: Ratify the SQLite trusted-kernel boundary
+    status: accepted
+    accepted_on: 2026-07-16
+    decision_artifact: docs/decisions/architecture-consolidation/ac06-sqlite-kernel.json
     depends_on: [AC00]
     boundary: Conceptual event portability versus supported runtime-v1 storage implementation.
     desired_invariant: Documentation and code agree that SQLite is the trusted local kernel implementation until a second backend requirement is approved.

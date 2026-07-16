@@ -1,0 +1,70 @@
+{
+  "schema_version": "architecture-consolidation-decision/v1",
+  "work_package": "AC02",
+  "issue_number": 66,
+  "base_sha": "1a249d8aaa1f5f230c8492ab249ea06d255f24ee",
+  "decision": "accept",
+  "boundary": "state-to-context representations and implementation coupling",
+  "preserved_invariants": [
+    "context-frame-byte-identity",
+    "context-frame-id-identity",
+    "selection-and-omission-provenance",
+    "required-evidence-fail-closed-policy",
+    "unknown-conflict-and-freshness-semantics",
+    "deterministic-and-fts5-strategy-selection"
+  ],
+  "decisions": [
+    {
+      "subject": "feature SignalPacket, EvidenceSelection, and ContextFrame",
+      "decision": "retain",
+      "reason": "Each owns content-addressed lineage, disposition, omission, or persisted byte identity."
+    },
+    {
+      "subject": "build-context structural Like Protocol family",
+      "decision": "consolidate",
+      "reason": "The only production implementation is the feature-owned EvidenceSelection, so build_context now consumes that normalized record directly."
+    },
+    {
+      "subject": "deterministic and FTS5 objective matchers",
+      "decision": "retain",
+      "reason": "They are independently selectable strategies with distinct resource behavior behind EvidenceObjectiveMatcher."
+    },
+    {
+      "subject": "blackcell.context baselines and signal vocabulary",
+      "decision": "retain",
+      "reason": "They remain historical test and benchmark compatibility contracts and are isolated from current runtime imports."
+    }
+  ],
+  "before": {
+    "selection_boundary": "EvidenceSelectionLike plus candidate, omission, and claim-identity Protocols",
+    "production_selection_implementations": 1
+  },
+  "superseded_baseline_evidence": [
+    {
+      "path": "src/blackcell/features/build_context/ports.py",
+      "symbol": "class EvidenceSelectionLike",
+      "replacement": {
+        "path": "src/blackcell/features/retrieve_evidence/models.py",
+        "symbol": "class EvidenceSelection"
+      }
+    }
+  ],
+  "after": {
+    "selection_boundary": "blackcell.features.retrieve_evidence.models.EvidenceSelection",
+    "feature_dependency": "build_context -> retrieve_evidence",
+    "removed_protocol_module": "src/blackcell/features/build_context/ports.py"
+  },
+  "explicitly_unchanged": [
+    "serialized ContextFrame bytes and frame IDs",
+    "SignalPacket and EvidenceSelection schemas and identities",
+    "retrieval ranking, required evidence, omissions, unknowns, conflicts, and freshness",
+    "DailyOperatorV2 event and artifact grammar"
+  ],
+  "explicitly_changed": [
+    "The internal blackcell.features.build_context.ports Like Protocol family is retired; build_context consumes the feature-owned EvidenceSelection directly."
+  ],
+  "verification": {
+    "focused": "uv run pytest -q tests/unit/test_context_pipeline_features.py tests/unit/test_context_frame_store.py tests/unit/test_fts5_evidence_retriever.py tests/architecture/test_dependencies.py",
+    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing"
+  }
+}

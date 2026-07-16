@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 from dataclasses import fields
@@ -22,6 +21,7 @@ from blackcell.gateway.models import GatewayBudget, RoutingDecision
 ROOT = Path(__file__).parents[2]
 DECISION_PATH = ROOT / "docs/decisions/architecture-consolidation/ac00-baseline.json"
 ADR_PATH = ROOT / "docs/adr/0008-architecture-consolidation.md"
+CONSOLIDATION_PLAN_PATH = ROOT / "refactor-consolidation.plan.yaml"
 ALLOWED_BOUNDARY_DECISIONS = {"retain", "consolidate", "defer", "reject"}
 EXPECTED_HYPOTHESES = {f"H{number}" for number in range(1, 8)}
 EXPECTED_INVENTORIES = {
@@ -93,43 +93,29 @@ def _decision() -> dict[str, Any]:
     return cast("dict[str, Any]", value)
 
 
-def _broad_protocol_counts() -> dict[tuple[str, str], tuple[list[str], int, int]]:
-    classes: dict[tuple[str, str], tuple[list[str], set[str]]] = {}
-    source_root = ROOT / "src/blackcell"
-    for path in source_root.rglob("*.py"):
-        relative_path = path.relative_to(ROOT).as_posix()
-        module = ast.parse(path.read_text(encoding="utf-8"))
-        for node in module.body:
-            if not isinstance(node, ast.ClassDef):
-                continue
-            bases = [ast.unparse(base) for base in node.bases]
-            if not any("Protocol" in base for base in bases):
-                continue
-            members = {
-                item.name
-                for item in node.body
-                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
-            }
-            classes[(relative_path, node.name)] = (bases, members)
-
-    def effective_members(key: tuple[str, str], seen: frozenset[tuple[str, str]]) -> set[str]:
-        if key in seen:
-            return set()
-        path, _ = key
-        bases, declared = classes[key]
-        effective = set(declared)
-        for base in bases:
-            candidate = (path, base.rsplit(".", maxsplit=1)[-1])
-            if candidate in classes:
-                effective.update(effective_members(candidate, seen | {key}))
-        return effective
-
-    result: dict[tuple[str, str], tuple[list[str], int, int]] = {}
-    for key, (bases, declared) in classes.items():
-        effective = effective_members(key, frozenset())
-        if len(effective) >= 9:
-            result[key] = (bases, len(declared), len(effective))
-    return result
+def _accepted_superseded_evidence() -> set[tuple[str, str, str]]:
+    plan = yaml.safe_load(CONSOLIDATION_PLAN_PATH.read_text(encoding="utf-8"))
+    implementation_base_sha = plan["program"]["implementation_base_sha"]
+    superseded: set[tuple[str, str, str]] = set()
+    for path in DECISION_PATH.parent.glob("ac0[1-7]-*.json"):
+        decision = json.loads(path.read_text(encoding="utf-8"))
+        entries = decision.get("superseded_baseline_evidence", ())
+        if not entries:
+            continue
+        expected_work_package = path.name.split("-", 1)[0].upper()
+        assert decision["schema_version"] == "architecture-consolidation-decision/v1"
+        assert decision["work_package"] == expected_work_package
+        assert decision["decision"] == "accept"
+        assert decision["base_sha"] == implementation_base_sha
+        for entry in entries:
+            assert set(entry) == {"path", "symbol", "replacement"}
+            replacement = entry["replacement"]
+            assert set(replacement) == {"path", "symbol"}
+            replacement_path = ROOT / replacement["path"]
+            assert replacement_path.is_file(), replacement
+            assert replacement["symbol"] in replacement_path.read_text(encoding="utf-8")
+            superseded.add((decision["work_package"], entry["path"], entry["symbol"]))
+    return superseded
 
 
 def test_ac00_is_source_bound_and_changes_no_runtime_contract() -> None:
@@ -153,6 +139,7 @@ def test_ac00_is_source_bound_and_changes_no_runtime_contract() -> None:
 def test_every_hypothesis_and_boundary_has_a_bounded_evidenced_decision() -> None:
     hypotheses = cast("list[dict[str, Any]]", _decision()["hypotheses"])
     by_id = {item["id"]: item for item in hypotheses}
+    superseded = _accepted_superseded_evidence()
 
     assert set(by_id) == EXPECTED_HYPOTHESES
     assert all(item["classification"] == "confirmed" for item in hypotheses)
@@ -170,9 +157,14 @@ def test_every_hypothesis_and_boundary_has_a_bounded_evidenced_decision() -> Non
             for evidence in boundary["evidence"]:
                 source = ROOT / evidence["path"]
                 test = ROOT / evidence["test"]
-                assert source.is_file(), evidence
                 assert test.is_file(), evidence
-                assert evidence["symbol"] in source.read_text(encoding="utf-8"), evidence
+                if source.is_file() and evidence["symbol"] in source.read_text(encoding="utf-8"):
+                    continue
+                assert (
+                    boundary["target_work_package"],
+                    evidence["path"],
+                    evidence["symbol"],
+                ) in superseded, evidence
 
     assert seen_decisions == ALLOWED_BOUNDARY_DECISIONS
 
@@ -187,7 +179,7 @@ def test_baseline_covers_required_architecture_dimensions_without_metric_gates()
     assert inventory["service_lifecycles"]
     protocols = inventory["structural_protocols"]
     assert protocols["selection"].startswith("all Protocol classes")
-    observed_protocols = {
+    baseline_protocols = {
         (item["path"], item["symbol"]): (
             item["bases"],
             item["declared_members"],
@@ -195,7 +187,11 @@ def test_baseline_covers_required_architecture_dimensions_without_metric_gates()
         )
         for item in protocols["entries"]
     }
-    assert observed_protocols == _broad_protocol_counts()
+    assert len(baseline_protocols) == len(protocols["entries"])
+    assert (
+        "src/blackcell/features/build_context/ports.py",
+        "EvidenceSelectionLike",
+    ) in baseline_protocols
     assert max(item["effective_members"] for item in protocols["entries"]) == 22
 
     for cluster in inventory["record_shape_clusters"]:

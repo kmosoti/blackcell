@@ -26,6 +26,15 @@ does not simulate maturity by requiring a distributed broker.
 
 The model gateway, persistence, retrieval, solvers, execution, telemetry, and HTTP server are edge
 adapters. Workflows coordinate feature ports. Only bootstrap code assembles concrete dependencies.
+For runtime-v1, SQLite schema, WAL, transaction, filesystem, append, integrity, and recovery
+behavior form the supported trusted local kernel; describing persistence as an edge does not promise
+an interchangeable storage backend.
+
+`blackcell.bootstrap.repository.compose_repository_runtime` is the repository runtime composition
+entry point. It constructs the kernel stores, journals, gateway, repository adapters, workflow,
+and replay handler, then injects them into the application facade. `RepositoryOperator` exposes
+product use cases rather than store attributes; HTTP and worker bootstrap receive their event and
+artifact capabilities explicitly from `RepositoryRuntimeComponents`.
 
 Architecture consolidation follows ADR 0008. A class, Protocol, package, DTO family, adapter seam,
 or application service is retained when direct evidence establishes independent authority,
@@ -33,6 +42,23 @@ failure, persistence, deployment, substitution, product-use-case, ownership, or 
 semantics. Binary dependency, composition, compatibility, and replay rules may fail CI; record
 similarity, Protocol breadth, module size, import breadth, constructor fan-in, and package co-change
 remain advisory and have no pass threshold.
+
+Current contract ownership is explicit:
+
+| Concept | Canonical owner | Boundary |
+| --- | --- | --- |
+| Live model admission and routing | `blackcell.gateway` | Pre-invocation policy and prepared calls |
+| Durable decision requests and attempts | `blackcell.features.request_decision` | Fenced, persisted model-call evidence |
+| Authorization, execution, and observation | `blackcell.control` | Authority-bearing action records |
+| Evidence selection | `blackcell.features.retrieve_evidence` | Content-addressed selection and omission semantics |
+| ContextFrame construction | `blackcell.features.build_context` | Persisted model-context bytes and identity |
+| Benchmark decision models | `blackcell.models` | Evaluation and CLI benchmark compatibility, not the live gateway |
+| Telemetry attribute values | `blackcell.telemetry` | Telemetry-local JSON-shaped values |
+| Historical context baselines | `blackcell.context` | Compatibility-only; current runtime paths may not import it |
+
+`build_context` consumes the concrete feature-owned `EvidenceSelection`; the former broad
+field-copying `EvidenceSelectionLike` family is not a substitution boundary. The deterministic and
+FTS5 objective matchers remain independently selectable behind the retrieval strategy port.
 
 ## Boundaries
 

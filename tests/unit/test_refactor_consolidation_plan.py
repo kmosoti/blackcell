@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, cast
 
@@ -11,12 +12,46 @@ BLACKCELL_PLAN_PATH = ROOT / "blackcell.plan.yaml"
 REQUIRED_DIMENSIONS = {"strategic", "logistics", "human", "risk", "assessment"}
 EXPECTED_WORK_PACKAGES = {f"AC0{number}" for number in range(8)}
 EXPECTED_ISSUE_NUMBERS = {f"AC0{number}": number + 64 for number in range(8)}
+DECISION_ROOT = ROOT / "docs/decisions/architecture-consolidation"
 
 
 def _plan() -> dict[str, Any]:
     value = yaml.safe_load(PLAN_PATH.read_text(encoding="utf-8"))
     assert isinstance(value, dict)
     return cast("dict[str, Any]", value)
+
+
+def _superseded_evidence() -> set[tuple[str, str, str]]:
+    plan = _plan()
+    implementation_base_sha = plan["program"]["implementation_base_sha"]
+    superseded: set[tuple[str, str, str]] = set()
+    for path in DECISION_ROOT.glob("ac0[1-7]-*.json"):
+        decision = json.loads(path.read_text(encoding="utf-8"))
+        entries = decision.get("superseded_baseline_evidence", ())
+        if not entries:
+            continue
+        assert decision["schema_version"] == "architecture-consolidation-decision/v1"
+        assert decision["work_package"] == path.name.split("-", 1)[0].upper()
+        assert decision["decision"] == "accept"
+        assert decision["base_sha"] == implementation_base_sha
+        for item in entries:
+            replacement = item["replacement"]
+            replacement_path = ROOT / replacement["path"]
+            assert replacement_path.is_file()
+            assert replacement["symbol"] in replacement_path.read_text(encoding="utf-8")
+            superseded.add((decision["work_package"], item["path"], item["symbol"]))
+    return superseded
+
+
+def _baseline_evidence_targets() -> dict[tuple[str, str], str]:
+    baseline_path = DECISION_ROOT / "ac00-baseline.json"
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    return {
+        (evidence["path"], evidence["symbol"]): boundary["target_work_package"]
+        for hypothesis in baseline["hypotheses"]
+        for boundary in hypothesis["decisions"]
+        for evidence in boundary["evidence"]
+    }
 
 
 def test_consolidation_plan_has_a_closed_program_contract() -> None:
@@ -28,6 +63,7 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
     assert program["branch"] == "refactor/consolidation"
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
+    assert program["implementation_base_sha"] == ("1a249d8aaa1f5f230c8492ab249ea06d255f24ee")
     assert "runtime-v1" in program["runtime_v1_context"]
     assert program["evidence_transition"]["runtime_v1_manifest"] == "historical-read-only"
     assert set(plan["planning_dimensions"]) == REQUIRED_DIMENSIONS
@@ -46,7 +82,13 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
         "title": "BlackCell",
         "status": {
             "epic": "In Progress",
-            "completed": {"AC00": "Done"},
+            "completed": {
+                "AC00": "Done",
+                "AC01": "Done",
+                "AC02": "Done",
+                "AC03": "Done",
+                "AC06": "Done",
+            },
             "active": {},
             "queued": "Todo",
         },
@@ -74,6 +116,8 @@ def test_every_work_package_has_direct_evidence_and_three_scenarios() -> None:
     plan = _plan()
     packages = cast("list[dict[str, Any]]", plan["work_packages"])
     by_id = {package["id"]: package for package in packages}
+    superseded = _superseded_evidence()
+    baseline_targets = _baseline_evidence_targets()
 
     assert set(by_id) == EXPECTED_WORK_PACKAGES
     assert len(by_id) == len(packages)
@@ -91,9 +135,15 @@ def test_every_work_package_has_direct_evidence_and_three_scenarios() -> None:
         for evidence in package["direct_evidence"]:
             path = ROOT / evidence["path"]
             test_path = ROOT / evidence["test"]
-            assert path.is_file(), evidence["path"]
             assert test_path.is_file(), evidence["test"]
-            assert evidence["symbol"] in path.read_text(encoding="utf-8")
+            if path.is_file() and evidence["symbol"] in path.read_text(encoding="utf-8"):
+                pass
+            else:
+                target = baseline_targets.get(
+                    (evidence["path"], evidence["symbol"]),
+                    package["id"],
+                )
+                assert (target, evidence["path"], evidence["symbol"]) in superseded
             assert evidence["observation"]
 
 
@@ -121,6 +171,11 @@ def test_work_package_dependencies_are_acyclic_and_backward_mapped() -> None:
     )
     assert (ROOT / by_id["AC00"]["adr"]).is_file()
     assert (ROOT / by_id["AC00"]["decision_artifact"]).is_file()
+    for package_id in ("AC01", "AC02", "AC03", "AC06"):
+        package = by_id[package_id]
+        assert package["status"] == "accepted"
+        assert package["accepted_on"].isoformat() == "2026-07-16"
+        assert (ROOT / package["decision_artifact"]).is_file()
     assert set(by_id["AC07"]["depends_on"]) == {
         "AC01",
         "AC02",
@@ -141,6 +196,7 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     assert program["branch"] == "refactor/consolidation"
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
+    assert program["implementation_base_sha"] == ("1a249d8aaa1f5f230c8492ab249ea06d255f24ee")
     assert program["plan"] == "refactor-consolidation.plan.yaml"
     assert program["planning_model"] == [
         "strategic",
@@ -155,7 +211,13 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     assert program["delivery_metadata"]["labels"]["documentation"] == ["AC00", "AC06"]
     assert program["delivery_metadata"]["project"]["status"] == {
         "epic": "In Progress",
-        "completed": {"AC00": "Done"},
+        "completed": {
+            "AC00": "Done",
+            "AC01": "Done",
+            "AC02": "Done",
+            "AC03": "Done",
+            "AC06": "Done",
+        },
         "active": {},
         "queued": "Todo",
     }
@@ -176,6 +238,9 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     assert (
         "--ignore=tests/unit/test_release_evidence.py"
         in program["verification"]["pre_ac00_full_gate"]
+    )
+    assert program["verification"]["pre_ac00_full_gate"].startswith(
+        "uv run python tools/run_pytest.py "
     )
     assert (
         program["verification"]["interim_full_gate"]

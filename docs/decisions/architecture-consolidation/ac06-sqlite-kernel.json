@@ -1,0 +1,40 @@
+{
+  "schema_version": "architecture-consolidation-decision/v1",
+  "work_package": "AC06",
+  "issue_number": 70,
+  "base_sha": "1a249d8aaa1f5f230c8492ab249ea06d255f24ee",
+  "decision": "accept",
+  "boundary": "SQLite as the trusted local runtime-v1 kernel implementation",
+  "preserved_invariants": [
+    "single-authoritative-immutable-event-ledger",
+    "content-addressed-integrity-verified-artifacts",
+    "atomic-append-and-transaction-validation",
+    "owner-only-filesystem-modes",
+    "wal-aware-capacity-and-recovery",
+    "restart-and-concurrency-semantics"
+  ],
+  "implementation": {
+    "supported_backend": "SQLite with local content-addressed artifact files",
+    "replaceability": "unsupported without a demonstrated second implementation or deployment requirement and a separate ADR",
+    "runtime_code_changed": false,
+    "database_schema_changed": false,
+    "dependency_closure_changed": false
+  },
+  "evidence": [
+    {"path": "src/blackcell/kernel/database.py", "symbol": "initialize_database, connect, _enable_wal"},
+    {"path": "src/blackcell/kernel/store.py", "symbol": "EventStore.append_many_in_transaction"},
+    {"path": "src/blackcell/kernel/artifacts.py", "symbol": "ArtifactStore.put_bytes"},
+    {"path": "tests/unit/test_kernel_database_concurrency.py", "symbol": "concurrent migration and WAL characterization"},
+    {"path": "tests/unit/test_kernel_events.py", "symbol": "atomic append and integrity characterization"},
+    {"path": "tests/unit/test_kernel_artifacts.py", "symbol": "artifact integrity and owner-only storage characterization"}
+  ],
+  "rejected": [
+    "speculative storage port hierarchy",
+    "interchangeable-backend documentation claims",
+    "runtime changes without an approved second-backend requirement"
+  ],
+  "verification": {
+    "focused": "uv run pytest -q tests/unit/test_docs_graph.py tests/unit/test_kernel_database_concurrency.py tests/unit/test_kernel_events.py tests/unit/test_kernel_artifacts.py",
+    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing"
+  }
+}

@@ -144,6 +144,7 @@ architecture_consolidation:
   branch: refactor/consolidation
   superseded_branch: refactor/architecture-consolidation
   base_ref: origin/main
+  implementation_base_sha: 1a249d8aaa1f5f230c8492ab249ea06d255f24ee
   plan: refactor-consolidation.plan.yaml
   parent_epic: "Epic: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries"
   merge_policy: Merge to main only after AC00 through AC07 meet their recorded acceptance criteria.
@@ -161,6 +162,10 @@ architecture_consolidation:
         epic: In Progress
         completed:
           AC00: Done
+          AC01: Done
+          AC02: Done
+          AC03: Done
+          AC06: Done
         active: {}
         queued: Todo
       type: refactor
@@ -178,8 +183,8 @@ architecture_consolidation:
       candidate_id_format: sha256:<canonical-source-materials-digest>
       sbom_policy: Regenerate only if the locked production dependency closure changes.
   verification:
-    pre_ac00_full_gate: uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
-    interim_full_gate: uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
+    pre_ac00_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
+    interim_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
     historical_runtime_v1_gate: expected-drift
   planning_model:
     - strategic
@@ -205,7 +210,7 @@ verification:
   - bash examples/runtime-v1/recorded-operator.sh
   - uv run ruff format --check .
   - uv run ruff check .
-  - uv run pytest --cov=blackcell --cov-report=term-missing
+  - uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing
   - uv run ty check
   - uv run blackcell operator run --model recorded --repo .
   - uv run blackcell operator replay

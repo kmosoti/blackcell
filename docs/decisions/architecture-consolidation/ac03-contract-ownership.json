@@ -1,0 +1,70 @@
+{
+  "schema_version": "architecture-consolidation-decision/v1",
+  "work_package": "AC03",
+  "issue_number": 67,
+  "base_sha": "1a249d8aaa1f5f230c8492ab249ea06d255f24ee",
+  "decision": "accept",
+  "boundary": "current, evaluation, and historical contract vocabulary ownership",
+  "preserved_invariants": [
+    "no-ambient-model-execution-authority",
+    "symbolic-authorization-before-execution",
+    "durable-decision-attempt-identity",
+    "stable-benchmark-cli-behavior",
+    "explicit-persisted-schema-versioning"
+  ],
+  "concept_owners": [
+    {"concept": "live model admission and routing", "owner": "blackcell.gateway", "status": "current-runtime"},
+    {"concept": "durable decision requests, routes, attempts, usage, responses, and failures", "owner": "blackcell.features.request_decision", "status": "current-runtime"},
+    {"concept": "authorization, execution, and outcome observation", "owner": "blackcell.control", "status": "current-runtime"},
+    {"concept": "benchmark decision models and action-proposal decoding", "owner": "blackcell.models", "status": "evaluation-contract"},
+    {"concept": "telemetry JSON-shaped attributes", "owner": "blackcell.telemetry", "status": "current-runtime"},
+    {"concept": "legacy context projection and baselines", "owner": "blackcell.context", "status": "historical-compatibility"}
+  ],
+  "decisions": [
+    {
+      "subject": "GatewayBudget versus DecisionBudget and route vocabulary",
+      "decision": "retain",
+      "reason": "Their adjacent classification encoding, live admission role, and durable decision-record identity differ; GatewayDecisionAdapter remains the explicit translation boundary."
+    },
+    {
+      "subject": "DecisionProposal versus ActionProposal",
+      "decision": "retain",
+      "reason": "Untrusted model output and authority-bearing policy input have different security and persistence semantics."
+    },
+    {
+      "subject": "legacy-canonical package classification",
+      "decision": "reject",
+      "reason": "Current runtime, evaluation, and historical compatibility ownership are now named independently."
+    },
+    {
+      "subject": "telemetry imports from benchmark model contracts",
+      "decision": "consolidate",
+      "reason": "Telemetry now owns its JSON-shaped attribute types and no longer imports blackcell.models."
+    }
+  ],
+  "hard_rules": [
+    "current runtime roots cannot import historical compatibility roots",
+    "current runtime roots cannot import blackcell.models benchmark implementations",
+    "feature cross-slice dependencies are explicit and limited to the declared context pipeline edge"
+  ],
+  "superseded_baseline_evidence": [
+    {
+      "path": "architecture/dependency_rules.json",
+      "symbol": "legacy-canonical",
+      "replacement": {
+        "path": "architecture/dependency_rules.json",
+        "symbol": "historical-compatibility"
+      }
+    }
+  ],
+  "explicitly_unchanged": [
+    "gateway and decision serialized values",
+    "durable decision journal records",
+    "ActionProposal and DecisionProposal schemas",
+    "benchmark CLI and evaluation behavior"
+  ],
+  "verification": {
+    "focused": "uv run pytest -q tests/architecture/test_dependencies.py tests/unit/test_gateway_decision_adapter.py tests/unit/test_telemetry_recorder.py tests/unit/test_otel_telemetry.py",
+    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing"
+  }
+}
