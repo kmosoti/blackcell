@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from blackcell.features.derive_signal_packet import DeriveSignalPacket, SignalPacketProjector
+from blackcell.features.derive_signal_packet import DeriveSignalPacket, project_signal_packet
 from blackcell.features.ingest_observation import (
     EvidencePointer,
     IngestObservation,
@@ -29,7 +29,7 @@ def test_signal_packet_summarizes_freshness_conflicts_and_provenance(tmp_path: P
     )
     state = OperationalStateProjector().replay(store.read_all())
 
-    packet = SignalPacketProjector().handle(
+    packet = project_signal_packet(
         DeriveSignalPacket("daily", NOW, stale_after_seconds=3_600), state
     )
 
@@ -76,10 +76,9 @@ def test_signal_packet_summarizes_freshness_conflicts_and_provenance(tmp_path: P
 def test_signal_packet_is_deterministic_and_empty_state_is_explicit(tmp_path: Path) -> None:
     state = OperationalStateProjector().replay(())
     command = DeriveSignalPacket("daily", NOW)
-    projector = SignalPacketProjector()
 
-    first = projector.handle(command, state)
-    second = projector.handle(command, state)
+    first = project_signal_packet(command, state)
+    second = project_signal_packet(command, state)
 
     assert first == second
     assert first.claims == first.conflicts == first.provenance_event_ids == ()
@@ -102,7 +101,7 @@ def test_signal_claim_identity_is_event_and_claim_composite(tmp_path: Path) -> N
         IngestObservation("observations:1", 0, "operator", "fixture", "run:1", (observation,))
     )
 
-    packet = SignalPacketProjector().handle(
+    packet = project_signal_packet(
         DeriveSignalPacket("daily", NOW),
         OperationalStateProjector().replay(store.read_all()),
     )

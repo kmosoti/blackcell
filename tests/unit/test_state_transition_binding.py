@@ -20,11 +20,11 @@ from blackcell.features.accept_state_transition import (
 from blackcell.features.authorize_action import (
     ACTION_PROPOSAL_MEDIA_TYPE,
     AUTHORIZATION_DECISION_MEDIA_TYPE,
-    ActionAuthorizer,
     ActionProposal,
     AffordancePolicy,
     AuthorizationOutcome,
     AuthorizeAction,
+    authorize_action,
     decode_action_proposal,
     decode_authorization_decision,
     encode_action_proposal,
@@ -1968,7 +1968,7 @@ def _scenario(
             ),
         },
     )
-    authorization = ActionAuthorizer().handle(
+    authorization = authorize_action(
         AuthorizeAction(
             proposal,
             policy,

@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from typing import Protocol, cast
 
 from blackcell.features.accept_state_transition import (
-    ACCEPTED_STATE_TRANSITION_MEDIA_TYPE,
-    ACCEPTED_STATE_TRANSITION_SCHEMA_VERSION,
     AcceptStateTransition,
     AuthorizationReference,
     EvaluationReference,
@@ -25,15 +22,14 @@ from blackcell.features.accept_state_transition import (
     TransitionEventReference,
     TransitionExecutionStatus,
     TransitionStateView,
-    decode_accepted_state_transition,
 )
 from blackcell.features.authorize_action import (
     ACTION_PROPOSAL_MEDIA_TYPE,
     AUTHORIZATION_DECISION_MEDIA_TYPE,
-    ActionAuthorizer,
     ActionProposal,
     AuthorizationDecision,
     AuthorizeAction,
+    authorize_action,
     decode_action_proposal,
     decode_authorization_decision,
 )
@@ -110,10 +106,8 @@ from blackcell.kernel import (
     ArtifactNotFoundError,
     ArtifactRef,
     EventEnvelope,
-    JsonInput,
     ProjectionCheckpoint,
 )
-from blackcell.kernel._json import bytes_digest, canonical_json_bytes
 from blackcell.workflows.daily_operator_v2_evidence import (
     DailyOperatorV2EvidenceError,
     rebuild_requested_context,
@@ -146,36 +140,31 @@ from blackcell.workflows.run_protocol import (
     OUTCOME_OBSERVED,
     OUTCOME_STATE_RECORDED,
     PROPOSAL_RECORDED,
-    RUN_COMPLETED,
-    RUN_FAILED,
-    RUN_FAILURE_MEDIA_TYPE,
-    RUN_FAILURE_SCHEMA_VERSION,
     RUN_STARTED,
-    RUN_TRACE_MEDIA_TYPE,
-    RUN_TRACE_SCHEMA_VERSION_V2,
     RUN_WORKFLOW,
     RUN_WORKFLOW_VERSION_V2,
-    STATE_TRANSITION_RECORDED,
-    TRACE_RECORDED,
-    RunOutcome,
     RunProtocolIntegrityError,
     RunProtocolVersion,
     run_stream_id,
 )
 from blackcell.workflows.run_protocol_v2 import V2_EVENT_PAYLOAD_FIELDS
 
-_SOURCE = "blackcell.workflows.daily_operator"
-_ARTIFACT_KEYS = frozenset(
-    {"digest", "media_type", "encoding", "size_bytes", "schema_version", "logical_id"}
+from ._state_transition_errors import StateTransitionBindingError, StateTransitionNotReady
+from ._state_transition_integrity import (
+    _Artifact,
+    _artifact,
+    _artifact_from_mapping,
+    _event,
+    _matches,
+    _named_artifact,
+    _prove_occurrence,
+    _required_occurrence,
+    _strings,
+    _text,
 )
+from ._state_transition_suffix import _verify_recorded_suffix
 
-
-class StateTransitionBindingError(ValueError):
-    """Immutable run evidence cannot prove the requested transition command."""
-
-
-class StateTransitionNotReady(RuntimeError):
-    """The run has not yet committed the evidence required for transition acceptance."""
+_SOURCE = "blackcell.workflows.daily_operator"
 
 
 class StateTransitionHistory(Protocol):
@@ -205,17 +194,6 @@ class StateTransitionArtifacts(Protocol):
 
 class StateTransitionAcceptancePort(Protocol):
     def handle(self, command: AcceptStateTransition) -> TransitionAcceptance: ...
-
-
-@dataclass(frozen=True, slots=True)
-class _Artifact:
-    digest: str
-    media_type: str
-    encoding: str | None
-    size_bytes: int
-    schema_version: str
-    logical_id: str
-    data: bytes
 
 
 def bind_and_accept_state_transition(
@@ -451,186 +429,6 @@ def _bind_command(
     return command
 
 
-def _verify_recorded_suffix(
-    run_id: str,
-    events: tuple[EventEnvelope, ...],
-    *,
-    command: AcceptStateTransition,
-    acceptance: TransitionAcceptance,
-    artifacts: StateTransitionArtifacts,
-) -> None:
-    by_type = {event.event_type: event for event in events}
-    transition_event = by_type.get(STATE_TRANSITION_RECORDED)
-    if transition_event is not None:
-        expected = acceptance.transition
-        if expected is None:
-            raise StateTransitionBindingError(
-                "recorded transition has no derived accepted transition"
-            )
-        link = _artifact(
-            transition_event,
-            artifacts=artifacts,
-            media_type=ACCEPTED_STATE_TRANSITION_MEDIA_TYPE,
-            schema_version=ACCEPTED_STATE_TRANSITION_SCHEMA_VERSION,
-        )
-        recorded = decode_accepted_state_transition(link.data)
-        _matches(
-            transition_event,
-            {
-                "transition_id": recorded.transition_id,
-                "initial_snapshot_digest": recorded.initial_state.snapshot_digest,
-                "outcome_snapshot_digest": recorded.outcome_state.snapshot_digest,
-                "evaluation_id": recorded.evaluation.evaluation_id,
-                "accepted_claim_ids": recorded.accepted_claim_ids,
-                "accepted_source_event_ids": recorded.accepted_source_event_ids,
-            },
-        )
-        if link.logical_id != recorded.transition_id or recorded != expected:
-            raise StateTransitionBindingError(
-                "recorded transition differs from derived accepted evidence"
-            )
-
-    trace_event = by_type.get(TRACE_RECORDED)
-    trace_link: _Artifact | None = None
-    if trace_event is not None:
-        trace_outcome = _text(trace_event.payload, "outcome")
-        if (
-            trace_outcome != RunOutcome.FAILED.value
-            and acceptance.transition is not None
-            and transition_event is None
-        ):
-            raise StateTransitionBindingError(
-                "completed trace omits its derived accepted transition"
-            )
-        trace_link = _artifact(
-            trace_event,
-            artifacts=artifacts,
-            media_type=RUN_TRACE_MEDIA_TYPE,
-            schema_version=RUN_TRACE_SCHEMA_VERSION_V2,
-        )
-        prior = tuple(
-            event for event in events if event.stream_sequence < trace_event.stream_sequence
-        )
-        expected_trace = {
-            "schema_version": RUN_TRACE_SCHEMA_VERSION_V2,
-            "run_id": run_id,
-            "run_stream_id": run_stream_id(run_id),
-            "outcome": trace_outcome,
-            "entries": _trace_entries(prior),
-        }
-        _matches(
-            trace_event,
-            {
-                "run_id": run_id,
-                "entry_count": len(prior),
-            },
-        )
-        if trace_link.logical_id != f"trace:{run_id}" or trace_link.data != canonical_json_bytes(
-            expected_trace
-        ):
-            raise StateTransitionBindingError("recorded trace differs from its exact run prefix")
-
-    terminal = next(
-        (event for event in events if event.event_type in {RUN_COMPLETED, RUN_FAILED}),
-        None,
-    )
-    if terminal is None:
-        return
-    if trace_event is None or trace_link is None:
-        raise StateTransitionBindingError("terminal run lacks its verified trace")
-    trace_outcome = _text(trace_event.payload, "outcome")
-    if terminal.event_type == RUN_COMPLETED:
-        material_outcome = _material_outcome(command)
-        _matches(
-            terminal,
-            {
-                "run_id": run_id,
-                "outcome": material_outcome.value,
-                "authorization_outcome": command.authorization.outcome.value,
-                "execution_status": (
-                    None if command.execution is None else command.execution.status.value
-                ),
-                "trace_artifact_digest": trace_link.digest,
-            },
-        )
-        if trace_outcome != material_outcome.value:
-            raise StateTransitionBindingError(
-                "completed trace outcome differs from derived run evidence"
-            )
-        return
-
-    _matches(
-        terminal,
-        {
-            "run_id": run_id,
-            "outcome": RunOutcome.FAILED.value,
-            "trace_artifact_digest": trace_link.digest,
-        },
-    )
-    if trace_outcome != RunOutcome.FAILED.value:
-        raise StateTransitionBindingError("failed terminal requires a failed trace")
-    failure_link = _artifact(
-        terminal,
-        artifacts=artifacts,
-        media_type=RUN_FAILURE_MEDIA_TYPE,
-        schema_version=RUN_FAILURE_SCHEMA_VERSION,
-    )
-    phase = _text(terminal.payload, "phase")
-    error_type = _text(terminal.payload, "error_type")
-    expected_failure = canonical_json_bytes(
-        {
-            "schema_version": RUN_FAILURE_SCHEMA_VERSION,
-            "run_id": run_id,
-            "phase": phase,
-            "error_type": error_type,
-        }
-    )
-    if failure_link.logical_id != f"failure:{run_id}" or failure_link.data != expected_failure:
-        raise StateTransitionBindingError("run failure artifact differs from its terminal event")
-
-
-def _material_outcome(command: AcceptStateTransition) -> RunOutcome:
-    execution_status = None if command.execution is None else command.execution.status.value
-    outcomes: Mapping[tuple[str, str | None], RunOutcome] = {
-        ("deny", None): RunOutcome.DENIED,
-        ("require-approval", None): RunOutcome.APPROVAL_REQUIRED,
-        ("allow", "succeeded"): RunOutcome.EXECUTED,
-        ("allow", "failed"): RunOutcome.EXECUTION_FAILED,
-        ("allow", "unknown"): RunOutcome.REQUIRES_RECONCILIATION,
-    }
-    try:
-        return outcomes[(command.authorization.outcome.value, execution_status)]
-    except KeyError as error:
-        raise StateTransitionBindingError(
-            "authorization/execution cannot produce a completed run outcome"
-        ) from error
-
-
-def _trace_entries(events: Sequence[EventEnvelope]) -> list[dict[str, JsonInput]]:
-    return [
-        {
-            "event_id": event.event_id,
-            "event_type": event.event_type,
-            "schema_version": event.schema_version,
-            "stream_sequence": event.stream_sequence,
-            "global_position": event.global_position,
-            "recorded_at": event.recorded_at.isoformat(),
-            "effective_at": event.effective_at.isoformat(),
-            "causation_id": event.causation_id,
-            "artifact_links": [
-                {
-                    "field": field,
-                    "digest": _text(cast("Mapping[str, object]", value), "digest"),
-                }
-                for field, value in sorted(event.payload.items())
-                if (field == "artifact" or field.endswith("_artifact"))
-                and isinstance(value, Mapping)
-            ],
-        }
-        for event in events
-    ]
-
-
 def _verify_run_occurrences(
     events: tuple[EventEnvelope, ...],
     *,
@@ -654,17 +452,6 @@ def _verify_run_occurrences(
         _verify_nested_artifact_links(event, artifacts)
     if positions != sorted(positions) or len(positions) != len(set(positions)):
         raise StateTransitionBindingError("run events do not advance in global ledger order")
-
-
-def _prove_occurrence(event: EventEnvelope, history: StateTransitionHistory) -> None:
-    if event.global_position is None:
-        raise StateTransitionBindingError("transition evidence is not a stored ledger occurrence")
-    loaded = history.get(event.event_id)
-    if loaded != event:
-        raise StateTransitionBindingError("event lookup does not prove the selected occurrence")
-    slot = tuple(history.read_all(after_position=event.global_position - 1, limit=1))
-    if len(slot) != 1 or slot[0] != event:
-        raise StateTransitionBindingError("event does not occupy its claimed global position")
 
 
 def _verify_nested_artifact_links(
@@ -1146,7 +933,7 @@ def _authorization(
         raise StateTransitionBindingError(
             "authorization record cannot precede authorization evaluation"
         )
-    replayed = ActionAuthorizer().handle(
+    replayed = authorize_action(
         AuthorizeAction(
             proposal,
             workflow_request.authorization_affordance,
@@ -1671,132 +1458,6 @@ def _evaluation_reference(
         ),
         evaluated_at=evaluation.evaluated_at,
     )
-
-
-def _artifact(
-    event: EventEnvelope,
-    *,
-    artifacts: StateTransitionArtifacts,
-    media_type: str,
-    schema_version: str | None,
-) -> _Artifact:
-    return _named_artifact(
-        event,
-        "artifact",
-        artifacts=artifacts,
-        media_type=media_type,
-        schema_version=schema_version,
-    )
-
-
-def _named_artifact(
-    event: EventEnvelope,
-    name: str,
-    *,
-    artifacts: StateTransitionArtifacts,
-    media_type: str,
-    schema_version: str | None,
-) -> _Artifact:
-    value = event.payload.get(name)
-    if not isinstance(value, Mapping):
-        label = "owner artifact" if name == "artifact" else f"{name} owner artifact"
-        raise StateTransitionBindingError(f"{event.event_type} lacks its {label} link")
-    link = _artifact_from_mapping(
-        cast("Mapping[str, object]", value),
-        artifacts=artifacts,
-        label=f"{event.event_type}.{name}",
-    )
-    if link.media_type != media_type or link.encoding != "utf-8":
-        raise StateTransitionBindingError(f"{event.event_type} artifact type is incompatible")
-    if schema_version is not None and link.schema_version != schema_version:
-        raise StateTransitionBindingError(f"{event.event_type} artifact schema is incompatible")
-    return link
-
-
-def _artifact_from_mapping(
-    value: Mapping[str, object],
-    *,
-    artifacts: StateTransitionArtifacts,
-    label: str,
-) -> _Artifact:
-    if frozenset(value) != _ARTIFACT_KEYS:
-        raise StateTransitionBindingError(f"{label} fields are not exact")
-    digest = _text(value, "digest")
-    media_type = _text(value, "media_type")
-    encoding_value = value.get("encoding")
-    if encoding_value is not None and (
-        not isinstance(encoding_value, str) or not encoding_value.strip()
-    ):
-        raise StateTransitionBindingError(f"{label} encoding is invalid")
-    size = value.get("size_bytes")
-    if isinstance(size, bool) or not isinstance(size, int) or size < 0:
-        raise StateTransitionBindingError(f"{label} size is invalid")
-    schema_version = _text(value, "schema_version")
-    logical_id = _text(value, "logical_id")
-    reference = artifacts.stat(digest)
-    if (
-        reference.digest != digest
-        or reference.size_bytes != size
-        or reference.media_type != media_type
-        or reference.encoding != encoding_value
-    ):
-        raise StateTransitionBindingError(f"{label} differs from persisted artifact metadata")
-    data = artifacts.get_bytes(digest, verify=True)
-    if len(data) != size or bytes_digest(data) != digest:
-        raise StateTransitionBindingError(f"{label} bytes do not match their content address")
-    return _Artifact(
-        digest,
-        media_type,
-        encoding_value,
-        size,
-        schema_version,
-        logical_id,
-        data,
-    )
-
-
-def _event(events: Mapping[str, EventEnvelope], event_type: str) -> EventEnvelope:
-    try:
-        return events[event_type]
-    except KeyError as error:
-        raise StateTransitionNotReady(f"run has not recorded {event_type}") from error
-
-
-def _required_occurrence(
-    history: StateTransitionHistory,
-    event_id: str,
-) -> EventEnvelope:
-    event = history.get(event_id)
-    if event is None:
-        raise StateTransitionBindingError(f"event {event_id!r} is absent from the ledger")
-    _prove_occurrence(event, history)
-    return event
-
-
-def _matches(event: EventEnvelope, expected: Mapping[str, object]) -> None:
-    mismatches = tuple(key for key, value in expected.items() if event.payload.get(key) != value)
-    if mismatches:
-        raise StateTransitionBindingError(
-            f"{event.event_type} payload differs from owner evidence: {', '.join(mismatches)}"
-        )
-
-
-def _text(value: Mapping[str, object], field: str) -> str:
-    item = value.get(field)
-    if not isinstance(item, str) or not item.strip():
-        raise StateTransitionBindingError(f"{field} must be a non-empty string")
-    return item
-
-
-def _strings(value: object, label: str) -> tuple[str, ...]:
-    if not isinstance(value, tuple | list):
-        raise StateTransitionBindingError(f"{label} must be an array")
-    result = tuple(value)
-    if any(not isinstance(item, str) or not item.strip() for item in result):
-        raise StateTransitionBindingError(f"{label} values must be non-empty strings")
-    if len(result) != len(set(result)):
-        raise StateTransitionBindingError(f"{label} values must be unique")
-    return cast("tuple[str, ...]", result)
 
 
 def _decision_affordance(request: DailyOperatorV2Request) -> DecisionAffordance:

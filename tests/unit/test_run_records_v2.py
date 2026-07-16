@@ -18,13 +18,13 @@ from blackcell.adapters.persistence.sqlite.run_records_v2 import (
 from blackcell.features.accept_state_transition import TransitionAcceptanceStatus
 from blackcell.features.authorize_action import (
     ActionArgument,
-    ActionAuthorizer,
     ActionProposal,
     AffordancePolicy,
     AuthorizeAction,
+    authorize_action,
 )
-from blackcell.features.build_context import BuildContext, ContextFrame, ContextFrameBuilder
-from blackcell.features.derive_signal_packet import DeriveSignalPacket, SignalPacketProjector
+from blackcell.features.build_context import BuildContext, ContextFrame, build_context_frame
+from blackcell.features.derive_signal_packet import DeriveSignalPacket, project_signal_packet
 from blackcell.features.evaluate_outcome import (
     EvaluateOutcome,
     EvaluationAuthorizationOutcome,
@@ -313,12 +313,12 @@ class RunFixture:
         )
         state = _project(self.events, initial_event.global_position, NOW)
         self.recorder.record_initial_state(RUN_ID, state)
-        packet = SignalPacketProjector().handle(self.request.signal, state)
+        packet = project_signal_packet(self.request.signal, state)
         selection = DeterministicEvidenceRetriever().handle(
             self.request.retrieval,
             packet,
         )
-        frame = ContextFrameBuilder().handle(self.request.context, selection)
+        frame = build_context_frame(self.request.context, selection)
         context_event = self.recorder.record_context(RUN_ID, frame)
         self.initial_state = state
         self.frame = frame
@@ -415,7 +415,7 @@ class RunFixture:
             frame,
         )
         self.recorder.record_constraints(RUN_ID, constraints)
-        authorization = ActionAuthorizer().handle(
+        authorization = authorize_action(
             AuthorizeAction(
                 proposal,
                 self.request.authorization_affordance,

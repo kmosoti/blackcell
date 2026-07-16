@@ -14,8 +14,8 @@ from blackcell.features.build_context.artifacts import (
 from blackcell.features.build_context.command import BuildContext
 from blackcell.features.build_context.handler import (
     ContextBudgetError,
-    ContextFrameBuilder,
     ContextSelectionMismatchError,
+    build_context_frame,
 )
 from blackcell.features.build_context.models import (
     ContextClaimIdentity,
@@ -51,7 +51,6 @@ __all__ = [
     "ContextEpistemicStatus",
     "ContextEvidence",
     "ContextFrame",
-    "ContextFrameBuilder",
     "ContextFrameConflictError",
     "ContextFrameIntegrityError",
     "ContextFrameSchemaError",
@@ -62,6 +61,7 @@ __all__ = [
     "ContextOmissionStage",
     "ContextSelectionMismatchError",
     "ContextUnknownReason",
+    "build_context_frame",
     "decode_context_frame",
     "encode_context_frame",
     "serialize_context_evidence",

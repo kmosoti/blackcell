@@ -4,8 +4,8 @@ from collections.abc import Sequence
 from dataclasses import replace
 from typing import Protocol
 
-from blackcell.features.build_context import ContextFrame, ContextFrameBuilder
-from blackcell.features.derive_signal_packet import SignalPacketProjector
+from blackcell.features.build_context import ContextFrame, build_context_frame
+from blackcell.features.derive_signal_packet import project_signal_packet
 from blackcell.features.ingest_observation.events import observation_events
 from blackcell.features.project_operational_state import OperationalBeliefState
 from blackcell.features.retrieve_evidence import DeterministicEvidenceRetriever
@@ -98,9 +98,9 @@ def rebuild_requested_context(
 ) -> ContextFrame:
     """Rebuild the deterministic state-to-context pipeline declared by the request."""
 
-    packet = SignalPacketProjector().handle(request.signal, state)
+    packet = project_signal_packet(request.signal, state)
     selection = DeterministicEvidenceRetriever().handle(request.retrieval, packet)
-    return ContextFrameBuilder().handle(request.context, selection)
+    return build_context_frame(request.context, selection)
 
 
 def _same_occurrence_semantics(actual: EventEnvelope, expected: EventEnvelope) -> bool:

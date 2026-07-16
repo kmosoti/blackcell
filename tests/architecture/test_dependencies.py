@@ -225,6 +225,18 @@ def test_runtime_paths_do_not_import_benchmark_model_implementations() -> None:
     assert not violations, _format(violations)
 
 
+def test_run_record_protocol_helpers_depend_on_artifact_helpers_one_way() -> None:
+    artifacts = "blackcell.adapters.persistence.sqlite._run_records_v2_artifacts"
+    protocol = "blackcell.adapters.persistence.sqlite._run_records_v2_protocol"
+    violations = [
+        edge
+        for edge in _imports()
+        if edge.importer == artifacts and edge.imported.startswith(protocol)
+    ]
+
+    assert not violations, _format(violations)
+
+
 def test_repository_runtime_composition_is_owned_by_bootstrap() -> None:
     rules = _load_json(RULES_PATH)
     composition_root = rules["composition_root"]

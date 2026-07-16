@@ -29,63 +29,60 @@ class ContextSelectionMismatchError(ValueError):
     pass
 
 
-class ContextFrameBuilder:
-    def handle(self, command: BuildContext, selection: EvidenceSelection) -> ContextFrame:
-        if selection.objective != command.objective:
-            raise ContextSelectionMismatchError(
-                "evidence selection objective does not match the ContextFrame objective"
-            )
-        state_effective_time = selection.state_effective_time
-        schema_version = (
-            "context-frame/v4"
-            if _requires_v4(selection, state_effective_time)
-            else "context-frame/v3"
+def build_context_frame(command: BuildContext, selection: EvidenceSelection) -> ContextFrame:
+    if selection.objective != command.objective:
+        raise ContextSelectionMismatchError(
+            "evidence selection objective does not match the ContextFrame objective"
         )
-        included: list[ContextEvidence] = []
-        omissions = [_retrieval_omission(item) for item in selection.omissions]
-        characters = 0
-        for candidate in selection.candidates:
-            evidence = _context_evidence(candidate)
-            size = len(serialize_context_evidence(evidence, schema_version=schema_version)) + int(
-                bool(included)
-            )
-            if characters + size > command.max_characters:
-                if "required" in candidate.reasons:
-                    raise ContextBudgetError(
-                        "required evidence exceeds the model-facing evidence-payload budget"
-                    )
-                omissions.append(
-                    _character_budget_omission(
-                        candidate,
-                        size,
-                    )
+    state_effective_time = selection.state_effective_time
+    schema_version = (
+        "context-frame/v4" if _requires_v4(selection, state_effective_time) else "context-frame/v3"
+    )
+    included: list[ContextEvidence] = []
+    omissions = [_retrieval_omission(item) for item in selection.omissions]
+    characters = 0
+    for candidate in selection.candidates:
+        evidence = _context_evidence(candidate)
+        size = len(serialize_context_evidence(evidence, schema_version=schema_version)) + int(
+            bool(included)
+        )
+        if characters + size > command.max_characters:
+            if "required" in candidate.reasons:
+                raise ContextBudgetError(
+                    "required evidence exceeds the model-facing evidence-payload budget"
                 )
-                continue
-            included.append(evidence)
-            characters += size
-        provenance = tuple(dict.fromkeys(item.source_event_id for item in included))
-        return ContextFrame(
-            task_id=command.task_id,
-            objective=command.objective,
-            generated_at=command.generated_at,
-            source_packet_id=selection.source_packet_id,
-            source_packet_purpose=selection.source_packet_purpose,
-            source_selection_id=selection.selection_id,
-            state_domain=selection.state_domain,
-            state_stream_id=selection.state_stream_id,
-            state_global_position=selection.state_global_position,
-            state_stream_position=selection.state_stream_position,
-            source_claim_identities=tuple(
-                ContextClaimIdentity(item.source_event_id, item.claim_id)
-                for item in selection.source_claim_identities
-            ),
-            evidence=tuple(included),
-            provenance_event_ids=provenance,
-            omissions=tuple(omissions),
-            model_payload_characters=characters,
-            schema_version=schema_version,
-            state_effective_time=state_effective_time,
-        )
+            omissions.append(
+                _character_budget_omission(
+                    candidate,
+                    size,
+                )
+            )
+            continue
+        included.append(evidence)
+        characters += size
+    provenance = tuple(dict.fromkeys(item.source_event_id for item in included))
+    return ContextFrame(
+        task_id=command.task_id,
+        objective=command.objective,
+        generated_at=command.generated_at,
+        source_packet_id=selection.source_packet_id,
+        source_packet_purpose=selection.source_packet_purpose,
+        source_selection_id=selection.selection_id,
+        state_domain=selection.state_domain,
+        state_stream_id=selection.state_stream_id,
+        state_global_position=selection.state_global_position,
+        state_stream_position=selection.state_stream_position,
+        source_claim_identities=tuple(
+            ContextClaimIdentity(item.source_event_id, item.claim_id)
+            for item in selection.source_claim_identities
+        ),
+        evidence=tuple(included),
+        provenance_event_ids=provenance,
+        omissions=tuple(omissions),
+        model_payload_characters=characters,
+        schema_version=schema_version,
+        state_effective_time=state_effective_time,
+    )
 
 
 def _context_evidence(candidate: EvidenceCandidate) -> ContextEvidence:

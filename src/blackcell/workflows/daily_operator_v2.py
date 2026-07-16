@@ -4,11 +4,11 @@ from dataclasses import replace
 from datetime import datetime
 
 from blackcell.features.authorize_action import (
-    ActionAuthorizer,
     ActionProposal,
     AuthorizationDecision,
     AuthorizationOutcome,
     AuthorizeAction,
+    authorize_action,
 )
 from blackcell.features.build_context import ContextFrame
 from blackcell.features.evaluate_outcome import (
@@ -105,7 +105,7 @@ class DailyOperatorV2Workflow:
         self._outcome_observer = outcome_observer
         self._outcome_evidence = outcome_evidence
         self._constraints = constraint_solver or DeterministicConstraintSolver()
-        self._authorization = ActionAuthorizer()
+        self._authorization = authorize_action
         self._evaluator = evaluator or OutcomeEvaluator()
         self._telemetry = telemetry or NullWorkflowTelemetry()
 
@@ -157,7 +157,7 @@ class DailyOperatorV2Workflow:
                 self._runs.record_constraints(request.run_id, constraints)
 
                 phase = "authorization"
-                authorization = self._authorization.handle(
+                authorization = self._authorization(
                     AuthorizeAction(
                         proposal,
                         request.authorization_affordance,

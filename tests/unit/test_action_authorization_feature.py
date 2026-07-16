@@ -5,11 +5,11 @@ import pytest
 
 from blackcell.features.authorize_action import (
     ActionArgument,
-    ActionAuthorizer,
     ActionProposal,
     AffordancePolicy,
     AuthorizationOutcome,
     AuthorizeAction,
+    authorize_action,
 )
 from blackcell.features.solve_constraints import (
     ConstraintEvaluation,
@@ -23,7 +23,7 @@ DEFINITION_DIGEST = f"sha256:{'0' * 64}"
 
 def test_symbolic_violation_denies_even_with_human_approval() -> None:
     evaluation = _evaluation(ConstraintOutcome.VIOLATED)
-    decision = ActionAuthorizer().handle(
+    decision = authorize_action(
         _command(approval=True),
         evaluation,
     )
@@ -36,8 +36,8 @@ def test_symbolic_violation_denies_even_with_human_approval() -> None:
 def test_unknown_state_denies_action_but_allows_evidence_gathering() -> None:
     unknown = _evaluation(ConstraintOutcome.UNKNOWN, evidence_event_id=None)
 
-    denied = ActionAuthorizer().handle(_command(), unknown)
-    evidence_action = ActionAuthorizer().handle(
+    denied = authorize_action(_command(), unknown)
+    evidence_action = authorize_action(
         _command(affordance=AffordancePolicy("inspect", True, evidence_action=True)),
         unknown,
     )
@@ -50,8 +50,8 @@ def test_mutating_action_requires_approval_then_allows() -> None:
     policy = AffordancePolicy("update", False, mutates_state=True)
     constraints = _evaluation(ConstraintOutcome.SATISFIED)
 
-    pending = ActionAuthorizer().handle(_command(affordance=policy), constraints)
-    approved = ActionAuthorizer().handle(_command(affordance=policy, approval=True), constraints)
+    pending = authorize_action(_command(affordance=policy), constraints)
+    approved = authorize_action(_command(affordance=policy, approval=True), constraints)
 
     assert pending.outcome is AuthorizationOutcome.REQUIRE_APPROVAL
     assert approved.outcome is AuthorizationOutcome.ALLOW
@@ -61,7 +61,7 @@ def test_authorization_binds_proposal_constraint_frame_action_and_policy() -> No
     command = _command()
     evaluation = _evaluation(ConstraintOutcome.SATISFIED)
 
-    decision = ActionAuthorizer().handle(command, evaluation)
+    decision = authorize_action(command, evaluation)
 
     assert decision.context_frame_id == command.proposal.context_frame_id
     assert decision.proposal_digest == command.proposal.proposal_digest
@@ -79,7 +79,7 @@ def test_constraint_evaluation_must_belong_to_the_proposal_context_frame() -> No
         NOW,
     )
 
-    decision = ActionAuthorizer().handle(command, evaluation)
+    decision = authorize_action(command, evaluation)
 
     assert decision.outcome is AuthorizationOutcome.DENY
     assert "constraint_context_mismatch" in {item.code for item in decision.findings}
@@ -97,7 +97,7 @@ def test_constraint_evaluation_cannot_be_relabelled_with_a_fresh_decision_time()
         evaluated_at,
     )
 
-    decision = ActionAuthorizer().handle(
+    decision = authorize_action(
         _command(),
         ConstraintEvaluation("frame:1", (proof,), evaluated_at),
     )
@@ -107,7 +107,6 @@ def test_constraint_evaluation_cannot_be_relabelled_with_a_fresh_decision_time()
 
 
 def test_empty_or_unrecognized_constraint_proofs_fail_closed() -> None:
-    authorizer = ActionAuthorizer()
     empty = InvalidEvaluation("frame:1", "evaluation:empty", NOW, ())
     invalid = InvalidEvaluation(
         "frame:1",
@@ -125,8 +124,8 @@ def test_empty_or_unrecognized_constraint_proofs_fail_closed() -> None:
         ),
     )
 
-    empty_decision = authorizer.handle(_command(), empty)
-    invalid_decision = authorizer.handle(_command(), invalid)
+    empty_decision = authorize_action(_command(), empty)
+    invalid_decision = authorize_action(_command(), invalid)
 
     assert empty_decision.outcome is AuthorizationOutcome.DENY
     assert "constraints_missing" in {item.code for item in empty_decision.findings}
@@ -145,7 +144,7 @@ def test_constraint_proof_evidence_must_belong_to_the_context_frame() -> None:
         NOW,
     )
 
-    decision = ActionAuthorizer().handle(
+    decision = authorize_action(
         _command(),
         ConstraintEvaluation("frame:1", (proof,), NOW),
     )
@@ -181,7 +180,7 @@ def test_citations_and_arguments_must_be_declared_in_context_and_affordance() ->
     )
     command = AuthorizeAction(proposal, policy, NOW, ("event:inside",))
 
-    decision = ActionAuthorizer().handle(
+    decision = authorize_action(
         command,
         _evaluation(ConstraintOutcome.SATISFIED, evidence_event_id="event:inside"),
     )

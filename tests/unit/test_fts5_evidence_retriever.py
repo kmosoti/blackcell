@@ -9,7 +9,7 @@ import pytest
 
 import blackcell.adapters.retrieval.fts5.adapter as fts5_adapter
 from blackcell.adapters.retrieval import Fts5EvidenceRetriever, Fts5RetrievalError
-from blackcell.features.build_context import BuildContext, ContextFrameBuilder
+from blackcell.features.build_context import BuildContext, build_context_frame
 from blackcell.features.derive_signal_packet import (
     SignalClaim,
     SignalConflict,
@@ -52,15 +52,13 @@ def test_fts5_matches_term_baseline_at_the_same_result_and_context_budgets() -> 
     assert term_selection.source_claim_identities == fts5_selection.source_claim_identities
     assert term_selection.candidates[0].reasons == ("objective-overlap",)
     assert fts5_selection.candidates[0].reasons == ("fts5-objective-match",)
-
-    builder = ContextFrameBuilder()
     unconstrained = tuple(
-        builder.handle(BuildContext("task:matched", query.objective, NOW), selection)
+        build_context_frame(BuildContext("task:matched", query.objective, NOW), selection)
         for selection in (term_selection, fts5_selection)
     )
     matched_budget = max(frame.model_payload_characters for frame in unconstrained)
     matched = tuple(
-        builder.handle(
+        build_context_frame(
             BuildContext(
                 "task:matched",
                 query.objective,
