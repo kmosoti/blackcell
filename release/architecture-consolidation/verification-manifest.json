@@ -6427,7 +6427,7 @@
           }
         },
         "schema_version": "architecture-consolidation-advisory/v1",
-        "source_sha": "48c4ca484a648657c942ad983595b99c15611189"
+        "source_sha": "6a978a4dfda645e42a7eb329fb8ab048868705d1"
       },
       "before": {
         "advisory_only": true,
@@ -12803,7 +12803,7 @@
       },
       "policy": "All six measurements are advisory; no value is a CI threshold."
     },
-    "advisory_sha256": "sha256:bed4a4a1ee6e0d9da316897e01892579e62b00581239b527d3cea82aca530746",
+    "advisory_sha256": "sha256:74b5a20261b2dc0f134ca12cd5bbbc701f503299e7b79c680a7cc98b52af275b",
     "binary_gate": {
       "path": "tests/architecture/test_dependencies.py",
       "test_count": 20,
@@ -12872,7 +12872,7 @@
       "component_count": 44,
       "sha256": "sha256:01999c1b5b3d551044b808d185e4845f61b6d07ce186aeaee5bf5b41029ccb1e"
     },
-    "source_sha": "48c4ca484a648657c942ad983595b99c15611189"
+    "source_sha": "6a978a4dfda645e42a7eb329fb8ab048868705d1"
   },
   "historical_runtime_v1": {
     "baseline_inventory_sha256": "sha256:9e0d4be7301074f06f2ff712d66d762895546c51de7ca266ea9ad99c17d946d5",
@@ -12880,18 +12880,18 @@
     "changed": false,
     "material_count": 12,
     "source_inventory_sha256": "sha256:9e0d4be7301074f06f2ff712d66d762895546c51de7ca266ea9ad99c17d946d5",
-    "source_sha": "48c4ca484a648657c942ad983595b99c15611189",
+    "source_sha": "6a978a4dfda645e42a7eb329fb8ab048868705d1",
     "status": "historical-read-only",
     "verification_claim_reused": false
   },
   "program": {
     "base_sha": "1a249d8aaa1f5f230c8492ab249ea06d255f24ee",
     "branch": "refactor/consolidation",
-    "candidate_id": "sha256:4594ba92028f6882437b36ebc0292d72dc85b59263e7be5b274675f40b0df8c8",
+    "candidate_id": "sha256:30922178e26644f31e3bed1c8f2250185e9d85ab9d747c64d909eb7533b29268",
     "issue_number": 71,
     "publication_performed": false,
-    "source_committed_at": "2026-07-16T14:41:23-05:00",
-    "source_sha": "48c4ca484a648657c942ad983595b99c15611189",
+    "source_committed_at": "2026-07-16T15:53:48-05:00",
+    "source_sha": "6a978a4dfda645e42a7eb329fb8ab048868705d1",
     "status": "evidence-complete-unpublished"
   },
   "schema_version": "architecture-consolidation-verification-manifest/v1",
@@ -13067,8 +13067,8 @@
       {
         "mode": "100644",
         "path": ".github/workflows/ci.yml",
-        "sha256": "sha256:320aa8ed9ade7a75a3cc7df9a22654ab0b8f4cf88b8c2280702d2fe24be5c761",
-        "size": 1253
+        "sha256": "sha256:577ad61ea54666eca02d2733ef1100c209e0d14b807a4bbaad6725a61ef96cb1",
+        "size": 1433
       },
       {
         "mode": "100644",
@@ -15011,8 +15011,8 @@
       {
         "mode": "100644",
         "path": "tests/unit/test_ci_workflow.py",
-        "sha256": "sha256:a8430f6a4e527b290a2179b073ed271b522966b1359f418a6aa7e0d2fc66601a",
-        "size": 2196
+        "sha256": "sha256:609aa2e5ef42156e12668365c06ef7391a7d8f583b32b30250e1a327810ed421",
+        "size": 3252
       },
       {
         "mode": "100644",
@@ -15549,7 +15549,7 @@
         "size": 135329
       }
     ],
-    "materials_digest": "sha256:4594ba92028f6882437b36ebc0292d72dc85b59263e7be5b274675f40b0df8c8",
+    "materials_digest": "sha256:30922178e26644f31e3bed1c8f2250185e9d85ab9d747c64d909eb7533b29268",
     "selection": "every git ls-tree blob at source_sha except excluded_outputs"
   },
   "verification": {
@@ -15572,7 +15572,7 @@
         "exit_code": 0,
         "id": "focused-architecture",
         "status": "pass",
-        "summary": "62 focused architecture, evidence, CI, release, and plan tests passed in 11.06 seconds, including checked-in replay."
+        "summary": "63 focused architecture, evidence, CI, release, and plan tests passed in 12.76 seconds."
       },
       {
         "argv": [
@@ -15629,7 +15629,7 @@
         "exit_code": 0,
         "id": "full-suite",
         "status": "pass",
-        "summary": "1326 tests passed, the separately gated Podman test skipped, and total coverage was 86.58% in 345.41 seconds; no test file was ignored."
+        "summary": "1327 passed, one explicitly environment-gated Podman test skipped, 14 existing SQLite ResourceWarnings, and 86.61 percent coverage exceeded the 86.0 percent floor in 387.96 seconds."
       },
       {
         "argv": [
@@ -15645,7 +15645,7 @@
         "exit_code": 0,
         "id": "rootless-podman",
         "status": "pass",
-        "summary": "The rootless Podman acceptance test passed in 33.82 seconds."
+        "summary": "The explicit rootless-Podman acceptance test passed in 40.96 seconds."
       }
     ],
     "status": "pass"
