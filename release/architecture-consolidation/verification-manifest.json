@@ -6427,7 +6427,7 @@
           }
         },
         "schema_version": "architecture-consolidation-advisory/v1",
-        "source_sha": "3b4e122f17c7cf5972bf43d51fd07813854e715c"
+        "source_sha": "48c4ca484a648657c942ad983595b99c15611189"
       },
       "before": {
         "advisory_only": true,
@@ -12803,7 +12803,7 @@
       },
       "policy": "All six measurements are advisory; no value is a CI threshold."
     },
-    "advisory_sha256": "sha256:c2a711e97e9099e15598c3d73adc78682505c538ed22301f99c29c11fc749075",
+    "advisory_sha256": "sha256:bed4a4a1ee6e0d9da316897e01892579e62b00581239b527d3cea82aca530746",
     "binary_gate": {
       "path": "tests/architecture/test_dependencies.py",
       "test_count": 20,
@@ -12872,7 +12872,7 @@
       "component_count": 44,
       "sha256": "sha256:01999c1b5b3d551044b808d185e4845f61b6d07ce186aeaee5bf5b41029ccb1e"
     },
-    "source_sha": "3b4e122f17c7cf5972bf43d51fd07813854e715c"
+    "source_sha": "48c4ca484a648657c942ad983595b99c15611189"
   },
   "historical_runtime_v1": {
     "baseline_inventory_sha256": "sha256:9e0d4be7301074f06f2ff712d66d762895546c51de7ca266ea9ad99c17d946d5",
@@ -12880,18 +12880,18 @@
     "changed": false,
     "material_count": 12,
     "source_inventory_sha256": "sha256:9e0d4be7301074f06f2ff712d66d762895546c51de7ca266ea9ad99c17d946d5",
-    "source_sha": "3b4e122f17c7cf5972bf43d51fd07813854e715c",
+    "source_sha": "48c4ca484a648657c942ad983595b99c15611189",
     "status": "historical-read-only",
     "verification_claim_reused": false
   },
   "program": {
     "base_sha": "1a249d8aaa1f5f230c8492ab249ea06d255f24ee",
     "branch": "refactor/consolidation",
-    "candidate_id": "sha256:f20f2dd38fff917169a2a711137c00b5ef2ca4826f7cbb26cfca3cc1f264fec5",
+    "candidate_id": "sha256:4594ba92028f6882437b36ebc0292d72dc85b59263e7be5b274675f40b0df8c8",
     "issue_number": 71,
     "publication_performed": false,
-    "source_committed_at": "2026-07-16T12:25:48-05:00",
-    "source_sha": "3b4e122f17c7cf5972bf43d51fd07813854e715c",
+    "source_committed_at": "2026-07-16T14:41:23-05:00",
+    "source_sha": "48c4ca484a648657c942ad983595b99c15611189",
     "status": "evidence-complete-unpublished"
   },
   "schema_version": "architecture-consolidation-verification-manifest/v1",
@@ -12906,7 +12906,7 @@
       "docs/decisions/architecture-consolidation/ac07-final-evidence.json",
       "release/architecture-consolidation/blackcell-architecture-consolidation.cdx.json"
     ],
-    "material_count": 439,
+    "material_count": 440,
     "materials": [
       {
         "mode": "100644",
@@ -13067,8 +13067,8 @@
       {
         "mode": "100644",
         "path": ".github/workflows/ci.yml",
-        "sha256": "sha256:ce05edde1d81926335dee55a65b68b7ad3b9ef1ef1b172804161e76b5af08c19",
-        "size": 745
+        "sha256": "sha256:320aa8ed9ade7a75a3cc7df9a22654ab0b8f4cf88b8c2280702d2fe24be5c761",
+        "size": 1253
       },
       {
         "mode": "100644",
@@ -13121,8 +13121,8 @@
       {
         "mode": "100644",
         "path": "blackcell.plan.yaml",
-        "sha256": "sha256:f8e8dbd18ece000ef01b8dd10d813e0d510d9ed629db268c79fc03ec1921d9c9",
-        "size": 7890
+        "sha256": "sha256:1adcacb1c1e6b25f0569ee43ebf5bd6daadfef46f56384cd37e73c54b8cdece5",
+        "size": 8690
       },
       {
         "mode": "100644",
@@ -13175,8 +13175,8 @@
       {
         "mode": "100644",
         "path": "docs/adr/0008-architecture-consolidation.md",
-        "sha256": "sha256:b9c93f1f75598b414ce98bf2b2172f11f1919e4ab8a110bfd3218d8dd8951675",
-        "size": 9664
+        "sha256": "sha256:08ec49fc3aeca1837bb2044ecb9a4231a6b7ca8ea870b69c681d8819d3d52de6",
+        "size": 10813
       },
       {
         "mode": "100644",
@@ -13577,8 +13577,8 @@
       {
         "mode": "100644",
         "path": "refactor-consolidation.plan.yaml",
-        "sha256": "sha256:878906a913b100be23ae1e277487f9ffa59c93a380824529627baa530405bf22",
-        "size": 25569
+        "sha256": "sha256:5ade5dc2af455d34a5dd7674cad87f0911035e5b7e68e9a521372d09c1abfc17",
+        "size": 27238
       },
       {
         "mode": "100644",
@@ -15005,8 +15005,14 @@
       {
         "mode": "100644",
         "path": "tests/unit/test_architecture_consolidation_evidence.py",
-        "sha256": "sha256:550e2d2eafbbe3c26d81df6f7829433650d781193607889e63e146f49d8f410b",
-        "size": 16151
+        "sha256": "sha256:e54c6346f7206f11056fbfe6af78da8af930524cbd1663a08c5981e7210f97ed",
+        "size": 18234
+      },
+      {
+        "mode": "100644",
+        "path": "tests/unit/test_ci_workflow.py",
+        "sha256": "sha256:a8430f6a4e527b290a2179b073ed271b522966b1359f418a6aa7e0d2fc66601a",
+        "size": 2196
       },
       {
         "mode": "100644",
@@ -15359,14 +15365,14 @@
       {
         "mode": "100644",
         "path": "tests/unit/test_refactor_consolidation_plan.py",
-        "sha256": "sha256:5d20d31ea08f21c6b556f5243c05f880edc08b788adfe544870309746e3d75a2",
-        "size": 10727
+        "sha256": "sha256:58d88db2924c9314651617625031bab28af8092ecfde93c685fc06a335e2d449",
+        "size": 12127
       },
       {
         "mode": "100644",
         "path": "tests/unit/test_release_evidence.py",
-        "sha256": "sha256:f686192cc544ee4b8320c28a533c96a58acd2099868adeca32dfb7cf0d9d9142",
-        "size": 10476
+        "sha256": "sha256:adf2dbfbd6b233473839eb18bd1c37957f010ed368f35286b930f035c37650d6",
+        "size": 11910
       },
       {
         "mode": "100644",
@@ -15521,8 +15527,8 @@
       {
         "mode": "100755",
         "path": "tools/architecture_consolidation_evidence.py",
-        "sha256": "sha256:ece3a75c1177c873c25b8c2c156b0da6c6485ccac5935014e9185470e4c8574d",
-        "size": 49680
+        "sha256": "sha256:d25e37dc5cc12a1c2b08b080e3010532577076c354d200eabb14c83a6b79ef93",
+        "size": 51974
       },
       {
         "mode": "100755",
@@ -15543,7 +15549,7 @@
         "size": 135329
       }
     ],
-    "materials_digest": "sha256:f20f2dd38fff917169a2a711137c00b5ef2ca4826f7cbb26cfca3cc1f264fec5",
+    "materials_digest": "sha256:4594ba92028f6882437b36ebc0292d72dc85b59263e7be5b274675f40b0df8c8",
     "selection": "every git ls-tree blob at source_sha except excluded_outputs"
   },
   "verification": {
@@ -15557,6 +15563,8 @@
           "tests/architecture/test_dependencies.py",
           "tests/unit/test_architecture_consolidation_evidence.py",
           "tests/unit/test_architecture_consolidation_decision.py",
+          "tests/unit/test_ci_workflow.py",
+          "tests/unit/test_release_evidence.py",
           "tests/unit/test_refactor_consolidation_plan.py",
           "-q"
         ],
@@ -15564,7 +15572,7 @@
         "exit_code": 0,
         "id": "focused-architecture",
         "status": "pass",
-        "summary": "46 passed; the one source-phase final-evidence reproduction test skipped before excluded outputs existed."
+        "summary": "62 focused architecture, evidence, CI, release, and plan tests passed in 11.06 seconds, including checked-in replay."
       },
       {
         "argv": [
@@ -15579,7 +15587,7 @@
         "exit_code": 0,
         "id": "ruff-format",
         "status": "pass",
-        "summary": "323 files were already formatted."
+        "summary": "Ruff confirmed all 324 files were formatted."
       },
       {
         "argv": [
@@ -15593,7 +15601,7 @@
         "exit_code": 0,
         "id": "ruff-check",
         "status": "pass",
-        "summary": "All lint and static import-hygiene checks passed."
+        "summary": "Ruff lint passed with no violations."
       },
       {
         "argv": [
@@ -15606,7 +15614,7 @@
         "exit_code": 0,
         "id": "types",
         "status": "pass",
-        "summary": "All type checks passed."
+        "summary": "ty type checking passed."
       },
       {
         "argv": [
@@ -15614,7 +15622,6 @@
           "run",
           "python",
           "tools/run_pytest.py",
-          "--ignore=tests/unit/test_release_evidence.py",
           "--cov=blackcell",
           "--cov-report=term-missing"
         ],
@@ -15622,7 +15629,7 @@
         "exit_code": 0,
         "id": "full-suite",
         "status": "pass",
-        "summary": "1310 passed, two expected pre-generation or environment-gated tests skipped, 14 existing SQLite ResourceWarnings, and 86.59 percent coverage exceeded the 86.0 percent floor."
+        "summary": "1326 tests passed, the separately gated Podman test skipped, and total coverage was 86.58% in 345.41 seconds; no test file was ignored."
       },
       {
         "argv": [
@@ -15638,7 +15645,7 @@
         "exit_code": 0,
         "id": "rootless-podman",
         "status": "pass",
-        "summary": "The explicit rootless-Podman acceptance test passed."
+        "summary": "The rootless Podman acceptance test passed in 33.82 seconds."
       }
     ],
     "status": "pass"

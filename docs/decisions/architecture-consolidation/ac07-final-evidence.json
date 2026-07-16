@@ -8,7 +8,7 @@
       "protocol_breadth",
       "record_similarity"
     ],
-    "report_sha256": "sha256:c2a711e97e9099e15598c3d73adc78682505c538ed22301f99c29c11fc749075",
+    "report_sha256": "sha256:bed4a4a1ee6e0d9da316897e01892579e62b00581239b527d3cea82aca530746",
     "thresholds": null
   },
   "architecture_fitness": {
@@ -59,7 +59,7 @@
   },
   "base_sha": "1a249d8aaa1f5f230c8492ab249ea06d255f24ee",
   "boundary": "binary architecture rules and advisory evolutionary-coupling evidence",
-  "candidate_id": "sha256:f20f2dd38fff917169a2a711137c00b5ef2ca4826f7cbb26cfca3cc1f264fec5",
+  "candidate_id": "sha256:4594ba92028f6882437b36ebc0292d72dc85b59263e7be5b274675f40b0df8c8",
   "decision": "accept",
   "dependency_closure": {
     "base": {
@@ -77,12 +77,12 @@
       "component_count": 44,
       "sha256": "sha256:01999c1b5b3d551044b808d185e4845f61b6d07ce186aeaee5bf5b41029ccb1e"
     },
-    "source_sha": "3b4e122f17c7cf5972bf43d51fd07813854e715c"
+    "source_sha": "48c4ca484a648657c942ad983595b99c15611189"
   },
   "evidence": {
     "manifest": "release/architecture-consolidation/verification-manifest.json",
     "manifest_schema": "architecture-consolidation-verification-manifest/v1",
-    "material_count": 439
+    "material_count": 440
   },
   "explicitly_unchanged": [
     "event grammar and artifact schemas",
@@ -102,7 +102,7 @@
     "runtime-v1-historical-evidence-immutability"
   ],
   "schema_version": "architecture-consolidation-decision/v1",
-  "source_sha": "3b4e122f17c7cf5972bf43d51fd07813854e715c",
+  "source_sha": "48c4ca484a648657c942ad983595b99c15611189",
   "verification": {
     "commands": [
       {
