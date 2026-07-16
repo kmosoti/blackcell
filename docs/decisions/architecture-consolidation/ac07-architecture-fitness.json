@@ -1,0 +1,208 @@
+{
+  "advisory": {
+    "measurements": {
+      "constructor_fan_in": {
+        "after": {
+          "observation_count": 449,
+          "top_observation": {
+            "production_call_sites": 188,
+            "symbol": "RunProtocolIntegrityError"
+          }
+        },
+        "before": {
+          "observation_count": 450,
+          "top_observation": {
+            "production_call_sites": 188,
+            "symbol": "RunProtocolIntegrityError"
+          }
+        },
+        "conclusion": "The recognized class set shrank by one while the largest call-site concentration was unchanged; no pass threshold applies.",
+        "method": "Count production call expressions whose terminal name matches a production class."
+      },
+      "import_breadth": {
+        "after": {
+          "maximum_distinct_roots": 10,
+          "module_count": 194,
+          "path": "src/blackcell/bootstrap/runtime_api.py"
+        },
+        "before": {
+          "maximum_distinct_roots": 9,
+          "module_count": 189,
+          "path": "src/blackcell/bootstrap/worker.py"
+        },
+        "conclusion": "Import breadth moved toward explicit bootstrap integration points; the increased maximum is advisory rather than a regression threshold.",
+        "method": "Count distinct imported blackcell top-level roots per production module."
+      },
+      "module_size": {
+        "after": {
+          "module_count": 218,
+          "run_records_v2_lines": 2019,
+          "state_transition_lines": 1516
+        },
+        "before": {
+          "module_count": 211,
+          "run_records_v2_lines": 2690,
+          "state_transition_lines": 1855
+        },
+        "conclusion": "The two ratified protocol hotspots became smaller while phase modules increased the total module count; neither count is a gate.",
+        "method": "Count physical UTF-8 source lines per production Python module."
+      },
+      "package_co_change": {
+        "after": {
+          "observation_count": 281,
+          "source_commits": 113,
+          "top_pair": {
+            "commits": 14,
+            "left": "adapters",
+            "right": "features"
+          }
+        },
+        "before": {
+          "observation_count": 279,
+          "source_commits": 110,
+          "top_pair": {
+            "commits": 13,
+            "left": "adapters",
+            "right": "features"
+          }
+        },
+        "conclusion": "The history window grew by three commits, so the small count increase does not establish greater causal coupling.",
+        "limitations": [
+          "history can contain broad migrations and removed package roots",
+          "co-change does not distinguish causal coupling from coordinated delivery",
+          "results are advisory and have no pass threshold"
+        ],
+        "method": "Count each unordered top-level src/blackcell package pair once per non-merge commit."
+      },
+      "protocol_breadth": {
+        "after": {
+          "maximum_effective_members": 16,
+          "observation_count": 73,
+          "symbol": "FeedbackRunRecorder"
+        },
+        "before": {
+          "maximum_effective_members": 22,
+          "observation_count": 76,
+          "symbol": "EvidenceOmissionLike"
+        },
+        "conclusion": "The broad field-copying context Protocol family was retired; remaining broad Protocols retain independent runtime responsibilities.",
+        "method": "Count declared and transitive same-module Protocol method members."
+      },
+      "record_similarity": {
+        "conclusion": "Field similarity remained unchanged because similar durable records with distinct ownership were intentionally retained.",
+        "method": "Compare declared annotated fields for the four AC00 record pairs.",
+        "observations": [
+          {
+            "after_jaccard_fraction": "4/4",
+            "before_jaccard_fraction": "4/4",
+            "records": ["GatewayBudget", "DecisionBudget"]
+          },
+          {
+            "after_jaccard_fraction": "6/9",
+            "before_jaccard_fraction": "6/9",
+            "records": ["RoutingDecision", "DecisionRoute"]
+          },
+          {
+            "after_jaccard_fraction": "6/12",
+            "before_jaccard_fraction": "6/12",
+            "records": ["DecisionProposal", "ActionProposal"]
+          },
+          {
+            "after_jaccard_fraction": "2/21",
+            "before_jaccard_fraction": "2/21",
+            "records": [
+              "blackcell.context.SignalPacket",
+              "blackcell.features.derive_signal_packet.SignalPacket"
+            ]
+          }
+        ]
+      }
+    },
+    "policy": "All six measurements are advisory; no value is a CI threshold.",
+    "provenance": {
+      "evidence_class": "embedded-static-observation",
+      "reproducibility": "Not asserted after retirement; remeasure the named methods against the then-current tree when a future decision needs current values.",
+      "retention": "Methods, observations, and conclusions are retained directly in this decision; branch-only commit and deleted-manifest references are intentionally omitted."
+    },
+    "thresholds": null
+  },
+  "architecture_fitness": {
+    "binary_gate": "tests/architecture/test_dependencies.py",
+    "required_rules": [
+      {
+        "id": "construction-confined-to-approved-owners",
+        "node_id": "tests/architecture/test_dependencies.py::test_concrete_runtime_construction_stays_at_approved_sites",
+        "test": "test_concrete_runtime_construction_stays_at_approved_sites"
+      },
+      {
+        "id": "production-isolated-from-compatibility-and-experiments",
+        "node_id": "tests/architecture/test_dependencies.py::test_production_runtime_does_not_import_compatibility_or_experiments",
+        "test": "test_production_runtime_does_not_import_compatibility_or_experiments"
+      },
+      {
+        "id": "operator-store-non-reach-through",
+        "node_id": "tests/architecture/test_dependencies.py::test_repository_runtime_composition_is_owned_by_bootstrap",
+        "test": "test_repository_runtime_composition_is_owned_by_bootstrap"
+      },
+      {
+        "id": "replay-isolated-from-live-paths",
+        "node_id": "tests/architecture/test_dependencies.py::test_replay_slice_cannot_reach_live_models_or_actions",
+        "test": "test_replay_slice_cannot_reach_live_models_or_actions"
+      }
+    ],
+    "selection_policy": "CI invokes every required rule by its exact pytest node ID; a missing or renamed node fails collection."
+  },
+  "boundary": "binary architecture rules and threshold-free advisory measurements",
+  "decision": "accept",
+  "explicitly_unchanged": [
+    "event grammar and artifact schemas",
+    "CLI and HTTP behavior",
+    "database schema and scheduler behavior",
+    "authority, replay, durability, and recovery semantics",
+    "runtime-v1 historical evidence"
+  ],
+  "issue_number": 71,
+  "preserved_invariants": [
+    "authoritative-event-ledger",
+    "artifact-integrity-and-identity",
+    "historical-live-free-replay",
+    "policy-before-execution",
+    "journaled-execution-and-reconciliation",
+    "scheduler-fencing-and-recovery",
+    "fail-closed-evidence-semantics",
+    "runtime-v1-historical-evidence-immutability"
+  ],
+  "schema_version": "architecture-consolidation-fitness-decision/v1",
+  "source_bound_candidate": {
+    "reason": "Project-wide source binding forced evidence reissuance after every ordinary change without an independent release or persisted-contract boundary.",
+    "replacement": "required status checks with non-skippable binary architecture tests and the complete maintained quality suite",
+    "retired": true,
+    "retired_paths": [
+      "release/architecture-consolidation/verification-manifest.json",
+      "tools/architecture_consolidation_evidence.py",
+      "tests/unit/test_architecture_consolidation_evidence.py",
+      "docs/decisions/architecture-consolidation/ac07-final-evidence.json"
+    ]
+  },
+  "verification_policy": {
+    "forbidden_bypasses": [
+      "continue-on-error",
+      "conditional-full-suite",
+      "ignored-release-tests",
+      "missing-or-deselected-required-architecture-node",
+      "mutable-action-tags",
+      "skipped-or-xfailed-architecture-rule"
+    ],
+    "required_gates": [
+      "locked-dependency-sync",
+      "ruff-format",
+      "ruff-lint",
+      "ty",
+      "full-no-ignore-pytest-coverage",
+      "architecture-fitness-exact-node-selection",
+      "architecture-fitness-no-skip-or-xfail",
+      "required-status-checks"
+    ]
+  },
+  "work_package": "AC07"
+}

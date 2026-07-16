@@ -18,6 +18,9 @@ edges:
 
 Status: accepted
 
+Amended: 2026-07-16 — AC07 source-bound candidate issuance retired; architecture fitness remains
+enforced through ordinary protected-branch CI.
+
 ## Context
 
 Runtime-v1 has accepted authority, provenance, replay, durability, recovery, security, and static
@@ -122,7 +125,7 @@ Protocol breadth, module size, import breadth, constructor fan-in, and package c
 review evidence. They have no pass threshold and cannot justify a refactor without a source-level
 semantic finding.
 
-### Evidence identity
+### Evidence policy
 
 The runtime-v1 evidence bundle is historical and read-only. Every Git-tracked regular file below
 `docs/decisions/runtime-v1/` and `release/runtime-v1/` is part of that frozen inventory.
@@ -133,35 +136,29 @@ adding, removing, or changing a historical evidence file fails closed. Runtime-v
 behavior is exercised against a synthetic current fixture instead of falsely reproducing the
 frozen candidate from the refactored working tree.
 
-AC00 binds its baseline to the source SHA recorded in the decision artifact. It ratifies but does
-not issue the final consolidation candidate. AC07 will issue
-`release/architecture-consolidation/verification-manifest.json` with a candidate ID equal to the
-SHA-256 digest of a canonical material document. The positive material set is every Git tree entry
-of type `blob` returned by `git ls-tree -r -z --full-tree <source_sha>`, except the three generated
-outputs named below. Each record contains the normalized repository-relative path, Git mode,
-raw-blob byte size, and raw-blob SHA-256. Records are sorted by the UTF-8 bytes of `path`.
+AC00 remains the source-bound historical baseline for the decisions that started this program. Its
+candidate scheme is superseded by this amendment. The first AC07 implementation demonstrated that
+binding all repository materials to a consolidation candidate made every later source or workflow
+change require a new source commit, full verification run, manifest, decision, and evidence-only
+commit. That lifecycle was release ceremony without an independent publication, deployment,
+persisted-contract, or recovery boundary.
 
-The canonical document is
-`{"materials":[...],"schema_version":"architecture-consolidation-materials/v1"}`. AC07 encodes it
-with Python `json.dumps(..., ensure_ascii=True, sort_keys=True, separators=(",", ":"))`, appends one
-LF byte, encodes the result as UTF-8, and hashes those exact bytes. The excluded generated outputs
-are `release/architecture-consolidation/verification-manifest.json`,
-`docs/decisions/architecture-consolidation/ac07-final-evidence.json`, and
-`release/architecture-consolidation/blackcell-architecture-consolidation.cdx.json`. AC07 must ship a
-repository tool and tests that reproduce this selection, encoding, and digest from `source_sha`.
+AC07 therefore retains only the parts that earn ongoing enforcement:
 
-AC07 verification has two distinct modes. `verify` reconstructs the manifest and decision from the
-recorded source, requires that source to remain an ancestor of `HEAD`, and therefore rejects a
-squash or rebase that discards the evidence-bearing ancestry. `verify-current` also computes the
-candidate at `HEAD` and rejects every post-source material change except the three declared
-generated outputs. CI runs the latter while `refactor/consolidation` is the pull-request head; after
-an ancestry-preserving merge, source replay remains the historical gate and later unrelated main
-changes are not attributed to the consolidation candidate. CI must fetch full Git history, run the
-complete test suite without a release-test ignore, and never generate evidence.
+- deterministic binary rules remain in `tests/architecture/test_dependencies.py`;
+- threshold-free advisory conclusions remain in the static
+  `../decisions/architecture-consolidation/ac07-architecture-fitness.json` decision;
+- protected-branch CI selects every required architecture rule by its exact pytest node ID, rejects
+  missing, skipped, or xfailed rules, and runs locked dependency setup, formatting, lint, types,
+  and the complete no-ignore coverage suite;
+- CI never generates project evidence and does not bind ordinary source changes to a candidate;
+- repository-approved merge methods are acceptable after required status checks and any enabled
+  review or conversation policy pass.
 
-If the locked production dependency closure is unchanged, AC07 records that fact and does not
-invent a new SBOM. A changed production closure requires a regenerated SBOM. Historical evidence
-may be cited as foundation context but never reported as verification of the refactored source.
+The architecture-consolidation manifest, generator, replay/freshness modes, conditional SBOM, and
+merge-commit-only rule are retired. This does not supersede or regenerate runtime-v1 historical
+evidence. A future release or dependency-closure decision must establish its own independently
+approved evidence contract rather than inheriting AC07 ceremony.
 
 ## Consequences
 
@@ -169,12 +166,10 @@ may be cited as foundation context but never reported as verification of the ref
   on `refactor/consolidation`.
 - Identity-bearing and durable contracts can outlive implementation consolidation.
 - Retaining a boundary is a valid outcome when evidence establishes its independent semantics.
-- AC07 can compare the frozen baseline with final source without turning advisory measurements into
-  architecture objectives.
-- Architecture-consolidation work receives a new candidate identity only after its source and
-  complete verification evidence exist.
-- PR 72 must use a merge commit. Squash or rebase stops delivery unless AC07 is verified and
-  reissued from the actual resulting main source.
+- AC07 keeps binary architecture checks and threshold-free advisory conclusions without treating
+  the repository as a release candidate.
+- Architecture-consolidation changes use the same protected-branch checks and review policy as
+  other maintained source changes.
 
 ## Rejected alternatives
 
@@ -185,3 +180,4 @@ may be cited as foundation context but never reported as verification of the ref
 - merging model proposal, policy, authorization, execution, observation, evaluation, and accepted
   transition contracts because their fields look similar;
 - silently inheriting runtime-v1 release evidence for architecture-consolidation source.
+- reissuing project-wide source evidence after every ordinary change.

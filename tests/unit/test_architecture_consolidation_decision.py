@@ -20,10 +20,31 @@ from blackcell.gateway.models import GatewayBudget, RoutingDecision
 
 ROOT = Path(__file__).parents[2]
 DECISION_PATH = ROOT / "docs/decisions/architecture-consolidation/ac00-baseline.json"
+FITNESS_DECISION_PATH = (
+    ROOT / "docs/decisions/architecture-consolidation/ac07-architecture-fitness.json"
+)
 ADR_PATH = ROOT / "docs/adr/0008-architecture-consolidation.md"
 CONSOLIDATION_PLAN_PATH = ROOT / "refactor-consolidation.plan.yaml"
 ALLOWED_BOUNDARY_DECISIONS = {"retain", "consolidate", "defer", "reject"}
 EXPECTED_HYPOTHESES = {f"H{number}" for number in range(1, 8)}
+EXPECTED_REQUIRED_RULES = {
+    "construction-confined-to-approved-owners": (
+        "tests/architecture/test_dependencies.py::"
+        "test_concrete_runtime_construction_stays_at_approved_sites"
+    ),
+    "production-isolated-from-compatibility-and-experiments": (
+        "tests/architecture/test_dependencies.py::"
+        "test_production_runtime_does_not_import_compatibility_or_experiments"
+    ),
+    "operator-store-non-reach-through": (
+        "tests/architecture/test_dependencies.py::"
+        "test_repository_runtime_composition_is_owned_by_bootstrap"
+    ),
+    "replay-isolated-from-live-paths": (
+        "tests/architecture/test_dependencies.py::"
+        "test_replay_slice_cannot_reach_live_models_or_actions"
+    ),
+}
 EXPECTED_INVENTORIES = {
     "construction_sites",
     "service_lifecycles",
@@ -254,40 +275,65 @@ def test_runtime_v1_evidence_is_historical_and_byte_stable() -> None:
         assert hashlib.sha256(payload).hexdigest() == expected_digest
 
 
-def test_consolidation_candidate_scheme_is_the_immutable_ac07_source_contract() -> None:
-    candidate = _decision()["evidence_policy"]["architecture_consolidation"]
+def test_ac07_retires_source_bound_candidates_without_weakening_fitness() -> None:
+    decision = json.loads(FITNESS_DECISION_PATH.read_text(encoding="utf-8"))
 
-    assert candidate["status"] == "candidate-scheme-ratified-not-issued"
-    assert candidate["issuer_work_package"] == "AC07"
-    assert candidate["candidate_id_format"] == "sha256:<canonical-source-materials-digest>"
-    assert candidate["material_selection"].startswith("all git ls-tree")
-    assert candidate["material_fields"] == ["path", "mode", "size", "sha256"]
-    assert candidate["material_order"].endswith("ascending by UTF-8 bytes")
-    assert candidate["canonical_document"] == {
-        "schema_version": "architecture-consolidation-materials/v1",
-        "materials": "<path-sorted material records>",
+    assert decision["schema_version"] == "architecture-consolidation-fitness-decision/v1"
+    assert decision["work_package"] == "AC07"
+    assert decision["decision"] == "accept"
+    assert decision["source_bound_candidate"]["retired"] is True
+    advisory = decision["advisory"]
+    assert advisory["thresholds"] is None
+    assert advisory["policy"] == "All six measurements are advisory; no value is a CI threshold."
+    assert advisory["provenance"] == {
+        "evidence_class": "embedded-static-observation",
+        "reproducibility": (
+            "Not asserted after retirement; remeasure the named methods against the then-current "
+            "tree when a future decision needs current values."
+        ),
+        "retention": (
+            "Methods, observations, and conclusions are retained directly in this decision; "
+            "branch-only commit and deleted-manifest references are intentionally omitted."
+        ),
     }
-    assert "ensure_ascii=True" in candidate["canonical_encoding"]
-    assert candidate["digest_rule"].startswith("candidate_id is sha256:")
-    assert set(candidate["excluded_outputs"]) == {
-        "release/architecture-consolidation/verification-manifest.json",
-        "docs/decisions/architecture-consolidation/ac07-final-evidence.json",
-        "release/architecture-consolidation/blackcell-architecture-consolidation.cdx.json",
+    assert set(advisory["measurements"]) == {
+        "constructor_fan_in",
+        "import_breadth",
+        "module_size",
+        "package_co_change",
+        "protocol_breadth",
+        "record_similarity",
     }
-    assert "regenerate only" in candidate["sbom_policy"]
+    for measurement in advisory["measurements"].values():
+        assert measurement["method"]
+        assert measurement["conclusion"]
+    assert advisory["measurements"]["module_size"]["before"]["run_records_v2_lines"] == 2690
+    assert advisory["measurements"]["module_size"]["after"]["run_records_v2_lines"] == 2019
+    assert advisory["measurements"]["protocol_breadth"]["before"]["maximum_effective_members"] == 22
+    assert advisory["measurements"]["protocol_breadth"]["after"]["maximum_effective_members"] == 16
+    assert (
+        "architecture-fitness-no-skip-or-xfail" in decision["verification_policy"]["required_gates"]
+    )
+
+    architecture_tests = (ROOT / decision["architecture_fitness"]["binary_gate"]).read_text(
+        encoding="utf-8"
+    )
+    required_rules = decision["architecture_fitness"]["required_rules"]
+    assert {rule["id"]: rule["node_id"] for rule in required_rules} == EXPECTED_REQUIRED_RULES
+    for rule in required_rules:
+        assert rule["node_id"].endswith(f"::{rule['test']}")
+        assert f"def {rule['test']}" in architecture_tests
+
+    for relative_path in decision["source_bound_candidate"]["retired_paths"]:
+        assert not (ROOT / relative_path).exists(), relative_path
 
     plan = cast(
         "dict[str, Any]",
         yaml.safe_load((ROOT / "refactor-consolidation.plan.yaml").read_text(encoding="utf-8")),
     )
     ac07 = next(item for item in plan["work_packages"] if item["id"] == "AC07")
-    assert {
-        "blackcell.plan.yaml",
-        "refactor-consolidation.plan.yaml",
-        "release/architecture-consolidation",
-        "tools/architecture_consolidation_evidence.py",
-        "tests/unit/test_architecture_consolidation_evidence.py",
-    } <= set(ac07["scope"])
+    assert ac07["decision_artifact"] == FITNESS_DECISION_PATH.relative_to(ROOT).as_posix()
+    assert set(ac07["retired_paths"]) == set(decision["source_bound_candidate"]["retired_paths"])
 
 
 def test_adr_and_documentation_ratify_the_same_policy() -> None:
@@ -299,7 +345,8 @@ def test_adr_and_documentation_ratify_the_same_policy() -> None:
     assert "Status: accepted" in adr
     assert "Boundary-earning criteria" in adr
     assert "The runtime-v1 evidence bundle is historical and read-only." in adr
-    assert "release/architecture-consolidation/verification-manifest.json" in adr
+    assert "source-bound candidate issuance retired" in adr
+    assert "complete maintained quality gate" in architecture
     assert "adr/0008-architecture-consolidation" in architecture
     assert "adr/0008-architecture-consolidation.md" in index
     assert "adr/0008-architecture-consolidation" in decision_log
