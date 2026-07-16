@@ -83,6 +83,8 @@ EXPECTED_VERIFICATION_COMMANDS: tuple[JsonObject, ...] = (
             "tests/architecture/test_dependencies.py",
             "tests/unit/test_architecture_consolidation_evidence.py",
             "tests/unit/test_architecture_consolidation_decision.py",
+            "tests/unit/test_ci_workflow.py",
+            "tests/unit/test_release_evidence.py",
             "tests/unit/test_refactor_consolidation_plan.py",
             "-q",
         ],
@@ -97,7 +99,6 @@ EXPECTED_VERIFICATION_COMMANDS: tuple[JsonObject, ...] = (
             "run",
             "python",
             "tools/run_pytest.py",
-            "--ignore=tests/unit/test_release_evidence.py",
             "--cov=blackcell",
             "--cov-report=term-missing",
         ],
@@ -202,7 +203,13 @@ def _require_commit(repo_root: Path, source_sha: str) -> str:
     return resolved
 
 
-def _require_ancestor(repo_root: Path, ancestor: str, descendant: str) -> None:
+def _require_ancestor(
+    repo_root: Path,
+    ancestor: str,
+    descendant: str,
+    *,
+    error_message: str = "ratified implementation base is not an ancestor of the source commit",
+) -> None:
     try:
         completed = subprocess.run(
             ["git", "merge-base", "--is-ancestor", ancestor, descendant],
@@ -213,13 +220,27 @@ def _require_ancestor(repo_root: Path, ancestor: str, descendant: str) -> None:
     except OSError as error:
         raise ConsolidationEvidenceError("cannot validate Git ancestry") from error
     if completed.returncode == 1:
-        raise ConsolidationEvidenceError(
-            "ratified implementation base is not an ancestor of the source commit"
-        )
+        raise ConsolidationEvidenceError(error_message)
     if completed.returncode != 0:
         detail = os.fsdecode(completed.stderr).strip()
         suffix = f": {detail}" if detail else ""
         raise ConsolidationEvidenceError(f"cannot validate Git ancestry{suffix}")
+
+
+def _head_commit(repo_root: Path) -> str:
+    resolved = os.fsdecode(_run_git(repo_root, "rev-parse", "--verify", "HEAD^{commit}")).strip()
+    return _require_commit(repo_root, resolved)
+
+
+def _require_source_ancestor_of_head(repo_root: Path, source_sha: str) -> str:
+    head_sha = _head_commit(repo_root)
+    _require_ancestor(
+        repo_root,
+        source_sha,
+        head_sha,
+        error_message="recorded source commit is not an ancestor of HEAD",
+    )
+    return head_sha
 
 
 def _batch_blobs(repo_root: Path, object_ids: tuple[str, ...]) -> dict[str, bytes]:
@@ -1181,6 +1202,8 @@ def _verify(repo_root: Path) -> JsonObject:
     if not isinstance(program, dict) or not isinstance(verification, dict):
         raise ConsolidationEvidenceError("verification manifest is incomplete")
     source_sha = str(program.get("source_sha", ""))
+    _require_commit(repo_root, source_sha)
+    _require_source_ancestor_of_head(repo_root, source_sha)
     commands = verification.get("commands")
     if not isinstance(commands, list):
         raise ConsolidationEvidenceError("verification manifest has no command results")
@@ -1225,6 +1248,37 @@ def _verify(repo_root: Path) -> JsonObject:
     }
 
 
+def _verify_current(repo_root: Path) -> JsonObject:
+    replay = _verify(repo_root)
+    manifest = _read_json(repo_root / MANIFEST_PATH)
+    program = cast("JsonObject", manifest["program"])
+    recorded_source = cast("JsonObject", manifest["source"])
+    source_sha = str(program["source_sha"])
+    head_sha = _require_source_ancestor_of_head(repo_root, source_sha)
+    current = _source_candidate(repo_root, head_sha)
+
+    expected_exclusions = [path.as_posix() for path in EXCLUDED_OUTPUTS]
+    if recorded_source.get("excluded_outputs") != expected_exclusions:
+        raise ConsolidationEvidenceError("recorded candidate exclusions differ from policy")
+    if (
+        current["candidate_id"] != program.get("candidate_id")
+        or current["candidate_id"] != recorded_source.get("materials_digest")
+        or current["materials"] != recorded_source.get("materials")
+        or current["material_count"] != recorded_source.get("material_count")
+    ):
+        raise ConsolidationEvidenceError(
+            "current candidate contains non-evidence changes after the recorded source commit"
+        )
+    return {
+        "candidate_id": replay["candidate_id"],
+        "head_sha": head_sha,
+        "material_count": replay["material_count"],
+        "schema_version": "architecture-consolidation-evidence-result/v1",
+        "source_sha": source_sha,
+        "status": "pass",
+    }
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="action", required=True)
@@ -1238,6 +1292,8 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--verification-results", required=True, type=Path)
     verify = subparsers.add_parser("verify")
     verify.add_argument("--repo-root", type=Path, default=Path("."))
+    verify_current = subparsers.add_parser("verify-current")
+    verify_current.add_argument("--repo-root", type=Path, default=Path("."))
     return parser
 
 
@@ -1263,8 +1319,10 @@ def main(argv: list[str] | None = None) -> int:
                 arguments.source_sha,
                 arguments.verification_results.resolve(),
             )
-        else:
+        elif arguments.action == "verify":
             result = _verify(repo_root)
+        else:
+            result = _verify_current(repo_root)
     except (ConsolidationEvidenceError, OSError, ValueError) as error:
         print(
             json.dumps(

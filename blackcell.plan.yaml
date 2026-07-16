@@ -147,7 +147,7 @@ architecture_consolidation:
   implementation_base_sha: 1a249d8aaa1f5f230c8492ab249ea06d255f24ee
   plan: refactor-consolidation.plan.yaml
   parent_epic: "Epic: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries"
-  merge_policy: Merge to main only after AC00 through AC07 meet their recorded acceptance criteria.
+  merge_policy: PR 72 may merge to main only with a merge commit after AC00 through AC07 meet their recorded acceptance criteria; squash or rebase is a stop condition unless AC07 evidence is reissued from the actual main source.
   delivery_metadata:
     assignee: kmosoti
     labels:
@@ -177,7 +177,7 @@ architecture_consolidation:
     runtime_v1_manifest: historical-read-only
     observed_status: expected-drift-after-program-registration
     cause: blackcell.plan.yaml is a runtime-v1 release material and now declares the consolidation program.
-    resolution: AC00 ratified candidate identity and evidence reuse; AC07 issues consolidation evidence without changing historical runtime-v1 artifacts.
+    resolution: AC00 ratified a distinct candidate identity; AC07 issues consolidation evidence without changing or reusing historical runtime-v1 verification claims.
     baseline: docs/decisions/architecture-consolidation/ac00-baseline.json
     consolidation_candidate:
       status: evidence-complete-unpublished
@@ -187,11 +187,15 @@ architecture_consolidation:
       identity_location: The excluded manifest and decision record the exact source SHA and candidate ID.
       candidate_id_format: sha256:<canonical-source-materials-digest>
       sbom_policy: Regenerate only if the locked production dependency closure changes.
+      active_branch_freshness: verify-current rejects every post-source change except the three declared excluded outputs while refactor/consolidation is the pull-request head.
+      post_merge_lifecycle: After an ancestry-preserving merge, source replay remains the historical evidence gate; later unrelated main changes are not attributed to this candidate.
   verification:
     pre_ac00_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
     interim_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
-    final_evidence_gate: uv run python tools/architecture_consolidation_evidence.py verify --repo-root .
-    historical_runtime_v1_gate: expected-drift
+    final_full_gate: uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing
+    final_evidence_replay_gate: uv run python tools/architecture_consolidation_evidence.py verify --repo-root .
+    final_candidate_freshness_gate: uv run python tools/architecture_consolidation_evidence.py verify-current --repo-root .
+    historical_runtime_v1_gate: uv run python tools/run_pytest.py tests/unit/test_release_evidence.py -q
   planning_model:
     - strategic
     - logistics
@@ -214,7 +218,7 @@ architecture_consolidation:
 
 verification:
   - uv run python tools/architecture_consolidation_evidence.py verify --repo-root .
-  - uv run python tools/release_evidence.py verify --repo-root .
+  - uv run python tools/run_pytest.py tests/unit/test_release_evidence.py -q
   - bash examples/runtime-v1/recorded-operator.sh
   - uv run ruff format --check .
   - uv run ruff check .

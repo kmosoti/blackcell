@@ -5,7 +5,6 @@ import json
 import shutil
 import stat
 import subprocess
-import sys
 import tomllib
 from collections import deque
 from pathlib import Path
@@ -18,6 +17,11 @@ from tools import release_evidence
 ROOT = Path(__file__).parents[2]
 SBOM_PATH = ROOT / "release/runtime-v1/blackcell-runtime-v1.cdx.json"
 MANIFEST_PATH = ROOT / "release/runtime-v1/verification-manifest.json"
+AC00_BASELINE_SHA = "eb05e034f3e6bdcef83167df6dcfdc8a1eaf06f0"
+HISTORICAL_EVIDENCE_ROOTS = (
+    Path("docs/decisions/runtime-v1"),
+    Path("release/runtime-v1"),
+)
 
 
 def _json(path: Path) -> dict[str, Any]:
@@ -45,29 +49,61 @@ def _runtime_closure() -> tuple[set[str], set[str]]:
     return selected, direct
 
 
-def test_release_evidence_verifier_reproduces_canonical_bytes() -> None:
+def _synthetic_release_repository(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, Any]:
+    for relative in (
+        release_evidence.CONFIG_PATH,
+        Path("pyproject.toml"),
+        Path("uv.lock"),
+    ):
+        destination = repo / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, destination)
+    (repo / "README.md").write_text("synthetic runtime-v1 source\n", encoding="utf-8")
+    monkeypatch.setattr(
+        release_evidence,
+        "MATERIAL_FILES",
+        (
+            Path("README.md"),
+            Path("pyproject.toml"),
+            Path("uv.lock"),
+            release_evidence.CONFIG_PATH,
+        ),
+    )
+    monkeypatch.setattr(release_evidence, "MATERIAL_DIRECTORIES", ())
+    monkeypatch.setattr(
+        release_evidence,
+        "EXCLUDED_MATERIALS",
+        frozenset({release_evidence.SBOM_PATH, release_evidence.MANIFEST_PATH}),
+    )
+    monkeypatch.setattr(release_evidence, "EVIDENCE_PATHS", ())
+    return release_evidence._generate(repo)
+
+
+def _git_blob(revision: str, relative: Path) -> bytes:
     completed = subprocess.run(
-        [
-            sys.executable,
-            "tools/release_evidence.py",
-            "verify",
-            "--repo-root",
-            ".",
-        ],
+        ["git", "show", f"{revision}:{relative.as_posix()}"],
         cwd=ROOT,
         check=False,
         capture_output=True,
-        text=True,
-        timeout=30,
     )
+    assert completed.returncode == 0, completed.stderr.decode(errors="replace")
+    return completed.stdout
 
-    assert completed.returncode == 0, completed.stderr
-    result = json.loads(completed.stdout)
-    manifest = _json(MANIFEST_PATH)
-    assert result == {
-        "candidate_id": manifest["release"]["candidate_id"],
-        "component_count": manifest["scope"]["runtime_component_count_including_blackcell"],
-        "material_count": manifest["source"]["material_count"],
+
+def test_release_evidence_tool_reproduces_synthetic_canonical_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generated = _synthetic_release_repository(tmp_path, monkeypatch)
+    verified = release_evidence._verify(tmp_path)
+
+    assert verified == {
+        "candidate_id": generated["candidate_id"],
+        "component_count": generated["component_count"],
+        "material_count": 4,
         "schema_version": "runtime-v1-release-evidence-result/v1",
         "status": "pass",
     }
@@ -129,41 +165,15 @@ def test_release_material_modes_are_independent_of_checkout_umask(tmp_path: Path
 )
 def test_release_evidence_verifier_fails_closed_on_drift(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     drift_path: str,
 ) -> None:
-    manifest = _json(MANIFEST_PATH)
-    material_paths = [item["path"] for item in manifest["source"]["materials"]]
-    for relative in (
-        *material_paths,
-        "release/runtime-v1/blackcell-runtime-v1.cdx.json",
-        "release/runtime-v1/verification-manifest.json",
-    ):
-        source = ROOT / relative
-        destination = tmp_path / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+    _synthetic_release_repository(tmp_path, monkeypatch)
 
     drift = tmp_path / drift_path
     drift.write_bytes(drift.read_bytes() + b"\n")
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(tmp_path / "tools/release_evidence.py"),
-            "verify",
-            "--repo-root",
-            str(tmp_path),
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-
-    assert completed.returncode == 1
-    failure = json.loads(completed.stderr)
-    assert failure["schema_version"] == "runtime-v1-release-evidence-result/v1"
-    assert failure["status"] == "fail"
-    assert "drift" in failure["error"]
+    with pytest.raises(release_evidence.ReleaseEvidenceError, match="drift"):
+        release_evidence._verify(tmp_path)
 
 
 def test_cyclonedx_sbom_is_the_locked_runtime_dependency_closure() -> None:
@@ -195,7 +205,40 @@ def test_cyclonedx_sbom_is_the_locked_runtime_dependency_closure() -> None:
     assert {"pytest", "pytest-cov", "ruff", "ty", "hypothesis", "mutmut"}.isdisjoint(selected)
 
 
-def test_verification_manifest_binds_every_declared_material_and_output() -> None:
+def test_historical_runtime_v1_evidence_matches_the_ratified_ac00_inventory() -> None:
+    completed = subprocess.run(
+        [
+            "git",
+            "ls-tree",
+            "-r",
+            "--name-only",
+            AC00_BASELINE_SHA,
+            "--",
+            *(path.as_posix() for path in HISTORICAL_EVIDENCE_ROOTS),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    baseline_paths = tuple(Path(line) for line in completed.stdout.splitlines())
+    current_paths = tuple(
+        sorted(
+            relative
+            for root in HISTORICAL_EVIDENCE_ROOTS
+            for path in (ROOT / root).rglob("*")
+            if path.is_file() and not path.is_symlink()
+            for relative in (path.relative_to(ROOT),)
+        )
+    )
+
+    assert current_paths == baseline_paths
+    for relative in baseline_paths:
+        assert (ROOT / relative).read_bytes() == _git_blob(AC00_BASELINE_SHA, relative)
+
+
+def test_frozen_verification_manifest_is_canonical_and_binds_its_sbom() -> None:
     manifest = _json(MANIFEST_PATH)
     source = manifest["source"]
     materials = source["materials"]
@@ -209,15 +252,14 @@ def test_verification_manifest_binds_every_declared_material_and_output() -> Non
     assert "release/runtime-v1/blackcell-runtime-v1.cdx.json" not in paths
     assert "docs/decisions/runtime-v1/wp27-release-evidence.json" not in paths
     assert not any("__pycache__" in path or path.endswith(".pyc") for path in paths)
-
-    for item in materials:
-        path = ROOT / item["path"]
-        payload = path.read_bytes()
-        assert path.is_file() and not path.is_symlink()
-        expected_mode = "0755" if path.stat().st_mode & stat.S_IXUSR else "0644"
-        assert item["mode"] == expected_mode
-        assert item["size"] == len(payload)
-        assert item["sha256"] == _sha256(payload)
+    assert all(item["mode"] in {"0644", "0755"} for item in materials)
+    assert all(isinstance(item["size"], int) and item["size"] >= 0 for item in materials)
+    assert all(
+        isinstance(item["sha256"], str)
+        and len(item["sha256"]) == len("sha256:") + 64
+        and item["sha256"].startswith("sha256:")
+        for item in materials
+    )
 
     canonical_materials = (
         json.dumps(materials, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n"

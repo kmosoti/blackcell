@@ -8,12 +8,12 @@ program:
   superseded_branch: refactor/architecture-consolidation
   base_ref: origin/main
   implementation_base_sha: 1a249d8aaa1f5f230c8492ab249ea06d255f24ee
-  merge_policy: One final reviewed pull request merges this integration branch into main after AC00-AC07 close.
+  merge_policy: PR 72 uses a merge commit after AC00-AC07 close so the evidence source remains an ancestor of main; squash or rebase stops delivery unless evidence is reissued from the actual main source.
   runtime_v1_context: runtime-v1 evidence is available as foundational history, not the active program or architecture-consolidation evidence target.
   evidence_transition:
     runtime_v1_manifest: historical-read-only
     observed_status: expected-drift-after-program-registration
-    resolution: AC00 ratified consolidation candidate identity and evidence reuse; AC07 issues final source-bound evidence without changing historical runtime-v1 artifacts.
+    resolution: AC00 ratified a distinct consolidation candidate identity; AC07 issues final source-bound evidence without changing or reusing historical runtime-v1 verification claims.
     baseline: docs/decisions/architecture-consolidation/ac00-baseline.json
     consolidation_candidate:
       status: evidence-complete-unpublished
@@ -23,9 +23,14 @@ program:
       identity_location: The excluded manifest and decision record the exact source SHA and candidate ID.
       candidate_id_format: sha256:<canonical-source-materials-digest>
       sbom_policy: Regenerate only if the locked production dependency closure changes.
+      active_branch_freshness: verify-current rejects every post-source change except the three declared excluded outputs while refactor/consolidation is the pull-request head.
+      post_merge_lifecycle: After an ancestry-preserving merge, source replay remains the historical evidence gate; later unrelated main changes are not attributed to this candidate.
     pre_ac00_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
     interim_full_gate: uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
-    final_evidence_gate: uv run python tools/architecture_consolidation_evidence.py verify --repo-root .
+    final_full_gate: uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing
+    final_evidence_replay_gate: uv run python tools/architecture_consolidation_evidence.py verify --repo-root .
+    final_candidate_freshness_gate: uv run python tools/architecture_consolidation_evidence.py verify-current --repo-root .
+    historical_runtime_v1_gate: uv run python tools/run_pytest.py tests/unit/test_release_evidence.py -q
   thesis: Remove false boundaries while preserving real trust, time, persistence, and failure boundaries.
   success: A simpler modular monolith has explicit composition ownership, one canonical owner per current concept, and no regression of authority, replay, durability, recovery, CLI, or HTTP contracts.
 
@@ -70,6 +75,7 @@ planning_dimensions:
       - Public CLI or HTTP behavior must change.
       - A proposed simplification exposes an independent authority, failure, persistence, or recovery boundary.
       - Temporary compatibility cannot be removed in the same bounded package.
+      - PR 72 cannot use a merge commit that preserves the recorded source SHA as an ancestor of main.
   assessment:
     hard_metrics:
       - Repository runtime assembly stays at explicit approved construction sites; bootstrap remains the sole product composition root while resource-owning adapters retain only their owned kernel helpers.
@@ -407,10 +413,13 @@ work_packages:
     boundary: Binary architecture rules versus advisory evolutionary-coupling measurements.
     desired_invariant: CI fails only on unambiguous architecture violations and reports heuristic complexity without arbitrary class, line, or import thresholds.
     scope:
+      - .github/workflows/ci.yml
       - blackcell.plan.yaml
       - refactor-consolidation.plan.yaml
       - tests/architecture
       - tests/unit/test_architecture_consolidation_evidence.py
+      - tests/unit/test_ci_workflow.py
+      - tests/unit/test_release_evidence.py
       - architecture
       - docs/decisions/architecture-consolidation
       - release/architecture-consolidation
@@ -428,10 +437,16 @@ work_packages:
         symbol: 'legacy_roots'
         test: tests/architecture/test_dependencies.py
         observation: Existing debt tracking is precise but does not measure composition or semantic duplication.
+      - path: .github/workflows/ci.yml
+        symbol: 'fetch-depth: 0'
+        test: tests/unit/test_ci_workflow.py
+        observation: Source-bound replay requires complete history, while current-candidate freshness must stay inside the required quality job for this integration branch.
     acceptance:
       - Tests enforce composition ownership, compatibility isolation, facade non-reach-through, and replay live-path isolation.
       - Advisory reports cover record similarity, Protocol breadth, import breadth, co-change, module size, and constructor fan-in.
       - A tested repository tool selects every Git blob at the source SHA except the three ratified generated outputs and reproduces the canonical material-document digest.
+      - The required quality job runs the no-ignore full suite, replays source evidence, and rejects non-evidence changes after the recorded source while this branch is the pull-request head.
+      - Frozen runtime-v1 files match the AC00-ratified inventory, while current release-tool behavior is tested on a synthetic fixture rather than the refactored root.
       - The final project evidence identifies a source candidate and SBOM decision without changing historical runtime-v1 artifacts.
     stop_conditions:
       - A proposed hard rule cannot be expressed deterministically or would require arbitrary thresholds.

@@ -64,6 +64,8 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
     assert program["implementation_base_sha"] == ("1a249d8aaa1f5f230c8492ab249ea06d255f24ee")
+    assert "merge commit" in program["merge_policy"]
+    assert "squash or rebase" in program["merge_policy"]
     assert "runtime-v1" in program["runtime_v1_context"]
     assert program["evidence_transition"]["runtime_v1_manifest"] == "historical-read-only"
     assert set(plan["planning_dimensions"]) == REQUIRED_DIMENSIONS
@@ -249,6 +251,14 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
         ),
         "candidate_id_format": "sha256:<canonical-source-materials-digest>",
         "sbom_policy": ("Regenerate only if the locked production dependency closure changes."),
+        "active_branch_freshness": (
+            "verify-current rejects every post-source change except the three declared excluded "
+            "outputs while refactor/consolidation is the pull-request head."
+        ),
+        "post_merge_lifecycle": (
+            "After an ancestry-preserving merge, source replay remains the historical evidence "
+            "gate; later unrelated main changes are not attributed to this candidate."
+        ),
     }
     assert (
         "--ignore=tests/unit/test_release_evidence.py"
@@ -261,6 +271,23 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
         program["verification"]["interim_full_gate"]
         == (program["verification"]["pre_ac00_full_gate"])
     )
-    assert program["verification"]["final_evidence_gate"] == (
+    assert program["verification"]["final_full_gate"] == (
+        "uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing"
+    )
+    assert "--ignore" not in program["verification"]["final_full_gate"]
+    assert program["verification"]["final_evidence_replay_gate"] == (
         "uv run python tools/architecture_consolidation_evidence.py verify --repo-root ."
+    )
+    assert program["verification"]["final_candidate_freshness_gate"] == (
+        "uv run python tools/architecture_consolidation_evidence.py verify-current --repo-root ."
+    )
+    assert program["verification"]["historical_runtime_v1_gate"] == (
+        "uv run python tools/run_pytest.py tests/unit/test_release_evidence.py -q"
+    )
+    assert (
+        "uv run python tools/release_evidence.py verify --repo-root ." not in plan["verification"]
+    )
+    assert (
+        "uv run python tools/architecture_consolidation_evidence.py verify-current --repo-root ."
+        not in plan["verification"]
     )

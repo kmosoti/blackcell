@@ -127,8 +127,11 @@ semantic finding.
 The runtime-v1 evidence bundle is historical and read-only. Every Git-tracked regular file below
 `docs/decisions/runtime-v1/` and `release/runtime-v1/` is part of that frozen inventory.
 Architecture-consolidation work does not regenerate its candidate ID, verification manifest,
-decisions, release notes, release configuration, or SBOM. AC00 records and tests the exact path and
-SHA-256 inventory so adding, removing, or changing a historical evidence file fails closed.
+decisions, release notes, release configuration, or SBOM. The source SHA ratified by AC00 anchors
+the exact path and byte inventory, and current tests compare the frozen files with that Git tree so
+adding, removing, or changing a historical evidence file fails closed. Runtime-v1 release-tool
+behavior is exercised against a synthetic current fixture instead of falsely reproducing the
+frozen candidate from the refactored working tree.
 
 AC00 binds its baseline to the source SHA recorded in the decision artifact. It ratifies but does
 not issue the final consolidation candidate. AC07 will issue
@@ -147,6 +150,15 @@ are `release/architecture-consolidation/verification-manifest.json`,
 `release/architecture-consolidation/blackcell-architecture-consolidation.cdx.json`. AC07 must ship a
 repository tool and tests that reproduce this selection, encoding, and digest from `source_sha`.
 
+AC07 verification has two distinct modes. `verify` reconstructs the manifest and decision from the
+recorded source, requires that source to remain an ancestor of `HEAD`, and therefore rejects a
+squash or rebase that discards the evidence-bearing ancestry. `verify-current` also computes the
+candidate at `HEAD` and rejects every post-source material change except the three declared
+generated outputs. CI runs the latter while `refactor/consolidation` is the pull-request head; after
+an ancestry-preserving merge, source replay remains the historical gate and later unrelated main
+changes are not attributed to the consolidation candidate. CI must fetch full Git history, run the
+complete test suite without a release-test ignore, and never generate evidence.
+
 If the locked production dependency closure is unchanged, AC07 records that fact and does not
 invent a new SBOM. A changed production closure requires a regenerated SBOM. Historical evidence
 may be cited as foundation context but never reported as verification of the refactored source.
@@ -161,6 +173,8 @@ may be cited as foundation context but never reported as verification of the ref
   architecture objectives.
 - Architecture-consolidation work receives a new candidate identity only after its source and
   complete verification evidence exist.
+- PR 72 must use a merge commit. Squash or rebase stops delivery unless AC07 is verified and
+  reissued from the actual resulting main source.
 
 ## Rejected alternatives
 

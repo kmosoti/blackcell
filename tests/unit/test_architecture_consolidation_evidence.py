@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -311,6 +310,61 @@ def test_generated_manifest_and_decision_reproduce_from_source_commit(
     assert generated["sbom"] == (evidence.SBOM_PATH.as_posix() if changed_closure else None)
 
 
+def test_current_candidate_allows_only_excluded_evidence_after_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base_sha, baseline_sha, source_sha, results_path = _fixture_program(
+        tmp_path, changed_closure=False
+    )
+    monkeypatch.setattr(evidence, "AC00_BASELINE_SHA", baseline_sha)
+    monkeypatch.setattr(evidence, "IMPLEMENTATION_BASE_SHA", base_sha)
+    generated = evidence._generate(tmp_path, source_sha, results_path)
+    results_path.unlink()
+    evidence_sha = _commit(tmp_path, "excluded evidence outputs")
+
+    verified = evidence._verify_current(tmp_path)
+
+    assert verified == {
+        "candidate_id": generated["candidate_id"],
+        "head_sha": evidence_sha,
+        "material_count": generated["material_count"],
+        "schema_version": "architecture-consolidation-evidence-result/v1",
+        "source_sha": source_sha,
+        "status": "pass",
+    }
+
+    (tmp_path / "README.md").write_text("post-source drift\n", encoding="utf-8")
+    _commit(tmp_path, "non-evidence source drift")
+    with pytest.raises(
+        evidence.ConsolidationEvidenceError,
+        match="non-evidence changes after the recorded source commit",
+    ):
+        evidence._verify_current(tmp_path)
+
+
+def test_replay_verification_requires_source_preserving_ancestry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base_sha, baseline_sha, source_sha, results_path = _fixture_program(
+        tmp_path, changed_closure=False
+    )
+    monkeypatch.setattr(evidence, "AC00_BASELINE_SHA", baseline_sha)
+    monkeypatch.setattr(evidence, "IMPLEMENTATION_BASE_SHA", base_sha)
+    evidence._generate(tmp_path, source_sha, results_path)
+    results_path.unlink()
+    _commit(tmp_path, "evidence")
+    _git(tmp_path, "checkout", "--orphan", "rewritten")
+    _commit(tmp_path, "rewritten history")
+
+    with pytest.raises(
+        evidence.ConsolidationEvidenceError,
+        match="recorded source commit is not an ancestor of HEAD",
+    ):
+        evidence._verify(tmp_path)
+
+
 def test_verification_results_fail_closed_on_command_drift(tmp_path: Path) -> None:
     source_sha = "a" * 40
     path = tmp_path / "results.json"
@@ -419,30 +473,17 @@ def test_generation_rejects_historical_runtime_v1_drift(
         evidence._generate(tmp_path, tampered_sha, results_path)
 
 
-def test_checked_in_final_evidence_reproduces_when_issued() -> None:
-    if not MANIFEST_PATH.exists():
-        pytest.skip("AC07 source verification precedes excluded evidence generation")
-
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "tools/architecture_consolidation_evidence.py",
-            "verify",
-            "--repo-root",
-            ".",
-        ],
-        cwd=ROOT,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-
-    assert completed.returncode == 0, completed.stderr
-    result = json.loads(completed.stdout)
+def test_checked_in_final_evidence_binds_a_reachable_ancestral_source() -> None:
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     decision = json.loads(DECISION_PATH.read_text(encoding="utf-8"))
-    assert result["candidate_id"] == manifest["program"]["candidate_id"]
-    assert result["candidate_id"] == decision["candidate_id"]
-    assert result["status"] == "pass"
+    source_sha = manifest["program"]["source_sha"]
+    head_sha = evidence._require_source_ancestor_of_head(ROOT, source_sha)
+    candidate = evidence._source_candidate(ROOT, source_sha)
+
+    assert head_sha == _git(ROOT, "rev-parse", "HEAD")
+    assert candidate["candidate_id"] == manifest["program"]["candidate_id"]
+    assert candidate["candidate_id"] == decision["candidate_id"]
+    assert candidate["materials"] == manifest["source"]["materials"]
+    assert candidate["material_count"] == manifest["source"]["material_count"]
+    assert candidate["excluded_outputs"] == manifest["source"]["excluded_outputs"]
     assert SBOM_PATH.exists() is manifest["dependency_closure"]["changed"]
