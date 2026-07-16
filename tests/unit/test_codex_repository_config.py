@@ -322,6 +322,7 @@ def test_contract_validator_requires_verify_commands(
         ["uv", "run", "uv", "publish"],
         ["bash", "-c", "pytest"],
         ["python", "-c", "print('not a bounded check')"],
+        ["uv", "run", "python", "tools/not_a_test_runner.py"],
         ["git", "push", "origin", "main"],
     ),
 )
@@ -338,6 +339,24 @@ def test_contract_validator_rejects_unsafe_verification_commands(
 
     assert completed.returncode == 1
     assert "unsafe_verification" in _error_codes(payload)
+
+
+def test_contract_validator_accepts_repository_pytest_gate(
+    contract_tree: dict[str, Any],
+) -> None:
+    packet = contract_tree["packet"]
+    packet["verification_commands"] = [
+        {
+            "argv": ["uv", "run", "python", "tools/run_pytest.py", "-q"],
+            "reason": "Run tests with the repository's secure umask contract.",
+        }
+    ]
+    _write_json(contract_tree["packet_path"], packet)
+
+    completed, payload = _run_validator("worker-packet", contract_tree["packet_path"])
+
+    assert completed.returncode == 0
+    assert payload["valid"] is True
 
 
 def test_contract_validator_canonicalizes_symlink_scope(
