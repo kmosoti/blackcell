@@ -14,10 +14,10 @@ from blackcell.features.build_context.models import (
     ContextUnknownReason,
     serialize_context_evidence,
 )
-from blackcell.features.build_context.ports import (
-    EvidenceCandidateLike,
-    EvidenceOmissionLike,
-    EvidenceSelectionLike,
+from blackcell.features.retrieve_evidence.models import (
+    EvidenceCandidate,
+    EvidenceOmission,
+    EvidenceSelection,
 )
 
 
@@ -30,12 +30,12 @@ class ContextSelectionMismatchError(ValueError):
 
 
 class ContextFrameBuilder:
-    def handle(self, command: BuildContext, selection: EvidenceSelectionLike) -> ContextFrame:
+    def handle(self, command: BuildContext, selection: EvidenceSelection) -> ContextFrame:
         if selection.objective != command.objective:
             raise ContextSelectionMismatchError(
                 "evidence selection objective does not match the ContextFrame objective"
             )
-        state_effective_time = getattr(selection, "state_effective_time", None)
+        state_effective_time = selection.state_effective_time
         schema_version = (
             "context-frame/v4"
             if _requires_v4(selection, state_effective_time)
@@ -88,7 +88,7 @@ class ContextFrameBuilder:
         )
 
 
-def _context_evidence(candidate: EvidenceCandidateLike) -> ContextEvidence:
+def _context_evidence(candidate: EvidenceCandidate) -> ContextEvidence:
     return ContextEvidence(
         candidate.claim_id,
         candidate.subject,
@@ -108,11 +108,11 @@ def _context_evidence(candidate: EvidenceCandidateLike) -> ContextEvidence:
         candidate.conflicted,
         _epistemic_status(candidate),
         _unknown_reason(candidate),
-        getattr(candidate, "expires_at", None),
+        candidate.expires_at,
     )
 
 
-def _retrieval_omission(omission: EvidenceOmissionLike) -> ContextOmission:
+def _retrieval_omission(omission: EvidenceOmission) -> ContextOmission:
     return ContextOmission(
         subject=omission.subject,
         claim_id=omission.claim_id,
@@ -139,12 +139,12 @@ def _retrieval_omission(omission: EvidenceOmissionLike) -> ContextOmission:
         ),
         epistemic_status=_epistemic_status(omission),
         unknown_reason=_unknown_reason(omission),
-        expires_at=getattr(omission, "expires_at", None),
+        expires_at=omission.expires_at,
     )
 
 
 def _character_budget_omission(
-    candidate: EvidenceCandidateLike,
+    candidate: EvidenceCandidate,
     serialized_characters: int,
 ) -> ContextOmission:
     return ContextOmission(
@@ -172,17 +172,17 @@ def _character_budget_omission(
         ),
         epistemic_status=_epistemic_status(candidate),
         unknown_reason=_unknown_reason(candidate),
-        expires_at=getattr(candidate, "expires_at", None),
+        expires_at=candidate.expires_at,
     )
 
 
 def _requires_v4(
-    selection: EvidenceSelectionLike,
+    selection: EvidenceSelection,
     state_effective_time: datetime | None,
 ) -> bool:
     return (
         state_effective_time is not None
-        or getattr(selection, "schema_version", "evidence-selection/v4") == "evidence-selection/v5"
+        or selection.schema_version == "evidence-selection/v5"
         or any(
             _has_epistemic_extensions(item)
             for item in (*selection.candidates, *selection.omissions)
@@ -191,23 +191,23 @@ def _requires_v4(
 
 
 def _epistemic_status(
-    item: EvidenceCandidateLike | EvidenceOmissionLike,
+    item: EvidenceCandidate | EvidenceOmission,
 ) -> ContextEpistemicStatus:
-    return ContextEpistemicStatus(getattr(item, "epistemic_status", "observed"))
+    return ContextEpistemicStatus(item.epistemic_status)
 
 
 def _unknown_reason(
-    item: EvidenceCandidateLike | EvidenceOmissionLike,
+    item: EvidenceCandidate | EvidenceOmission,
 ) -> ContextUnknownReason | None:
-    value = getattr(item, "unknown_reason", None)
+    value = item.unknown_reason
     return None if value is None else ContextUnknownReason(value)
 
 
 def _has_epistemic_extensions(
-    item: EvidenceCandidateLike | EvidenceOmissionLike,
+    item: EvidenceCandidate | EvidenceOmission,
 ) -> bool:
     return (
         _epistemic_status(item) is not ContextEpistemicStatus.OBSERVED
         or _unknown_reason(item) is not None
-        or getattr(item, "expires_at", None) is not None
+        or item.expires_at is not None
     )

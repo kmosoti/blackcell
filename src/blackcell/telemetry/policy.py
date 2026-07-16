@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
-from blackcell.models import JsonObject, JsonValue
+from blackcell.telemetry.types import JsonObject, JsonValue
 
 _MAX_KEY_CHARS = 256
 
