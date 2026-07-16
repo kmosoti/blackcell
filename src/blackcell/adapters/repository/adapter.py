@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import subprocess
 from collections.abc import Callable, Mapping, Set
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -23,6 +22,7 @@ from blackcell.features.observe_outcome import (
 )
 from blackcell.gateway import AdapterResult, ModelCapability, ModelRequest
 from blackcell.kernel import ArtifactStore, JsonValue, new_event_id
+from blackcell.operator.status import RepositoryStatusPort, RepositoryStatusSnapshot
 
 REPOSITORY_STATUS_ADAPTER_ID = "repository-status"
 REPOSITORY_STATUS_CONTRACT_VERSION = "repository-status/v1"
@@ -39,41 +39,6 @@ Clock = Callable[[], datetime]
 
 class RepositoryStatusError(RuntimeError):
     """A bounded repository status read failed without exposing command output."""
-
-
-@dataclass(frozen=True, slots=True)
-class RepositoryStatusSnapshot:
-    valid: bool
-    clean: bool
-    entry_count: int
-    output_digest: str
-    observed_at: datetime
-
-    def __post_init__(self) -> None:
-        if self.entry_count < 0:
-            raise ValueError("repository status entry count must be non-negative")
-        if not self.output_digest.startswith("sha256:"):
-            raise ValueError("repository status output digest must be SHA-256")
-        if self.observed_at.tzinfo is None or self.observed_at.utcoffset() is None:
-            raise ValueError("repository status observation time must be timezone-aware")
-
-    def value_for(self, subject: str, predicate: str) -> bool:
-        key = (subject, predicate)
-        if key == ("repository", "git.valid"):
-            return self.valid
-        if key == ("repository", "git.clean"):
-            return self.clean
-        raise LookupError(f"repository status does not observe target {key!r}")
-
-    def manifest(self) -> dict[str, JsonValue]:
-        return {
-            "schema_version": REPOSITORY_STATUS_CONTRACT_VERSION,
-            "valid": self.valid,
-            "clean": self.clean,
-            "entry_count": self.entry_count,
-            "output_digest": self.output_digest,
-            "observed_at": self.observed_at.astimezone(UTC).isoformat(),
-        }
 
 
 class RepositoryStatusReader:
@@ -140,7 +105,7 @@ class RepositoryStatusExecutionAdapter:
     adapter_id = REPOSITORY_STATUS_ADAPTER_ID
     contract_version = REPOSITORY_STATUS_CONTRACT_VERSION
 
-    def __init__(self, reader: RepositoryStatusReader, artifacts: ArtifactStore) -> None:
+    def __init__(self, reader: RepositoryStatusPort, artifacts: ArtifactStore) -> None:
         self._reader = reader
         self._artifacts = artifacts
 
@@ -151,7 +116,9 @@ class RepositoryStatusExecutionAdapter:
     ) -> AdapterOutcome:
         _validate_invocation(invocation, definition)
         snapshot = self._reader.read()
-        reference = self._artifacts.put_json(snapshot.manifest())
+        reference = self._artifacts.put_json(
+            snapshot.manifest(schema_version=self.contract_version)
+        )
         return AdapterOutcome(
             success=snapshot.valid,
             output_digest=reference.digest,
@@ -173,7 +140,7 @@ class RepositoryStatusOutcomeObserver:
     observer_id = REPOSITORY_OUTCOME_OBSERVER_ID
     contract_version = REPOSITORY_OUTCOME_CONTRACT_VERSION
 
-    def __init__(self, reader: RepositoryStatusReader, artifacts: ArtifactStore) -> None:
+    def __init__(self, reader: RepositoryStatusPort, artifacts: ArtifactStore) -> None:
         self._reader = reader
         self._artifacts = artifacts
 
@@ -184,7 +151,9 @@ class RepositoryStatusOutcomeObserver:
         if unsupported:
             raise LookupError(f"repository outcome target is not supported: {unsupported!r}")
         snapshot = self._reader.read()
-        reference = self._artifacts.put_json(snapshot.manifest())
+        reference = self._artifacts.put_json(
+            snapshot.manifest(schema_version=REPOSITORY_STATUS_CONTRACT_VERSION)
+        )
         claims = tuple(
             OutcomeClaim(
                 claim_id=new_event_id(),
@@ -319,5 +288,8 @@ __all__ = [
     "RepositoryStatusExecutionAdapter",
     "RepositoryStatusOutcomeObserver",
     "RepositoryStatusReader",
-    "RepositoryStatusSnapshot",
+    "validated_git_directory",
 ]
+
+
+validated_git_directory = _validated_git_directory

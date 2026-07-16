@@ -10,6 +10,10 @@ from rich.table import Table
 
 from blackcell import __version__
 from blackcell.adapters.retrieval import Fts5EvidenceRetriever
+from blackcell.bootstrap.repository import (
+    compose_repository_runtime,
+    default_repository_database_path,
+)
 from blackcell.cli.output import OutputRenderer
 from blackcell.evaluation import (
     BenchmarkAggregate,
@@ -43,7 +47,6 @@ from blackcell.models import ActionProposal, CodexExecModel, DecisionModel
 from blackcell.operator import (
     DEFAULT_OBJECTIVE,
     CanonicalOperatorRunResult,
-    RepositoryOperator,
     StoredContextFrame,
 )
 
@@ -139,13 +142,13 @@ def operator_run(
     resolved_repo = repo.resolve()
     try:
         database = _operator_database(resolved_repo, db)
-        operator = RepositoryOperator(
+        operator = compose_repository_runtime(
             resolved_repo,
             database_path=database,
             artifact_root=artifacts,
             model=model,
             codex_model=codex_model,
-        )
+        ).operator
         result = operator.run(objective=objective, approval_granted=approval)
     except (KernelError, LookupError, OSError, RuntimeError, ValueError) as error:
         _fail(str(error))
@@ -170,7 +173,10 @@ def operator_state(
     try:
         database = _operator_database(resolved_repo, db)
         _require_database(database)
-        state = RepositoryOperator(resolved_repo, database_path=database).current_state()
+        state = compose_repository_runtime(
+            resolved_repo,
+            database_path=database,
+        ).operator.current_state()
     except (KernelError, LookupError, OSError, RuntimeError, ValueError) as error:
         _fail(str(error))
     _output().emit(state, rich=_operator_state_table(state))
@@ -200,11 +206,11 @@ def operator_context(
     try:
         database = _operator_database(resolved_repo, db)
         _require_database(database)
-        frame = RepositoryOperator(
+        frame = compose_repository_runtime(
             resolved_repo,
             database_path=database,
             artifact_root=artifacts,
-        ).context(run)
+        ).operator.context(run)
     except (KernelError, LookupError, OSError, RuntimeError, ValueError) as error:
         _fail(str(error))
     _output().emit(frame, rich=_operator_context_table(frame))
@@ -234,11 +240,11 @@ def operator_replay(
     try:
         database = _operator_database(resolved_repo, db)
         _require_database(database)
-        replay = RepositoryOperator(
+        replay = compose_repository_runtime(
             resolved_repo,
             database_path=database,
             artifact_root=artifacts,
-        ).replay(run)
+        ).operator.replay(run)
     except (KernelError, LookupError, OSError, RuntimeError, ValueError) as error:
         _fail(str(error))
     _output().emit(replay, rich=_operator_replay_table(replay))
@@ -713,7 +719,7 @@ def _extract_output_flags(tokens: str | Iterable[str]) -> tuple[list[str], bool,
 
 
 def _operator_database(repo: Path, database: Path | None) -> Path:
-    return database if database is not None else RepositoryOperator.default_database_path(repo)
+    return database if database is not None else default_repository_database_path(repo)
 
 
 def _require_database(database: Path) -> None:

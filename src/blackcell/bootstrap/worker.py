@@ -11,6 +11,7 @@ from typing import cast
 
 from blackcell.adapters.persistence.sqlite import SQLiteOrchestrationScheduler
 from blackcell.adapters.telemetry import RuntimeTelemetry
+from blackcell.bootstrap.repository import compose_repository_runtime
 from blackcell.bootstrap.role_dag import (
     EXECUTE_HANDLER,
     PLAN_HANDLER,
@@ -25,7 +26,7 @@ from blackcell.bootstrap.role_dag import (
 )
 from blackcell.config import RuntimeProcessConfig
 from blackcell.features.replay_run import ReplayClassification
-from blackcell.kernel import JsonInput
+from blackcell.kernel import ArtifactStore, JsonInput
 from blackcell.operator import DEFAULT_OBJECTIVE, RepositoryOperator
 from blackcell.operator.serialization import jsonable
 from blackcell.orchestration import (
@@ -90,14 +91,19 @@ class RuntimeWorker:
         scheduler: OrchestrationSchedulerPort,
         config: RuntimeProcessConfig,
         *,
+        artifacts: ArtifactStore,
         handlers: Mapping[str, HandlerRegistration] | None = None,
         stop_event: Event | None = None,
         monotonic_clock: Callable[[], float] = time.monotonic,
         shutdown: Callable[[], None] | None = None,
         storage_quota: StorageQuotaPort | None = None,
     ) -> None:
+        if artifacts.database_path != operator.database_path:
+            raise ValueError("runtime worker artifact store does not match the operator database")
+        if artifacts.root != operator.artifact_root:
+            raise ValueError("runtime worker artifact store does not match the operator root")
         self._operator = operator
-        self._artifacts = operator.artifacts
+        self._artifacts = artifacts
         self._scheduler = scheduler
         self._config = config
         self.stop_event = stop_event or Event()
@@ -123,7 +129,7 @@ class RuntimeWorker:
         telemetry = RuntimeTelemetry.from_config(config)
         try:
             database_path = config.security.paths.ensure_database_file()
-            operator = RepositoryOperator(
+            components = compose_repository_runtime(
                 config.repository_root,
                 database_path=database_path,
                 artifact_root=config.security.paths.artifact_root,
@@ -135,9 +141,10 @@ class RuntimeWorker:
             telemetry.shutdown()
             raise
         return cls(
-            operator,
+            components.operator,
             scheduler,
             config,
+            artifacts=components.artifacts,
             stop_event=stop_event,
             shutdown=telemetry.shutdown,
             storage_quota=RuntimeStorageQuota(

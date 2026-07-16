@@ -5,7 +5,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from blackcell.adapters.persistence.sqlite import SQLiteOrchestrationScheduler
+from blackcell.bootstrap.repository import compose_repository_runtime
 from blackcell.bootstrap.role_dag import (
     EXECUTE_HANDLER,
     PLAN_HANDLER,
@@ -60,6 +63,25 @@ class StaleCompletionScheduler(SQLiteOrchestrationScheduler):
     ) -> OrchestrationNodeSnapshot:
         del lease, result_digest, output_schema, usage, completed_at
         raise OrchestrationLeaseConflict("stale lease")
+
+
+def test_worker_rejects_an_artifact_store_from_another_runtime(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    database = config.security.paths.ensure_database_file()
+    components = compose_repository_runtime(
+        config.repository_root,
+        database_path=database,
+        artifact_root=config.security.paths.artifact_root,
+    )
+    mismatched = ArtifactStore(tmp_path / "other-artifacts", database_path=database)
+
+    with pytest.raises(ValueError, match="artifact store does not match"):
+        RuntimeWorker(
+            components.operator,
+            SQLiteOrchestrationScheduler(database),
+            config,
+            artifacts=mismatched,
+        )
 
 
 def test_repository_role_dag_is_the_canonical_five_role_contract() -> None:
@@ -125,7 +147,7 @@ def test_worker_survives_restarts_and_verification_replays_with_repository_offli
 
 
 def test_worker_rejects_unknown_handlers_and_budget_overruns(tmp_path: Path) -> None:
-    config, operator, scheduler = _runtime(tmp_path)
+    config, operator, artifacts, scheduler = _runtime(tmp_path)
     scheduler.submit(
         "orchestration:unknown",
         DagDefinition(
@@ -134,7 +156,7 @@ def test_worker_rejects_unknown_handlers_and_budget_overruns(tmp_path: Path) -> 
         ),
         submitted_by="service:test",
     )
-    worker = RuntimeWorker(operator, scheduler, config)
+    worker = RuntimeWorker(operator, scheduler, config, artifacts=artifacts)
 
     assert worker.run_once()
     unknown = scheduler.inspect("orchestration:unknown").nodes[0]
@@ -142,9 +164,7 @@ def test_worker_rejects_unknown_handlers_and_budget_overruns(tmp_path: Path) -> 
     assert unknown.failure_code == "handler-unavailable"
 
     def expensive(_work: object) -> HandlerOutcome:
-        artifact = operator.artifacts.put_json(
-            {"schema_version": "expensive-result/v1", "accepted": True}
-        )
+        artifact = artifacts.put_json({"schema_version": "expensive-result/v1", "accepted": True})
         return HandlerOutcome(artifact.digest, output_tokens=1)
 
     scheduler.submit(
@@ -166,6 +186,7 @@ def test_worker_rejects_unknown_handlers_and_budget_overruns(tmp_path: Path) -> 
         operator,
         scheduler,
         config,
+        artifacts=artifacts,
         handlers={"test.expensive/v1": HandlerRegistration("expensive-result/v1", expensive)},
     )
 
@@ -176,11 +197,11 @@ def test_worker_rejects_unknown_handlers_and_budget_overruns(tmp_path: Path) -> 
 
 
 def test_worker_rejects_malformed_dependency_artifacts(tmp_path: Path) -> None:
-    config, operator, scheduler = _runtime(tmp_path)
-    standard = RuntimeWorker(operator, scheduler, config)
+    config, operator, artifacts, scheduler = _runtime(tmp_path)
+    standard = RuntimeWorker(operator, scheduler, config, artifacts=artifacts)
 
     def malformed_plan(_work: object) -> HandlerOutcome:
-        artifact = operator.artifacts.put_json(
+        artifact = artifacts.put_json(
             {"schema_version": "unexpected-plan/v1", "objective": "ignored"}
         )
         return HandlerOutcome(artifact.digest)
@@ -189,6 +210,7 @@ def test_worker_rejects_malformed_dependency_artifacts(tmp_path: Path) -> None:
         operator,
         scheduler,
         config,
+        artifacts=artifacts,
         handlers={
             PLAN_HANDLER: HandlerRegistration(PLAN_SCHEMA, malformed_plan),
             EXECUTE_HANDLER: HandlerRegistration(RUN_SCHEMA, standard._execute),
@@ -211,11 +233,12 @@ def test_worker_rejects_malformed_dependency_artifacts(tmp_path: Path) -> None:
 def test_stale_worker_completion_cannot_escape_scheduler_fencing(tmp_path: Path) -> None:
     config = _config(tmp_path)
     database = config.security.paths.ensure_database_file()
-    operator = RepositoryOperator(
+    components = compose_repository_runtime(
         config.repository_root,
         database_path=database,
         artifact_root=config.security.paths.artifact_root,
     )
+    operator = components.operator
     scheduler = StaleCompletionScheduler(database)
     scheduler.submit(
         "orchestration:stale",
@@ -223,19 +246,25 @@ def test_stale_worker_completion_cannot_escape_scheduler_fencing(tmp_path: Path)
         submitted_by="service:test",
     )
 
-    assert RuntimeWorker(operator, scheduler, config).run_once()
+    assert RuntimeWorker(
+        operator,
+        scheduler,
+        config,
+        artifacts=components.artifacts,
+    ).run_once()
     node = scheduler.inspect("orchestration:stale").nodes[0]
     assert node.status is NodeStatus.RUNNING
     assert node.result_digest is None
 
 
 def test_worker_serve_always_closes_its_process_telemetry(tmp_path: Path) -> None:
-    config, operator, scheduler = _runtime(tmp_path)
+    config, operator, artifacts, scheduler = _runtime(tmp_path)
     closed: list[bool] = []
     worker = RuntimeWorker(
         operator,
         scheduler,
         config,
+        artifacts=artifacts,
         shutdown=lambda: closed.append(True),
     )
 
@@ -244,7 +273,7 @@ def test_worker_serve_always_closes_its_process_telemetry(tmp_path: Path) -> Non
 
 
 def test_worker_does_not_recover_or_acquire_when_storage_is_exhausted(tmp_path: Path) -> None:
-    config, operator, scheduler = _runtime(tmp_path)
+    config, operator, artifacts, scheduler = _runtime(tmp_path)
     scheduler.submit(
         "orchestration:quota",
         DagDefinition("dag:quota", (_node("plan", handler=PLAN_HANDLER, schema=PLAN_SCHEMA),)),
@@ -255,7 +284,13 @@ def test_worker_does_not_recover_or_acquire_when_storage_is_exhausted(tmp_path: 
         def has_mutation_capacity(self) -> bool:
             return False
 
-    worker = RuntimeWorker(operator, scheduler, config, storage_quota=ExhaustedStorage())
+    worker = RuntimeWorker(
+        operator,
+        scheduler,
+        config,
+        artifacts=artifacts,
+        storage_quota=ExhaustedStorage(),
+    )
 
     assert not worker.run_once()
     assert scheduler.inspect("orchestration:quota").nodes[0].status is NodeStatus.PENDING
@@ -263,15 +298,25 @@ def test_worker_does_not_recover_or_acquire_when_storage_is_exhausted(tmp_path: 
 
 def _runtime(
     tmp_path: Path,
-) -> tuple[RuntimeProcessConfig, RepositoryOperator, SQLiteOrchestrationScheduler]:
+) -> tuple[
+    RuntimeProcessConfig,
+    RepositoryOperator,
+    ArtifactStore,
+    SQLiteOrchestrationScheduler,
+]:
     config = _config(tmp_path)
     database = config.security.paths.ensure_database_file()
-    operator = RepositoryOperator(
+    components = compose_repository_runtime(
         config.repository_root,
         database_path=database,
         artifact_root=config.security.paths.artifact_root,
     )
-    return config, operator, SQLiteOrchestrationScheduler(database)
+    return (
+        config,
+        components.operator,
+        components.artifacts,
+        SQLiteOrchestrationScheduler(database),
+    )
 
 
 def _config(tmp_path: Path) -> RuntimeProcessConfig:

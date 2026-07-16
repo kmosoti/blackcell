@@ -7,6 +7,7 @@ from typing import cast
 
 import pytest
 
+from blackcell.bootstrap.repository import compose_repository_runtime
 from blackcell.features.predict_transition import (
     DeterministicTransitionPredictor,
     PredictionDisposition,
@@ -28,8 +29,7 @@ from blackcell.features.project_operational_state import (
     decode_operational_state_snapshot,
     operational_state_snapshot_digest,
 )
-from blackcell.kernel import EventEnvelope, JsonScalar
-from blackcell.operator import RepositoryOperator
+from blackcell.kernel import ArtifactStore, EventEnvelope, JsonScalar
 from blackcell.workflows.run_protocol import (
     EXECUTION_RECORDED,
     INITIAL_STATE_RECORDED,
@@ -282,15 +282,16 @@ def test_real_daily_operator_v2_states_and_action_score_without_live_reentry(
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    operator = RepositoryOperator(
+    components = compose_repository_runtime(
         repo,
         database_path=tmp_path / "kernel.sqlite3",
         artifact_root=tmp_path / "artifacts",
     )
+    operator = components.operator
     result = operator.run()
     replay = operator.replay(result.run_id)
-    initial = _recorded_state(operator, replay.events, INITIAL_STATE_RECORDED)
-    actual = _recorded_state(operator, replay.events, OUTCOME_STATE_RECORDED)
+    initial = _recorded_state(components.artifacts, replay.events, INITIAL_STATE_RECORDED)
+    actual = _recorded_state(components.artifacts, replay.events, OUTCOME_STATE_RECORDED)
     proposal = _event(replay.events, PROPOSAL_RECORDED)
     execution = _event(replay.events, EXECUTION_RECORDED)
     generated_at = cast("datetime", initial.effective_time_cutoff)
@@ -381,14 +382,14 @@ def _claim(
 
 
 def _recorded_state(
-    operator: RepositoryOperator,
+    artifacts: ArtifactStore,
     events: tuple[EventEnvelope, ...],
     event_type: str,
 ) -> OperationalBeliefState:
     event = _event(events, event_type)
     digest = _artifact_digest(event)
     return decode_operational_state_snapshot(
-        operator.artifacts.get_bytes(digest, verify=True),
+        artifacts.get_bytes(digest, verify=True),
         expected_snapshot_digest=digest,
     )
 

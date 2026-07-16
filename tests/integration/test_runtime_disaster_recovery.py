@@ -6,9 +6,9 @@ import subprocess
 from pathlib import Path
 
 from blackcell.adapters.recovery import LocalRecoveryService
+from blackcell.bootstrap.repository import compose_repository_runtime
 from blackcell.config import RuntimePaths
 from blackcell.kernel import ArtifactStore, EventStore
-from blackcell.operator import RepositoryOperator
 
 
 def test_external_bundle_restores_live_free_replay_after_active_state_loss(
@@ -24,11 +24,11 @@ def test_external_bundle_restores_live_free_replay_after_active_state_loss(
     )
     paths = RuntimePaths.prepare(str(tmp_path / "active-data"))
     database = paths.ensure_database_file()
-    operator = RepositoryOperator(
+    operator = compose_repository_runtime(
         repository,
         database_path=database,
         artifact_root=paths.artifact_root,
-    )
+    ).operator
     result = operator.run(objective="Inspect repository recovery readiness.")
     backup = LocalRecoveryService(paths).create_backup(retention_count=1)
     external = tmp_path / "external-copy" / backup.bundle_path.name
@@ -39,11 +39,11 @@ def test_external_bundle_restores_live_free_replay_after_active_state_loss(
     restored_root = tmp_path / "restored-data"
     restored = LocalRecoveryService().restore_bundle(external, restored_root)
     restored_paths = RuntimePaths.prepare(str(restored_root))
-    replay_operator = RepositoryOperator(
+    replay_operator = compose_repository_runtime(
         repository,
         database_path=restored_paths.database_path,
         artifact_root=restored_paths.artifact_root,
-    )
+    ).operator
     repository.rename(tmp_path / "repository-offline")
     replay = replay_operator.replay(result.run_id)
 
