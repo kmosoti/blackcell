@@ -46,7 +46,8 @@ def test_consolidation_plan_has_a_closed_program_contract() -> None:
         "title": "BlackCell",
         "status": {
             "epic": "In Progress",
-            "active": {"AC00": "In Progress"},
+            "completed": {"AC00": "Done"},
+            "active": {},
             "queued": "Todo",
         },
         "type": "refactor",
@@ -113,6 +114,13 @@ def test_work_package_dependencies_are_acyclic_and_backward_mapped() -> None:
         resolved |= ready
 
     assert by_id["AC00"]["depends_on"] == []
+    assert by_id["AC00"]["status"] == "accepted"
+    assert by_id["AC00"]["adr"] == "docs/adr/0008-architecture-consolidation.md"
+    assert by_id["AC00"]["decision_artifact"] == (
+        "docs/decisions/architecture-consolidation/ac00-baseline.json"
+    )
+    assert (ROOT / by_id["AC00"]["adr"]).is_file()
+    assert (ROOT / by_id["AC00"]["decision_artifact"]).is_file()
     assert set(by_id["AC07"]["depends_on"]) == {
         "AC01",
         "AC02",
@@ -145,10 +153,31 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     assert program["delivery_metadata"]["development_branch"] == "refactor/consolidation"
     assert program["delivery_metadata"]["assignee"] == "kmosoti"
     assert program["delivery_metadata"]["labels"]["documentation"] == ["AC00", "AC06"]
+    assert program["delivery_metadata"]["project"]["status"] == {
+        "epic": "In Progress",
+        "completed": {"AC00": "Done"},
+        "active": {},
+        "queued": "Todo",
+    }
     assert program["evidence_transition"]["observed_status"] == (
         "expected-drift-after-program-registration"
     )
+    assert program["evidence_transition"]["baseline"] == (
+        "docs/decisions/architecture-consolidation/ac00-baseline.json"
+    )
+    candidate = program["evidence_transition"]["consolidation_candidate"]
+    assert candidate == {
+        "status": "candidate-scheme-ratified-not-issued",
+        "issuer": "AC07",
+        "manifest": "release/architecture-consolidation/verification-manifest.json",
+        "candidate_id_format": "sha256:<canonical-source-materials-digest>",
+        "sbom_policy": ("Regenerate only if the locked production dependency closure changes."),
+    }
     assert (
         "--ignore=tests/unit/test_release_evidence.py"
         in program["verification"]["pre_ac00_full_gate"]
+    )
+    assert (
+        program["verification"]["interim_full_gate"]
+        == (program["verification"]["pre_ac00_full_gate"])
     )

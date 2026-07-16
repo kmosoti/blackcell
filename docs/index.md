@@ -36,6 +36,11 @@ The service security boundary is defined by `adr/0007-runtime-security-boundary.
 owner-only data paths, opaque credentials, strict Bearer/scope authorization, zero proxy trust, and
 pre-storage redaction before HTTP exposure.
 
+Architecture consolidation is governed by `adr/0008-architecture-consolidation.md`: boundaries are
+retained or consolidated from direct authority, failure, persistence, substitution, and security
+evidence rather than class, file, or import counts. Its source-bound AC00 baseline lives under
+`decisions/architecture-consolidation/`.
+
 The local recovery and quota runbook is `targets/recovery.md`: verified immutable bundles,
 non-destructive cutover, verified-only retention, and the exact request/storage admission limits.
 

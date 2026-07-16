@@ -12,8 +12,16 @@ program:
   evidence_transition:
     runtime_v1_manifest: historical-read-only
     observed_status: expected-drift-after-program-registration
-    resolution: AC00 ratifies consolidation candidate identity and evidence reuse; AC07 publishes final evidence.
+    resolution: AC00 ratified consolidation candidate identity and evidence reuse; AC07 publishes final evidence.
+    baseline: docs/decisions/architecture-consolidation/ac00-baseline.json
+    consolidation_candidate:
+      status: candidate-scheme-ratified-not-issued
+      issuer: AC07
+      manifest: release/architecture-consolidation/verification-manifest.json
+      candidate_id_format: sha256:<canonical-source-materials-digest>
+      sbom_policy: Regenerate only if the locked production dependency closure changes.
     pre_ac00_full_gate: uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
+    interim_full_gate: uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
   thesis: Remove false boundaries while preserving real trust, time, persistence, and failure boundaries.
   success: A simpler modular monolith has explicit composition ownership, one canonical owner per current concept, and no regression of authority, replay, durability, recovery, CLI, or HTTP contracts.
 
@@ -67,7 +75,7 @@ planning_dimensions:
     advisory_metrics:
       - Structural Protocol field breadth and mirrored record-shape clusters.
       - Import breadth, constructor fan-in, integration hotspot size, and package co-change frequency.
-    evidence_policy: AC00 records a current-project baseline. Existing runtime-v1 evidence remains historical; a consolidation candidate or SBOM claim is introduced only after AC00 establishes its source and verification mechanism.
+    evidence_policy: AC00 records a source-bound current-project baseline and ratifies the candidate scheme. Existing runtime-v1 evidence remains historical; AC07 issues the consolidation candidate and records or regenerates its SBOM evidence according to dependency-closure change.
 
 issue_delivery:
   repository: kmosoti/blackcell
@@ -82,8 +90,9 @@ issue_delivery:
     title: BlackCell
     status:
       epic: In Progress
-      active:
-        AC00: In Progress
+      completed:
+        AC00: Done
+      active: {}
       queued: Todo
     type: refactor
   parent:
@@ -111,6 +120,10 @@ work_packages:
   - id: AC00
     issue_number: 64
     title: Ratify boundary criteria, baseline, and project evidence policy
+    status: accepted
+    accepted_on: 2026-07-15
+    adr: docs/adr/0008-architecture-consolidation.md
+    decision_artifact: docs/decisions/architecture-consolidation/ac00-baseline.json
     depends_on: []
     boundary: Architecture-consolidation criteria and current-baseline evidence.
     desired_invariant: Every proposed consolidation is classified retain, consolidate, defer, or reject with direct evidence and preserved invariants.
@@ -362,9 +375,14 @@ work_packages:
     boundary: Binary architecture rules versus advisory evolutionary-coupling measurements.
     desired_invariant: CI fails only on unambiguous architecture violations and reports heuristic complexity without arbitrary class, line, or import thresholds.
     scope:
+      - blackcell.plan.yaml
+      - refactor-consolidation.plan.yaml
       - tests/architecture
+      - tests/unit/test_architecture_consolidation_evidence.py
       - architecture
       - docs/decisions/architecture-consolidation
+      - release/architecture-consolidation
+      - tools/architecture_consolidation_evidence.py
     direct_evidence:
       - path: tests/architecture/test_dependencies.py
         symbol: 'def test_kernel_has_no_outward_blackcell_dependencies'
@@ -381,6 +399,7 @@ work_packages:
     acceptance:
       - Tests enforce composition ownership, compatibility isolation, facade non-reach-through, and replay live-path isolation.
       - Advisory reports cover record similarity, Protocol breadth, import breadth, co-change, module size, and constructor fan-in.
+      - A tested repository tool selects every Git blob at the source SHA except the three ratified generated outputs and reproduces the canonical material-document digest.
       - The final project evidence identifies a source candidate and SBOM decision without changing historical runtime-v1 artifacts.
     stop_conditions:
       - A proposed hard rule cannot be expressed deterministically or would require arbitrary thresholds.

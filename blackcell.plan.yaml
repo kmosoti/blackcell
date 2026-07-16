@@ -159,8 +159,9 @@ architecture_consolidation:
       title: BlackCell
       status:
         epic: In Progress
-        active:
-          AC00: In Progress
+        completed:
+          AC00: Done
+        active: {}
         queued: Todo
       type: refactor
     development_branch: refactor/consolidation
@@ -168,9 +169,17 @@ architecture_consolidation:
     runtime_v1_manifest: historical-read-only
     observed_status: expected-drift-after-program-registration
     cause: blackcell.plan.yaml is a runtime-v1 release material and now declares the consolidation program.
-    resolution: AC00 ratifies candidate identity and evidence reuse; AC07 publishes consolidation evidence.
+    resolution: AC00 ratified candidate identity and evidence reuse; AC07 publishes consolidation evidence.
+    baseline: docs/decisions/architecture-consolidation/ac00-baseline.json
+    consolidation_candidate:
+      status: candidate-scheme-ratified-not-issued
+      issuer: AC07
+      manifest: release/architecture-consolidation/verification-manifest.json
+      candidate_id_format: sha256:<canonical-source-materials-digest>
+      sbom_policy: Regenerate only if the locked production dependency closure changes.
   verification:
     pre_ac00_full_gate: uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
+    interim_full_gate: uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing
     historical_runtime_v1_gate: expected-drift
   planning_model:
     - strategic
@@ -189,7 +198,7 @@ architecture_consolidation:
     - AC07
   historical_context:
     - Runtime-v1 release artifacts are historical foundation evidence, not architecture-consolidation candidate evidence.
-    - AC00 establishes the current-project evidence policy and candidate identity before reusing release tooling or SBOM claims.
+    - AC00 established the current-project evidence policy and candidate identity scheme without issuing a candidate or reusing runtime-v1 verification claims.
 
 verification:
   - uv run python tools/release_evidence.py verify --repo-root .

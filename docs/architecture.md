@@ -11,6 +11,7 @@ edges:
     - adr/0005-durable-run-and-execution-protocol
     - adr/0006-versioned-run-feedback-protocol
     - adr/0007-runtime-security-boundary
+    - adr/0008-architecture-consolidation
 ---
 
 # Runtime Architecture
@@ -25,6 +26,13 @@ does not simulate maturity by requiring a distributed broker.
 
 The model gateway, persistence, retrieval, solvers, execution, telemetry, and HTTP server are edge
 adapters. Workflows coordinate feature ports. Only bootstrap code assembles concrete dependencies.
+
+Architecture consolidation follows ADR 0008. A class, Protocol, package, DTO family, adapter seam,
+or application service is retained when direct evidence establishes independent authority,
+failure, persistence, deployment, substitution, product-use-case, ownership, or security
+semantics. Binary dependency, composition, compatibility, and replay rules may fail CI; record
+similarity, Protocol breadth, module size, import breadth, constructor fan-in, and package co-change
+remain advisory and have no pass threshold.
 
 ## Boundaries
 
