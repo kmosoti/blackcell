@@ -165,6 +165,8 @@ architecture_consolidation:
           AC01: Done
           AC02: Done
           AC03: Done
+          AC04: Done
+          AC05: Done
           AC06: Done
         active: {}
         queued: Todo

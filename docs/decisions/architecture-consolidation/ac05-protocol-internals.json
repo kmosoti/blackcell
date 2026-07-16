@@ -1,0 +1,89 @@
+{
+  "schema_version": "architecture-consolidation-decision/v1",
+  "work_package": "AC05",
+  "issue_number": 69,
+  "base_sha": "1a249d8aaa1f5f230c8492ab249ea06d255f24ee",
+  "decision": "accept",
+  "boundary": "public runtime protocol seams versus private recording, integrity, and suffix-verification helpers",
+  "preserved_invariants": [
+    "single-authoritative-immutable-event-ledger",
+    "exact-event-grammar-and-payload-fields",
+    "content-addressed-artifact-ownership-and-codecs",
+    "idempotent-recording-and-terminal-recovery",
+    "stored-occurrence-and-global-position-proof",
+    "live-free-historical-replay",
+    "deterministic-transition-and-terminal-suffix-verification"
+  ],
+  "decisions": [
+    {
+      "subject": "FeedbackRunRecorder public writer protocol",
+      "decision": "retain",
+      "reason": "It is the single product writer seam for the complete durable v2 protocol."
+    },
+    {
+      "subject": "KernelFeedbackRunRecorder resource owner",
+      "decision": "retain",
+      "reason": "The class owns event and artifact stores, journals, a clock, idempotent append behavior, prefix validation, and recovery semantics."
+    },
+    {
+      "subject": "run-record artifact and protocol helper groups",
+      "decision": "consolidate",
+      "reason": "Private acyclic helpers move to _run_records_v2_artifacts and _run_records_v2_protocol without creating independently instantiated phase services."
+    },
+    {
+      "subject": "bind_and_accept_state_transition public operation",
+      "decision": "retain",
+      "reason": "It remains the single evidence-binding and transition-acceptance operation."
+    },
+    {
+      "subject": "transition error, artifact-integrity, and recorded-suffix helpers",
+      "decision": "consolidate",
+      "reason": "Private helpers move behind the stable state_transition module while command reconstruction remains one ordered, cohesive operation."
+    },
+    {
+      "subject": "generic workflow, command-bus, saga, or polymorphic phase framework",
+      "decision": "reject",
+      "reason": "Physical navigation does not justify a new runtime abstraction, lifecycle, or dispatch mechanism."
+    }
+  ],
+  "before": {
+    "run_record_module": "src/blackcell/adapters/persistence/sqlite/run_records_v2.py",
+    "transition_module": "src/blackcell/workflows/state_transition.py",
+    "public_writer": "KernelFeedbackRunRecorder",
+    "public_acceptance_operation": "bind_and_accept_state_transition"
+  },
+  "after": {
+    "run_record_facade": "src/blackcell/adapters/persistence/sqlite/run_records_v2.py",
+    "run_record_private_helpers": [
+      "src/blackcell/adapters/persistence/sqlite/_run_records_v2_artifacts.py",
+      "src/blackcell/adapters/persistence/sqlite/_run_records_v2_protocol.py"
+    ],
+    "run_record_dependency_direction": "_run_records_v2_protocol may import artifact-link and scalar helpers from _run_records_v2_artifacts; the artifact helper must not import the protocol helper",
+    "transition_facade": "src/blackcell/workflows/state_transition.py",
+    "transition_private_helpers": [
+      "src/blackcell/workflows/_state_transition_errors.py",
+      "src/blackcell/workflows/_state_transition_integrity.py",
+      "src/blackcell/workflows/_state_transition_suffix.py"
+    ],
+    "public_writer": "KernelFeedbackRunRecorder",
+    "public_acceptance_operation": "bind_and_accept_state_transition",
+    "command_reconstruction": "retained as one ordered cohesive operation"
+  },
+  "explicitly_unchanged": [
+    "FeedbackRunRecorder method contract and KernelFeedbackRunRecorder construction path",
+    "event names, schemas, payload field sets, ordering, correlation, and causation",
+    "artifact media types, schemas, codecs, logical ownership, and content addresses",
+    "journal reconciliation, optimistic concurrency, idempotency, and terminal recovery",
+    "state-transition command reconstruction order and acceptance result",
+    "trace, terminal, and historical replay interpretation",
+    "CLI, HTTP, database schema, scheduler, authority policy, and recovery behavior"
+  ],
+  "verification": {
+    "focused": "uv run python tools/run_pytest.py tests/unit/test_run_records_v2.py tests/unit/test_run_records_v2_branches.py tests/unit/test_run_records_boundaries.py tests/unit/test_state_transition_binding.py",
+    "focused_result": "152 passed",
+    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing",
+    "full_gate_result": "1293 passed, 1 rootless-Podman gate skipped, 86.58 percent coverage",
+    "rootless_podman_gate": "BLACKCELL_RUN_PODMAN_TESTS=1 uv run python tools/run_pytest.py tests/integration/test_podman_runtime.py",
+    "rootless_podman_result": "1 passed in 44.19 seconds"
+  }
+}

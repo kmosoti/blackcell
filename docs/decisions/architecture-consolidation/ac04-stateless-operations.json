@@ -1,0 +1,112 @@
+{
+  "schema_version": "architecture-consolidation-decision/v1",
+  "work_package": "AC04",
+  "issue_number": 68,
+  "base_sha": "1a249d8aaa1f5f230c8492ab249ea06d255f24ee",
+  "decision": "accept",
+  "boundary": "pure deterministic operations versus resource, strategy, clock, journal, and recovery owners",
+  "preserved_invariants": [
+    "deterministic-signal-packet-content",
+    "context-frame-byte-and-id-identity",
+    "required-evidence-and-omission-semantics",
+    "fail-closed-symbolic-authorization",
+    "proposal-constraint-context-action-and-policy-bindings",
+    "live-free-historical-replay"
+  ],
+  "decisions": [
+    {
+      "subject": "SignalPacketProjector",
+      "decision": "consolidate",
+      "replacement": "blackcell.features.derive_signal_packet.project_signal_packet",
+      "reason": "The object had no identity, retained state, resources, lifetime control, or alternate implementation."
+    },
+    {
+      "subject": "ContextFrameBuilder",
+      "decision": "consolidate",
+      "replacement": "blackcell.features.build_context.build_context_frame",
+      "reason": "The object was a deterministic transformation over an explicit command and normalized evidence selection."
+    },
+    {
+      "subject": "ActionAuthorizer",
+      "decision": "consolidate",
+      "replacement": "blackcell.features.authorize_action.authorize_action",
+      "reason": "The object owned no lifecycle or mutable state and authorization remains an explicit fail-closed operation."
+    },
+    {
+      "subject": "OutcomeEvaluator",
+      "decision": "retain",
+      "reason": "Its injected clock provides meaningful deterministic replay and lifetime control."
+    },
+    {
+      "subject": "legacy blackcell.context SignalPacketProjector",
+      "decision": "retain",
+      "reason": "It owns a separately classified historical compatibility vocabulary deferred by AC00 and AC02."
+    }
+  ],
+  "before": {
+    "approved_stateless_service_objects": [
+      "SignalPacketProjector",
+      "ContextFrameBuilder",
+      "ActionAuthorizer"
+    ],
+    "call_shape": "construct then handle"
+  },
+  "superseded_baseline_evidence": [
+    {
+      "path": "src/blackcell/features/derive_signal_packet/handler.py",
+      "symbol": "class SignalPacketProjector",
+      "replacement": {
+        "path": "src/blackcell/features/derive_signal_packet/handler.py",
+        "symbol": "def project_signal_packet"
+      }
+    },
+    {
+      "path": "src/blackcell/features/build_context/handler.py",
+      "symbol": "class ContextFrameBuilder",
+      "replacement": {
+        "path": "src/blackcell/features/build_context/handler.py",
+        "symbol": "def build_context_frame"
+      }
+    },
+    {
+      "path": "src/blackcell/features/authorize_action/handler.py",
+      "symbol": "class ActionAuthorizer",
+      "replacement": {
+        "path": "src/blackcell/features/authorize_action/handler.py",
+        "symbol": "def authorize_action"
+      }
+    }
+  ],
+  "after": {
+    "approved_operations": [
+      "project_signal_packet",
+      "build_context_frame",
+      "authorize_action"
+    ],
+    "call_shape": "invoke the feature-owned operation directly",
+    "retained_resource_or_strategy_owners": [
+      "OutcomeEvaluator",
+      "evidence matcher and retriever implementations",
+      "journals, checkpoints, workers, stores, and replay adapters"
+    ]
+  },
+  "explicitly_unchanged": [
+    "SignalPacket values and deterministic ordering",
+    "serialized ContextFrame bytes and frame IDs",
+    "required evidence, unknown, conflict, omission, freshness, and provenance semantics",
+    "authorization outcomes, proof validation, and binding identifiers",
+    "event grammar, artifact schemas, replay behavior, CLI, HTTP, database, scheduler, and recovery behavior"
+  ],
+  "explicitly_changed": [
+    "The package-level Python imports SignalPacketProjector, ContextFrameBuilder, and ActionAuthorizer are retired; callers invoke project_signal_packet, build_context_frame, and authorize_action directly."
+  ],
+  "compatibility_decision": "The retired classes were internal stateless feature service shapes, not CLI or HTTP contracts. Permanent construct-then-handle aliases would preserve the false object boundary AC04 removes and are therefore rejected by the program delivery rules.",
+  "verification": {
+    "focused": "uv run python tools/run_pytest.py tests/unit/test_derive_signal_packet_feature.py tests/unit/test_context_pipeline_features.py tests/unit/test_context_frame_store.py tests/unit/test_fts5_evidence_retriever.py tests/unit/test_action_authorization_feature.py tests/unit/test_evaluate_outcome_feature.py tests/unit/test_run_records_v2.py tests/unit/test_state_transition_binding.py",
+    "focused_result": "251 passed",
+    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing",
+    "full_gate_result": "1293 passed, 1 rootless-Podman gate skipped, 86.58 percent coverage",
+    "rootless_podman_gate": "BLACKCELL_RUN_PODMAN_TESTS=1 uv run python tools/run_pytest.py tests/integration/test_podman_runtime.py",
+    "rootless_podman_result": "1 passed in 44.19 seconds"
+  }
+}

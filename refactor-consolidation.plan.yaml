@@ -96,6 +96,8 @@ issue_delivery:
         AC01: Done
         AC02: Done
         AC03: Done
+        AC04: Done
+        AC05: Done
         AC06: Done
       active: {}
       queued: Todo
@@ -281,6 +283,9 @@ work_packages:
   - id: AC04
     issue_number: 68
     title: Replace specifically approved stateless service objects with operations
+    status: accepted
+    accepted_on: 2026-07-16
+    decision_artifact: docs/decisions/architecture-consolidation/ac04-stateless-operations.json
     depends_on: [AC02, AC03]
     boundary: Pure operations versus resource, strategy, clock, journal, and recovery owners.
     desired_invariant: Only operation objects without identity, state, resources, or meaningful substitution become functions or callables.
@@ -319,6 +324,9 @@ work_packages:
   - id: AC05
     issue_number: 69
     title: Split run recording and state-transition verification by protocol phase
+    status: accepted
+    accepted_on: 2026-07-16
+    decision_artifact: docs/decisions/architecture-consolidation/ac05-protocol-internals.json
     depends_on: [AC01, AC03]
     boundary: Public protocol seam versus physically navigable internal phases.
     desired_invariant: One public recorder and one public transition-acceptance operation retain the exact event grammar, artifact ownership, and replay interpretation.
