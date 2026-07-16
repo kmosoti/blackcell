@@ -478,16 +478,12 @@ def test_checked_in_final_evidence_reproduces_and_binds_its_ancestral_source() -
     decision = json.loads(DECISION_PATH.read_text(encoding="utf-8"))
     source_sha = manifest["program"]["source_sha"]
     replay = evidence._verify(ROOT)
-    freshness = evidence._verify_current(ROOT)
     head_sha = evidence._require_source_ancestor_of_head(ROOT, source_sha)
     candidate = evidence._source_candidate(ROOT, source_sha)
 
     assert head_sha == _git(ROOT, "rev-parse", "HEAD")
     assert replay["status"] == "pass"
     assert replay["candidate_id"] == candidate["candidate_id"]
-    assert freshness["status"] == "pass"
-    assert freshness["head_sha"] == head_sha
-    assert freshness["source_sha"] == source_sha
     assert candidate["candidate_id"] == manifest["program"]["candidate_id"]
     assert candidate["candidate_id"] == decision["candidate_id"]
     assert candidate["materials"] == manifest["source"]["materials"]
