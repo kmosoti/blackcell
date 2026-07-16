@@ -151,8 +151,17 @@ def test_lifecycle_skills_are_discoverable_and_bounded() -> None:
         assert "Do not edit tracked files" in text
 
     publish = (SKILLS_ROOT / "blackcell-publish/SKILL.md").read_text(encoding="utf-8")
-    assert "agent/runtime-v1" in publish
-    assert "git push origin agent/runtime-v1" in publish
+    publish_metadata = yaml.safe_load(
+        (SKILLS_ROOT / "blackcell-publish/agents/openai.yaml").read_text(encoding="utf-8")
+    )["interface"]
+    assert "agent/runtime-v1" not in publish
+    assert "agent/runtime-v1" not in publish_metadata["default_prompt"]
+    assert "git branch --show-current" in publish
+    assert "origin/<current-branch>" in publish
+    assert "git push origin <current-branch>" in publish
+    assert "explicit authorization" in publish
+    assert "detached head" in publish
+    assert "remote-ahead or\ndivergent history" in publish
     assert "Never use `--force`" in publish
     assert "do not merge, rebase, reset, or rewrite history" in publish
 
