@@ -2,18 +2,25 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from blackcell.features.request_decision.artifacts import decode_decision_output
+from blackcell.features.request_decision.artifacts import (
+    DECISION_FAILURE_SCHEMA_VERSION_V2,
+    decode_decision_output,
+)
 from blackcell.features.request_decision.command import RequestDecision
 from blackcell.features.request_decision.errors import (
     DecisionGatewayError,
     DecisionIdentityConflict,
+    DecisionOutputViolation,
 )
 from blackcell.features.request_decision.models import (
     DecisionAdapterResult,
     DecisionAttemptClaim,
+    DecisionDiagnosticCode,
     DecisionFailure,
+    DecisionFailureDiagnostic,
     DecisionFailureKind,
     DecisionFailureRecord,
+    DecisionGatewayCompletion,
     DecisionLocality,
     DecisionPreparation,
     DecisionRequestRecord,
@@ -29,6 +36,7 @@ from blackcell.features.request_decision.ports import (
     DecisionGatewayPort,
 )
 from blackcell.kernel import utc_now
+from blackcell.kernel._json import json_digest
 
 
 class RequestDecisionHandler:
@@ -153,9 +161,18 @@ class RequestDecisionHandler:
         try:
             adapter_result = self._gateway.invoke(request, preparation.route)
         except DecisionGatewayError as error:
-            failed_at = self._now()
-            if claim.invoked_at is not None:
-                failed_at = max(failed_at, claim.invoked_at)
+            usage = None
+            if error.completion is not None:
+                failed_at = max(
+                    error.completion.completed_at,
+                    claim.attempt_record.attempt.started_at,
+                    claim.invoked_at or claim.attempt_record.attempt.started_at,
+                )
+                usage = _completion_usage(request, claim, error.completion)
+            else:
+                failed_at = self._now()
+                if claim.invoked_at is not None:
+                    failed_at = max(failed_at, claim.invoked_at)
             failure = _gateway_failure(
                 request,
                 error,
@@ -168,7 +185,7 @@ class RequestDecisionHandler:
                 failure,
                 preparation=preparation,
                 claim=claim,
-                usage=None,
+                usage=usage,
                 recorded_at=self._now(),
             )
         usage = _usage(request, claim, adapter_result)
@@ -184,16 +201,32 @@ class RequestDecisionHandler:
             )
         try:
             proposal = decode_decision_output(adapter_result.output, request)
+        except DecisionOutputViolation as error:
+            failure = _invalid_output_failure(
+                request,
+                preparation,
+                claim,
+                adapter_result,
+                code=error.code,
+                path=error.path,
+                exception_type=type(error).__name__,
+            )
+            return self._journal.fail(
+                preparation.request_record,
+                failure,
+                preparation=preparation,
+                claim=claim,
+                usage=usage,
+                recorded_at=self._now(),
+            )
         except (TypeError, ValueError) as error:
-            failure = DecisionFailure(
-                request_id=request.request_id,
-                request_digest=request.request_digest,
-                kind=DecisionFailureKind.SCHEMA,
-                code="decision_output_invalid",
-                retryable=False,
-                failed_at=adapter_result.completed_at,
-                route_id=preparation.route.route_id,
-                attempt_id=claim.attempt_record.attempt.attempt_id,
+            failure = _invalid_output_failure(
+                request,
+                preparation,
+                claim,
+                adapter_result,
+                code=DecisionDiagnosticCode.INVALID_STRUCTURE,
+                path="$",
                 exception_type=type(error).__name__,
             )
             return self._journal.fail(
@@ -339,6 +372,51 @@ def _usage(
         latency_ms=result.latency_ms,
         cost_microusd=result.cost_microusd,
         deterministic=result.deterministic,
+    )
+
+
+def _completion_usage(
+    request: RequestDecision,
+    claim: DecisionAttemptClaim,
+    completion: DecisionGatewayCompletion,
+) -> DecisionUsage:
+    return DecisionUsage(
+        request_id=request.request_id,
+        attempt_id=claim.attempt_record.attempt.attempt_id,
+        input_tokens=completion.input_tokens,
+        output_tokens=completion.output_tokens,
+        latency_ms=completion.latency_ms,
+        cost_microusd=completion.cost_microusd,
+        deterministic=completion.deterministic,
+    )
+
+
+def _invalid_output_failure(
+    request: RequestDecision,
+    preparation: DecisionPreparation,
+    claim: DecisionAttemptClaim,
+    result: DecisionAdapterResult,
+    *,
+    code: DecisionDiagnosticCode,
+    path: str,
+    exception_type: str,
+) -> DecisionFailure:
+    return DecisionFailure(
+        request_id=request.request_id,
+        request_digest=request.request_digest,
+        kind=DecisionFailureKind.SCHEMA,
+        code="decision_output_invalid",
+        retryable=False,
+        failed_at=result.completed_at,
+        route_id=preparation.route.route_id,
+        attempt_id=claim.attempt_record.attempt.attempt_id,
+        exception_type=exception_type,
+        diagnostic=DecisionFailureDiagnostic(
+            code=code,
+            path=path,
+            rejected_output_digest=json_digest(result.output),
+        ),
+        schema_version=DECISION_FAILURE_SCHEMA_VERSION_V2,
     )
 
 

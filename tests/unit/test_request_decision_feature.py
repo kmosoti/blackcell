@@ -19,12 +19,16 @@ from blackcell.features.request_decision import (
     DecisionBudget,
     DecisionCapability,
     DecisionClassification,
+    DecisionDiagnosticCode,
     DecisionFailure,
+    DecisionFailureDiagnostic,
     DecisionFailureKind,
     DecisionFailureRecord,
+    DecisionGatewayCompletion,
     DecisionGatewayError,
     DecisionJournalError,
     DecisionLocality,
+    DecisionOutputViolation,
     DecisionPreparation,
     DecisionProposal,
     DecisionRequestRecord,
@@ -49,6 +53,7 @@ from blackcell.features.request_decision import (
     encode_decision_route,
     encode_decision_usage,
 )
+from blackcell.gateway.schema import OutputSchemaError, validate_output
 from blackcell.kernel import JsonValue
 from blackcell.kernel._json import json_digest
 
@@ -243,12 +248,66 @@ def test_request_is_a_complete_immutable_gateway_contract() -> None:
     affordance_schema = cast("Mapping[str, JsonValue]", properties["affordance"])
     assert frame_schema["const"] == "sha256:" + "1" * 64
     assert affordance_schema["const"] == "inspect"
+    argument_schema = cast("Mapping[str, JsonValue]", properties["arguments"])
+    argument_items = cast("Mapping[str, JsonValue]", argument_schema["items"])
+    argument_properties = cast(
+        "Mapping[str, JsonValue]",
+        argument_items["properties"],
+    )
+    argument_name = cast("Mapping[str, JsonValue]", argument_properties["name"])
+    evidence_schema = cast("Mapping[str, JsonValue]", properties["evidence_event_ids"])
+    evidence_items = cast("Mapping[str, JsonValue]", evidence_schema["items"])
+    assert argument_schema["maxItems"] == 2
+    assert argument_schema["uniqueItems"] is True
+    assert argument_name["enum"] == ("optional", "path")
+    assert evidence_schema["maxItems"] == 1
+    assert evidence_schema["uniqueItems"] is True
+    assert evidence_items["enum"] == ("event:1",)
     assert request.affordances[0].arguments == (
         DecisionArgumentSpec("optional", False),
         DecisionArgumentSpec("path"),
     )
     with pytest.raises(TypeError):
         cast("dict[str, JsonValue]", request.model_input)["objective"] = "mutated"
+
+
+def test_zero_argument_and_empty_evidence_schema_is_structurally_closed() -> None:
+    request = replace(
+        _request(),
+        evidence_event_ids=(),
+        affordances=(DecisionAffordance("inspect"),),
+    )
+    properties = cast("Mapping[str, JsonValue]", request.output_schema["properties"])
+    arguments = cast("Mapping[str, JsonValue]", properties["arguments"])
+    evidence = cast("Mapping[str, JsonValue]", properties["evidence_event_ids"])
+
+    assert arguments["maxItems"] == 0
+    assert evidence["maxItems"] == 0
+
+
+def test_generated_schema_rejects_unadmitted_arguments_and_evidence() -> None:
+    request = _request()
+    zero_argument_request = replace(
+        request,
+        evidence_event_ids=(),
+        affordances=(DecisionAffordance("inspect"),),
+    )
+    zero_argument_output = _valid_output()
+    zero_argument_output["arguments"] = ({"name": "path", "value": "README.md"},)
+    zero_argument_output["evidence_event_ids"] = ()
+
+    with pytest.raises(OutputSchemaError, match="maxItems"):
+        validate_output(zero_argument_output, zero_argument_request.output_schema)
+
+    undeclared_argument = _valid_output()
+    undeclared_argument["arguments"] = ({"name": "unknown", "value": "README.md"},)
+    with pytest.raises(OutputSchemaError, match="enum"):
+        validate_output(undeclared_argument, request.output_schema)
+
+    outside_evidence = _valid_output()
+    outside_evidence["evidence_event_ids"] = ("event:outside",)
+    with pytest.raises(OutputSchemaError, match="enum"):
+        validate_output(outside_evidence, request.output_schema)
 
 
 @pytest.mark.parametrize(
@@ -505,6 +564,23 @@ def test_all_decision_artifacts_round_trip_with_content_identities() -> None:
         attempt.attempt_id,
         "RuntimeError",
     )
+    diagnosed_failure = DecisionFailure(
+        request_id=request.request_id,
+        request_digest=request.request_digest,
+        kind=DecisionFailureKind.SCHEMA,
+        code="decision_output_invalid",
+        retryable=False,
+        failed_at=NOW,
+        route_id=route.route_id,
+        attempt_id=attempt.attempt_id,
+        exception_type="DecisionOutputViolation",
+        diagnostic=DecisionFailureDiagnostic(
+            DecisionDiagnosticCode.UNDECLARED_AFFORDANCE,
+            "$.affordance",
+            json_digest({"affordance": "delete"}),
+        ),
+        schema_version="decision-failure/v2",
+    )
     usage = DecisionUsage(request.request_id, attempt.attempt_id, 10, 4, 12, 3, True)
 
     assert (
@@ -537,6 +613,13 @@ def test_all_decision_artifacts_round_trip_with_content_identities() -> None:
             encode_decision_failure(failure), expected_failure_id=failure.failure_id
         )
         == failure
+    )
+    assert (
+        decode_decision_failure(
+            encode_decision_failure(diagnosed_failure),
+            expected_failure_id=diagnosed_failure.failure_id,
+        )
+        == diagnosed_failure
     )
     assert (
         decode_decision_usage(encode_decision_usage(usage), expected_usage_id=usage.usage_id)
@@ -625,24 +708,48 @@ def test_artifact_decoders_reject_malformed_nested_values() -> None:
 
 
 @pytest.mark.parametrize(
-    ("mutation", "message"),
+    ("mutation", "code", "path"),
     (
-        ({"context_frame_id": "sha256:" + "2" * 64}, "different ContextFrame"),
-        ({"affordance": "delete"}, "undeclared affordance"),
+        (
+            {"context_frame_id": "sha256:" + "2" * 64},
+            DecisionDiagnosticCode.CONTEXT_FRAME_MISMATCH,
+            "$.context_frame_id",
+        ),
+        (
+            {"affordance": "delete"},
+            DecisionDiagnosticCode.UNDECLARED_AFFORDANCE,
+            "$.affordance",
+        ),
         (
             {"arguments": ({"name": "unknown", "value": "README.md"},)},
-            "undeclared arguments",
+            DecisionDiagnosticCode.UNDECLARED_ARGUMENT,
+            "$.arguments[0].name",
         ),
-        ({"arguments": ()}, "omits required arguments"),
-        ({"evidence_event_ids": ("event:outside",)}, "outside its ContextFrame"),
+        (
+            {"arguments": ()},
+            DecisionDiagnosticCode.MISSING_REQUIRED_ARGUMENT,
+            "$.arguments",
+        ),
+        (
+            {"evidence_event_ids": ("event:outside",)},
+            DecisionDiagnosticCode.EVIDENCE_OUTSIDE_CONTEXT,
+            "$.evidence_event_ids[0]",
+        ),
     ),
 )
-def test_decision_output_is_semantically_bound_to_its_request(mutation, message: str) -> None:
+def test_decision_output_is_semantically_bound_to_its_request(
+    mutation,
+    code: DecisionDiagnosticCode,
+    path: str,
+) -> None:
     output = dict(_valid_output())
     output.update(mutation)
 
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(DecisionOutputViolation) as caught:
         decode_decision_output(output, _request())
+
+    assert caught.value.code is code
+    assert caught.value.path == path
 
 
 def test_two_phase_handler_records_request_before_live_inference() -> None:
@@ -830,6 +937,37 @@ def test_adapter_failure_is_recorded_without_fabricated_usage() -> None:
     assert result.failure.exception_type == "TimeoutError"
     assert result.usage is None
     assert result.attempt_record is not None
+
+
+def test_completed_gateway_rejection_persists_known_usage() -> None:
+    events: list[str] = []
+    completion = DecisionGatewayCompletion(
+        output_digest=json_digest({"unexpected": True}),
+        input_tokens=10,
+        output_tokens=4,
+        latency_ms=12,
+        cost_microusd=3,
+        deterministic=True,
+        completed_at=NOW,
+    )
+    gateway = Gateway(
+        events,
+        invoke_error=DecisionGatewayError(
+            DecisionFailureKind.SCHEMA,
+            "gateway_output_schema_invalid",
+            completion=completion,
+        ),
+    )
+    handler = RequestDecisionHandler(gateway, Journal(events), clock=lambda: NOW)
+    prepared = handler.prepare(_request())
+    assert isinstance(prepared, DecisionPreparation)
+
+    result = handler.handle(prepared)
+
+    assert isinstance(result, DecisionFailureRecord)
+    assert result.usage is not None
+    assert result.usage.input_tokens == completion.input_tokens
+    assert result.usage.output_tokens == completion.output_tokens
 
 
 @pytest.mark.parametrize(

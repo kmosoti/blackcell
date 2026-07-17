@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -76,12 +76,23 @@ from blackcell.workflows.run_protocol import (
 )
 
 DEFAULT_OBJECTIVE = "Inspect current repository readiness through one read-only diagnostic."
+DEFAULT_RECORDED_TOKEN_BUDGET = 2_000
+DEFAULT_CONTEXT_CHARACTER_BUDGET = 8_000
+MAX_OPERATOR_TOKEN_BUDGET = 32_000
+MAX_OPERATOR_CHARACTER_BUDGET = 65_536
+MAX_OPERATOR_OBJECTIVE_CHARACTERS = 4_000
 DEFAULT_CONSTRAINTS = (
     "The repository must remain a valid Git worktree.",
     "Only the declared read-only repository inspection may execute.",
 )
 
 Clock = Callable[[], datetime]
+InputTokenEstimator = Callable[[str, int], int]
+
+
+def _default_input_token_estimator(objective: str, context_character_budget: int) -> int:
+    del objective, context_character_budget
+    return 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,8 +103,24 @@ class RepositoryOperatorConfiguration:
     execution_adapter_id: str
     outcome_observer_id: str
     outcome_observer_contract_version: str
+    default_token_budget: int = field(
+        default=DEFAULT_RECORDED_TOKEN_BUDGET,
+        kw_only=True,
+    )
+    input_token_estimator: InputTokenEstimator = field(
+        default=_default_input_token_estimator,
+        kw_only=True,
+    )
 
     def __post_init__(self) -> None:
+        if (
+            isinstance(self.default_token_budget, bool)
+            or not isinstance(self.default_token_budget, int)
+            or not 1 <= self.default_token_budget <= MAX_OPERATOR_TOKEN_BUDGET
+        ):
+            raise ValueError("repository operator default token budget is out of bounds")
+        if not callable(self.input_token_estimator):
+            raise TypeError("repository operator input token estimator must be callable")
         values = (
             self.execution_adapter_id,
             self.outcome_observer_id,
@@ -148,23 +175,38 @@ class RepositoryOperator:
         *,
         objective: str = DEFAULT_OBJECTIVE,
         approval_granted: bool = False,
-        token_budget: int = 2_000,
-        character_budget: int = 8_000,
+        token_budget: int | None = None,
+        character_budget: int = DEFAULT_CONTEXT_CHARACTER_BUDGET,
     ) -> CanonicalOperatorRunResult:
         if not objective.strip():
             raise ValueError("operator objective must not be empty")
-        if isinstance(token_budget, bool) or not isinstance(token_budget, int) or token_budget < 1:
-            raise ValueError("operator token budget must be a positive integer")
+        if len(objective) > MAX_OPERATOR_OBJECTIVE_CHARACTERS:
+            raise ValueError(
+                f"operator objective exceeds {MAX_OPERATOR_OBJECTIVE_CHARACTERS} characters"
+            )
+        resolved_token_budget = (
+            self._configuration.default_token_budget if token_budget is None else token_budget
+        )
+        if (
+            isinstance(resolved_token_budget, bool)
+            or not isinstance(resolved_token_budget, int)
+            or not 1 <= resolved_token_budget <= MAX_OPERATOR_TOKEN_BUDGET
+        ):
+            raise ValueError(
+                f"operator token budget must be between 1 and {MAX_OPERATOR_TOKEN_BUDGET}"
+            )
         if (
             isinstance(character_budget, bool)
             or not isinstance(character_budget, int)
-            or character_budget < 1
+            or not 1 <= character_budget <= MAX_OPERATOR_CHARACTER_BUDGET
         ):
-            raise ValueError("operator character budget must be a positive integer")
+            raise ValueError(
+                f"operator character budget must be between 1 and {MAX_OPERATOR_CHARACTER_BUDGET}"
+            )
         request = self._request(
             objective=objective,
             approval_granted=approval_granted,
-            token_budget=token_budget,
+            token_budget=resolved_token_budget,
             character_budget=character_budget,
         )
         self._workflow.run(request)
@@ -346,7 +388,7 @@ class RepositoryOperator:
                 DecisionClassification.PRIVATE,
                 DecisionLocality.LOCAL_ONLY if local else DecisionLocality.REMOTE_ALLOWED,
                 DecisionBudget(token_budget, min(token_budget, 512), 120_000, 0),
-                min(token_budget, 256),
+                self._configuration.input_token_estimator(objective, character_budget),
                 local,
                 observed_at,
             ),

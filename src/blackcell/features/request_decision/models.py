@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
     from blackcell.features.request_decision.command import RequestDecision
 
 _SHA256_PREFIX = "sha256:"
+_DIAGNOSTIC_PATH = re.compile(r"^\$(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[0-9]+\])*$")
 
 
 class DecisionCapability(StrEnum):
@@ -42,6 +44,15 @@ class DecisionFailureKind(StrEnum):
     BUDGET = "budget"
     SCHEMA = "schema"
     INTEGRITY = "integrity"
+
+
+class DecisionDiagnosticCode(StrEnum):
+    INVALID_STRUCTURE = "invalid_structure"
+    CONTEXT_FRAME_MISMATCH = "context_frame_mismatch"
+    UNDECLARED_AFFORDANCE = "undeclared_affordance"
+    UNDECLARED_ARGUMENT = "undeclared_argument"
+    MISSING_REQUIRED_ARGUMENT = "missing_required_argument"
+    EVIDENCE_OUTSIDE_CONTEXT = "evidence_outside_context"
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,6 +339,39 @@ class DecisionAdapterResult:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionGatewayCompletion:
+    """Content-free evidence returned when a gateway call completed then failed policy."""
+
+    output_digest: str
+    input_tokens: int
+    output_tokens: int
+    latency_ms: int
+    cost_microusd: int
+    deterministic: bool
+    completed_at: datetime
+
+    def __post_init__(self) -> None:
+        _validate_digest(self.output_digest, "output_digest")
+        values = (
+            self.input_tokens,
+            self.output_tokens,
+            self.latency_ms,
+            self.cost_microusd,
+        )
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+            raise TypeError("gateway completion usage values must be integers")
+        if min(values) < 0:
+            raise ValueError("gateway completion usage values must be non-negative")
+        if not isinstance(self.deterministic, bool):
+            raise TypeError("gateway completion determinism marker must be a boolean")
+        object.__setattr__(
+            self,
+            "completed_at",
+            _timestamp(self.completed_at, "completed_at"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class DecisionUsage:
     request_id: str
     attempt_id: str
@@ -381,6 +425,20 @@ class DecisionResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionFailureDiagnostic:
+    code: DecisionDiagnosticCode
+    path: str
+    rejected_output_digest: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.code, DecisionDiagnosticCode):
+            raise TypeError("failure diagnostic code must be a DecisionDiagnosticCode")
+        if len(self.path) > 128 or _DIAGNOSTIC_PATH.fullmatch(self.path) is None:
+            raise ValueError("failure diagnostic path must be a bounded JSON path")
+        _validate_digest(self.rejected_output_digest, "rejected_output_digest")
+
+
+@dataclass(frozen=True, slots=True)
 class DecisionFailure:
     request_id: str
     request_digest: str
@@ -392,6 +450,7 @@ class DecisionFailure:
     attempt_id: str | None = None
     exception_type: str | None = None
     schema_version: str = "decision-failure/v1"
+    diagnostic: DecisionFailureDiagnostic | None = None
     failure_id: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -411,6 +470,14 @@ class DecisionFailure:
                 raise ValueError("an attempted decision failure requires a route")
         if self.exception_type is not None and not self.exception_type.strip():
             raise ValueError("exception_type must not be blank")
+        if self.schema_version == "decision-failure/v1":
+            if self.diagnostic is not None:
+                raise ValueError("decision-failure/v1 cannot carry a diagnostic")
+        elif self.schema_version == "decision-failure/v2":
+            if self.diagnostic is None:
+                raise ValueError("decision-failure/v2 requires a diagnostic")
+        else:
+            raise ValueError(f"unsupported decision failure schema {self.schema_version!r}")
         object.__setattr__(self, "failed_at", _timestamp(self.failed_at, "failed_at"))
         object.__setattr__(self, "failure_id", json_digest(_failure_payload(self)))
 
@@ -578,7 +645,7 @@ def _response_payload(response: DecisionResponse) -> dict[str, object]:
 
 
 def _failure_payload(failure: DecisionFailure) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "schema_version": failure.schema_version,
         "request_id": failure.request_id,
         "request_digest": failure.request_digest,
@@ -590,6 +657,13 @@ def _failure_payload(failure: DecisionFailure) -> dict[str, object]:
         "attempt_id": failure.attempt_id,
         "exception_type": failure.exception_type,
     }
+    if failure.diagnostic is not None:
+        payload["diagnostic"] = {
+            "code": failure.diagnostic.code.value,
+            "path": failure.diagnostic.path,
+            "rejected_output_digest": failure.diagnostic.rejected_output_digest,
+        }
+    return payload
 
 
 def _validate_terminal_binding(
@@ -626,9 +700,12 @@ __all__ = [
     "DecisionBudget",
     "DecisionCapability",
     "DecisionClassification",
+    "DecisionDiagnosticCode",
     "DecisionFailure",
+    "DecisionFailureDiagnostic",
     "DecisionFailureKind",
     "DecisionFailureRecord",
+    "DecisionGatewayCompletion",
     "DecisionLocality",
     "DecisionPreparation",
     "DecisionProposal",

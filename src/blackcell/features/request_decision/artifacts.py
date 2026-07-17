@@ -10,6 +10,7 @@ from blackcell.features.request_decision.command import (
     RequestDecision,
     decision_request_payload,
 )
+from blackcell.features.request_decision.errors import DecisionOutputViolation
 from blackcell.features.request_decision.models import (
     DecisionAffordance,
     DecisionArgument,
@@ -18,7 +19,9 @@ from blackcell.features.request_decision.models import (
     DecisionBudget,
     DecisionCapability,
     DecisionClassification,
+    DecisionDiagnosticCode,
     DecisionFailure,
+    DecisionFailureDiagnostic,
     DecisionFailureKind,
     DecisionLocality,
     DecisionProposal,
@@ -46,6 +49,7 @@ DECISION_ROUTE_SCHEMA_VERSION = "decision-route/v1"
 DECISION_ATTEMPT_SCHEMA_VERSION = "decision-attempt/v1"
 DECISION_RESPONSE_SCHEMA_VERSION = "decision-response/v1"
 DECISION_FAILURE_SCHEMA_VERSION = "decision-failure/v1"
+DECISION_FAILURE_SCHEMA_VERSION_V2 = "decision-failure/v2"
 DECISION_USAGE_SCHEMA_VERSION = "decision-usage/v1"
 DECISION_PROPOSAL_SCHEMA_VERSION = "decision-proposal/v1"
 
@@ -130,7 +134,7 @@ _RESPONSE_KEYS = frozenset(
         "completed_at",
     }
 )
-_FAILURE_KEYS = frozenset(
+_FAILURE_V1_KEYS = frozenset(
     {
         "schema_version",
         "request_id",
@@ -144,6 +148,8 @@ _FAILURE_KEYS = frozenset(
         "exception_type",
     }
 )
+_FAILURE_V2_KEYS = _FAILURE_V1_KEYS | {"diagnostic"}
+_DIAGNOSTIC_KEYS = frozenset({"code", "path", "rejected_output_digest"})
 _USAGE_KEYS = frozenset(
     {
         "schema_version",
@@ -265,32 +271,51 @@ def decode_decision_output(
         {"schema_version": DECISION_PROPOSAL_SCHEMA_VERSION, **payload}
     )
     if proposal.context_frame_id != request.context_frame_id:
-        raise ValueError("decision proposal belongs to a different ContextFrame")
+        raise DecisionOutputViolation(
+            DecisionDiagnosticCode.CONTEXT_FRAME_MISMATCH,
+            "$.context_frame_id",
+        )
     affordances = {affordance.name: affordance for affordance in request.affordances}
-    try:
-        affordance = affordances[proposal.affordance]
-    except KeyError as error:
-        raise ValueError("decision proposal uses an undeclared affordance") from error
+    affordance = affordances.get(proposal.affordance)
+    if affordance is None:
+        raise DecisionOutputViolation(
+            DecisionDiagnosticCode.UNDECLARED_AFFORDANCE,
+            "$.affordance",
+        ) from None
     declared = {argument.name: argument for argument in affordance.arguments}
     provided = {argument.name for argument in proposal.arguments}
-    unexpected = tuple(sorted(provided - declared.keys()))
-    if unexpected:
-        raise ValueError(f"decision proposal contains undeclared arguments: {unexpected}")
-    missing = tuple(
-        argument.name
-        for argument in affordance.arguments
-        if argument.required and argument.name not in provided
+    unexpected_index = next(
+        (
+            index
+            for index, argument in enumerate(proposal.arguments)
+            if argument.name not in declared
+        ),
+        None,
     )
-    if missing:
-        raise ValueError(f"decision proposal omits required arguments: {missing}")
-    outside_context = tuple(
-        event_id
-        for event_id in proposal.evidence_event_ids
-        if event_id not in request.evidence_event_ids
+    if unexpected_index is not None:
+        raise DecisionOutputViolation(
+            DecisionDiagnosticCode.UNDECLARED_ARGUMENT,
+            f"$.arguments[{unexpected_index}].name",
+        )
+    if any(
+        argument.required and argument.name not in provided for argument in affordance.arguments
+    ):
+        raise DecisionOutputViolation(
+            DecisionDiagnosticCode.MISSING_REQUIRED_ARGUMENT,
+            "$.arguments",
+        )
+    outside_index = next(
+        (
+            index
+            for index, event_id in enumerate(proposal.evidence_event_ids)
+            if event_id not in request.evidence_event_ids
+        ),
+        None,
     )
-    if outside_context:
-        raise ValueError(
-            f"decision proposal cites evidence outside its ContextFrame: {outside_context}"
+    if outside_index is not None:
+        raise DecisionOutputViolation(
+            DecisionDiagnosticCode.EVIDENCE_OUTSIDE_CONTEXT,
+            f"$.evidence_event_ids[{outside_index}]",
         )
     return proposal
 
@@ -344,8 +369,30 @@ def decode_decision_failure(
     *,
     expected_failure_id: str | None = None,
 ) -> DecisionFailure:
-    payload = _object(_decode(value), _FAILURE_KEYS, "decision failure")
-    _schema(payload, DECISION_FAILURE_SCHEMA_VERSION, "decision failure")
+    raw = _decode(value)
+    if not isinstance(raw, Mapping):
+        raise ValueError("decision failure has unexpected fields")
+    schema_version = raw.get("schema_version")
+    if schema_version == DECISION_FAILURE_SCHEMA_VERSION:
+        payload = _object(raw, _FAILURE_V1_KEYS, "decision failure")
+        diagnostic = None
+    elif schema_version == DECISION_FAILURE_SCHEMA_VERSION_V2:
+        payload = _object(raw, _FAILURE_V2_KEYS, "decision failure")
+        diagnostic_payload = _object(
+            payload["diagnostic"],
+            _DIAGNOSTIC_KEYS,
+            "decision failure diagnostic",
+        )
+        diagnostic = DecisionFailureDiagnostic(
+            code=_enum(DecisionDiagnosticCode, diagnostic_payload, "code"),
+            path=_text(diagnostic_payload, "path"),
+            rejected_output_digest=_text(
+                diagnostic_payload,
+                "rejected_output_digest",
+            ),
+        )
+    else:
+        raise ValueError(f"unsupported decision failure schema {schema_version!r}")
     failure = DecisionFailure(
         request_id=_text(payload, "request_id"),
         request_digest=_text(payload, "request_digest"),
@@ -356,6 +403,7 @@ def decode_decision_failure(
         route_id=_optional_text(payload, "route_id"),
         attempt_id=_optional_text(payload, "attempt_id"),
         exception_type=_optional_text(payload, "exception_type"),
+        diagnostic=diagnostic,
         schema_version=_text(payload, "schema_version"),
     )
     _expected_digest(failure.failure_id, expected_failure_id, "decision failure")
@@ -540,6 +588,7 @@ __all__ = [
     "DECISION_ATTEMPT_SCHEMA_VERSION",
     "DECISION_FAILURE_MEDIA_TYPE",
     "DECISION_FAILURE_SCHEMA_VERSION",
+    "DECISION_FAILURE_SCHEMA_VERSION_V2",
     "DECISION_PROPOSAL_SCHEMA_VERSION",
     "DECISION_REQUEST_MEDIA_TYPE",
     "DECISION_RESPONSE_MEDIA_TYPE",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Set
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,7 +16,10 @@ from blackcell.domains.repository import (
     EpistemicStatus,
     SourceReliability,
 )
+from blackcell.gateway import AdapterResult, GatewayBudget, ModelCapability, ModelRequest
+from blackcell.kernel import JsonValue
 from blackcell.operator import (
+    RepositoryOperatorConfiguration,
     RepositoryStatusSnapshot,
 )
 from blackcell.telemetry import TraceRecorder
@@ -51,6 +55,42 @@ class InvalidStatusReader(RepositoryStatusReader):
         )
 
 
+class ObservedCodexUsageAdapter:
+    adapter_id = "codex-cli"
+    local = False
+    deterministic = False
+    capabilities: Set[ModelCapability] = frozenset({ModelCapability.REASON})
+
+    def __init__(self) -> None:
+        self.seen_budget: GatewayBudget | None = None
+        self.seen_estimate: int | None = None
+
+    def invoke(self, request: ModelRequest, *, model_id: str) -> AdapterResult:
+        assert model_id == "gpt-test"
+        self.seen_budget = request.budget
+        self.seen_estimate = request.estimated_input_tokens
+        context_frame_id = request.input["context_frame_id"]
+        evidence_event_ids = request.input["evidence_event_ids"]
+        assert isinstance(context_frame_id, str)
+        assert isinstance(evidence_event_ids, tuple)
+        output: dict[str, JsonValue] = {
+            "proposal_id": "proposal:observed-live-usage",
+            "context_frame_id": context_frame_id,
+            "affordance": "inspect_repository",
+            "arguments": (),
+            "rationale": "inspect the admitted repository status evidence",
+            "evidence_event_ids": evidence_event_ids,
+        }
+        return AdapterResult(
+            output,
+            input_tokens=12_659,
+            output_tokens=184,
+            latency_ms=9_562,
+            cost_microusd=0,
+            deterministic=False,
+        )
+
+
 def test_status_snapshot_schema_is_owned_by_the_persisting_adapter() -> None:
     snapshot = RepositoryStatusSnapshot(True, True, 0, "sha256:" + "0" * 64, NOW)
 
@@ -59,6 +99,18 @@ def test_status_snapshot_schema_is_owned_by_the_persisting_adapter() -> None:
     )
     with pytest.raises(ValueError, match="schema version"):
         snapshot.manifest(schema_version="")
+
+
+def test_operator_configuration_preserves_recorded_route_defaults() -> None:
+    configuration = RepositoryOperatorConfiguration(
+        True,
+        "execution",
+        "observer",
+        "observer/v1",
+    )
+
+    assert configuration.default_token_budget == 2_000
+    assert configuration.input_token_estimator("objective", 8_000) == 256
 
 
 def test_public_operator_delegates_to_verified_daily_operator_v2(tmp_path: Path) -> None:
@@ -193,6 +245,52 @@ def test_codex_route_requires_an_explicit_model_before_storage_creation(
         raise AssertionError("Codex route accepted no model ID")
 
     assert not database.exists()
+
+
+def test_codex_route_default_admits_the_observed_live_usage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repository(tmp_path)
+    adapter = ObservedCodexUsageAdapter()
+    monkeypatch.setattr(
+        "blackcell.bootstrap.repository.CodexCliModelAdapter",
+        lambda: adapter,
+    )
+    operator = compose_repository_runtime(
+        repo,
+        database_path=repo / ".blackcell" / "kernel.sqlite3",
+        model="codex",
+        codex_model="gpt-test",
+        clock=lambda: NOW,
+    ).operator
+
+    result = operator.run()
+
+    assert result.status == "completed"
+    assert result.outcome == "executed"
+    assert adapter.seen_budget is not None
+    assert adapter.seen_budget.max_input_tokens == 32_000
+    assert adapter.seen_estimate is not None
+    assert 12_659 < adapter.seen_estimate <= adapter.seen_budget.max_input_tokens
+
+
+def test_operator_rejects_invalid_explicit_budgets_before_observation(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    reader = CountingStatusReader(repo)
+    operator = compose_repository_runtime(
+        repo,
+        database_path=repo / ".blackcell" / "kernel.sqlite3",
+        status_reader=reader,
+        clock=lambda: NOW,
+    ).operator
+
+    with pytest.raises(ValueError, match="token budget"):
+        operator.run(token_budget=0)
+    with pytest.raises(ValueError, match="character budget"):
+        operator.run(character_budget=0)
+
+    assert reader.calls == 0
 
 
 def test_current_state_corrections_use_the_canonical_ingestion_path(tmp_path: Path) -> None:

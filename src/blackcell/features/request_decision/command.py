@@ -132,7 +132,34 @@ class RequestDecision:
                 "const": self.affordances[0].name,
             }
         else:
-            affordance_schema = {"type": "string", "minLength": 1}
+            affordance_schema = {
+                "type": "string",
+                "enum": tuple(item.name for item in self.affordances),
+            }
+        argument_names = tuple(
+            sorted(
+                {
+                    argument.name
+                    for affordance in self.affordances
+                    for argument in affordance.arguments
+                }
+            )
+        )
+        argument_name_schema: dict[str, JsonInput]
+        if len(argument_names) == 1:
+            argument_name_schema = {"type": "string", "const": argument_names[0]}
+        elif argument_names:
+            argument_name_schema = {"type": "string", "enum": argument_names}
+        else:
+            argument_name_schema = {"type": "string", "minLength": 1}
+        evidence_item_schema: dict[str, JsonInput]
+        if self.evidence_event_ids:
+            evidence_item_schema = {
+                "type": "string",
+                "enum": self.evidence_event_ids,
+            }
+        else:
+            evidence_item_schema = {"type": "string", "minLength": 1}
         value = freeze_json(
             {
                 "type": "object",
@@ -154,12 +181,14 @@ class RequestDecision:
                     "affordance": affordance_schema,
                     "arguments": {
                         "type": "array",
+                        "maxItems": len(argument_names),
+                        "uniqueItems": True,
                         "items": {
                             "type": "object",
                             "additionalProperties": False,
                             "required": ("name", "value"),
                             "properties": {
-                                "name": {"type": "string", "minLength": 1},
+                                "name": argument_name_schema,
                                 "value": {
                                     "type": (
                                         "null",
@@ -175,7 +204,9 @@ class RequestDecision:
                     "rationale": {"type": "string", "minLength": 1},
                     "evidence_event_ids": {
                         "type": "array",
-                        "items": {"type": "string", "minLength": 1},
+                        "maxItems": len(self.evidence_event_ids),
+                        "uniqueItems": True,
+                        "items": evidence_item_schema,
                     },
                 },
             },

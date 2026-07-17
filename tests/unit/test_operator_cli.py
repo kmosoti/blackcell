@@ -93,6 +93,55 @@ def test_operator_cli_requires_codex_model_before_creating_storage(tmp_path: Pat
     assert not database.exists()
 
 
+def test_operator_cli_accepts_explicit_model_and_context_budgets(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    database = repo / ".blackcell" / "kernel.sqlite3"
+
+    result = runner.invoke(
+        app,
+        [
+            "operator",
+            "run",
+            "--repo",
+            str(repo),
+            "--db",
+            str(database),
+            "--token-budget",
+            "1000",
+            "--character-budget",
+            "9000",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["status"] == "completed"
+
+
+def test_operator_cli_rejects_invalid_budget_before_creating_storage(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    database = repo / ".blackcell" / "kernel.sqlite3"
+
+    result = runner.invoke(
+        app,
+        [
+            "operator",
+            "run",
+            "--repo",
+            str(repo),
+            "--db",
+            str(database),
+            "--token-budget",
+            "0",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1
+    assert "token budget must be between" in json.loads(result.stderr)["error"]["message"]
+    assert not database.exists()
+
+
 def test_operator_context_reports_missing_run_as_json_error(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
 

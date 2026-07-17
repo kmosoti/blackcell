@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import stat
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,24 @@ from blackcell.adapters.models import (
     CodexCliModelAdapter,
     CodexCliOutputError,
     CodexCliTimeoutError,
+    GatewayDecisionAdapter,
+)
+from blackcell.adapters.models.codex_cli import (
+    CODEX_CLI_PROVIDER_SCAFFOLD_RESERVE_TOKENS,
+    estimate_codex_cli_input_tokens,
+)
+from blackcell.adapters.persistence.sqlite import SQLiteDecisionAttemptJournal
+from blackcell.features.request_decision import (
+    DecisionAffordance,
+    DecisionBudget,
+    DecisionCapability,
+    DecisionClassification,
+    DecisionLocality,
+    DecisionPreparation,
+    DecisionRequirements,
+    DecisionSuccessRecord,
+    RequestDecision,
+    RequestDecisionHandler,
 )
 from blackcell.gateway import (
     DataClassification,
@@ -24,6 +43,8 @@ from blackcell.gateway import (
     ModelGateway,
     ModelRequest,
 )
+
+NOW = datetime(2026, 7, 17, 12, tzinfo=UTC)
 
 SCHEMA = {
     "type": "object",
@@ -67,16 +88,21 @@ class Runner:
             return subprocess.CompletedProcess(command, 0, "", "")
         if self.timeout:
             raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-        input_path = workspace / "model-input.json"
         schema_path = workspace / "output-schema.json"
         response_path = Path(command[command.index("--output-last-message") + 1])
-        self.input_payload = json.loads(input_path.read_bytes())
+        prompt = kwargs["input"]
+        assert isinstance(prompt, str)
+        delimited = prompt.split("BLACKCELL_CANONICAL_MODEL_INPUT_BEGIN\n", 1)[1]
+        canonical_input = delimited.rsplit(
+            "\nBLACKCELL_CANONICAL_MODEL_INPUT_END",
+            1,
+        )[0]
+        self.input_payload = json.loads(canonical_input)
         self.schema_payload = json.loads(schema_path.read_bytes())
         response_path.write_text(json.dumps(self.response), encoding="utf-8")
         self.workspace_files = {item.name for item in workspace.iterdir()}
         self.private_modes = {
-            item.name: stat.S_IMODE(item.stat().st_mode)
-            for item in (input_path, schema_path, response_path)
+            item.name: stat.S_IMODE(item.stat().st_mode) for item in (schema_path, response_path)
         }
         return subprocess.CompletedProcess(
             command,
@@ -125,19 +151,34 @@ def test_codex_cli_adapter_uses_exact_isolated_read_only_boundary() -> None:
     assert {"--ignore-user-config", "--ignore-rules", "--json", "--ephemeral"} <= set(command)
     assert "--output-schema" in command
     assert "--output-last-message" in command
+    assert command[-1] == "-"
+    assert {
+        "apps",
+        "browser_use",
+        "computer_use",
+        "goals",
+        "image_generation",
+        "multi_agent",
+        "multi_agent_v2",
+        "shell_tool",
+        "unified_exec",
+    } <= {command[index + 1] for index, item in enumerate(command[:-1]) if item == "--disable"}
     assert all("never place me" not in item for item in command)
+    assert "never place me" in invocation["input"]
+    assert "BLACKCELL_CANONICAL_MODEL_INPUT_BEGIN" in invocation["input"]
+    assert "BLACKCELL_CANONICAL_MODEL_INPUT_END" in invocation["input"]
+    assert "model-input.json" not in invocation["input"]
+    assert "output-schema.json" not in invocation["input"]
     assert "shell" not in invocation
     assert invocation["timeout"] == pytest.approx(1.99)
     assert runner.workspace_files == {
         ".git",
-        "model-input.json",
         "output-schema.json",
         "model-response.json",
     }
     assert runner.input_payload == request.input
     assert runner.schema_payload == json.loads(json.dumps(SCHEMA))
     assert runner.private_modes == {
-        "model-input.json": 0o600,
         "output-schema.json": 0o600,
         "model-response.json": 0o600,
     }
@@ -168,6 +209,53 @@ def test_codex_cli_adapter_integrates_with_gateway_policy() -> None:
     assert result.decision.model_id == "gpt-test"
     assert result.response.output == {"answer": "ready"}
     assert result.response.deterministic is False
+
+
+def test_codex_cli_transport_completes_the_durable_decision_stack(tmp_path: Path) -> None:
+    response = {
+        "proposal_id": "proposal:codex",
+        "context_frame_id": "sha256:" + "1" * 64,
+        "affordance": "inspect",
+        "arguments": (),
+        "rationale": "inspect the bounded repository context",
+        "evidence_event_ids": (),
+    }
+    runner = Runner(response=response)
+    ticks = iter((20.0, 20.0, 20.01))
+    adapter = CodexCliModelAdapter(runner=runner, clock=lambda: next(ticks))
+    profile = GatewayProfile(
+        "codex-reason",
+        ModelCapability.REASON,
+        adapter.adapter_id,
+        "gpt-test",
+        0,
+        False,
+        False,
+        DataClassification.PRIVATE,
+        100,
+        20,
+        100,
+    )
+    gateway = GatewayDecisionAdapter(
+        ModelGateway(
+            (profile,),
+            {adapter.adapter_id: adapter},
+            clock=lambda: NOW,
+        ),
+        clock=lambda: NOW,
+    )
+    journal = SQLiteDecisionAttemptJournal(tmp_path / "decision-artifacts")
+    handler = RequestDecisionHandler(gateway, journal, clock=lambda: NOW)
+    request = _decision_request()
+
+    preparation = handler.prepare(request)
+    assert isinstance(preparation, DecisionPreparation)
+    outcome = handler.handle(preparation)
+
+    assert isinstance(outcome, DecisionSuccessRecord)
+    assert outcome.response.proposal.proposal_id == "proposal:codex"
+    assert outcome.usage.input_tokens == 41
+    assert journal.get_terminal(request.request_id) == outcome
 
 
 def test_codex_cli_adapter_enforces_zero_and_subprocess_deadlines() -> None:
@@ -223,6 +311,18 @@ def test_codex_cli_adapter_rejects_input_overflow_before_process_creation() -> N
     assert runner.calls == []
 
 
+def test_codex_cli_estimate_uses_explicit_envelope_and_scaffold_reserve() -> None:
+    estimate = estimate_codex_cli_input_tokens(
+        objective="Inspect repository readiness.",
+        context_character_budget=8_000,
+    )
+
+    assert estimate > CODEX_CLI_PROVIDER_SCAFFOLD_RESERVE_TOKENS
+    assert estimate < 32_000
+    with pytest.raises(ValueError, match="objective"):
+        estimate_codex_cli_input_tokens(objective=" ", context_character_budget=8_000)
+
+
 def test_codex_cli_adapter_does_not_echo_provider_or_request_content_on_failure() -> None:
     runner = Runner(returncode=2, stderr="provider-secret-output")
     ticks = iter((1.0, 1.0, 1.01))
@@ -265,4 +365,28 @@ def _request(*, secret: str = "safe", latency_ms: int = 2_000) -> ModelRequest:
         "run:1",
         "node:planner",
         deterministic_required=False,
+    )
+
+
+def _decision_request() -> RequestDecision:
+    return RequestDecision(
+        DecisionRequirements(
+            "decision:codex",
+            "node:planner",
+            DecisionCapability.REASON,
+            DecisionClassification.PRIVATE,
+            DecisionLocality.REMOTE_ALLOWED,
+            DecisionBudget(100, 20, 2_000, 100),
+            20,
+            False,
+            NOW,
+        ),
+        "run:codex",
+        "run:codex",
+        "event:context",
+        "sha256:" + "1" * 64,
+        "inspect project status",
+        '{"status":"ready"}',
+        (),
+        (DecisionAffordance("inspect"),),
     )

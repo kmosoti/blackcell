@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import IntEnum, StrEnum
 from typing import cast
 
@@ -120,6 +120,43 @@ class AdapterResult:
             raise ValueError("adapter usage values must be non-negative")
         frozen = freeze_json(self.output, path="$.output")
         object.__setattr__(self, "output", cast("Mapping[str, JsonValue]", frozen))
+
+
+@dataclass(frozen=True, slots=True)
+class GatewayCompletion:
+    """Content-free evidence that an admitted adapter call completed."""
+
+    output_digest: str
+    input_tokens: int
+    output_tokens: int
+    latency_ms: int
+    cost_microusd: int
+    deterministic: bool
+    completed_at: datetime
+
+    def __post_init__(self) -> None:
+        hexadecimal = self.output_digest.removeprefix("sha256:")
+        if not self.output_digest.startswith("sha256:") or len(hexadecimal) != 64:
+            raise ValueError("gateway completion output_digest must be a SHA-256 digest")
+        try:
+            int(hexadecimal, 16)
+        except ValueError as error:
+            raise ValueError("gateway completion output_digest must be a SHA-256 digest") from error
+        values = (
+            self.input_tokens,
+            self.output_tokens,
+            self.latency_ms,
+            self.cost_microusd,
+        )
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
+            raise TypeError("gateway completion usage values must be integers")
+        if min(values) < 0:
+            raise ValueError("gateway completion usage values must be non-negative")
+        if not isinstance(self.deterministic, bool):
+            raise TypeError("gateway completion determinism marker must be a boolean")
+        if self.completed_at.tzinfo is None or self.completed_at.utcoffset() is None:
+            raise ValueError("gateway completion timestamp must be timezone-aware")
+        object.__setattr__(self, "completed_at", self.completed_at.astimezone(UTC))
 
 
 @dataclass(frozen=True, slots=True)

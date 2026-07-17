@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from blackcell.gateway.models import (
     GatewayAuditRecord,
     GatewayBudget,
+    GatewayCompletion,
     GatewayFailureCode,
     GatewayResult,
     LocalityPolicy,
@@ -16,17 +17,27 @@ from blackcell.gateway.models import (
 )
 from blackcell.gateway.ports import AdapterRegistry, Clock, GatewayAuditSink, ModelAdapter
 from blackcell.gateway.profiles import GatewayProfile
-from blackcell.gateway.schema import validate_output
+from blackcell.gateway.schema import OutputSchemaError, validate_output
+from blackcell.kernel._json import json_digest
 
 
 class GatewayAdmissionError(RuntimeError):
-    def __init__(self, code: GatewayFailureCode, message: str) -> None:
+    def __init__(
+        self,
+        code: GatewayFailureCode,
+        message: str,
+        *,
+        completion: GatewayCompletion | None = None,
+    ) -> None:
         if not isinstance(code, GatewayFailureCode):
             raise TypeError("gateway admission failures require a stable failure code")
         if not message.strip():
             raise ValueError("gateway admission failure message must not be empty")
+        if completion is not None and not isinstance(completion, GatewayCompletion):
+            raise TypeError("gateway admission completion has an invalid type")
         super().__init__(message)
         self.code = code
+        self.completion = completion
 
 
 class ModelGateway:
@@ -78,65 +89,86 @@ class ModelGateway:
         profile, adapter = self._profile_adapter(expected.decision)
         adapter_request = replace(call.request, budget=call.effective_budget)
         result = adapter.invoke(adapter_request, model_id=profile.model_id)
+        completion = GatewayCompletion(
+            output_digest=json_digest(result.output),
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            latency_ms=result.latency_ms,
+            cost_microusd=result.cost_microusd,
+            deterministic=result.deterministic,
+            completed_at=self._clock(),
+        )
         request = call.request
         if result.input_tokens > request.budget.max_input_tokens:
             raise GatewayAdmissionError(
                 GatewayFailureCode.ADAPTER_INPUT_BUDGET_EXCEEDED,
                 "adapter exceeded the input-token budget",
+                completion=completion,
             )
         if result.input_tokens > profile.max_input_tokens:
             raise GatewayAdmissionError(
                 GatewayFailureCode.PROFILE_INPUT_LIMIT_EXCEEDED,
                 "adapter exceeded the profile input-token limit",
+                completion=completion,
             )
         if result.output_tokens > request.budget.max_output_tokens:
             raise GatewayAdmissionError(
                 GatewayFailureCode.ADAPTER_OUTPUT_BUDGET_EXCEEDED,
                 "adapter exceeded the output-token budget",
+                completion=completion,
             )
         if result.output_tokens > profile.max_output_tokens:
             raise GatewayAdmissionError(
                 GatewayFailureCode.PROFILE_OUTPUT_LIMIT_EXCEEDED,
                 "adapter exceeded the profile output-token limit",
+                completion=completion,
             )
         if result.latency_ms > request.budget.max_latency_ms:
             raise GatewayAdmissionError(
                 GatewayFailureCode.ADAPTER_LATENCY_BUDGET_EXCEEDED,
                 "adapter exceeded the latency budget",
+                completion=completion,
             )
         if result.cost_microusd > request.budget.max_cost_microusd:
             raise GatewayAdmissionError(
                 GatewayFailureCode.ADAPTER_COST_BUDGET_EXCEEDED,
                 "adapter exceeded the cost budget",
+                completion=completion,
             )
         if result.cost_microusd > profile.max_cost_microusd:
             raise GatewayAdmissionError(
                 GatewayFailureCode.PROFILE_COST_LIMIT_EXCEEDED,
                 "adapter exceeded the profile cost limit",
+                completion=completion,
             )
         if profile.deterministic and not result.deterministic:
             raise GatewayAdmissionError(
                 GatewayFailureCode.PROFILE_DETERMINISM_VIOLATED,
                 "adapter returned a non-deterministic result for a deterministic profile",
+                completion=completion,
             )
         if request.deterministic_required and not result.deterministic:
             raise GatewayAdmissionError(
                 GatewayFailureCode.REQUEST_DETERMINISM_VIOLATED,
                 "adapter returned a non-deterministic result",
+                completion=completion,
             )
-        validate_output(result.output, request.output_schema)
+        try:
+            validate_output(result.output, request.output_schema)
+        except OutputSchemaError as error:
+            raise OutputSchemaError(str(error), completion=completion) from error
         response = ModelResponse(
             request.request_id,
             result.output,
             profile.profile_id,
             adapter.adapter_id,
             profile.model_id,
-            result.input_tokens,
-            result.output_tokens,
-            result.latency_ms,
-            result.cost_microusd,
-            result.deterministic,
-            self._clock(),
+            completion.input_tokens,
+            completion.output_tokens,
+            completion.latency_ms,
+            completion.cost_microusd,
+            completion.deterministic,
+            completion.completed_at,
         )
         self._audit(request, response)
         return GatewayResult(call.decision, response)
