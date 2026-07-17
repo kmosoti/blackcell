@@ -10,7 +10,7 @@ from blackcell.features.authorize_action.artifacts import (
     encode_authorization_decision,
 )
 from blackcell.features.authorize_action.command import AuthorizeAction
-from blackcell.features.authorize_action.handler import ActionAuthorizer
+from blackcell.features.authorize_action.handler import authorize_action
 from blackcell.features.authorize_action.models import (
     ActionArgument,
     ActionProposal,
@@ -24,7 +24,6 @@ __all__ = [
     "ACTION_PROPOSAL_MEDIA_TYPE",
     "AUTHORIZATION_DECISION_MEDIA_TYPE",
     "ActionArgument",
-    "ActionAuthorizer",
     "ActionProposal",
     "AffordancePolicy",
     "AuthorizationArtifactCodecError",
@@ -32,6 +31,7 @@ __all__ = [
     "AuthorizationFinding",
     "AuthorizationOutcome",
     "AuthorizeAction",
+    "authorize_action",
     "decode_action_proposal",
     "decode_authorization_decision",
     "encode_action_proposal",

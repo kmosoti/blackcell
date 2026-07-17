@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -22,6 +23,9 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/adr/0003-model-execution-boundary.md",
         "docs/adr/0004-evolutionary-runtime-architecture.md",
         "docs/adr/0005-durable-run-and-execution-protocol.md",
+        "docs/adr/0006-versioned-run-feedback-protocol.md",
+        "docs/adr/0007-runtime-security-boundary.md",
+        "docs/adr/0008-architecture-consolidation.md",
         "docs/spec/index.md",
         "docs/spec/bcp-0028-charter-reset.md",
         "docs/spec/bcp-0029-event-kernel.md",
@@ -54,6 +58,17 @@ def test_docs_graph_map_links_canonical_nodes() -> None:
     assert "Runtime Architecture" in text
     assert "Scientific Basis" in text
     assert "OperatorBench" in text
+
+
+def test_decision_atlas_records_every_adr_node() -> None:
+    decision_log = _frontmatter(Path("docs/atlas/decisions.md"))
+    edges = cast("dict[str, Any]", decision_log["edges"])
+    records = cast("list[str]", edges["records"])
+    adr_nodes = {
+        cast("str", _frontmatter(path)["node"]) for path in (ROOT / "docs/adr").glob("*.md")
+    }
+
+    assert adr_nodes <= set(records)
 
 
 def test_readme_local_links_and_recorded_quickstart_are_maintained() -> None:

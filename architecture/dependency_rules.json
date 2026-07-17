@@ -1,18 +1,123 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
+  "composition_root": "blackcell.bootstrap.repository",
   "classified_roots": {
     "cli": "interface",
     "config": "edge",
-    "context": "legacy-canonical",
-    "control": "legacy-canonical",
-    "domains": "legacy-canonical",
-    "evaluation": "legacy-canonical",
+    "context": "historical-compatibility",
+    "control": "authority-policy",
+    "domains": "domain",
+    "evaluation": "evaluation",
     "kernel": "kernel",
-    "models": "legacy-canonical",
+    "models": "evaluation-contract",
     "operator": "application",
     "runtime": "runtime-core",
-    "telemetry": "legacy-canonical"
+    "telemetry": "telemetry-core"
   },
+  "concept_owners": {
+    "authorization-execution-observation": "blackcell.control",
+    "benchmark-decision-models": "blackcell.models",
+    "context-frame-construction": "blackcell.features.build_context",
+    "durable-decision-records": "blackcell.features.request_decision",
+    "evidence-selection": "blackcell.features.retrieve_evidence",
+    "historical-context-baselines": "blackcell.context",
+    "live-model-admission-routing": "blackcell.gateway",
+    "telemetry-attribute-values": "blackcell.telemetry"
+  },
+  "feature_dependencies": {
+    "build_context": [
+      "retrieve_evidence"
+    ]
+  },
+  "historical_compatibility_roots": [
+    "blackcell.context"
+  ],
+  "production_forbidden_roots": [
+    "blackcell.compatibility",
+    "blackcell.context",
+    "blackcell.experiments"
+  ],
+  "approved_construction_sites": {
+    "ArtifactStore": [
+      "blackcell.adapters.persistence.sqlite.context_frames",
+      "blackcell.adapters.persistence.sqlite.decision_attempts",
+      "blackcell.adapters.persistence.sqlite.execution_journal",
+      "blackcell.bootstrap.repository"
+    ],
+    "CodexCliModelAdapter": [
+      "blackcell.bootstrap.repository"
+    ],
+    "EventStore": [
+      "blackcell.adapters.persistence.sqlite.session",
+      "blackcell.bootstrap.repository",
+      "blackcell.cli.app"
+    ],
+    "KernelFeedbackRunRecorder": [
+      "blackcell.adapters.persistence.sqlite.run_replay",
+      "blackcell.bootstrap.repository"
+    ],
+    "KernelRunReplayAdapter": [
+      "blackcell.bootstrap.repository"
+    ],
+    "ModelGateway": [
+      "blackcell.bootstrap.repository"
+    ],
+    "RepositoryOperator": [
+      "blackcell.bootstrap.repository"
+    ],
+    "RepositoryRecordedModelAdapter": [
+      "blackcell.bootstrap.repository"
+    ],
+    "RepositoryStatusExecutionAdapter": [
+      "blackcell.bootstrap.repository"
+    ],
+    "RepositoryStatusOutcomeObserver": [
+      "blackcell.bootstrap.repository"
+    ],
+    "RepositoryStatusReader": [
+      "blackcell.bootstrap.repository"
+    ],
+    "SQLiteDecisionAttemptJournal": [
+      "blackcell.bootstrap.repository"
+    ],
+    "SQLiteExecutionJournal": [
+      "blackcell.bootstrap.repository"
+    ],
+    "SQLiteOrchestrationScheduler": [
+      "blackcell.bootstrap.runtime_api",
+      "blackcell.bootstrap.worker"
+    ]
+  },
+  "current_runtime_roots": [
+    "blackcell.adapters",
+    "blackcell.bootstrap",
+    "blackcell.control",
+    "blackcell.domains",
+    "blackcell.features",
+    "blackcell.gateway",
+    "blackcell.interfaces",
+    "blackcell.kernel",
+    "blackcell.operator",
+    "blackcell.orchestration",
+    "blackcell.runtime",
+    "blackcell.telemetry",
+    "blackcell.workflows"
+  ],
+  "benchmark_model_forbidden_importers": [
+    "blackcell.adapters",
+    "blackcell.bootstrap",
+    "blackcell.control",
+    "blackcell.domains",
+    "blackcell.features",
+    "blackcell.gateway",
+    "blackcell.interfaces",
+    "blackcell.kernel",
+    "blackcell.operator",
+    "blackcell.orchestration",
+    "blackcell.runtime",
+    "blackcell.telemetry",
+    "blackcell.workflows"
+  ],
   "reserved_target_roots": [
     "adapters",
     "bootstrap",

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 
 from blackcell.adapters.persistence.sqlite import SQLiteOrchestrationScheduler
+from blackcell.bootstrap.repository import compose_repository_runtime
 from blackcell.config import RuntimeSecurityConfig
 from blackcell.features.ingest_observation import (
     EvidencePointer,
@@ -42,6 +43,7 @@ from blackcell.kernel import (
     ArtifactQuotaExceededError,
     ConcurrencyError,
     EventEnvelope,
+    EventStore,
     KernelError,
 )
 from blackcell.operator import (
@@ -70,10 +72,14 @@ class RuntimeApiService(RuntimeApiPort):
         self,
         operator: RepositoryOperator,
         scheduler: OrchestrationSchedulerPort,
+        *,
+        events: EventStore,
         storage_quota: StorageQuotaPort | None = None,
     ) -> None:
+        if events.path != operator.database_path:
+            raise ValueError("runtime API event store does not match the operator database")
         self._operator = operator
-        self._events = operator.events
+        self._events = events
         self._ingestion = IngestObservationHandler(self._events)
         self._scheduler = scheduler
         self._storage_quota = storage_quota
@@ -89,7 +95,7 @@ class RuntimeApiService(RuntimeApiPort):
         storage_quota: StorageQuotaPort | None = None,
     ) -> RuntimeApiService:
         database_path = config.paths.ensure_database_file()
-        operator = RepositoryOperator(
+        components = compose_repository_runtime(
             Path(repository_root),
             database_path=database_path,
             artifact_root=config.paths.artifact_root,
@@ -97,8 +103,9 @@ class RuntimeApiService(RuntimeApiPort):
             artifact_max_total_bytes=artifact_max_total_bytes,
         )
         return cls(
-            operator,
+            components.operator,
             SQLiteOrchestrationScheduler(database_path),
+            events=components.events,
             storage_quota=storage_quota,
         )
 

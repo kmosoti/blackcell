@@ -4,12 +4,15 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
 from litestar.testing import TestClient
 
 from blackcell.adapters.persistence.sqlite import SQLiteOrchestrationScheduler
 from blackcell.bootstrap import RuntimeApiService, build_runtime_http_app
+from blackcell.bootstrap.repository import compose_repository_runtime
 from blackcell.config import API_TOKEN_ENV, DATA_DIR_ENV, RuntimeSecurityConfig
 from blackcell.interfaces.http import create_http_app
+from blackcell.kernel import EventStore
 from blackcell.orchestration import (
     DagDefinition,
     DagNode,
@@ -20,6 +23,24 @@ from blackcell.orchestration import (
 )
 
 TOKEN = "Runtime-v1_integration-token.0123456789-ABCDEFG"
+
+
+def test_runtime_api_rejects_an_event_store_from_another_runtime(tmp_path: Path) -> None:
+    repository = _git_repository(tmp_path / "repository")
+    config = _config(tmp_path / "runtime-data")
+    database = config.paths.ensure_database_file()
+    components = compose_repository_runtime(
+        repository,
+        database_path=database,
+        artifact_root=config.paths.artifact_root,
+    )
+
+    with pytest.raises(ValueError, match="event store does not match"):
+        RuntimeApiService(
+            components.operator,
+            SQLiteOrchestrationScheduler(database),
+            events=EventStore(tmp_path / "other.sqlite3"),
+        )
 
 
 def test_http_composition_shares_operator_use_cases_and_replays_live_free(

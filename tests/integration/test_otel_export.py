@@ -10,6 +10,7 @@ import pytest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
 from blackcell.adapters.telemetry import RuntimeTelemetry
+from blackcell.bootstrap.repository import compose_repository_runtime
 from blackcell.config import (
     API_TOKEN_ENV,
     DATA_DIR_ENV,
@@ -21,7 +22,6 @@ from blackcell.config import (
     REPOSITORY_ROOT_ENV,
     RuntimeProcessConfig,
 )
-from blackcell.operator import RepositoryOperator
 from blackcell.workflows import WorkflowSpanName
 
 TOKEN = "Runtime-v1_otel-integration.0123456789-ABCDEFG"
@@ -85,12 +85,12 @@ def test_runtime_telemetry_exports_redacted_otlp_http_protobuf_without_ambient_h
 
     try:
         database = config.security.paths.ensure_database_file()
-        result = RepositoryOperator(
+        result = compose_repository_runtime(
             repository,
             database_path=database,
             artifact_root=config.security.paths.artifact_root,
             workflow_telemetry=telemetry.workflow,
-        ).run(objective=f"Inspect runtime readiness without exposing {TOKEN}.")
+        ).operator.run(objective=f"Inspect runtime readiness without exposing {TOKEN}.")
         telemetry.shutdown()
         path, headers, body = CaptureHandler.requests.get(timeout=5)
     finally:

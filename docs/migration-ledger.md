@@ -47,8 +47,10 @@ kernel -> features -> workflows -> interfaces/bootstrap
           ports <- gateway/adapters
 ```
 
-The dependency direction points toward policy and domain behavior. Litestar, Granian, SQLite,
-Clingo, llama.cpp, OpenTelemetry, Podman, and provider SDKs are replaceable edge concerns.
+The dependency direction points toward policy and domain behavior. Litestar, Granian, Clingo,
+llama.cpp, OpenTelemetry, Podman, and provider SDKs remain edge concerns. SQLite is the supported
+trusted local kernel implementation for runtime-v1; alternate storage is not an interchangeable
+backend and requires a separately approved deployment or implementation requirement.
 
 ## Work-package states
 

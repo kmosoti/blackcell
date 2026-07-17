@@ -14,10 +14,10 @@ from blackcell.features.build_context.models import (
     ContextUnknownReason,
     serialize_context_evidence,
 )
-from blackcell.features.build_context.ports import (
-    EvidenceCandidateLike,
-    EvidenceOmissionLike,
-    EvidenceSelectionLike,
+from blackcell.features.retrieve_evidence.models import (
+    EvidenceCandidate,
+    EvidenceOmission,
+    EvidenceSelection,
 )
 
 
@@ -29,66 +29,63 @@ class ContextSelectionMismatchError(ValueError):
     pass
 
 
-class ContextFrameBuilder:
-    def handle(self, command: BuildContext, selection: EvidenceSelectionLike) -> ContextFrame:
-        if selection.objective != command.objective:
-            raise ContextSelectionMismatchError(
-                "evidence selection objective does not match the ContextFrame objective"
-            )
-        state_effective_time = getattr(selection, "state_effective_time", None)
-        schema_version = (
-            "context-frame/v4"
-            if _requires_v4(selection, state_effective_time)
-            else "context-frame/v3"
+def build_context_frame(command: BuildContext, selection: EvidenceSelection) -> ContextFrame:
+    if selection.objective != command.objective:
+        raise ContextSelectionMismatchError(
+            "evidence selection objective does not match the ContextFrame objective"
         )
-        included: list[ContextEvidence] = []
-        omissions = [_retrieval_omission(item) for item in selection.omissions]
-        characters = 0
-        for candidate in selection.candidates:
-            evidence = _context_evidence(candidate)
-            size = len(serialize_context_evidence(evidence, schema_version=schema_version)) + int(
-                bool(included)
-            )
-            if characters + size > command.max_characters:
-                if "required" in candidate.reasons:
-                    raise ContextBudgetError(
-                        "required evidence exceeds the model-facing evidence-payload budget"
-                    )
-                omissions.append(
-                    _character_budget_omission(
-                        candidate,
-                        size,
-                    )
+    state_effective_time = selection.state_effective_time
+    schema_version = (
+        "context-frame/v4" if _requires_v4(selection, state_effective_time) else "context-frame/v3"
+    )
+    included: list[ContextEvidence] = []
+    omissions = [_retrieval_omission(item) for item in selection.omissions]
+    characters = 0
+    for candidate in selection.candidates:
+        evidence = _context_evidence(candidate)
+        size = len(serialize_context_evidence(evidence, schema_version=schema_version)) + int(
+            bool(included)
+        )
+        if characters + size > command.max_characters:
+            if "required" in candidate.reasons:
+                raise ContextBudgetError(
+                    "required evidence exceeds the model-facing evidence-payload budget"
                 )
-                continue
-            included.append(evidence)
-            characters += size
-        provenance = tuple(dict.fromkeys(item.source_event_id for item in included))
-        return ContextFrame(
-            task_id=command.task_id,
-            objective=command.objective,
-            generated_at=command.generated_at,
-            source_packet_id=selection.source_packet_id,
-            source_packet_purpose=selection.source_packet_purpose,
-            source_selection_id=selection.selection_id,
-            state_domain=selection.state_domain,
-            state_stream_id=selection.state_stream_id,
-            state_global_position=selection.state_global_position,
-            state_stream_position=selection.state_stream_position,
-            source_claim_identities=tuple(
-                ContextClaimIdentity(item.source_event_id, item.claim_id)
-                for item in selection.source_claim_identities
-            ),
-            evidence=tuple(included),
-            provenance_event_ids=provenance,
-            omissions=tuple(omissions),
-            model_payload_characters=characters,
-            schema_version=schema_version,
-            state_effective_time=state_effective_time,
-        )
+            omissions.append(
+                _character_budget_omission(
+                    candidate,
+                    size,
+                )
+            )
+            continue
+        included.append(evidence)
+        characters += size
+    provenance = tuple(dict.fromkeys(item.source_event_id for item in included))
+    return ContextFrame(
+        task_id=command.task_id,
+        objective=command.objective,
+        generated_at=command.generated_at,
+        source_packet_id=selection.source_packet_id,
+        source_packet_purpose=selection.source_packet_purpose,
+        source_selection_id=selection.selection_id,
+        state_domain=selection.state_domain,
+        state_stream_id=selection.state_stream_id,
+        state_global_position=selection.state_global_position,
+        state_stream_position=selection.state_stream_position,
+        source_claim_identities=tuple(
+            ContextClaimIdentity(item.source_event_id, item.claim_id)
+            for item in selection.source_claim_identities
+        ),
+        evidence=tuple(included),
+        provenance_event_ids=provenance,
+        omissions=tuple(omissions),
+        model_payload_characters=characters,
+        schema_version=schema_version,
+        state_effective_time=state_effective_time,
+    )
 
 
-def _context_evidence(candidate: EvidenceCandidateLike) -> ContextEvidence:
+def _context_evidence(candidate: EvidenceCandidate) -> ContextEvidence:
     return ContextEvidence(
         candidate.claim_id,
         candidate.subject,
@@ -108,11 +105,11 @@ def _context_evidence(candidate: EvidenceCandidateLike) -> ContextEvidence:
         candidate.conflicted,
         _epistemic_status(candidate),
         _unknown_reason(candidate),
-        getattr(candidate, "expires_at", None),
+        candidate.expires_at,
     )
 
 
-def _retrieval_omission(omission: EvidenceOmissionLike) -> ContextOmission:
+def _retrieval_omission(omission: EvidenceOmission) -> ContextOmission:
     return ContextOmission(
         subject=omission.subject,
         claim_id=omission.claim_id,
@@ -139,12 +136,12 @@ def _retrieval_omission(omission: EvidenceOmissionLike) -> ContextOmission:
         ),
         epistemic_status=_epistemic_status(omission),
         unknown_reason=_unknown_reason(omission),
-        expires_at=getattr(omission, "expires_at", None),
+        expires_at=omission.expires_at,
     )
 
 
 def _character_budget_omission(
-    candidate: EvidenceCandidateLike,
+    candidate: EvidenceCandidate,
     serialized_characters: int,
 ) -> ContextOmission:
     return ContextOmission(
@@ -172,17 +169,17 @@ def _character_budget_omission(
         ),
         epistemic_status=_epistemic_status(candidate),
         unknown_reason=_unknown_reason(candidate),
-        expires_at=getattr(candidate, "expires_at", None),
+        expires_at=candidate.expires_at,
     )
 
 
 def _requires_v4(
-    selection: EvidenceSelectionLike,
+    selection: EvidenceSelection,
     state_effective_time: datetime | None,
 ) -> bool:
     return (
         state_effective_time is not None
-        or getattr(selection, "schema_version", "evidence-selection/v4") == "evidence-selection/v5"
+        or selection.schema_version == "evidence-selection/v5"
         or any(
             _has_epistemic_extensions(item)
             for item in (*selection.candidates, *selection.omissions)
@@ -191,23 +188,23 @@ def _requires_v4(
 
 
 def _epistemic_status(
-    item: EvidenceCandidateLike | EvidenceOmissionLike,
+    item: EvidenceCandidate | EvidenceOmission,
 ) -> ContextEpistemicStatus:
-    return ContextEpistemicStatus(getattr(item, "epistemic_status", "observed"))
+    return ContextEpistemicStatus(item.epistemic_status)
 
 
 def _unknown_reason(
-    item: EvidenceCandidateLike | EvidenceOmissionLike,
+    item: EvidenceCandidate | EvidenceOmission,
 ) -> ContextUnknownReason | None:
-    value = getattr(item, "unknown_reason", None)
+    value = item.unknown_reason
     return None if value is None else ContextUnknownReason(value)
 
 
 def _has_epistemic_extensions(
-    item: EvidenceCandidateLike | EvidenceOmissionLike,
+    item: EvidenceCandidate | EvidenceOmission,
 ) -> bool:
     return (
         _epistemic_status(item) is not ContextEpistemicStatus.OBSERVED
         or _unknown_reason(item) is not None
-        or getattr(item, "expires_at", None) is not None
+        or item.expires_at is not None
     )

@@ -9,17 +9,17 @@ from blackcell.features.build_context import (
     BuildContext,
     ContextBudgetError,
     ContextEpistemicStatus,
-    ContextFrameBuilder,
     ContextOmissionReason,
     ContextOmissionStage,
     ContextSelectionMismatchError,
     ContextUnknownReason,
+    build_context_frame,
 )
 from blackcell.features.derive_signal_packet import (
     DeriveSignalPacket,
     SignalEpistemicStatus,
-    SignalPacketProjector,
     SignalUnknownReason,
+    project_signal_packet,
 )
 from blackcell.features.ingest_observation import (
     EvidencePointer,
@@ -55,7 +55,7 @@ def test_retrieval_and_context_frame_preserve_task_relevance_and_citations(
     selection = DeterministicEvidenceRetriever().handle(
         RetrieveEvidence("resolve blocked project status", max_results=1), packet
     )
-    frame = ContextFrameBuilder().handle(
+    frame = build_context_frame(
         BuildContext("task:1", "resolve blocked project status", NOW), selection
     )
 
@@ -95,7 +95,7 @@ def test_context_frame_rejects_evidence_selected_for_another_objective(
     )
 
     with pytest.raises(ContextSelectionMismatchError):
-        ContextFrameBuilder().handle(
+        build_context_frame(
             BuildContext("task:1", "audit dependencies", NOW),
             selection,
         )
@@ -115,7 +115,7 @@ def test_content_addressed_context_schemas_require_actual_extensions(
     with pytest.raises(ValueError, match="evidence-selection/v5 requires"):
         replace(selection, schema_version="evidence-selection/v5")
 
-    frame = ContextFrameBuilder().handle(
+    frame = build_context_frame(
         BuildContext("task:canonical-schema", "status", NOW),
         selection,
     )
@@ -146,7 +146,7 @@ def test_content_addressed_context_schemas_require_actual_extensions(
     with pytest.raises(ValueError, match="evidence-omission/v3 requires"):
         replace(omission, schema_version="evidence-omission/v3")
 
-    frame_with_omission = ContextFrameBuilder().handle(
+    frame_with_omission = build_context_frame(
         BuildContext("task:canonical-omission", "status", NOW),
         selection_with_omission,
     )
@@ -157,16 +157,15 @@ def test_content_addressed_context_schemas_require_actual_extensions(
 def test_context_frame_is_deterministic_and_enforces_required_budget(tmp_path: Path) -> None:
     packet = _packet(tmp_path, (("status", "blocked"),))
     selection = DeterministicEvidenceRetriever().handle(RetrieveEvidence("project status"), packet)
-    builder = ContextFrameBuilder()
     command = BuildContext("task:1", "project status", NOW)
 
-    assert builder.handle(command, selection) == builder.handle(command, selection)
+    assert build_context_frame(command, selection) == build_context_frame(command, selection)
 
     required_selection = DeterministicEvidenceRetriever().handle(
         RetrieveEvidence("unrelated", required_keys=()), packet
     )
     tiny = BuildContext("task:1", "unrelated", NOW, max_characters=1)
-    frame = builder.handle(tiny, required_selection)
+    frame = build_context_frame(tiny, required_selection)
     assert frame.evidence == ()
     assert frame.omitted_evidence_count == 1
     assert frame.omissions[0].reason is ContextOmissionReason.CHARACTER_BUDGET
@@ -177,7 +176,7 @@ def test_context_frame_is_deterministic_and_enforces_required_budget(tmp_path: P
         packet,
     )
     with pytest.raises(ContextBudgetError):
-        builder.handle(tiny, required)
+        build_context_frame(tiny, required)
 
 
 def test_context_frame_rejects_when_later_required_evidence_exceeds_budget(
@@ -195,14 +194,12 @@ def test_context_frame_rejects_when_later_required_evidence_exceeds_budget(
         RetrieveEvidence("unrelated", required_keys=required_keys[:1]),
         packet,
     )
-
-    builder = ContextFrameBuilder()
-    first_size = builder.handle(
+    first_size = build_context_frame(
         BuildContext("task:1", "unrelated", NOW), first_only
     ).serialized_characters
 
     with pytest.raises(ContextBudgetError):
-        builder.handle(
+        build_context_frame(
             BuildContext("task:1", "unrelated", NOW, max_characters=first_size),
             selection,
         )
@@ -400,14 +397,12 @@ def test_selection_and_frame_identities_include_typed_omission_content(
         omissions=(replace(selection.omissions[0], value="someone-else"),),
     )
     assert changed_selection.selection_id != selection.selection_id
-
-    builder = ContextFrameBuilder()
     command = BuildContext("task:1", "status", NOW)
-    frame = builder.handle(command, selection)
+    frame = build_context_frame(command, selection)
     with pytest.raises(ValueError, match="does not match source_omission_id"):
         replace(frame.omissions[0], value="someone-else")
 
-    tiny = builder.handle(BuildContext("task:1", "status", NOW, max_characters=1), selection)
+    tiny = build_context_frame(BuildContext("task:1", "status", NOW, max_characters=1), selection)
     projection = next(
         item for item in tiny.omissions if item.stage is ContextOmissionStage.CONTEXT_PROJECTION
     )
@@ -429,10 +424,9 @@ def test_context_character_budget_has_an_exact_inclusive_boundary(tmp_path: Path
         max_results=2,
     )
     selection = DeterministicEvidenceRetriever().handle(query, packet)
-    builder = ContextFrameBuilder()
-    unconstrained = builder.handle(BuildContext("task:1", "owner", NOW), selection)
+    unconstrained = build_context_frame(BuildContext("task:1", "owner", NOW), selection)
 
-    exact = builder.handle(
+    exact = build_context_frame(
         BuildContext(
             "task:1",
             "owner",
@@ -441,7 +435,7 @@ def test_context_character_budget_has_an_exact_inclusive_boundary(tmp_path: Path
         ),
         selection,
     )
-    just_below = builder.handle(
+    just_below = build_context_frame(
         BuildContext(
             "task:1",
             "owner",
@@ -473,8 +467,7 @@ def test_context_artifacts_reject_incoherent_omission_and_provenance_records(
     selection = DeterministicEvidenceRetriever().handle(
         RetrieveEvidence("status", max_results=1), packet
     )
-    builder = ContextFrameBuilder()
-    frame = builder.handle(BuildContext("task:1", "status", NOW), selection)
+    frame = build_context_frame(BuildContext("task:1", "status", NOW), selection)
     retrieval_omission = frame.omissions[0]
 
     with pytest.raises(ValueError, match="cannot declare a model-payload size"):
@@ -482,7 +475,7 @@ def test_context_artifacts_reject_incoherent_omission_and_provenance_records(
     with pytest.raises(ValueError, match="ordered evidence sources"):
         replace(frame, provenance_event_ids=())
 
-    tiny = builder.handle(BuildContext("task:1", "status", NOW, max_characters=1), selection)
+    tiny = build_context_frame(BuildContext("task:1", "status", NOW, max_characters=1), selection)
     projection_omission = next(
         item for item in tiny.omissions if item.stage is ContextOmissionStage.CONTEXT_PROJECTION
     )
@@ -537,9 +530,7 @@ def test_expired_unknown_is_audited_but_never_selected_or_asserted(
         replace(omission, schema_version="evidence-omission/v2")
     with pytest.raises(ValueError, match="evidence-selection/v4 cannot"):
         replace(selection, schema_version="evidence-selection/v4")
-
-    builder = ContextFrameBuilder()
-    frame = builder.handle(BuildContext("task:expiry", selection.objective, cutoff), selection)
+    frame = build_context_frame(BuildContext("task:expiry", selection.objective, cutoff), selection)
 
     assert frame.schema_version == "context-frame/v4"
     assert frame.state_effective_time == cutoff
@@ -567,7 +558,7 @@ def test_expired_unknown_is_audited_but_never_selected_or_asserted(
     assert '"value":null' not in frame.model_payload
     assert frame.model_payload_characters == len(frame.model_payload)
 
-    exact = builder.handle(
+    exact = build_context_frame(
         BuildContext(
             "task:expiry",
             selection.objective,
@@ -626,7 +617,7 @@ def _packet(tmp_path: Path, facts: tuple[tuple[str, str], ...]):
         IngestObservation("observations:1", 0, "operator", "fixture", "run:1", observations)
     )
     state = OperationalStateProjector().replay(store.read_all())
-    return SignalPacketProjector().handle(DeriveSignalPacket("daily", NOW), state)
+    return project_signal_packet(DeriveSignalPacket("daily", NOW), state)
 
 
 def _expiring_packet(tmp_path: Path, *, cutoff: datetime):
@@ -669,4 +660,4 @@ def _expiring_packet(tmp_path: Path, *, cutoff: datetime):
         scope=OperationalStateScope("repository", stream_id),
         as_of_time=cutoff,
     )
-    return SignalPacketProjector().handle(DeriveSignalPacket("daily", cutoff), state)
+    return project_signal_packet(DeriveSignalPacket("daily", cutoff), state)

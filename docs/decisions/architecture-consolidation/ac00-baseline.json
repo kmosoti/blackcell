@@ -1,0 +1,567 @@
+{
+  "schema_version": "architecture-consolidation-decision/v1",
+  "work_package": "AC00",
+  "decision": "accept",
+  "recorded_on": "2026-07-15",
+  "subject": "architecture-consolidation boundary criteria, source baseline, and project evidence policy",
+  "source": {
+    "branch": "refactor/consolidation",
+    "base_sha": "eb05e034f3e6bdcef83167df6dcfdc8a1eaf06f0",
+    "runtime_behavior_changed": false,
+    "persisted_schema_changed": false,
+    "dependency_closure_changed": false,
+    "historical_runtime_v1_evidence_changed": false
+  },
+  "boundary_criteria": [
+    {"id": "authority", "description": "crosses an authority or trust boundary"},
+    {"id": "failure-recovery", "description": "owns independent failure or recovery semantics"},
+    {"id": "multiple-implementations", "description": "has multiple demonstrated implementations"},
+    {"id": "persisted-versioned-contract", "description": "owns an externally persisted or versioned contract"},
+    {"id": "deployment-resource-profile", "description": "has an independent deployment, scaling, latency, or resource profile"},
+    {"id": "ownership-release-cadence", "description": "changes under a materially different ownership or release cadence"},
+    {"id": "product-use-case", "description": "is independently invoked as a product use case"},
+    {"id": "security-policy", "description": "enforces security or policy"}
+  ],
+  "preserved_invariants": [
+    "single-authoritative-immutable-event-ledger",
+    "content-addressed-integrity-verified-artifacts",
+    "exact-occurrence-stream-correlation-causation-and-cutoff-semantics",
+    "model-free-side-effect-free-historical-replay",
+    "no-ambient-model-execution-authority",
+    "symbolic-policy-and-authorization-before-execution",
+    "journaled-preparation-reconciliation-fencing-leases-retries-and-recovery",
+    "fail-closed-unknown-conflicting-malformed-and-stale-evidence",
+    "explicit-persisted-event-and-artifact-versioning",
+    "stable-runtime-cli-and-http-behavior"
+  ],
+  "hypotheses": [
+    {
+      "id": "H1",
+      "classification": "confirmed",
+      "subject": "composition ownership is misplaced",
+      "decisions": [
+        {
+          "boundary": "RepositoryOperator concrete assembly",
+          "decision": "consolidate",
+          "target_work_package": "AC01",
+          "criteria": [],
+          "preserved_invariants": ["stable-runtime-cli-and-http-behavior", "journaled-preparation-reconciliation-fencing-leases-retries-and-recovery"],
+          "reason": "The product facade constructs concrete persistence, journal, gateway, workflow, execution, observation, and replay implementations even though the accepted composition rule assigns assembly to bootstrap.",
+          "evidence": [
+            {"path": "src/blackcell/operator/facade.py", "symbol": "self.events = EventStore", "test": "tests/unit/test_operator_facade.py"},
+            {"path": "docs/adr/0004-evolutionary-runtime-architecture.md", "symbol": "The composition root is the only place allowed to assemble concrete implementations.", "test": "tests/architecture/test_dependencies.py"}
+          ]
+        },
+        {
+          "boundary": "RepositoryOperator public use cases",
+          "decision": "retain",
+          "target_work_package": "AC01",
+          "criteria": ["authority", "product-use-case"],
+          "preserved_invariants": ["stable-runtime-cli-and-http-behavior", "no-ambient-model-execution-authority"],
+          "reason": "Run, state, context, replay, evaluation, and correction remain independently invoked product operations even when their dependencies are injected.",
+          "evidence": [
+            {"path": "src/blackcell/operator/facade.py", "symbol": "class RepositoryOperator", "test": "tests/unit/test_operator_facade.py"}
+          ]
+        },
+        {
+          "boundary": "API and worker store reach-through",
+          "decision": "reject",
+          "target_work_package": "AC01",
+          "criteria": [],
+          "preserved_invariants": ["stable-runtime-cli-and-http-behavior", "content-addressed-integrity-verified-artifacts"],
+          "reason": "Store acquisition through facade attributes is composition leakage rather than an independent capability boundary.",
+          "evidence": [
+            {"path": "src/blackcell/bootstrap/runtime_api.py", "symbol": "self._events = operator.events", "test": "tests/integration/test_runtime_api.py"},
+            {"path": "src/blackcell/bootstrap/worker.py", "symbol": "self._artifacts = operator.artifacts", "test": "tests/unit/test_runtime_worker.py"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H2",
+      "classification": "confirmed",
+      "subject": "the state-to-context path contains false subsystem boundaries",
+      "decisions": [
+        {
+          "boundary": "feature SignalPacket, EvidenceSelection, and ContextFrame contracts",
+          "decision": "retain",
+          "target_work_package": "AC02",
+          "criteria": ["persisted-versioned-contract", "product-use-case"],
+          "preserved_invariants": ["content-addressed-integrity-verified-artifacts", "exact-occurrence-stream-correlation-causation-and-cutoff-semantics", "explicit-persisted-event-and-artifact-versioning"],
+          "reason": "The records enforce distinct lineage, selection, omission, byte-identity, and persisted artifact semantics even when their implementation pipeline becomes more cohesive.",
+          "evidence": [
+            {"path": "src/blackcell/features/derive_signal_packet/models.py", "symbol": "class SignalPacket", "test": "tests/unit/test_derive_signal_packet_feature.py"},
+            {"path": "src/blackcell/features/retrieve_evidence/models.py", "symbol": "class EvidenceSelection", "test": "tests/unit/test_context_pipeline_features.py"},
+            {"path": "src/blackcell/features/build_context/models.py", "symbol": "class ContextFrame", "test": "tests/unit/test_context_frame_store.py"}
+          ]
+        },
+        {
+          "boundary": "field-copying context structural Protocols",
+          "decision": "consolidate",
+          "target_work_package": "AC02",
+          "criteria": [],
+          "preserved_invariants": ["exact-occurrence-stream-correlation-causation-and-cutoff-semantics", "fail-closed-unknown-conflicting-malformed-and-stale-evidence"],
+          "reason": "EvidenceCandidateLike and EvidenceSelectionLike mirror broad upstream records without a demonstrated independent implementation at this boundary.",
+          "evidence": [
+            {"path": "src/blackcell/features/build_context/ports.py", "symbol": "class EvidenceSelectionLike", "test": "tests/unit/test_context_pipeline_features.py"}
+          ]
+        },
+        {
+          "boundary": "legacy blackcell.context signal and projector vocabulary",
+          "decision": "defer",
+          "target_work_package": "AC02",
+          "criteria": ["ownership-release-cadence"],
+          "preserved_invariants": ["stable-runtime-cli-and-http-behavior"],
+          "reason": "The legacy names remain test and baseline inputs; AC02 must characterize their consumers before retirement or mapping.",
+          "evidence": [
+            {"path": "src/blackcell/context/signals.py", "symbol": "class SignalPacket", "test": "tests/unit/test_signal_packets.py"},
+            {"path": "src/blackcell/context/projector.py", "symbol": "class DeterministicContextProjector", "test": "tests/unit/test_context_projection.py"}
+          ]
+        },
+        {
+          "boundary": "deterministic and FTS5 retrieval strategies",
+          "decision": "retain",
+          "target_work_package": "AC02",
+          "criteria": ["multiple-implementations", "deployment-resource-profile"],
+          "preserved_invariants": ["fail-closed-unknown-conflicting-malformed-and-stale-evidence", "content-addressed-integrity-verified-artifacts"],
+          "reason": "The deterministic matcher and ephemeral FTS5 adapter are independently selectable, resource-distinct implementations behind the retrieval port.",
+          "evidence": [
+            {"path": "src/blackcell/features/retrieve_evidence/handler.py", "symbol": "class RankedEvidenceRetriever", "test": "tests/unit/test_fts5_evidence_retriever.py"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H3",
+      "classification": "confirmed",
+      "subject": "current and historical contract vocabularies overlap",
+      "decisions": [
+        {
+          "boundary": "gateway and decision budget and route primitives",
+          "decision": "defer",
+          "target_work_package": "AC03",
+          "criteria": [],
+          "preserved_invariants": ["no-ambient-model-execution-authority", "explicit-persisted-event-and-artifact-versioning"],
+          "reason": "Budget fields are identical and route fields substantially overlap, but AC03 must choose canonical ownership without collapsing durable attempt identity.",
+          "evidence": [
+            {"path": "src/blackcell/gateway/models.py", "symbol": "class GatewayBudget", "test": "tests/unit/test_gateway_decision_adapter.py"},
+            {"path": "src/blackcell/features/request_decision/models.py", "symbol": "class DecisionBudget", "test": "tests/unit/test_request_decision_feature.py"}
+          ]
+        },
+        {
+          "boundary": "durable decision request, route, attempt, usage, response, and failure records",
+          "decision": "retain",
+          "target_work_package": "AC03",
+          "criteria": ["failure-recovery", "persisted-versioned-contract"],
+          "preserved_invariants": ["journaled-preparation-reconciliation-fencing-leases-retries-and-recovery", "explicit-persisted-event-and-artifact-versioning"],
+          "reason": "These records own artifact identities, attempt fencing, interruption behavior, and terminal model-call evidence rather than merely repeating gateway values.",
+          "evidence": [
+            {"path": "src/blackcell/features/request_decision/models.py", "symbol": "class DecisionAttemptClaim", "test": "tests/unit/test_decision_attempt_journal.py"}
+          ]
+        },
+        {
+          "boundary": "model DecisionProposal versus control ActionProposal",
+          "decision": "retain",
+          "target_work_package": "AC03",
+          "criteria": ["authority", "persisted-versioned-contract", "security-policy"],
+          "preserved_invariants": ["no-ambient-model-execution-authority", "symbolic-policy-and-authorization-before-execution"],
+          "reason": "DecisionProposal is untrusted model output; ActionProposal carries expected effects, required evidence, and assertions used by policy and execution boundaries.",
+          "evidence": [
+            {"path": "src/blackcell/features/request_decision/models.py", "symbol": "class DecisionProposal", "test": "tests/unit/test_request_decision_feature.py"},
+            {"path": "src/blackcell/control/models.py", "symbol": "class ActionProposal", "test": "tests/unit/test_control_policies.py"}
+          ]
+        },
+        {
+          "boundary": "legacy-canonical dependency classification",
+          "decision": "reject",
+          "target_work_package": "AC03",
+          "criteria": [],
+          "preserved_invariants": ["stable-runtime-cli-and-http-behavior"],
+          "reason": "The label combines historical status with current ownership and cannot define one canonical owner per current concept.",
+          "evidence": [
+            {"path": "architecture/dependency_rules.json", "symbol": "legacy-canonical", "test": "tests/architecture/test_dependencies.py"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H4",
+      "classification": "confirmed",
+      "subject": "some service objects have no object-shaped responsibility",
+      "decisions": [
+        {
+          "boundary": "SignalPacketProjector, ContextFrameBuilder, and ActionAuthorizer service objects",
+          "decision": "consolidate",
+          "target_work_package": "AC04",
+          "criteria": [],
+          "preserved_invariants": ["fail-closed-unknown-conflicting-malformed-and-stale-evidence", "symbolic-policy-and-authorization-before-execution"],
+          "reason": "The approved candidates have deterministic handle methods and no constructor state, resource, identity, or alternate implementation.",
+          "evidence": [
+            {"path": "src/blackcell/features/derive_signal_packet/handler.py", "symbol": "class SignalPacketProjector", "test": "tests/unit/test_derive_signal_packet_feature.py"},
+            {"path": "src/blackcell/features/build_context/handler.py", "symbol": "class ContextFrameBuilder", "test": "tests/unit/test_context_pipeline_features.py"},
+            {"path": "src/blackcell/features/authorize_action/handler.py", "symbol": "class ActionAuthorizer", "test": "tests/unit/test_action_authorization_feature.py"}
+          ]
+        },
+        {
+          "boundary": "OutcomeEvaluator",
+          "decision": "retain",
+          "target_work_package": "AC04",
+          "criteria": [],
+          "preserved_invariants": ["exact-occurrence-stream-correlation-causation-and-cutoff-semantics"],
+          "reason": "The evaluator owns injected time behavior used in the canonical result; constructor injection remains meaningful even though the operation is deterministic for a given clock.",
+          "evidence": [
+            {"path": "src/blackcell/features/evaluate_outcome/handler.py", "symbol": "class OutcomeEvaluator", "test": "tests/unit/test_evaluate_outcome_feature.py"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H5",
+      "classification": "confirmed",
+      "subject": "protocol integration hotspots need internal decomposition",
+      "decisions": [
+        {
+          "boundary": "FeedbackRunRecorder and transition-binding public seams",
+          "decision": "retain",
+          "target_work_package": "AC05",
+          "criteria": ["failure-recovery", "persisted-versioned-contract", "product-use-case"],
+          "preserved_invariants": ["single-authoritative-immutable-event-ledger", "model-free-side-effect-free-historical-replay", "explicit-persisted-event-and-artifact-versioning"],
+          "reason": "The seams own complete event grammar, artifact ownership, idempotency, occurrence binding, and replay-verifiable acceptance.",
+          "evidence": [
+            {"path": "src/blackcell/workflows/run_protocol_v2.py", "symbol": "class FeedbackRunRecorder", "test": "tests/unit/test_run_records_boundaries.py"},
+            {"path": "src/blackcell/workflows/state_transition.py", "symbol": "def bind_and_accept_state_transition", "test": "tests/unit/test_state_transition_binding.py"}
+          ]
+        },
+        {
+          "boundary": "run-recording and transition-verification physical phase modules",
+          "decision": "consolidate",
+          "target_work_package": "AC05",
+          "criteria": [],
+          "preserved_invariants": ["single-authoritative-immutable-event-ledger", "content-addressed-integrity-verified-artifacts", "model-free-side-effect-free-historical-replay"],
+          "reason": "The concrete modules span many protocol phases; splitting private phase internals improves navigability without adding runtime seams.",
+          "evidence": [
+            {"path": "src/blackcell/adapters/persistence/sqlite/run_records_v2.py", "symbol": "class KernelFeedbackRunRecorder", "test": "tests/unit/test_run_records_v2.py"},
+            {"path": "src/blackcell/workflows/state_transition.py", "symbol": "def _bind_command", "test": "tests/unit/test_state_transition_binding.py"}
+          ]
+        },
+        {
+          "boundary": "generic workflow, command-bus, or saga framework",
+          "decision": "reject",
+          "target_work_package": "AC05",
+          "criteria": [],
+          "preserved_invariants": ["single-authoritative-immutable-event-ledger", "stable-runtime-cli-and-http-behavior"],
+          "reason": "Physical decomposition does not demonstrate an independent runtime abstraction or deployment boundary.",
+          "evidence": [
+            {"path": "docs/adr/0004-evolutionary-runtime-architecture.md", "symbol": "The initial deployment is one process, one SQLite database, and content-addressed artifacts.", "test": "tests/architecture/test_dependencies.py"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H6",
+      "classification": "confirmed",
+      "subject": "the SQLite boundary is described imprecisely",
+      "decisions": [
+        {
+          "boundary": "SQLite as the runtime-v1 trusted local kernel implementation",
+          "decision": "retain",
+          "target_work_package": "AC06",
+          "criteria": ["failure-recovery", "persisted-versioned-contract", "deployment-resource-profile"],
+          "preserved_invariants": ["single-authoritative-immutable-event-ledger", "journaled-preparation-reconciliation-fencing-leases-retries-and-recovery", "content-addressed-integrity-verified-artifacts"],
+          "reason": "Kernel schema, WAL, filesystem ownership, transaction validation, atomic append, migration, and restart behavior are implementation commitments with direct correctness tests.",
+          "evidence": [
+            {"path": "src/blackcell/kernel/database.py", "symbol": "pragma journal_mode = wal", "test": "tests/unit/test_kernel_database_concurrency.py"},
+            {"path": "src/blackcell/adapters/persistence/sqlite/session.py", "symbol": "class SQLiteKernelSession", "test": "tests/unit/test_kernel_session.py"}
+          ]
+        },
+        {
+          "boundary": "speculative alternate-storage hierarchy",
+          "decision": "reject",
+          "target_work_package": "AC06",
+          "criteria": [],
+          "preserved_invariants": ["single-authoritative-immutable-event-ledger", "journaled-preparation-reconciliation-fencing-leases-retries-and-recovery"],
+          "reason": "No second backend or deployment requirement exists, and abstracting current transaction semantics would imply unsupported replaceability.",
+          "evidence": [
+            {"path": "docs/adr/0004-evolutionary-runtime-architecture.md", "symbol": "extraction requires measured contention, isolation, or availability needs and a separate ADR.", "test": "tests/architecture/test_dependencies.py"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "H7",
+      "classification": "confirmed",
+      "subject": "architecture fitness measures only part of the architecture",
+      "decisions": [
+        {
+          "boundary": "existing dependency and replay isolation tests",
+          "decision": "retain",
+          "target_work_package": "AC07",
+          "criteria": ["security-policy", "ownership-release-cadence"],
+          "preserved_invariants": ["model-free-side-effect-free-historical-replay", "single-authoritative-immutable-event-ledger"],
+          "reason": "The tests express deterministic import-direction, framework-edge, debt, and live-free replay rules.",
+          "evidence": [
+            {"path": "tests/architecture/test_dependencies.py", "symbol": "def test_kernel_has_no_outward_blackcell_dependencies", "test": "tests/architecture/test_dependencies.py"},
+            {"path": "tests/architecture/test_dependencies.py", "symbol": "def test_replay_slice_cannot_reach_live_models_or_actions", "test": "tests/architecture/test_dependencies.py"}
+          ]
+        },
+        {
+          "boundary": "binary composition, compatibility, and facade rules",
+          "decision": "defer",
+          "target_work_package": "AC07",
+          "criteria": ["security-policy", "ownership-release-cadence"],
+          "preserved_invariants": ["stable-runtime-cli-and-http-behavior", "model-free-side-effect-free-historical-replay"],
+          "reason": "AC07 adds these hard rules after AC01 through AC06 establish the accepted target paths.",
+          "evidence": [
+            {"path": "refactor-consolidation.plan.yaml", "symbol": "CI fails only on unambiguous architecture violations and reports heuristic complexity without arbitrary class, line, or import thresholds.", "test": "tests/unit/test_refactor_consolidation_plan.py"}
+          ]
+        },
+        {
+          "boundary": "record similarity, Protocol breadth, import breadth, module size, fan-in, and co-change",
+          "decision": "retain",
+          "target_work_package": "AC07",
+          "criteria": [],
+          "preserved_invariants": ["stable-runtime-cli-and-http-behavior"],
+          "reason": "The measurements remain advisory inspection evidence with explicit recipes and no pass threshold.",
+          "evidence": [
+            {"path": "refactor-consolidation.plan.yaml", "symbol": "advisory_metrics", "test": "tests/unit/test_refactor_consolidation_plan.py"}
+          ]
+        },
+        {
+          "boundary": "arbitrary class, line, module, or import thresholds",
+          "decision": "reject",
+          "target_work_package": "AC07",
+          "criteria": [],
+          "preserved_invariants": ["stable-runtime-cli-and-http-behavior"],
+          "reason": "Thresholds would reward cosmetic reduction without proving reduced semantic change surface or preserved boundaries.",
+          "evidence": [
+            {"path": "refactor-consolidation.plan.yaml", "symbol": "Reduce contract density, false boundaries, duplicated representations, and composition leakage without optimizing class count or module count.", "test": "tests/unit/test_refactor_consolidation_plan.py"}
+          ]
+        }
+      ]
+    }
+  ],
+  "inventory": {
+    "construction_sites": [
+      {"path": "src/blackcell/operator/facade.py", "symbol": "RepositoryOperator.__init__", "role": "constructs stores, journals, adapters, gateway, workflow, recorder, evaluator, and replay"},
+      {"path": "src/blackcell/bootstrap/runtime_api.py", "symbol": "RuntimeApiService.from_config", "role": "constructs RepositoryOperator and SQLite scheduler"},
+      {"path": "src/blackcell/bootstrap/worker.py", "symbol": "RuntimeWorker.from_config", "role": "constructs telemetry, RepositoryOperator, SQLite scheduler, and quota"},
+      {"path": "src/blackcell/cli/app.py", "symbol": "RepositoryOperator(", "role": "constructs one facade per operator command and a direct EventStore for event listing"}
+    ],
+    "service_lifecycles": [
+      {"path": "src/blackcell/features/derive_signal_packet/handler.py", "symbol": "SignalPacketProjector", "classification": "stateless-operation-candidate", "retained_state": []},
+      {"path": "src/blackcell/features/build_context/handler.py", "symbol": "ContextFrameBuilder", "classification": "stateless-operation-candidate", "retained_state": []},
+      {"path": "src/blackcell/features/authorize_action/handler.py", "symbol": "ActionAuthorizer", "classification": "stateless-operation-candidate", "retained_state": []},
+      {"path": "src/blackcell/features/evaluate_outcome/handler.py", "symbol": "OutcomeEvaluator", "classification": "retain-time-strategy-owner", "retained_state": ["clock"]},
+      {"path": "src/blackcell/features/retrieve_evidence/handler.py", "symbol": "RankedEvidenceRetriever", "classification": "retain-matcher-strategy-owner", "retained_state": ["matcher"]},
+      {"path": "src/blackcell/adapters/persistence/sqlite/decision_attempts.py", "symbol": "SQLiteDecisionAttemptJournal", "classification": "retain-durable-lifecycle-owner", "retained_state": ["artifact store", "database path", "closed state"]},
+      {"path": "src/blackcell/adapters/persistence/sqlite/execution_journal.py", "symbol": "SQLiteExecutionJournal", "classification": "retain-durable-lifecycle-owner", "retained_state": ["artifact store", "database path", "closed state"]}
+    ],
+    "structural_protocols": {
+      "selection": "all Protocol classes under src/blackcell with at least 9 effective unique property or method members",
+      "counting_recipe": "parse class-level FunctionDef and AsyncFunctionDef names with the Python AST; declared_members counts names on the class and effective_members adds transitive same-module Protocol bases with duplicate names counted once",
+      "entries": [
+        {"path": "src/blackcell/features/build_context/ports.py", "symbol": "EvidenceCandidateLike", "bases": ["Protocol"], "declared_members": 19, "effective_members": 19},
+        {"path": "src/blackcell/features/build_context/ports.py", "symbol": "EvidenceOmissionLike", "bases": ["EvidenceCandidateLike", "Protocol"], "declared_members": 3, "effective_members": 22},
+        {"path": "src/blackcell/features/build_context/ports.py", "symbol": "EvidenceSelectionLike", "bases": ["Protocol"], "declared_members": 13, "effective_members": 13},
+        {"path": "src/blackcell/features/derive_signal_packet/ports.py", "symbol": "BeliefClaimLike", "bases": ["Protocol"], "declared_members": 14, "effective_members": 14},
+        {"path": "src/blackcell/features/execute_affordance/ports.py", "symbol": "ExecutionJournal", "bases": ["ExecutionEvidenceJournal", "Protocol"], "declared_members": 3, "effective_members": 9},
+        {"path": "src/blackcell/features/retrieve_evidence/ports.py", "symbol": "SignalClaimLike", "bases": ["Protocol"], "declared_members": 16, "effective_members": 16},
+        {"path": "src/blackcell/features/retrieve_evidence/ports.py", "symbol": "SignalPacketLike", "bases": ["Protocol"], "declared_members": 9, "effective_members": 9},
+        {"path": "src/blackcell/interfaces/http/ports.py", "symbol": "RuntimeApiPort", "bases": ["Protocol"], "declared_members": 10, "effective_members": 10},
+        {"path": "src/blackcell/workflows/run_protocol_v2.py", "symbol": "FeedbackRunRecorder", "bases": ["Protocol"], "declared_members": 16, "effective_members": 16}
+      ]
+    },
+    "record_shape_clusters": [
+      {
+        "records": ["GatewayBudget", "DecisionBudget"],
+        "fields_by_record": {
+          "GatewayBudget": ["max_input_tokens", "max_output_tokens", "max_latency_ms", "max_cost_microusd"],
+          "DecisionBudget": ["max_input_tokens", "max_output_tokens", "max_latency_ms", "max_cost_microusd"]
+        },
+        "shared_fields": ["max_input_tokens", "max_output_tokens", "max_latency_ms", "max_cost_microusd"],
+        "distinct_fields": [],
+        "interpretation": "confirmed identical primitive shape; canonical owner deferred to AC03"
+      },
+      {
+        "records": ["RoutingDecision", "DecisionRoute"],
+        "fields_by_record": {
+          "RoutingDecision": ["profile_id", "adapter_id", "model_id", "capability", "local", "deterministic"],
+          "DecisionRoute": ["profile_id", "adapter_id", "model_id", "capability", "local", "deterministic", "selected_at", "schema_version", "route_id"]
+        },
+        "shared_fields": ["profile_id", "adapter_id", "model_id", "capability", "local", "deterministic"],
+        "distinct_fields": ["selected_at", "schema_version", "route_id"],
+        "interpretation": "shared routing vocabulary plus durable decision identity"
+      },
+      {
+        "records": ["DecisionProposal", "ActionProposal"],
+        "fields_by_record": {
+          "DecisionProposal": ["proposal_id", "context_frame_id", "affordance", "arguments", "rationale", "evidence_event_ids", "schema_version", "proposal_digest"],
+          "ActionProposal": ["proposal_id", "context_frame_id", "affordance", "arguments", "expected_effects", "rationale", "required_evidence", "evidence_ids", "assertions", "schema_version"]
+        },
+        "shared_fields": ["proposal_id", "context_frame_id", "affordance", "arguments", "rationale", "schema_version"],
+        "distinct_fields": ["proposal_digest", "evidence_event_ids", "expected_effects", "required_evidence", "evidence_ids", "assertions"],
+        "interpretation": "similar surface with intentionally different model and control authority semantics"
+      },
+      {
+        "records": ["blackcell.context.SignalPacket", "blackcell.features.derive_signal_packet.SignalPacket"],
+        "fields_by_record": {
+          "blackcell.context.SignalPacket": ["scope", "state_id", "as_of_sequence", "as_of_time", "measurements", "claim_ids", "source_counts", "schema_version", "packet_id"],
+          "blackcell.features.derive_signal_packet.SignalPacket": ["purpose", "state_domain", "state_stream_id", "generated_at", "state_global_position", "state_stream_position", "claims", "conflicts", "provenance_event_ids", "mean_confidence", "stale_claim_count", "schema_version", "state_effective_time", "packet_id"]
+        },
+        "shared_fields": ["schema_version", "packet_id"],
+        "distinct_fields": ["scope", "state_id", "as_of_sequence", "as_of_time", "measurements", "claim_ids", "source_counts", "purpose", "state_domain", "state_stream_id", "generated_at", "state_global_position", "state_stream_position", "claims", "conflicts", "provenance_event_ids", "mean_confidence", "stale_claim_count", "state_effective_time"],
+        "interpretation": "overlapping name rather than equivalent current contract"
+      }
+    ],
+    "compatibility_paths": [
+      {"path": "src/blackcell/adapters/persistence/sqlite/run_replay.py", "symbol": "KernelRunReplayAdapter", "status": "retained historical v1 and current v2 version dispatch"},
+      {"path": "src/blackcell/context", "symbol": "SignalPacket", "status": "legacy context vocabulary pending AC02 consumer characterization"},
+      {"path": "architecture/dependency_rules.json", "symbol": "legacy-canonical", "status": "ambiguous classification to retire in AC03"}
+    ],
+    "protocol_hotspots": [
+      {"path": "src/blackcell/adapters/persistence/sqlite/run_records_v2.py", "symbol": "KernelFeedbackRunRecorder", "public_seam": "FeedbackRunRecorder", "decision": "retain seam and split private phases"},
+      {"path": "src/blackcell/workflows/state_transition.py", "symbol": "bind_and_accept_state_transition", "public_seam": "binding and acceptance operation", "decision": "retain operation and split private verification phases"}
+    ],
+    "sqlite_commitments": [
+      {"path": "src/blackcell/kernel/database.py", "symbol": "pragma journal_mode = wal", "commitment": "WAL, schema migration, ownership modes, foreign keys, and transaction configuration"},
+      {"path": "src/blackcell/kernel/store.py", "symbol": "append_many_in_transaction", "commitment": "caller-owned transaction with database and foreign-key validation"},
+      {"path": "src/blackcell/adapters/persistence/sqlite/session.py", "symbol": "SQLiteKernelSession", "commitment": "adapter DML and kernel events share one explicit transaction"}
+    ],
+    "public_schema_owners": [
+      {"owner": "kernel event occurrence and envelope", "path": "src/blackcell/kernel/events.py", "symbol": "class EventEnvelope", "test": "tests/unit/test_kernel_events.py"},
+      {"owner": "daily-operator v1 and v2 event grammar and run trace", "path": "src/blackcell/workflows/run_protocol_v2.py", "symbol": "V2_EVENT_PAYLOAD_FIELDS", "test": "tests/unit/test_run_records_boundaries.py"},
+      {"owner": "operational state snapshot", "path": "src/blackcell/features/project_operational_state/artifacts.py", "symbol": "OPERATIONAL_STATE_SNAPSHOT_MEDIA_TYPE", "test": "tests/unit/test_operational_state_artifacts.py"},
+      {"owner": "ContextFrame", "path": "src/blackcell/features/build_context/artifacts.py", "symbol": "CONTEXT_FRAME_MEDIA_TYPE", "test": "tests/unit/test_context_frame_store.py"},
+      {"owner": "decision request, route, attempt, response, failure, usage, and proposal", "path": "src/blackcell/features/request_decision/artifacts.py", "symbol": "DECISION_REQUEST_MEDIA_TYPE", "test": "tests/unit/test_request_decision_feature.py"},
+      {"owner": "action proposal and authorization decision", "path": "src/blackcell/features/authorize_action/artifacts.py", "symbol": "ACTION_PROPOSAL_MEDIA_TYPE", "test": "tests/unit/test_execution_contract_boundaries.py"},
+      {"owner": "execution preparation and result", "path": "src/blackcell/features/execute_affordance/models.py", "symbol": "EXECUTION_RESULT_MEDIA_TYPE", "test": "tests/unit/test_execution_contract_boundaries.py"},
+      {"owner": "outcome observation", "path": "src/blackcell/features/observe_outcome/artifacts.py", "symbol": "OUTCOME_OBSERVATION_MEDIA_TYPE", "test": "tests/unit/test_observe_outcome_feature.py"},
+      {"owner": "evaluation specification and result", "path": "src/blackcell/features/evaluate_outcome/artifacts.py", "symbol": "OUTCOME_EVALUATION_MEDIA_TYPE", "test": "tests/unit/test_evaluate_outcome_feature.py"},
+      {"owner": "accepted state transition", "path": "src/blackcell/features/accept_state_transition/artifacts.py", "symbol": "ACCEPTED_STATE_TRANSITION_MEDIA_TYPE", "test": "tests/unit/test_accept_state_transition_feature.py"}
+    ],
+    "import_breadth": {
+      "method": "Parse current Python AST imports and count distinct blackcell top-level roots per module; report only as advisory evidence.",
+      "observations": [
+        {"path": "src/blackcell/bootstrap/worker.py", "distinct_roots": 9, "roots": ["adapters", "bootstrap", "config", "features", "kernel", "operator", "orchestration", "runtime", "workflows"]},
+        {"path": "src/blackcell/bootstrap/runtime_api.py", "distinct_roots": 9, "roots": ["adapters", "config", "features", "interfaces", "kernel", "operator", "orchestration", "runtime", "workflows"]},
+        {"path": "src/blackcell/operator/facade.py", "distinct_roots": 7, "roots": ["adapters", "domains", "features", "gateway", "kernel", "operator", "workflows"]},
+        {"path": "src/blackcell/cli/app.py", "distinct_roots": 7, "roots": ["adapters", "cli", "evaluation", "features", "kernel", "models", "operator"]}
+      ],
+      "threshold": null
+    },
+    "constructor_fan_in": {
+      "method": "Count current production Python call expressions by exact constructor name; definitions and tests are excluded.",
+      "observations": [
+        {"symbol": "RepositoryOperator", "production_call_sites": 6},
+        {"symbol": "EventStore", "production_call_sites": 3},
+        {"symbol": "ArtifactStore", "production_call_sites": 4},
+        {"symbol": "SQLiteOrchestrationScheduler", "production_call_sites": 2},
+        {"symbol": "SignalPacketProjector", "production_call_sites": 1},
+        {"symbol": "ContextFrameBuilder", "production_call_sites": 1},
+        {"symbol": "ActionAuthorizer", "production_call_sites": 4},
+        {"symbol": "OutcomeEvaluator", "production_call_sites": 5},
+        {"symbol": "KernelFeedbackRunRecorder", "production_call_sites": 2}
+      ],
+      "threshold": null
+    },
+    "co_change": {
+      "method": ["git", "log", "--no-merges", "--format=__COMMIT__%H", "--name-only", "eb05e034f3e6bdcef83167df6dcfdc8a1eaf06f0", "--", "src/blackcell"],
+      "normalization": "one top-level src/blackcell package root per changed source path; count each unordered root pair once per commit",
+      "source_commits": 110,
+      "observed_pairs": [
+        {"left": "adapters", "right": "features", "commits": 13},
+        {"left": "adapters", "right": "workflows", "commits": 8},
+        {"left": "features", "right": "workflows", "commits": 7},
+        {"left": "bootstrap", "right": "config", "commits": 4}
+      ],
+      "limitations": [
+        "history contains broad migration commits and removed package roots",
+        "co-change does not distinguish causal coupling from coordinated delivery",
+        "results are advisory and have no pass threshold"
+      ]
+    }
+  },
+  "fitness_policy": {
+    "hard_rules": [
+      "kernel import direction",
+      "framework and provider placement at edges",
+      "live-free replay isolation",
+      "concrete composition ownership after AC01",
+      "no API or worker store reach-through after AC01",
+      "no production compatibility or experiment implementation imports after AC03"
+    ],
+    "advisory_measurements": [
+      "record field similarity",
+      "structural Protocol breadth",
+      "module import breadth",
+      "module size",
+      "constructor fan-in",
+      "package co-change frequency"
+    ],
+    "rejected_hard_metrics": ["class count", "line count", "module count", "import count", "similarity threshold"]
+  },
+  "evidence_policy": {
+    "runtime_v1": {
+      "status": "historical-read-only",
+      "candidate_id": "sha256:eadfb26dccbb252ff03845fc4d732cac2e455ecb3593b7bdd3106f4e48a13d4d",
+      "manifest": "release/runtime-v1/verification-manifest.json",
+      "allowed_reuse": "foundation facts and historical test context only",
+      "forbidden_reuse": "verification claim for architecture-consolidation source"
+    },
+    "architecture_consolidation": {
+      "status": "candidate-scheme-ratified-not-issued",
+      "issuer_work_package": "AC07",
+      "manifest": "release/architecture-consolidation/verification-manifest.json",
+      "candidate_id_format": "sha256:<canonical-source-materials-digest>",
+      "material_selection": "all git ls-tree -r -z --full-tree <source_sha> entries whose object type is blob, except excluded_outputs",
+      "material_fields": ["path", "mode", "size", "sha256"],
+      "material_order": "normalized repository-relative path ascending by UTF-8 bytes",
+      "canonical_document": {"schema_version": "architecture-consolidation-materials/v1", "materials": "<path-sorted material records>"},
+      "canonical_encoding": "Python json.dumps(document, ensure_ascii=True, sort_keys=True, separators=(',', ':')) plus one LF, encoded as UTF-8",
+      "digest_rule": "candidate_id is sha256: plus the lowercase SHA-256 hex digest of the canonical encoded document",
+      "excluded_outputs": [
+        "release/architecture-consolidation/verification-manifest.json",
+        "docs/decisions/architecture-consolidation/ac07-final-evidence.json",
+        "release/architecture-consolidation/blackcell-architecture-consolidation.cdx.json"
+      ],
+      "sbom_policy": "record unchanged production dependency closure without generating a new SBOM; regenerate only when the production closure changes"
+    }
+  },
+  "downstream_entry_criteria": {
+    "AC01": ["preserve RepositoryOperator public behavior", "assign explicit lifecycle ownership", "remove concrete facade assembly and store reach-through"],
+    "AC02": ["preserve ContextFrame bytes and frame IDs", "characterize legacy context consumers", "retain deterministic and FTS5 strategies"],
+    "AC03": ["produce a concept ownership matrix", "retain durable attempt and authority semantics", "isolate current, historical, and experimental paths"],
+    "AC04": ["convert only the three approved stateless candidates", "retain time, strategy, resource, journal, checkpoint, and recovery owners"],
+    "AC05": ["retain one recorder and one transition-binding seam", "preserve exact event grammar, artifact ownership, and replay interpretation"],
+    "AC06": ["document SQLite as the trusted runtime-v1 kernel implementation", "add no alternate backend hierarchy without a separate requirement"],
+    "AC07": ["enforce only binary architecture rules", "publish advisory before-and-after evidence", "issue the new source candidate and SBOM decision"]
+  },
+  "verification": {
+    "status": "pass",
+    "focused": {
+      "command": "uv run pytest -q tests/unit/test_architecture_consolidation_decision.py tests/unit/test_refactor_consolidation_plan.py tests/unit/test_docs_graph.py tests/architecture/test_dependencies.py",
+      "result": "29 passed"
+    },
+    "ruff_format": {
+      "command": "uv run ruff format --check .",
+      "result": "pass"
+    },
+    "ruff_check": {
+      "command": "uv run ruff check .",
+      "result": "pass"
+    },
+    "ty": {
+      "command": "uv run ty check",
+      "result": "pass"
+    },
+    "interim_full_gate": {
+      "command": "uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing",
+      "result": "1282 passed, 1 skipped, 14 warnings",
+      "coverage": "86.55%",
+      "coverage_floor": "86.0%",
+      "skip": "rootless Podman acceptance requires BLACKCELL_RUN_PODMAN_TESTS=1",
+      "warnings": "existing unclosed SQLite connection ResourceWarning observations outside the AC00 documentation-only scope"
+    },
+    "historical_runtime_v1_gate": "expected-drift-and-not-rerun"
+  }
+}

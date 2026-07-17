@@ -15,53 +15,52 @@ from blackcell.features.derive_signal_packet.ports import (
 )
 
 
-class SignalPacketProjector:
-    def handle(self, command: DeriveSignalPacket, state: BeliefStateLike) -> SignalPacket:
-        claims = tuple(
-            sorted(
-                (_signal_claim(command, claim) for claim in state.claims),
-                key=lambda claim: (
-                    claim.subject,
-                    claim.predicate,
-                    claim.source_event_id,
-                    claim.claim_id,
-                ),
-            )
+def project_signal_packet(command: DeriveSignalPacket, state: BeliefStateLike) -> SignalPacket:
+    claims = tuple(
+        sorted(
+            (_signal_claim(command, claim) for claim in state.claims),
+            key=lambda claim: (
+                claim.subject,
+                claim.predicate,
+                claim.source_event_id,
+                claim.claim_id,
+            ),
         )
-        conflicts = tuple(
-            sorted(
-                (_signal_conflict(conflict) for conflict in state.conflicts),
-                key=lambda conflict: (conflict.subject, conflict.predicate),
-            )
+    )
+    conflicts = tuple(
+        sorted(
+            (_signal_conflict(conflict) for conflict in state.conflicts),
+            key=lambda conflict: (conflict.subject, conflict.predicate),
         )
-        provenance = tuple(sorted({claim.source_event_id for claim in claims}))
-        mean_confidence = sum(claim.confidence for claim in claims) / len(claims) if claims else 0.0
-        state_effective_time = getattr(state, "effective_time_cutoff", None)
-        schema_version = (
-            "signal-packet/v3"
-            if state_effective_time is not None
-            or any(
-                claim.epistemic_status is not SignalEpistemicStatus.OBSERVED
-                or claim.expires_at is not None
-                for claim in claims
-            )
-            else "signal-packet/v2"
+    )
+    provenance = tuple(sorted({claim.source_event_id for claim in claims}))
+    mean_confidence = sum(claim.confidence for claim in claims) / len(claims) if claims else 0.0
+    state_effective_time = getattr(state, "effective_time_cutoff", None)
+    schema_version = (
+        "signal-packet/v3"
+        if state_effective_time is not None
+        or any(
+            claim.epistemic_status is not SignalEpistemicStatus.OBSERVED
+            or claim.expires_at is not None
+            for claim in claims
         )
-        return SignalPacket(
-            purpose=command.purpose,
-            state_domain=state.scope.domain,
-            state_stream_id=state.scope.stream_id,
-            generated_at=command.generated_at,
-            state_global_position=state.cutoff_global_position,
-            state_stream_position=state.last_source_stream_sequence,
-            claims=claims,
-            conflicts=conflicts,
-            provenance_event_ids=provenance,
-            mean_confidence=mean_confidence,
-            stale_claim_count=sum(claim.stale for claim in claims),
-            schema_version=schema_version,
-            state_effective_time=state_effective_time,
-        )
+        else "signal-packet/v2"
+    )
+    return SignalPacket(
+        purpose=command.purpose,
+        state_domain=state.scope.domain,
+        state_stream_id=state.scope.stream_id,
+        generated_at=command.generated_at,
+        state_global_position=state.cutoff_global_position,
+        state_stream_position=state.last_source_stream_sequence,
+        claims=claims,
+        conflicts=conflicts,
+        provenance_event_ids=provenance,
+        mean_confidence=mean_confidence,
+        stale_claim_count=sum(claim.stale for claim in claims),
+        schema_version=schema_version,
+        state_effective_time=state_effective_time,
+    )
 
 
 def _signal_claim(command: DeriveSignalPacket, claim: BeliefClaimLike) -> SignalClaim:

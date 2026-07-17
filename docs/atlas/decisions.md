@@ -4,10 +4,14 @@ kind: decision-log
 edges:
   records:
     - targets/containers
+    - adr/0001-event-sourced-kernel
+    - adr/0002-domain-scoped-state
+    - adr/0003-model-execution-boundary
     - adr/0004-evolutionary-runtime-architecture
     - adr/0005-durable-run-and-execution-protocol
     - adr/0006-versioned-run-feedback-protocol
     - adr/0007-runtime-security-boundary
+    - adr/0008-architecture-consolidation
 ---
 
 # Decisions
@@ -31,3 +35,5 @@ edges:
 - Require an explicit owner-only service data root, one opaque environment-or-file API credential,
   strict Bearer and scope checks, zero proxy trust, and pre-storage secret redaction before HTTP
   exposure.
+- Remove false boundaries only when source evidence shows that authority, time, persistence,
+  security, recovery, and independent failure semantics remain intact.

@@ -650,6 +650,9 @@ def _is_safe_python_check(argv: list[str], repo_root: Path) -> bool:
     validator = repo_root / ".codex/orchestration/validate_contract.py"
     if script.expanduser().resolve() == validator.resolve():
         return True
+    pytest_gate = repo_root / "tools/run_pytest.py"
+    if script.expanduser().resolve() == pytest_gate.resolve():
+        return True
     return script.as_posix().endswith("/skills/.system/skill-creator/scripts/quick_validate.py")
 
 

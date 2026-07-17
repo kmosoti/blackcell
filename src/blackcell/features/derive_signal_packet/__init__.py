@@ -1,7 +1,7 @@
 """Telemetry-derived high-signal operational state summaries."""
 
 from blackcell.features.derive_signal_packet.command import DeriveSignalPacket
-from blackcell.features.derive_signal_packet.handler import SignalPacketProjector
+from blackcell.features.derive_signal_packet.handler import project_signal_packet
 from blackcell.features.derive_signal_packet.models import (
     SignalClaim,
     SignalConflict,
@@ -16,6 +16,6 @@ __all__ = [
     "SignalConflict",
     "SignalEpistemicStatus",
     "SignalPacket",
-    "SignalPacketProjector",
     "SignalUnknownReason",
+    "project_signal_packet",
 ]

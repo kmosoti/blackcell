@@ -25,7 +25,7 @@ SKILLS_ROOT = ROOT / ".agents/skills"
 def test_project_config_and_named_agents_are_explicit() -> None:
     config = tomllib.loads((CODEX_ROOT / "config.toml").read_text(encoding="utf-8"))
 
-    assert config["model"] == "gpt-5.6-terra"
+    assert config["model"] == "gpt-5.6-sol"
     assert config["model_reasoning_effort"] == "high"
     assert config["plan_mode_reasoning_effort"] == "high"
     assert config["model_verbosity"] == "low"
@@ -134,6 +134,11 @@ def test_lifecycle_skills_are_discoverable_and_bounded() -> None:
     plan = (SKILLS_ROOT / "blackcell-plan/SKILL.md").read_text(encoding="utf-8")
     assert "Do not edit tracked files" in plan
     assert "<proposed_plan>" in plan
+    assert "delivery-metadata map" in plan
+    assert "linked development branches" in plan
+    assert "required native mutation" in plan
+    assert "local `gh` CLI" in plan
+    assert "do not use a GitHub connector" in plan
 
     for skill_name, agent_name, packet_mode in (
         ("blackcell-review", "k_reviewer", "review"),
@@ -146,8 +151,17 @@ def test_lifecycle_skills_are_discoverable_and_bounded() -> None:
         assert "Do not edit tracked files" in text
 
     publish = (SKILLS_ROOT / "blackcell-publish/SKILL.md").read_text(encoding="utf-8")
-    assert "agent/runtime-v1" in publish
-    assert "git push origin agent/runtime-v1" in publish
+    publish_metadata = yaml.safe_load(
+        (SKILLS_ROOT / "blackcell-publish/agents/openai.yaml").read_text(encoding="utf-8")
+    )["interface"]
+    assert "agent/runtime-v1" not in publish
+    assert "agent/runtime-v1" not in publish_metadata["default_prompt"]
+    assert "git branch --show-current" in publish
+    assert "origin/<current-branch>" in publish
+    assert "git push origin <current-branch>" in publish
+    assert "explicit authorization" in publish
+    assert "detached head" in publish
+    assert "remote-ahead or\ndivergent history" in publish
     assert "Never use `--force`" in publish
     assert "do not merge, rebase, reset, or rewrite history" in publish
 
@@ -308,6 +322,7 @@ def test_contract_validator_requires_verify_commands(
         ["uv", "run", "uv", "publish"],
         ["bash", "-c", "pytest"],
         ["python", "-c", "print('not a bounded check')"],
+        ["uv", "run", "python", "tools/not_a_test_runner.py"],
         ["git", "push", "origin", "main"],
     ),
 )
@@ -324,6 +339,24 @@ def test_contract_validator_rejects_unsafe_verification_commands(
 
     assert completed.returncode == 1
     assert "unsafe_verification" in _error_codes(payload)
+
+
+def test_contract_validator_accepts_repository_pytest_gate(
+    contract_tree: dict[str, Any],
+) -> None:
+    packet = contract_tree["packet"]
+    packet["verification_commands"] = [
+        {
+            "argv": ["uv", "run", "python", "tools/run_pytest.py", "-q"],
+            "reason": "Run tests with the repository's secure umask contract.",
+        }
+    ]
+    _write_json(contract_tree["packet_path"], packet)
+
+    completed, payload = _run_validator("worker-packet", contract_tree["packet_path"])
+
+    assert completed.returncode == 0
+    assert payload["valid"] is True
 
 
 def test_contract_validator_canonicalizes_symlink_scope(

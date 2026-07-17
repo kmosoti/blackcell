@@ -24,10 +24,46 @@ Use the repository skills as the command-like lifecycle:
 | Map independent evidence | `$blackcell-spark-sweep` | Run bounded read-only evidence shards. |
 | Review consequential work | `$blackcell-review` | Hand one validated read-only packet to `k_reviewer`. |
 | Verify completed high-risk work | `$blackcell-verify` | Hand declared acceptance checks to `k_verifier` without tracked edits. |
-| Commit and push | `$blackcell-publish` | Gate, commit selected paths, and normally push `agent/runtime-v1`. |
+| Commit and push | `$blackcell-publish` | Gate, commit selected paths, and push the active program branch declared in `blackcell.plan.yaml`. |
 
 `/plan` is a built-in Codex mode and cannot be overridden by repository prompts. An approved plan
 does not execute automatically; the next implementation request triggers `blackcell-change`.
+
+Use the authenticated local `gh` CLI and its API surface for repository GitHub metadata. Prefer
+native `gh issue`, `gh project`, and `gh api` operations and their readback output; do not route
+BlackCell issue relationships, Project fields, or development branches through a connector.
+
+## Hyper-critical multi-dimensional planning
+
+Architecture, migration, runtime, release, and multi-issue work must be planned across five
+reconciled planes. Do not reduce this to a linear checklist.
+
+1. **Strategic** — state the product objective, success definition, preserved invariants, and
+   explicit non-goals.
+2. **Logistics** — backward-map from final acceptance, record dependencies, merge order,
+   capacity limits, review checkpoints, and bounded delivery increments.
+3. **Human** — name responsibilities for the program owner, implementer, reviewer, verifier, and
+   affected operators; do not invent assignees or approval authority.
+4. **Risk** — map authority, temporal, persistence, replay, recovery, policy, compatibility,
+   security, and delivery constraints; record stop conditions that split work rather than hiding
+   a scope expansion.
+5. **Assessment** — define binary acceptance rules, advisory measures, direct evidence sources,
+   verification commands, and feedback intervals.
+
+Use backward mapping before choosing an implementation sequence. For every bounded work package,
+record best-case, nominal, and failure scenarios. At each review checkpoint, test the plan against
+new evidence, revise only the affected package, and preserve the reason for the change.
+
+For a multi-issue program, the plan must also declare and validate a delivery-metadata map before
+implementation: assignee, labels, Project/status/type, parent and sub-issue order, blocking graph,
+and one integration branch. Planning reads current GitHub state and names the exact mutations and
+readback checks; planning itself does not materialize remote metadata. If the available client
+cannot perform a required native mutation, record it as blocked rather than substituting issue-body
+text, task lists, or a similarly named branch for the missing relationship.
+
+Plan from the active project and branch, not from a similarly named historical release or prior
+delivery branch. Historical artifacts may inform constraints, but they do not become current
+evidence unless the checked-out project explicitly carries and validates them.
 
 ## Delegation
 
@@ -89,16 +125,16 @@ every writer delta must match its validated result and allowed paths.
 
 ## Routing
 
-- Keep normal root work, synthesis, integration, and Spark fallback on Terra high.
+- Keep normal root work, synthesis, integration, and Spark fallback on the checked-in Sol high
+  default.
 - Use `k_spark_worker` first only for already-localized text evidence or one localized micro-edit.
 - Use `k_pr_explorer` when an ambiguous execution path survives targeted root inspection.
 - Use `k_reviewer` for consequential architecture, security, state, concurrency, policy, replay,
   or migration changes.
 - Use `k_verifier` to independently verify completed high-risk work without tracked-file edits.
-- Use Sol medium only as a deliberate root override for intentionally Sol-based ordinary
-  implementation. Use Sol high through `k_reviewer` or an explicit critical root session. Leave
-  Sol xhigh unconfigured. Sol Ultra always requires an explicit user choice for exceptional
-  full-repository architecture, review, or migration work.
+- Use Sol high for ordinary root implementation and critical architecture work. Leave Sol xhigh
+  unconfigured. Sol Ultra always requires an explicit user choice for exceptional full-repository
+  architecture, review, or migration work.
 
 ## Authorization
 

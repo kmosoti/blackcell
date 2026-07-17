@@ -3,21 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, cast
 
-from blackcell.adapters.models import (
-    CODEX_CLI_ADAPTER_ID,
-    CodexCliModelAdapter,
-    GatewayDecisionAdapter,
-)
-from blackcell.adapters.persistence.sqlite import (
-    KernelRunReplayAdapter,
-    SQLiteDecisionAttemptJournal,
-    SQLiteExecutionJournal,
-)
-from blackcell.adapters.persistence.sqlite.run_records_v2 import KernelFeedbackRunRecorder
 from blackcell.domains.repository import ClaimCorrection
 from blackcell.features.authorize_action import AffordancePolicy
 from blackcell.features.build_context import (
@@ -29,11 +19,9 @@ from blackcell.features.derive_signal_packet import DeriveSignalPacket
 from blackcell.features.evaluate_outcome import (
     EvaluationCriterion,
     EvaluationSpec,
-    OutcomeEvaluator,
 )
 from blackcell.features.execute_affordance import (
     AffordanceDefinition,
-    AffordanceExecutionHandler,
     SideEffectClass,
 )
 from blackcell.features.ingest_observation import (
@@ -42,7 +30,6 @@ from blackcell.features.ingest_observation import (
     IngestCorrection,
     IngestCorrectionHandler,
     IngestObservation,
-    IngestObservationHandler,
     ObservationInput,
     ObservedClaim,
 )
@@ -59,7 +46,6 @@ from blackcell.features.request_decision import (
     DecisionClassification,
     DecisionLocality,
     DecisionRequirements,
-    RequestDecisionHandler,
 )
 from blackcell.features.retrieve_evidence import EvidenceKey, RetrieveEvidence
 from blackcell.features.solve_constraints import (
@@ -67,38 +53,18 @@ from blackcell.features.solve_constraints import (
     ConstraintOperator,
     SolveConstraints,
 )
-from blackcell.gateway import (
-    DataClassification,
-    GatewayProfile,
-    ModelCapability,
-    ModelGateway,
-)
-from blackcell.gateway.ports import ModelAdapter
 from blackcell.kernel import (
     ArtifactStore,
-    CheckpointStore,
     EventEnvelope,
     EventStore,
     new_event_id,
 )
 from blackcell.operator.models import CanonicalOperatorRunResult, StoredContextFrame
-from blackcell.operator.repository_adapters import (
-    REPOSITORY_MODEL_ADAPTER_ID,
-    REPOSITORY_OUTCOME_CONTRACT_VERSION,
-    REPOSITORY_OUTCOME_OBSERVER_ID,
-    REPOSITORY_STATUS_ADAPTER_ID,
-    RepositoryRecordedModelAdapter,
-    RepositoryStatusExecutionAdapter,
-    RepositoryStatusOutcomeObserver,
-    RepositoryStatusReader,
-    _validated_git_directory,
-)
+from blackcell.operator.status import RepositoryStatusPort
 from blackcell.workflows import (
     DailyOperatorV2Request,
     DailyOperatorV2Workflow,
-    WorkflowTelemetry,
 )
-from blackcell.workflows.outcome_evidence import OutcomeEvidenceWriter
 from blackcell.workflows.run_protocol import (
     AUTHORIZATION_DECIDED,
     CONTEXT_RECORDED,
@@ -118,6 +84,25 @@ DEFAULT_CONSTRAINTS = (
 Clock = Callable[[], datetime]
 
 
+@dataclass(frozen=True, slots=True)
+class RepositoryOperatorConfiguration:
+    """Stable runtime choices needed to build repository workflow requests."""
+
+    model_local: bool
+    execution_adapter_id: str
+    outcome_observer_id: str
+    outcome_observer_contract_version: str
+
+    def __post_init__(self) -> None:
+        values = (
+            self.execution_adapter_id,
+            self.outcome_observer_id,
+            self.outcome_observer_contract_version,
+        )
+        if any(not value.strip() for value in values):
+            raise ValueError("repository operator configuration values must be non-empty")
+
+
 class RepositoryOperator:
     """Product facade for the canonical Daily Operator v2 repository workflow."""
 
@@ -125,115 +110,38 @@ class RepositoryOperator:
         self,
         repo_root: Path | str,
         *,
-        database_path: Path | str | None = None,
-        artifact_root: Path | str | None = None,
-        model: Literal["recorded", "codex"] = "recorded",
-        codex_model: str | None = None,
-        status_reader: RepositoryStatusReader | None = None,
+        database_path: Path | str,
+        artifact_root: Path | str,
+        events: EventStore,
+        artifacts: ArtifactStore,
+        status_reader: RepositoryStatusPort,
+        state: ProjectOperationalStateHandler,
+        correction: IngestCorrectionHandler,
+        workflow: DailyOperatorV2Workflow,
+        replay: ReplayRunHandler,
+        configuration: RepositoryOperatorConfiguration,
         clock: Clock = lambda: datetime.now(UTC),
-        workflow_telemetry: WorkflowTelemetry | None = None,
-        artifact_max_total_bytes: int | None = None,
     ) -> None:
-        if model not in {"recorded", "codex"}:
-            raise ValueError(f"unsupported repository operator model route: {model!r}")
-        if model == "codex" and (codex_model is None or not codex_model.strip()):
-            raise ValueError("--codex-model is required when --model=codex")
-        if model == "recorded" and codex_model is not None:
-            raise ValueError("--codex-model is only valid when --model=codex")
-
         self.repo_root = Path(repo_root).resolve()
-        git_directory = _validated_git_directory(self.repo_root)
-        self.database_path = (
-            Path(database_path)
-            if database_path is not None
-            else git_directory / "blackcell" / "kernel.sqlite3"
-        )
-        self.artifact_root = (
-            Path(artifact_root)
-            if artifact_root is not None
-            else self.database_path.parent / "artifacts"
-        )
+        self.database_path = Path(database_path)
+        self.artifact_root = Path(artifact_root)
+        if events.path != self.database_path:
+            raise ValueError("operator event store does not match the declared database")
+        if artifacts.database_path != self.database_path:
+            raise ValueError("operator artifact store does not match the declared database")
+        if artifacts.root != self.artifact_root:
+            raise ValueError("operator artifact store does not match the declared root")
         self._clock = clock
-        self._model_route = model
-        self._codex_model = codex_model
+        self._events = events
+        self._artifacts = artifacts
+        self._status = status_reader
+        self._state = state
+        self._correction = correction
+        self._workflow = workflow
+        self._replay = replay
+        self._configuration = configuration
         root_digest = hashlib.sha256(str(self.repo_root).encode()).hexdigest()[:20]
         self.repository_stream_id = f"repository:{root_digest}"
-
-        self.events = EventStore(self.database_path)
-        self.artifacts = ArtifactStore(
-            self.artifact_root,
-            database_path=self.database_path,
-            max_total_bytes=artifact_max_total_bytes,
-        )
-        self._decision_journal = SQLiteDecisionAttemptJournal(
-            self.artifact_root,
-            database_path=self.database_path,
-            artifact_max_total_bytes=artifact_max_total_bytes,
-        )
-        self._execution_journal = SQLiteExecutionJournal(
-            self.artifact_root,
-            database_path=self.database_path,
-            artifact_max_total_bytes=artifact_max_total_bytes,
-        )
-        self._state = ProjectOperationalStateHandler(
-            self.events,
-            CheckpointStore(self.database_path),
-        )
-        self._status = status_reader or RepositoryStatusReader(self.repo_root, clock=clock)
-        execution_adapter = RepositoryStatusExecutionAdapter(self._status, self.artifacts)
-        outcome_observer = RepositoryStatusOutcomeObserver(self._status, self.artifacts)
-        model_adapter, profile = self._model_configuration()
-        gateway = ModelGateway(
-            (profile,),
-            {model_adapter.adapter_id: model_adapter},
-            clock=clock,
-        )
-        recorder = KernelFeedbackRunRecorder(
-            self.events,
-            self.artifacts,
-            self._decision_journal,
-            self._execution_journal,
-            clock=clock,
-        )
-        self._workflow = DailyOperatorV2Workflow(
-            history=self.events,
-            artifacts=self.artifacts,
-            state=self._state,
-            ingestion=IngestObservationHandler(self.events, clock=clock),
-            runs=recorder,
-            decisions=RequestDecisionHandler(
-                GatewayDecisionAdapter(gateway, clock=clock),
-                self._decision_journal,
-                clock=clock,
-            ),
-            execution=AffordanceExecutionHandler(
-                {execution_adapter.adapter_id: execution_adapter},
-                self._execution_journal,
-                clock=clock,
-            ),
-            execution_journal=self._execution_journal,
-            outcome_observer=outcome_observer,
-            outcome_evidence=OutcomeEvidenceWriter(self.events, clock=clock),
-            evaluator=OutcomeEvaluator(clock=clock),
-            telemetry=workflow_telemetry,
-        )
-        replay_adapter = KernelRunReplayAdapter(
-            self.events,
-            self.artifacts,
-            self._decision_journal,
-            self._execution_journal,
-        )
-        self._replay = ReplayRunHandler(
-            replay_adapter,
-            replay_adapter,
-            replay_adapter,
-            replay_adapter,
-        )
-
-    @staticmethod
-    def default_database_path(repo_root: Path | str) -> Path:
-        root = Path(repo_root).resolve()
-        return _validated_git_directory(root) / "blackcell" / "kernel.sqlite3"
 
     def run(
         self,
@@ -280,7 +188,7 @@ class RepositoryOperator:
         artifact = _artifact_link(event)
         frame_id = _payload_text(event.payload, "frame_id")
         frame = decode_context_frame(
-            self.artifacts.get_bytes(artifact["digest"], verify=True),
+            self._artifacts.get_bytes(artifact["digest"], verify=True),
             expected_frame_id=frame_id,
         )
         payload = json.loads(serialize_context_frame(frame))
@@ -318,7 +226,7 @@ class RepositoryOperator:
         ) or (EvidencePointer(locator="blackcell://human-correction"),)
         command = IngestCorrection(
             stream_id=self.repository_stream_id,
-            expected_sequence=self.events.current_sequence(self.repository_stream_id),
+            expected_sequence=self._events.current_sequence(self.repository_stream_id),
             actor=actor,
             source=source,
             correlation_id=correction.correction_id,
@@ -340,38 +248,7 @@ class RepositoryOperator:
                 ),
             ),
         )
-        return IngestCorrectionHandler(self.events, clock=self._clock).handle(command)[0]
-
-    def _model_configuration(self) -> tuple[ModelAdapter, GatewayProfile]:
-        if self._model_route == "recorded":
-            adapter = RepositoryRecordedModelAdapter()
-            return adapter, GatewayProfile(
-                "repository-reason-recorded",
-                ModelCapability.REASON,
-                REPOSITORY_MODEL_ADAPTER_ID,
-                "repository-baseline/v1",
-                0,
-                True,
-                True,
-                DataClassification.SECRET,
-                32_000,
-                4_096,
-                0,
-            )
-        adapter = CodexCliModelAdapter()
-        return adapter, GatewayProfile(
-            "repository-reason-codex",
-            ModelCapability.REASON,
-            CODEX_CLI_ADAPTER_ID,
-            cast("str", self._codex_model),
-            0,
-            False,
-            False,
-            DataClassification.PRIVATE,
-            32_000,
-            4_096,
-            0,
-        )
+        return self._correction.handle(command)[0]
 
     def _request(
         self,
@@ -401,16 +278,16 @@ class RepositoryOperator:
         )
         execution = AffordanceDefinition(
             "inspect_repository",
-            REPOSITORY_STATUS_ADAPTER_ID,
+            self._configuration.execution_adapter_id,
             SideEffectClass.READ_ONLY,
             10,
         )
-        local = self._model_route == "recorded"
+        local = self._configuration.model_local
         return DailyOperatorV2Request(
             run_id=run_id,
             ingestion=IngestObservation(
                 stream_id=self.repository_stream_id,
-                expected_sequence=self.events.current_sequence(self.repository_stream_id),
+                expected_sequence=self._events.current_sequence(self.repository_stream_id),
                 actor="repository-operator",
                 source="repository.git-status/v1",
                 correlation_id=run_id,
@@ -477,13 +354,15 @@ class RepositoryOperator:
             execution_affordance=execution,
             invocation_id=f"invocation:{run_id}",
             idempotency_key=f"execution:{run_id}",
-            expected_observer_id=REPOSITORY_OUTCOME_OBSERVER_ID,
-            expected_observer_contract_version=REPOSITORY_OUTCOME_CONTRACT_VERSION,
+            expected_observer_id=self._configuration.outcome_observer_id,
+            expected_observer_contract_version=(
+                self._configuration.outcome_observer_contract_version
+            ),
             approval_granted=approval_granted,
         )
 
     def _latest_run_id(self) -> str:
-        events = self.events.read_all(after_position=0)
+        events = self._events.read_all(after_position=0)
         for event in reversed(events):
             if (
                 event.event_type == RUN_STARTED
@@ -493,7 +372,7 @@ class RepositoryOperator:
         raise LookupError("no operator run exists for this repository")
 
     def _run_events(self, run_id: str) -> tuple[EventEnvelope, ...]:
-        events = self.events.read_stream(run_stream_id(run_id))
+        events = self._events.read_stream(run_stream_id(run_id))
         if not events:
             raise LookupError(f"operator run {run_id!r} does not exist")
         start = events[0]
@@ -571,4 +450,9 @@ def _optional_text(payload: Mapping[str, object], field: str) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
-__all__ = ["DEFAULT_CONSTRAINTS", "DEFAULT_OBJECTIVE", "RepositoryOperator"]
+__all__ = [
+    "DEFAULT_CONSTRAINTS",
+    "DEFAULT_OBJECTIVE",
+    "RepositoryOperator",
+    "RepositoryOperatorConfiguration",
+]

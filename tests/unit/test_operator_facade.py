@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from blackcell.adapters.repository import RepositoryStatusReader
 from blackcell.adapters.telemetry import TraceWorkflowTelemetry
+from blackcell.bootstrap.repository import compose_repository_runtime
 from blackcell.domains.repository import (
     Claim,
     ClaimCorrection,
@@ -14,8 +16,6 @@ from blackcell.domains.repository import (
     SourceReliability,
 )
 from blackcell.operator import (
-    RepositoryOperator,
-    RepositoryStatusReader,
     RepositoryStatusSnapshot,
 )
 from blackcell.telemetry import TraceRecorder
@@ -51,16 +51,27 @@ class InvalidStatusReader(RepositoryStatusReader):
         )
 
 
+def test_status_snapshot_schema_is_owned_by_the_persisting_adapter() -> None:
+    snapshot = RepositoryStatusSnapshot(True, True, 0, "sha256:" + "0" * 64, NOW)
+
+    assert snapshot.manifest(schema_version="repository-status/v1")["schema_version"] == (
+        "repository-status/v1"
+    )
+    with pytest.raises(ValueError, match="schema version"):
+        snapshot.manifest(schema_version="")
+
+
 def test_public_operator_delegates_to_verified_daily_operator_v2(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
     database = repo / ".blackcell" / "kernel.sqlite3"
     reader = CountingStatusReader(repo)
-    operator = RepositoryOperator(
+    components = compose_repository_runtime(
         repo,
         database_path=database,
         status_reader=reader,
         clock=lambda: NOW,
     )
+    operator = components.operator
 
     result = operator.run()
 
@@ -92,12 +103,12 @@ def test_public_operator_delegates_to_verified_daily_operator_v2(tmp_path: Path)
 def test_canonical_operator_emits_stable_correlated_workflow_spans(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
     recorder = TraceRecorder()
-    operator = RepositoryOperator(
+    operator = compose_repository_runtime(
         repo,
         database_path=repo / ".blackcell" / "kernel.sqlite3",
         clock=lambda: NOW,
         workflow_telemetry=TraceWorkflowTelemetry(recorder),
-    )
+    ).operator
 
     result = operator.run()
 
@@ -116,17 +127,18 @@ def test_status_output_paths_are_not_persisted_as_run_evidence(tmp_path: Path) -
     repo = _repository(tmp_path)
     sensitive_name = "customer-secret-path.txt"
     (repo / sensitive_name).write_text("fixture\n", encoding="utf-8")
-    operator = RepositoryOperator(
+    components = compose_repository_runtime(
         repo,
         database_path=repo / ".blackcell" / "kernel.sqlite3",
         clock=lambda: NOW,
     )
+    operator = components.operator
 
     result = operator.run()
     replay = operator.replay(result.run_id)
     encoded_events = repr([event.payload for event in replay.events]).encode()
     artifact_bytes = b"\n".join(
-        operator.artifacts.get_bytes(item.digest) for item in replay.artifacts
+        components.artifacts.get_bytes(item.digest) for item in replay.artifacts
     )
 
     assert sensitive_name.encode() not in encoded_events
@@ -139,13 +151,13 @@ def test_symbolic_repository_constraint_denies_without_execution_or_outcome_read
     repo = _repository(tmp_path)
     reader = InvalidStatusReader(repo)
     recorder = TraceRecorder()
-    operator = RepositoryOperator(
+    operator = compose_repository_runtime(
         repo,
         database_path=repo / ".blackcell" / "kernel.sqlite3",
         status_reader=reader,
         clock=lambda: NOW,
         workflow_telemetry=TraceWorkflowTelemetry(recorder),
-    )
+    ).operator
 
     result = operator.run()
 
@@ -174,7 +186,7 @@ def test_codex_route_requires_an_explicit_model_before_storage_creation(
     database = repo / ".blackcell" / "kernel.sqlite3"
 
     try:
-        RepositoryOperator(repo, database_path=database, model="codex")
+        compose_repository_runtime(repo, database_path=database, model="codex")
     except ValueError as error:
         assert "--codex-model is required" in str(error)
     else:  # pragma: no cover - assertion helper
@@ -185,11 +197,11 @@ def test_codex_route_requires_an_explicit_model_before_storage_creation(
 
 def test_current_state_corrections_use_the_canonical_ingestion_path(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
-    operator = RepositoryOperator(
+    operator = compose_repository_runtime(
         repo,
         database_path=repo / ".blackcell" / "kernel.sqlite3",
         clock=lambda: NOW,
-    )
+    ).operator
     operator.run()
     original = operator.current_state().claims_for("repository", "git.clean")[0]
     replacement = Claim(
@@ -222,7 +234,7 @@ def test_current_state_corrections_use_the_canonical_ingestion_path(tmp_path: Pa
 
 def test_default_storage_remains_inside_git_metadata(tmp_path: Path) -> None:
     repo = _repository(tmp_path)
-    operator = RepositoryOperator(repo, clock=lambda: NOW)
+    operator = compose_repository_runtime(repo, clock=lambda: NOW).operator
 
     operator.run()
 
@@ -238,18 +250,18 @@ def test_latest_run_and_direct_lookup_are_repository_scoped_in_shared_storage(
     right_repo = _repository(tmp_path, name="right")
     database = tmp_path / "shared" / "kernel.sqlite3"
     artifacts = tmp_path / "shared" / "artifacts"
-    left = RepositoryOperator(
+    left = compose_repository_runtime(
         left_repo,
         database_path=database,
         artifact_root=artifacts,
         clock=lambda: NOW,
-    )
-    right = RepositoryOperator(
+    ).operator
+    right = compose_repository_runtime(
         right_repo,
         database_path=database,
         artifact_root=artifacts,
         clock=lambda: NOW,
-    )
+    ).operator
 
     left_run = left.run()
     right_run = right.run()

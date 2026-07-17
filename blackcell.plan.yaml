@@ -29,6 +29,7 @@ phase_1:
 runtime_v1:
   status: evidence-complete
   branch: agent/runtime-v1
+  note: Runtime-v1 is the delivered foundation for current runtime surfaces; architecture consolidation is a separate Blackcell project program.
   delivery:
     pull_requests: 1
     publish_each_node: true
@@ -138,12 +139,84 @@ retired_surfaces:
     - daily-operator/v1 read-only replay
   note: No package, command, writer, generated artifact, alias, or dual store remains for these prototype surfaces.
 
+architecture_consolidation:
+  status: implementation-complete-awaiting-merge
+  branch: refactor/consolidation
+  superseded_branch: refactor/architecture-consolidation
+  base_ref: origin/main
+  implementation_base_sha: 1a249d8aaa1f5f230c8492ab249ea06d255f24ee
+  plan: refactor-consolidation.plan.yaml
+  parent_epic: "Epic: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries"
+  merge_policy: PR 72 may use any repository-approved merge method after required status checks and any enabled review or conversation-resolution policy passes.
+  delivery_metadata:
+    assignee: kmosoti
+    labels:
+      default:
+        - enhancement
+      documentation:
+        - AC00
+        - AC06
+    project:
+      title: BlackCell
+      status:
+        epic: In Progress
+        completed:
+          AC00: Done
+          AC01: Done
+          AC02: Done
+          AC03: Done
+          AC04: Done
+          AC05: Done
+          AC06: Done
+        active:
+          AC07: In Progress
+        queued: Todo
+      type: refactor
+    development_branch: refactor/consolidation
+  verification_policy:
+    runtime_v1_evidence: historical-read-only
+    baseline: docs/decisions/architecture-consolidation/ac00-baseline.json
+    architecture_fitness_decision: docs/decisions/architecture-consolidation/ac07-architecture-fitness.json
+    source_bound_candidate: retired
+    retirement_reason: Project-wide source binding forced evidence reissuance after every ordinary change without an independent release or persisted-contract boundary.
+    ongoing_gate: Protected-branch CI enforces binary architecture rules and the complete maintained quality suite.
+    dependency_closure: Python lock and runtime-v1 SBOM are unchanged by GitHub Actions dependency updates.
+  verification:
+    architecture_fitness_gate: >-
+      uv run python tools/run_pytest.py
+      tests/architecture/test_dependencies.py::test_concrete_runtime_construction_stays_at_approved_sites
+      tests/architecture/test_dependencies.py::test_production_runtime_does_not_import_compatibility_or_experiments
+      tests/architecture/test_dependencies.py::test_repository_runtime_composition_is_owned_by_bootstrap
+      tests/architecture/test_dependencies.py::test_replay_slice_cannot_reach_live_models_or_actions
+      -q --blackcell-require-all-pass
+    final_full_gate: uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing
+    historical_runtime_v1_gate: uv run python tools/run_pytest.py tests/unit/test_release_evidence.py -q
+  planning_model:
+    - strategic
+    - logistics
+    - human
+    - risk
+    - assessment
+  work_packages:
+    - AC00
+    - AC01
+    - AC02
+    - AC03
+    - AC04
+    - AC05
+    - AC06
+    - AC07
+  historical_context:
+    - Runtime-v1 release artifacts are frozen historical foundation evidence, not architecture-consolidation acceptance evidence.
+    - AC00 remains the historical source-bound baseline for the decisions that started the program.
+    - ADR 0008 supersedes the AC00 candidate scheme and retires AC07 source-bound evidence while retaining binary architecture fitness rules.
+
 verification:
-  - uv run python tools/release_evidence.py verify --repo-root .
+  - uv run python tools/run_pytest.py tests/unit/test_release_evidence.py -q
   - bash examples/runtime-v1/recorded-operator.sh
   - uv run ruff format --check .
   - uv run ruff check .
-  - uv run pytest --cov=blackcell --cov-report=term-missing
+  - uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing
   - uv run ty check
   - uv run blackcell operator run --model recorded --repo .
   - uv run blackcell operator replay
