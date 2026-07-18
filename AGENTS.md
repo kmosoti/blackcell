@@ -22,12 +22,35 @@ Use the repository skills as the command-like lifecycle:
 | Ground and plan | `/plan`, then `$blackcell-plan` when explicit routing is useful | Read repository truth and return a decision-complete plan without edits. |
 | Implement an approved plan | `Implement the proposed plan` or `$blackcell-change` | Use the validated change workflow; a separate implementation skill is not needed. |
 | Map independent evidence | `$blackcell-spark-sweep` | Run bounded read-only evidence shards. |
-| Review consequential work | `$blackcell-review` | Hand one validated read-only packet to `k_reviewer`. |
-| Verify completed high-risk work | `$blackcell-verify` | Hand declared acceptance checks to `k_verifier` without tracked edits. |
+| Review consequential work | `$blackcell-review` | Inspect the diff and run bounded focused/static evidence checks through `k_reviewer`; never run the full gate. |
+| Verify completed high-risk work | `$blackcell-verify` | Map acceptance evidence and run exactly one final full gate through `k_verifier` without tracked edits. |
 | Commit and push | `$blackcell-publish` | Gate, commit selected paths, and push the active program branch declared in `blackcell.plan.yaml`. |
 
 `/plan` is a built-in Codex mode and cannot be overridden by repository prompts. An approved plan
 does not execute automatically; the next implementation request triggers `blackcell-change`.
+
+## Review, verification, and test execution
+
+Review and verification are separate assurance boundaries:
+
+- **Review** finds defects by inspecting the complete change and sampling only relevant evidence.
+  Review packets may contain `focused` tests and `static` checks. They must not contain a `full`
+  command, an unselected repository-wide pytest invocation, or coverage collection.
+- **Verification** certifies declared acceptance criteria after implementation and applicable
+  review. Verification packets mark commands `focused`, `static`, or `full`, run focused/static
+  evidence first, and contain exactly one final full gate from `blackcell.plan.yaml`.
+- **Change and publish** may also run the maintained full gate because they own integration and
+  delivery readiness. A completed review never substitutes for verification or publication gates.
+
+Use `uv run python tools/run_pytest.py` for pytest. It applies the owner-write `umask 0022`; with
+exact node IDs and `--blackcell-require-all-pass`, it also rejects missing, skipped, xfailed,
+unexpectedly expanded, or empty selections.
+
+Parallelize only proven-independent processes. Ruff and ty may run concurrently with one focused
+pytest command. Do not run multiple pytest processes concurrently and do not overlap the full
+coverage gate with another pytest, coverage, integration, or external-runtime process. The current
+repository does not include pytest-xdist or a validated sharding contract for coverage combine,
+pytest/Hypothesis caches, fixed ports, SQLite/Podman resources, and deterministic result joining.
 
 Use the authenticated local `gh` CLI and its API surface for repository GitHub metadata. Prefer
 native `gh issue`, `gh project`, and `gh api` operations and their readback output; do not route
@@ -151,7 +174,8 @@ refspec. Prefix rules are not a substitute for this invariant.
 ## Completion
 
 Do not rerun an unchanged failure. Diagnose it, alter the hypothesis or environment, retry once,
-then use a smaller alternative or report a concrete blocker. Run focused verification first, then
-one applicable full gate from `blackcell.plan.yaml`. Finish with diff and status inspection, leave
-unrelated untracked files untouched, delete Codex-created packet directories only after all
-workers close, and stop when the requested outcome is complete.
+then use a smaller alternative or report a concrete blocker. For implementation, verification,
+and publication, run focused verification first, then one applicable full gate from
+`blackcell.plan.yaml`; review is the explicit no-full-gate exception. Finish with diff and status
+inspection, leave unrelated untracked files untouched, delete Codex-created packet directories
+only after all workers close, and stop when the requested outcome is complete.

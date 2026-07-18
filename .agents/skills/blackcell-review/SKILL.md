@@ -20,9 +20,18 @@ an explicit user request.
 2. Create `/tmp/blackcell-codex/<work-id>/{workers,results}` and one `change-spec.json` using
    `.codex/orchestration/change-spec.schema.json`. Validate it before delegation.
 3. Create one `review` packet using `.codex/orchestration/worker-packet.schema.json`. Assign the
-   changed paths and required contract reads. Declare only read-only inspection and direct test,
-   linter, type-check, or schema-check argv.
+   changed paths and required contract reads. Declare only bounded `focused` tests and optional
+   `static` linter, type-check, or schema-check argv. A review packet must not declare a `full`
+   command, a repository-wide pytest invocation, or coverage collection.
 4. Capture `git status --porcelain=v2 --untracked-files=all`, then validate the packet.
+
+Review owns defect discovery, not acceptance certification. Prefer source inspection over command
+volume. Normally declare one focused pytest command using `tools/run_pytest.py`. Use exact node IDs
+with `--blackcell-require-all-pass`; omit that option for a bounded file selection because the
+runner intentionally rejects non-node selections in required-pass mode. Add at most the static
+checks that can materially confirm a suspected regression. Leave the maintained full gate to
+`blackcell-verify`,
+`blackcell-change`, or `blackcell-publish`.
 
 ## Run The Independent Review
 
@@ -32,6 +41,11 @@ handoff from `AGENTS.md`. The reviewer must not receive parent turns or spawn ch
 Wait for completion, persist the returned JSON under `results/`, close the reviewer, and capture
 the same status again. Treat any worktree delta as a workflow defect. Validate the result against
 the packet and reject prose-only or schema-invalid output.
+
+Static Ruff and ty checks may run concurrently with one focused pytest command when the execution
+surface supports parallel calls. Do not run multiple pytest processes concurrently: the current
+repository has no validated xdist/sharding contract for coverage data, pytest/Hypothesis caches,
+integration ports, or external runtime resources.
 
 ## Report Findings
 

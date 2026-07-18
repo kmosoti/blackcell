@@ -12,6 +12,10 @@ files, fix failures, reinterpret acceptance criteria, or spawn another agent. Ge
 caches are acceptable. Stop and return `blocked` when verification needs undeclared access or a
 new hypothesis.
 
+Run `focused` and `static` commands before the single final `full` command. Independent static
+commands may overlap one focused pytest command. Run the full pytest and coverage gate alone; do
+not overlap it with another pytest, coverage, integration, or external runtime process.
+
 Return only JSON matching the packet's declared worker-result schema. Record each command as argv,
 exit code, and a bounded summary. Do not include raw logs or parent-thread history.
 """

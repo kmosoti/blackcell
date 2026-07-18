@@ -150,6 +150,17 @@ def test_lifecycle_skills_are_discoverable_and_bounded() -> None:
         assert 'fork_turns = "none"' in text
         assert "Do not edit tracked files" in text
 
+    review = (SKILLS_ROOT / "blackcell-review/SKILL.md").read_text(encoding="utf-8")
+    verify = (SKILLS_ROOT / "blackcell-verify/SKILL.md").read_text(encoding="utf-8")
+    reviewer = (CODEX_ROOT / "agents/k_reviewer.toml").read_text(encoding="utf-8")
+    verifier = (CODEX_ROOT / "agents/k_verifier.toml").read_text(encoding="utf-8")
+    assert "must not declare a `full`" in review
+    assert "Do not run multiple pytest processes concurrently" in review
+    assert "exactly one `full` gate" in verify
+    assert "full pytest and\ncoverage gate alone" in verify
+    assert "Never run a full repository pytest or coverage gate" in reviewer
+    assert "single final `full` command" in verifier
+
     publish = (SKILLS_ROOT / "blackcell-publish/SKILL.md").read_text(encoding="utf-8")
     publish_metadata = yaml.safe_load(
         (SKILLS_ROOT / "blackcell-publish/agents/openai.yaml").read_text(encoding="utf-8")
@@ -232,6 +243,91 @@ def test_contract_validator_rejects_traversal_and_missing_micro_edit_controls(
         "micro_edit_verification",
         "outside_change_scope",
     } <= _error_codes(payload)
+
+
+def test_contract_validator_rejects_full_or_broad_pytest_in_review_packets(
+    contract_tree: dict[str, Any],
+) -> None:
+    packet = contract_tree["packet"]
+    packet["mode"] = "review"
+    packet["verification_commands"] = [
+        {
+            "scope": "full",
+            "argv": [
+                "uv",
+                "run",
+                "python",
+                "tools/run_pytest.py",
+                "--cov=blackcell",
+                "--cov-report=term-missing",
+            ],
+            "reason": "This full gate does not belong in review.",
+        }
+    ]
+    _write_json(contract_tree["packet_path"], packet)
+
+    completed, payload = _run_validator("worker-packet", contract_tree["packet_path"])
+
+    assert completed.returncode == 1
+    assert {"review_full_gate", "review_broad_pytest"} <= _error_codes(payload)
+
+
+def test_contract_validator_requires_one_final_broad_full_gate_for_verify(
+    contract_tree: dict[str, Any],
+) -> None:
+    packet = contract_tree["packet"]
+    packet["mode"] = "verify"
+    focused = {
+        "scope": "focused",
+        "argv": [
+            "uv",
+            "run",
+            "python",
+            "tools/run_pytest.py",
+            "tests/unit/test_operator_facade.py",
+        ],
+        "reason": "Focused acceptance evidence.",
+    }
+    full = {
+        "scope": "full",
+        "argv": [
+            "uv",
+            "run",
+            "python",
+            "tools/run_pytest.py",
+            "--cov=blackcell",
+            "--cov-report=term-missing",
+        ],
+        "reason": "Maintained full gate.",
+    }
+    packet["verification_commands"] = [full, focused]
+    _write_json(contract_tree["packet_path"], packet)
+
+    completed, payload = _run_validator("worker-packet", contract_tree["packet_path"])
+
+    assert completed.returncode == 1
+    assert "verify_full_gate_order" in _error_codes(payload)
+
+    invalid_full = dict(full)
+    invalid_full["argv"] = [
+        "uv",
+        "run",
+        "python",
+        "tools/run_pytest.py",
+        "tests/unit/test_operator_facade.py",
+    ]
+    packet["verification_commands"] = [focused, invalid_full]
+    _write_json(contract_tree["packet_path"], packet)
+    completed, payload = _run_validator("worker-packet", contract_tree["packet_path"])
+
+    assert completed.returncode == 1
+    assert "verify_full_gate_command" in _error_codes(payload)
+
+    packet["verification_commands"] = [focused, full]
+    _write_json(contract_tree["packet_path"], packet)
+    completed, payload = _run_validator("worker-packet", contract_tree["packet_path"])
+
+    assert completed.returncode == 0, payload
 
 
 def test_contract_validator_enforces_result_scope_and_size_limits(
