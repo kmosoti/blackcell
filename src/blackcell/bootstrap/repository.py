@@ -11,6 +11,10 @@ from blackcell.adapters.models import (
     CodexCliModelAdapter,
     GatewayDecisionAdapter,
 )
+from blackcell.adapters.models.codex_cli import (
+    CODEX_CLI_DEFAULT_INPUT_TOKEN_BUDGET,
+    estimate_codex_cli_input_tokens,
+)
 from blackcell.adapters.persistence.sqlite import (
     KernelRunReplayAdapter,
     SQLiteDecisionAttemptJournal,
@@ -46,6 +50,7 @@ from blackcell.gateway import (
 from blackcell.gateway.ports import ModelAdapter
 from blackcell.kernel import ArtifactStore, CheckpointStore, EventStore
 from blackcell.operator.facade import (
+    DEFAULT_RECORDED_TOKEN_BUDGET,
     RepositoryOperator,
     RepositoryOperatorConfiguration,
 )
@@ -54,6 +59,7 @@ from blackcell.workflows import DailyOperatorV2Workflow, WorkflowTelemetry
 from blackcell.workflows.outcome_evidence import OutcomeEvidenceWriter
 
 Clock = Callable[[], datetime]
+_RECORDED_MODEL_INPUT_TOKENS = 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +181,14 @@ def compose_repository_runtime(
         replay=replay,
         configuration=RepositoryOperatorConfiguration(
             model_local=model == "recorded",
+            default_token_budget=(
+                DEFAULT_RECORDED_TOKEN_BUDGET
+                if model == "recorded"
+                else CODEX_CLI_DEFAULT_INPUT_TOKEN_BUDGET
+            ),
+            input_token_estimator=(
+                _recorded_model_input_tokens if model == "recorded" else _codex_model_input_tokens
+            ),
             execution_adapter_id=REPOSITORY_STATUS_ADAPTER_ID,
             outcome_observer_id=REPOSITORY_OUTCOME_OBSERVER_ID,
             outcome_observer_contract_version=REPOSITORY_OUTCOME_CONTRACT_VERSION,
@@ -197,6 +211,18 @@ def _validate_model_route(model: str, codex_model: str | None) -> None:
         raise ValueError("--codex-model is required when --model=codex")
     if model == "recorded" and codex_model is not None:
         raise ValueError("--codex-model is only valid when --model=codex")
+
+
+def _recorded_model_input_tokens(objective: str, context_character_budget: int) -> int:
+    del objective, context_character_budget
+    return _RECORDED_MODEL_INPUT_TOKENS
+
+
+def _codex_model_input_tokens(objective: str, context_character_budget: int) -> int:
+    return estimate_codex_cli_input_tokens(
+        objective=objective,
+        context_character_budget=context_character_budget,
+    )
 
 
 def _model_configuration(

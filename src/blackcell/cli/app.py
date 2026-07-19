@@ -49,6 +49,12 @@ from blackcell.operator import (
     CanonicalOperatorRunResult,
     StoredContextFrame,
 )
+from blackcell.operator.facade import (
+    DEFAULT_CONTEXT_CHARACTER_BUDGET,
+    MAX_OPERATOR_CHARACTER_BUDGET,
+    MAX_OPERATOR_OBJECTIVE_CHARACTERS,
+    MAX_OPERATOR_TOKEN_BUDGET,
+)
 
 
 class BlackCellCli(App):
@@ -133,6 +139,20 @@ def operator_run(
         str,
         Parameter("--objective", help="Task objective for ContextFrame projection."),
     ] = DEFAULT_OBJECTIVE,
+    token_budget: Annotated[
+        int | None,
+        Parameter(
+            "--token-budget",
+            help="Maximum admitted model input tokens; defaults by model route.",
+        ),
+    ] = None,
+    character_budget: Annotated[
+        int,
+        Parameter(
+            "--character-budget",
+            help="Maximum ContextFrame characters supplied to the model.",
+        ),
+    ] = DEFAULT_CONTEXT_CHARACTER_BUDGET,
     approval: Annotated[
         bool,
         Parameter("--approval", help="Record explicit approval for eligible actions."),
@@ -141,6 +161,11 @@ def operator_run(
     """Run the complete Repository Operator feedback loop once."""
     resolved_repo = repo.resolve()
     try:
+        _validate_operator_run_budgets(
+            objective=objective,
+            token_budget=token_budget,
+            character_budget=character_budget,
+        )
         database = _operator_database(resolved_repo, db)
         operator = compose_repository_runtime(
             resolved_repo,
@@ -149,7 +174,12 @@ def operator_run(
             model=model,
             codex_model=codex_model,
         ).operator
-        result = operator.run(objective=objective, approval_granted=approval)
+        result = operator.run(
+            objective=objective,
+            approval_granted=approval,
+            token_budget=token_budget,
+            character_budget=character_budget,
+        )
     except (KernelError, LookupError, OSError, RuntimeError, ValueError) as error:
         _fail(str(error))
     _output().emit(result, rich=_operator_run_table(result))
@@ -720,6 +750,26 @@ def _extract_output_flags(tokens: str | Iterable[str]) -> tuple[list[str], bool,
 
 def _operator_database(repo: Path, database: Path | None) -> Path:
     return database if database is not None else default_repository_database_path(repo)
+
+
+def _validate_operator_run_budgets(
+    *,
+    objective: str,
+    token_budget: int | None,
+    character_budget: int,
+) -> None:
+    if not objective.strip():
+        raise ValueError("operator objective must not be empty")
+    if len(objective) > MAX_OPERATOR_OBJECTIVE_CHARACTERS:
+        raise ValueError(
+            f"operator objective exceeds {MAX_OPERATOR_OBJECTIVE_CHARACTERS} characters"
+        )
+    if token_budget is not None and not 1 <= token_budget <= MAX_OPERATOR_TOKEN_BUDGET:
+        raise ValueError(f"operator token budget must be between 1 and {MAX_OPERATOR_TOKEN_BUDGET}")
+    if not 1 <= character_budget <= MAX_OPERATOR_CHARACTER_BUDGET:
+        raise ValueError(
+            f"operator character budget must be between 1 and {MAX_OPERATOR_CHARACTER_BUDGET}"
+        )
 
 
 def _require_database(database: Path) -> None:

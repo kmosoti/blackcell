@@ -16,6 +16,7 @@ from blackcell.gateway import (
 )
 from blackcell.gateway.schema import OutputSchemaError, validate_output
 from blackcell.kernel import JsonValue
+from blackcell.kernel._json import json_digest
 
 NOW = datetime(2026, 7, 10, 18, tzinfo=UTC)
 SCHEMA: dict[str, JsonValue] = {
@@ -129,8 +130,30 @@ def test_gateway_rejects_budget_and_schema_violations() -> None:
 
     with pytest.raises(GatewayAdmissionError, match="input-token"):
         gateway.invoke(_request(estimated_input_tokens=101))
-    with pytest.raises(OutputSchemaError, match="missing required"):
+    with pytest.raises(OutputSchemaError, match="missing required") as caught:
         gateway.invoke(_request())
+
+    assert caught.value.completion is not None
+    assert caught.value.completion.output_digest == json_digest({"unexpected": True})
+
+
+def test_gateway_postflight_budget_failure_carries_content_free_completion() -> None:
+    adapter = UsageAdapter(output_tokens=21)
+    gateway = ModelGateway(
+        (_profile("reason", ModelCapability.REASON),),
+        {"recorded": adapter},
+        clock=lambda: NOW,
+    )
+
+    with pytest.raises(GatewayAdmissionError, match="output-token") as caught:
+        gateway.invoke(_request())
+
+    completion = caught.value.completion
+    assert completion is not None
+    assert completion.output_digest == json_digest({"answer": "ready"})
+    assert completion.output_tokens == 21
+    assert completion.completed_at == NOW
+    assert not hasattr(completion, "output")
 
 
 def test_gateway_routes_profile_with_tighter_output_and_cost_ceilings() -> None:
@@ -401,6 +424,53 @@ def test_output_schema_rejects_schema_valued_additional_properties() -> None:
     }
 
     with pytest.raises(OutputSchemaError, match="additionalProperties must be a boolean"):
+        validate_output({}, schema)
+
+
+def test_output_schema_enforces_enum_max_items_and_unique_items() -> None:
+    schema: dict[str, JsonValue] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ("values",),
+        "properties": {
+            "values": {
+                "type": "array",
+                "maxItems": 2,
+                "uniqueItems": True,
+                "items": {"type": "string", "enum": ("left", "right")},
+            }
+        },
+    }
+
+    validate_output({"values": ("left", "right")}, schema)
+    for values, message in (
+        (("outside",), "enum value"),
+        (("left", "right", "left"), "maxItems"),
+        (("left", "left"), "duplicate items"),
+    ):
+        with pytest.raises(OutputSchemaError, match=message):
+            validate_output({"values": values}, schema)
+
+
+@pytest.mark.parametrize(
+    ("property_schema", "message"),
+    (
+        ({"type": "string", "enum": ()}, "non-empty"),
+        ({"type": "string", "enum": ("same", "same")}, "duplicates"),
+        ({"type": "array", "maxItems": -1}, "non-negative"),
+        ({"type": "array", "uniqueItems": 1}, "boolean"),
+    ),
+)
+def test_output_schema_rejects_invalid_collection_constraints(
+    property_schema: dict[str, JsonValue],
+    message: str,
+) -> None:
+    schema: dict[str, JsonValue] = {
+        "type": "object",
+        "properties": {"value": property_schema},
+    }
+
+    with pytest.raises(OutputSchemaError, match=message):
         validate_output({}, schema)
 
 

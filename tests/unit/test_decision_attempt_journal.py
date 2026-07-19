@@ -23,6 +23,7 @@ from blackcell.features.request_decision import (
     DecisionBudget,
     DecisionCapability,
     DecisionClassification,
+    DecisionDiagnosticCode,
     DecisionEvidenceJournal,
     DecisionFailure,
     DecisionFailureKind,
@@ -78,6 +79,27 @@ class Gateway:
             raise RuntimeError("simulated process interruption")
         return DecisionAdapterResult(
             _output(),
+            input_tokens=8,
+            output_tokens=4,
+            latency_ms=10,
+            cost_microusd=2,
+            deterministic=True,
+            completed_at=self.completed_at,
+        )
+
+
+class InvalidAffordanceGateway(Gateway):
+    def invoke(
+        self,
+        request: RequestDecision,
+        route: DecisionRoute,
+    ) -> DecisionAdapterResult:
+        del request, route
+        self.invoke_calls += 1
+        output = _output()
+        output["affordance"] = "delete"
+        return DecisionAdapterResult(
+            output,
             input_tokens=8,
             output_tokens=4,
             latency_ms=10,
@@ -585,6 +607,34 @@ def test_real_staged_claim_reuse_returns_terminal_before_gateway(tmp_path: Path)
     assert isinstance(first, DecisionSuccessRecord)
     assert second == first
     assert gateway.invoke_calls == 1
+
+
+def test_diagnosed_output_failure_survives_journal_restart(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    gateway = InvalidAffordanceGateway(
+        completed_at=NOW + timedelta(seconds=2),
+        selected_at=NOW + timedelta(seconds=2),
+    )
+    journal = SQLiteDecisionAttemptJournal(root)
+    handler = RequestDecisionHandler(
+        gateway,
+        journal,
+        clock=lambda: NOW + timedelta(seconds=2),
+    )
+    preparation = handler.prepare(_request())
+    assert isinstance(preparation, DecisionPreparation)
+
+    outcome = handler.handle(preparation)
+
+    assert isinstance(outcome, DecisionFailureRecord)
+    assert outcome.failure.schema_version == "decision-failure/v2"
+    assert outcome.failure.diagnostic is not None
+    assert outcome.failure.diagnostic.code is DecisionDiagnosticCode.UNDECLARED_AFFORDANCE
+    assert outcome.failure.diagnostic.path == "$.affordance"
+    journal.close()
+
+    with SQLiteDecisionAttemptJournal(root) as reopened:
+        assert reopened.get_terminal(_request().request_id) == outcome
 
 
 def test_concurrent_real_invoke_crosses_gateway_once(tmp_path: Path) -> None:

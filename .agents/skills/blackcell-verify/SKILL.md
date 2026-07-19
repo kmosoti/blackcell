@@ -21,8 +21,9 @@ overrides require an explicit user request.
 2. Convert each material acceptance criterion into an observable check. Include adversarial cases
    required by the active specification, not merely happy-path unit tests.
 3. Create and validate `/tmp/blackcell-codex/<work-id>/change-spec.json` and one `verify` worker
-   packet. Declare exact direct argv for focused checks and one applicable full gate from
-   `blackcell.plan.yaml`; never declare a shell, publisher, deployment, or destructive command.
+   packet. Mark every command as `focused`, `static`, or `full`. Declare exact direct argv for
+   focused checks followed by exactly one `full` gate from `blackcell.plan.yaml`; the full gate
+   must be last. Never declare a shell, publisher, deployment, or destructive command.
 4. Capture `git status --porcelain=v2 --untracked-files=all` before delegation.
 
 ## Run The Independent Gate
@@ -33,6 +34,12 @@ test caches are acceptable; any tracked-file delta is a workflow defect.
 
 Validate the result against the packet. Do not rerun an unchanged failure. If a retry is justified,
 change the hypothesis or environment once; otherwise report the concrete blocker.
+
+Run focused and static commands before the full gate. Ruff and ty may run concurrently with one
+focused pytest command when the execution surface supports parallel calls. Run the full pytest and
+coverage gate alone: do not overlap it with another pytest, coverage, integration, or external
+runtime process. BlackCell does not currently carry a validated pytest-xdist or coverage-combine
+contract.
 
 ## Report Evidence
 

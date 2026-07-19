@@ -1,10 +1,12 @@
 """Closed, recursive schema validation for model-gateway outputs.
 
 The gateway intentionally supports only a small JSON-Schema-like vocabulary:
-``type``, ``const``, object ``properties``/``required``/``additionalProperties``,
-array ``items``, numeric bounds, and string length bounds. ``$schema`` is accepted
-as root metadata. Every other keyword is rejected, including inside an optional
-property, so unsupported schema semantics can never be mistaken for enforcement.
+``type``, ``const``, ``enum``, object
+``properties``/``required``/``additionalProperties``, array
+``items``/``maxItems``/``uniqueItems``, numeric bounds, and string length bounds.
+``$schema`` is accepted as root metadata. Every other keyword is rejected,
+including inside an optional property, so unsupported schema semantics can never
+be mistaken for enforcement.
 """
 
 from __future__ import annotations
@@ -13,11 +15,21 @@ import math
 from collections.abc import Mapping
 from typing import cast
 
+from blackcell.gateway.models import GatewayCompletion
 from blackcell.kernel import JsonValue
 
 
 class OutputSchemaError(ValueError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        completion: GatewayCompletion | None = None,
+    ) -> None:
+        if completion is not None and not isinstance(completion, GatewayCompletion):
+            raise TypeError("output schema completion has an invalid type")
+        super().__init__(message)
+        self.completion = completion
 
 
 _TYPE_NAMES = frozenset(
@@ -35,10 +47,13 @@ _SUPPORTED_KEYWORDS = frozenset(
     {
         "type",
         "const",
+        "enum",
         "properties",
         "required",
         "additionalProperties",
         "items",
+        "maxItems",
+        "uniqueItems",
         "minimum",
         "maximum",
         "exclusiveMinimum",
@@ -83,6 +98,18 @@ def _validate_schema(
 
     _declared_types(schema, path=path)
 
+    if "enum" in schema:
+        enum = schema["enum"]
+        if not isinstance(enum, tuple) or not enum:
+            raise OutputSchemaError(f"{path}.enum must be a non-empty array")
+        enum_values = cast("tuple[JsonValue, ...]", enum)
+        if any(
+            _json_equal(left, right)
+            for index, left in enumerate(enum_values)
+            for right in enum_values[index + 1 :]
+        ):
+            raise OutputSchemaError(f"{path}.enum must not contain duplicates")
+
     if "$schema" in schema and not isinstance(schema["$schema"], str):
         raise OutputSchemaError(f"{path}.$schema must be a string")
 
@@ -117,6 +144,18 @@ def _validate_schema(
             raise OutputSchemaError(f"{path}.items must be a schema object")
         items = cast("Mapping[str, JsonValue]", raw_items)
         _validate_schema(items, path=f"{path}.items", root=False)
+
+    if "maxItems" in schema:
+        maximum_items = schema["maxItems"]
+        if (
+            not isinstance(maximum_items, int)
+            or isinstance(maximum_items, bool)
+            or maximum_items < 0
+        ):
+            raise OutputSchemaError(f"{path}.maxItems must be a non-negative integer")
+
+    if "uniqueItems" in schema and not isinstance(schema["uniqueItems"], bool):
+        raise OutputSchemaError(f"{path}.uniqueItems must be a boolean")
 
     for keyword in _NUMERIC_BOUNDARIES:
         if keyword not in schema:
@@ -199,6 +238,13 @@ def _validate_value(
     if "const" in schema and not _json_equal(value, schema["const"]):
         raise OutputSchemaError(f"{path} does not match its const value")
 
+    if "enum" in schema:
+        enum = schema["enum"]
+        if not isinstance(enum, tuple):  # pragma: no cover - schema checked first
+            raise OutputSchemaError(f"{path}.enum must be an array")
+        if not any(_json_equal(value, item) for item in enum):
+            raise OutputSchemaError(f"{path} does not match an enum value")
+
     if isinstance(value, Mapping):
         _validate_object(cast("Mapping[str, JsonValue]", value), schema, path=path)
     elif isinstance(value, tuple):
@@ -242,6 +288,13 @@ def _validate_array(
     *,
     path: str,
 ) -> None:
+    maximum_items = schema.get("maxItems")
+    if isinstance(maximum_items, int) and len(value) > maximum_items:
+        raise OutputSchemaError(f"{path} contains more than maxItems {maximum_items}")
+    if schema.get("uniqueItems") is True and any(
+        _json_equal(left, right) for index, left in enumerate(value) for right in value[index + 1 :]
+    ):
+        raise OutputSchemaError(f"{path} contains duplicate items")
     items = schema.get("items")
     if not isinstance(items, Mapping):
         return

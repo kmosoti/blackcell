@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from blackcell.features.request_decision.models import DecisionFailureKind
+import re
+
+from blackcell.features.request_decision.models import (
+    DecisionDiagnosticCode,
+    DecisionFailureKind,
+    DecisionGatewayCompletion,
+)
 
 
 class DecisionRequestError(RuntimeError):
@@ -9,6 +15,22 @@ class DecisionRequestError(RuntimeError):
 
 class DecisionOutputError(DecisionRequestError):
     """A model response cannot be admitted as a typed decision proposal."""
+
+
+class DecisionOutputViolation(DecisionOutputError, ValueError):
+    """A content-free, path-addressed semantic output violation."""
+
+    def __init__(self, code: DecisionDiagnosticCode, path: str) -> None:
+        if not isinstance(code, DecisionDiagnosticCode):
+            raise TypeError("decision output violation requires a stable diagnostic code")
+        if (
+            len(path) > 128
+            or re.fullmatch(r"^\$(?:\.[A-Za-z_][A-Za-z0-9_]*|\[[0-9]+\])*$", path) is None
+        ):
+            raise ValueError("decision output violation requires a bounded JSON path")
+        super().__init__(code.value)
+        self.code = code
+        self.path = path
 
 
 class DecisionJournalError(DecisionRequestError):
@@ -33,6 +55,7 @@ class DecisionGatewayError(DecisionRequestError):
         *,
         retryable: bool = False,
         exception_type: str | None = None,
+        completion: DecisionGatewayCompletion | None = None,
     ) -> None:
         if not isinstance(kind, DecisionFailureKind):
             raise TypeError("gateway failure kind must be a DecisionFailureKind")
@@ -42,11 +65,14 @@ class DecisionGatewayError(DecisionRequestError):
             raise TypeError("gateway failure retryable marker must be a boolean")
         if exception_type is not None and not exception_type.strip():
             raise ValueError("gateway failure exception_type must not be blank")
+        if completion is not None and not isinstance(completion, DecisionGatewayCompletion):
+            raise TypeError("gateway failure completion has an invalid type")
         super().__init__(code)
         self.kind = kind
         self.code = code
         self.retryable = retryable
         self.exception_type = exception_type
+        self.completion = completion
 
 
 __all__ = [
@@ -55,5 +81,6 @@ __all__ = [
     "DecisionIdentityConflict",
     "DecisionJournalError",
     "DecisionOutputError",
+    "DecisionOutputViolation",
     "DecisionRequestError",
 ]

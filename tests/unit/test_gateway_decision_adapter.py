@@ -32,6 +32,7 @@ from blackcell.gateway import (
     ModelRequest,
 )
 from blackcell.kernel import JsonValue
+from blackcell.kernel._json import json_digest
 
 NOW = datetime(2026, 7, 11, 19, tzinfo=UTC)
 
@@ -361,6 +362,12 @@ def test_bridge_maps_post_call_failure_classes_to_feature_codes() -> None:
         assert caught.value.code == code
         assert caught.value.retryable is retryable
         assert "provider detail" not in str(caught.value)
+        assert caught.value.__cause__ is None
+        if kind in {DecisionFailureKind.BUDGET, DecisionFailureKind.SCHEMA}:
+            assert caught.value.completion is not None
+            assert caught.value.completion.output_digest == json_digest(model_adapter.output)
+        else:
+            assert caught.value.completion is None
 
 
 def _gateway(adapter: Adapter, *, audit: Audit | None = None) -> ModelGateway:

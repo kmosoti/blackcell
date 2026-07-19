@@ -8,6 +8,7 @@ from blackcell.features.request_decision import (
     DecisionCapability,
     DecisionClassification,
     DecisionFailureKind,
+    DecisionGatewayCompletion,
     DecisionGatewayError,
     DecisionLocality,
     DecisionRoute,
@@ -24,6 +25,7 @@ from blackcell.gateway import (
     ModelRequest,
     PreparedGatewayCall,
 )
+from blackcell.gateway.models import GatewayCompletion
 from blackcell.gateway.schema import OutputSchemaError
 
 Clock = Callable[[], datetime]
@@ -81,7 +83,7 @@ class GatewayDecisionAdapter:
         try:
             prepared = self._gateway.prepare(_model_request(request))
         except GatewayAdmissionError as error:
-            raise _decision_error(error) from error
+            raise _decision_error(error) from None
         selected_at = self._clock()
         try:
             return _decision_route(prepared, selected_at=selected_at)
@@ -90,7 +92,7 @@ class GatewayDecisionAdapter:
                 DecisionFailureKind.INTEGRITY,
                 "gateway_route_contract_invalid",
                 exception_type=type(error).__name__,
-            ) from error
+            ) from None
 
     def invoke(
         self,
@@ -100,7 +102,7 @@ class GatewayDecisionAdapter:
         try:
             prepared = self._gateway.prepare(_model_request(request))
         except GatewayAdmissionError as error:
-            raise _decision_error(error) from error
+            raise _decision_error(error) from None
         if not _same_route(prepared, route):
             raise DecisionGatewayError(
                 DecisionFailureKind.INTEGRITY,
@@ -109,26 +111,33 @@ class GatewayDecisionAdapter:
         try:
             result = self._gateway.invoke_prepared(prepared)
         except GatewayAdmissionError as error:
-            raise _decision_error(error) from error
+            raise _decision_error(error) from None
         except OutputSchemaError as error:
             raise DecisionGatewayError(
                 DecisionFailureKind.SCHEMA,
                 "gateway_output_schema_invalid",
                 exception_type=type(error).__name__,
-            ) from error
+                completion=_decision_completion(error.completion),
+            ) from None
         except TimeoutError as error:
             raise DecisionGatewayError(
                 DecisionFailureKind.TIMEOUT,
                 "gateway_adapter_timeout",
                 retryable=True,
                 exception_type=type(error).__name__,
-            ) from error
+            ) from None
+        except (TypeError, ValueError) as error:
+            raise DecisionGatewayError(
+                DecisionFailureKind.INTEGRITY,
+                "gateway_response_contract_invalid",
+                exception_type=type(error).__name__,
+            ) from None
         except Exception as error:
             raise DecisionGatewayError(
                 DecisionFailureKind.ADAPTER,
                 "gateway_adapter_failed",
                 exception_type=type(error).__name__,
-            ) from error
+            ) from None
         response = result.response
         try:
             return DecisionAdapterResult(
@@ -145,7 +154,7 @@ class GatewayDecisionAdapter:
                 DecisionFailureKind.INTEGRITY,
                 "gateway_response_contract_invalid",
                 exception_type=type(error).__name__,
-            ) from error
+            ) from None
 
 
 def _model_request(request: RequestDecision) -> ModelRequest:
@@ -208,7 +217,27 @@ def _decision_error(error: GatewayAdmissionError) -> DecisionGatewayError:
         kind = DecisionFailureKind.INTEGRITY
     else:
         kind = DecisionFailureKind.ADMISSION
-    return DecisionGatewayError(kind, error.code.value)
+    return DecisionGatewayError(
+        kind,
+        error.code.value,
+        completion=_decision_completion(error.completion),
+    )
+
+
+def _decision_completion(
+    completion: GatewayCompletion | None,
+) -> DecisionGatewayCompletion | None:
+    if completion is None:
+        return None
+    return DecisionGatewayCompletion(
+        output_digest=completion.output_digest,
+        input_tokens=completion.input_tokens,
+        output_tokens=completion.output_tokens,
+        latency_ms=completion.latency_ms,
+        cost_microusd=completion.cost_microusd,
+        deterministic=completion.deterministic,
+        completed_at=completion.completed_at,
+    )
 
 
 __all__ = ["GatewayDecisionAdapter"]

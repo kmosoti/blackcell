@@ -331,6 +331,7 @@ def _validate_worker_packet(
             repo_root,
             issues,
         )
+    _validate_verification_scope(document, issues)
 
     change_spec_path = Path(document["change_spec_path"])
     linked_issues = validate_file("change-spec", change_spec_path, repo_root=repo_root)
@@ -364,12 +365,79 @@ def _validate_worker_packet(
                 "$.verification_commands",
                 "micro-edit mode requires focused verification",
             )
-    elif document["mode"] == "verify" and not document["verification_commands"]:
+
+
+def _validate_verification_scope(
+    document: dict[str, Any],
+    issues: list[ValidationIssue],
+) -> None:
+    mode = document["mode"]
+    commands = document["verification_commands"]
+    if mode not in {"review", "verify"}:
+        return
+
+    for index, command in enumerate(commands):
+        if "scope" not in command:
+            _add(
+                issues,
+                "verification_scope_required",
+                f"$.verification_commands[{index}].scope",
+                f"{mode} commands must declare focused, static, or full scope",
+            )
+
+    if mode == "review":
+        for index, command in enumerate(commands):
+            if command.get("scope") == "full":
+                _add(
+                    issues,
+                    "review_full_gate",
+                    f"$.verification_commands[{index}].scope",
+                    "review packets must not declare a full gate",
+                )
+            if _is_broad_pytest(command["argv"]):
+                _add(
+                    issues,
+                    "review_broad_pytest",
+                    f"$.verification_commands[{index}].argv",
+                    "review packets must select focused tests instead of the broad pytest gate",
+                )
+        return
+
+    if not commands:
         _add(
             issues,
             "verify_verification",
             "$.verification_commands",
-            "verify mode requires at least one verification command",
+            "verify mode requires focused evidence and one full gate",
+        )
+        return
+
+    full_indexes = [
+        index for index, command in enumerate(commands) if command.get("scope") == "full"
+    ]
+    if len(full_indexes) != 1:
+        _add(
+            issues,
+            "verify_full_gate",
+            "$.verification_commands",
+            "verify mode requires exactly one full gate",
+        )
+        return
+
+    full_index = full_indexes[0]
+    if full_index != len(commands) - 1:
+        _add(
+            issues,
+            "verify_full_gate_order",
+            f"$.verification_commands[{full_index}].scope",
+            "the full gate must be the final verification command",
+        )
+    if not _is_full_pytest_gate(commands[full_index]["argv"]):
+        _add(
+            issues,
+            "verify_full_gate_command",
+            f"$.verification_commands[{full_index}].argv",
+            "the full gate must be the broad repository pytest coverage invocation",
         )
 
 
@@ -611,6 +679,45 @@ def _validate_verification_argv(
         return
 
     _validate_direct_verification(argv, field_path, repo_root, issues)
+
+
+def _is_broad_pytest(argv: list[str]) -> bool:
+    direct = _unwrap_uv_run(argv)
+    if not direct:
+        return False
+    executable = Path(direct[0]).name
+    arguments: list[str]
+    if executable == "pytest":
+        arguments = direct[1:]
+    elif executable in {"python", "python3"} and len(direct) >= 2:
+        if direct[1] == "-m" and len(direct) >= 3 and direct[2] == "pytest":
+            arguments = direct[3:]
+        elif Path(direct[1]).as_posix().endswith("tools/run_pytest.py"):
+            arguments = direct[2:]
+        else:
+            return False
+    else:
+        return False
+    return not any(argument == "tests" or argument.startswith("tests/") for argument in arguments)
+
+
+def _is_full_pytest_gate(argv: list[str]) -> bool:
+    direct = _unwrap_uv_run(argv)
+    return (
+        _is_broad_pytest(argv)
+        and "--cov=blackcell" in direct
+        and "--cov-report=term-missing" in direct
+    )
+
+
+def _unwrap_uv_run(argv: list[str]) -> list[str]:
+    if Path(argv[0]).name != "uv":
+        return argv
+    try:
+        run_index = argv.index("run", 1)
+    except ValueError:
+        return argv
+    return argv[run_index + 1 :]
 
 
 def _validate_direct_verification(
