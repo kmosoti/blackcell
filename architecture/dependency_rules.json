@@ -43,15 +43,20 @@
       "blackcell.adapters.persistence.sqlite.decision_attempts",
       "blackcell.adapters.persistence.sqlite.execution_journal",
       "blackcell.bootstrap.alpha_process",
+      "blackcell.bootstrap.alpha_review_process",
+      "blackcell.bootstrap.alpha_verify_process",
       "blackcell.bootstrap.repository"
     ],
     "CodexCliModelAdapter": [
       "blackcell.bootstrap.alpha_process",
+      "blackcell.bootstrap.alpha_review_process",
       "blackcell.bootstrap.repository"
     ],
     "EventStore": [
       "blackcell.adapters.persistence.sqlite.session",
       "blackcell.bootstrap.alpha_process",
+      "blackcell.bootstrap.alpha_review_process",
+      "blackcell.bootstrap.alpha_verify_process",
       "blackcell.bootstrap.repository",
       "blackcell.cli.app"
     ],
@@ -64,6 +69,7 @@
     ],
     "ModelGateway": [
       "blackcell.bootstrap.alpha_process",
+      "blackcell.bootstrap.alpha_review_process",
       "blackcell.bootstrap.repository"
     ],
     "RepositoryOperator": [
