@@ -50,6 +50,9 @@ def test_process_config_uses_bounded_explicit_runtime_defaults(tmp_path: Path) -
     assert config.worker_poll_milliseconds == 250
     assert config.worker_lease_seconds == 30
     assert config.worker_id == "worker:runtime-host:42"
+    assert config.alpha_worker is None
+    assert config.alpha_review_worker is None
+    assert config.alpha_verify_worker is None
     assert not config.telemetry.enabled
     assert config.telemetry.endpoint is None
     assert config.quota.requests_per_minute == 600

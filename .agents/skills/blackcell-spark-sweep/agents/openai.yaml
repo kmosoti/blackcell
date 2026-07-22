@@ -1,4 +1,0 @@
-interface:
-  display_name: "BlackCell Spark Sweep"
-  short_description: "Shard read-only BlackCell repository evidence"
-  default_prompt: "Use $blackcell-spark-sweep to map repository evidence with bounded no-history workers."

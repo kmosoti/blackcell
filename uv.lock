@@ -3,6 +3,15 @@ revision = 3
 requires-python = ">=3.14"
 
 [[package]]
+name = "annotated-doc"
+version = "0.0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/57/ba/046ceea27344560984e26a590f90bc7f4a75b06701f653222458922b558c/annotated_doc-0.0.4.tar.gz", hash = "sha256:fbcda96e87e9c92ad167c2e53839e57503ecfda18804ea28102353485033faa4", size = 7288, upload-time = "2025-11-10T22:07:42.062Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1e/d3/26bf1008eb3d2daa8ef4cacc7f3bfdc11818d111f7e2d0201bc6e3b49d45/annotated_doc-0.0.4-py3-none-any.whl", hash = "sha256:571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320", size = 5303, upload-time = "2025-11-10T22:07:40.673Z" },
+]
+
+[[package]]
 name = "anyio"
 version = "4.14.2"
 source = { registry = "https://pypi.org/simple" }
@@ -36,6 +45,7 @@ dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
+    { name = "pyratatui" },
     { name = "pyyaml" },
     { name = "rich" },
 ]
@@ -60,6 +70,7 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.42.1,<2" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.42.1,<2" },
     { name = "opentelemetry-sdk", specifier = ">=1.42.1,<2" },
+    { name = "pyratatui", specifier = ">=0.2.9,<0.3" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rich", specifier = ">=15.0.0" },
 ]
@@ -768,6 +779,23 @@ wheels = [
 ]
 
 [[package]]
+name = "pyratatui"
+version = "0.2.9"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1b/08/3e4d39a3836d078b99f84f3004f61b3e5656fe8fe6d44419ee9f962076b7/pyratatui-0.2.9.tar.gz", hash = "sha256:16edcfc1a5f28b11a71daf7f1708c8e6914418d3815ce97cfaef4719907d21d4", size = 1138044, upload-time = "2026-06-05T03:36:58.535Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6b/99/e796f0cf3c2c787244d33b1bddb30d1e2ae72f43a47c81c429c272acf2af/pyratatui-0.2.9-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:1736e66cdfa57e08b516007778d7936361b4e214b0283066494a13ade70baa9a", size = 2727728, upload-time = "2026-06-05T03:36:48.462Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/f5/e434390b7cd500d60a32466e683b937207679a8a3b68826a5f631d99085c/pyratatui-0.2.9-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:758fbad83cf5d8bff1846e81350218a6e941fe7d3c03f312a1231efabc430f59", size = 2590094, upload-time = "2026-06-05T03:36:50.222Z" },
+    { url = "https://files.pythonhosted.org/packages/18/0f/460850afc161320251d356e30bbb46d1d59465b0c4bd15bc6b6c6b03e89f/pyratatui-0.2.9-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7da55f3c11bf6bd1db6c814da0b2bf2ed16dfb41f4f86a44aea009255652eaa4", size = 2804574, upload-time = "2026-06-05T03:36:51.85Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/70/40338a1c7b632800cb61fed9ff479d100927ef3386a5a29c0a0205835108/pyratatui-0.2.9-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:f0107258e88ca9b5790c5697ed8697d86be185e5f72a1649d1bb6ce3ac45069f", size = 2866003, upload-time = "2026-06-05T03:36:53.403Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/f6/8d715251df46a40a2775c327ccd9762e876b3e218871234c3a142e1d0308/pyratatui-0.2.9-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:c05c7488e29619e26bee12f55ebd38868791f8c26e76db64ceaf3123c04f0161", size = 3029564, upload-time = "2026-06-05T03:36:55.27Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/c8/5bc8487f066be894bb41592b69a4f9feb858aaea6460d0cc360520c83aad/pyratatui-0.2.9-cp310-abi3-win_amd64.whl", hash = "sha256:36e4e111b93782a5e55b4129c12a6dbc4483e1b4db5aebc72d087c0f190b794f", size = 2858039, upload-time = "2026-06-05T03:36:57.003Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -932,6 +960,15 @@ wheels = [
 ]
 
 [[package]]
+name = "shellingham"
+version = "1.5.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/15/8b3609fd3830ef7b27b655beb4b4e9c62313a4e8da8c676e142cc210d58e/shellingham-1.5.4.tar.gz", hash = "sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de", size = 10310, upload-time = "2023-10-24T04:13:40.426Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl", hash = "sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686", size = 9755, upload-time = "2023-10-24T04:13:38.866Z" },
+]
+
+[[package]]
 name = "sniffio"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -989,6 +1026,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/7d/90/a912531e51ee7e076b42972479290fa687c0f5e747b7e773f3033164acaa/ty-0.0.55-py3-none-win32.whl", hash = "sha256:52b968e24eb4f7a5c3bd251db1f99f60dd385890356d38fc619d84f1b423446a", size = 11117501, upload-time = "2026-06-27T00:27:22.714Z" },
     { url = "https://files.pythonhosted.org/packages/4c/7a/99d59843bf8908a7f9f4d13fda107dbad07b7faa28ecd7860eacf363fb1c/ty-0.0.55-py3-none-win_amd64.whl", hash = "sha256:bf39cbfdc0add44d94bd3fff1f53c351418d134b6a66b87efdb7876d7b7a2224", size = 12150106, upload-time = "2026-06-27T00:27:24.881Z" },
     { url = "https://files.pythonhosted.org/packages/b3/44/20987505cedf2a865b08482f0eabc181fd9599b062964057ec8a128a4296/ty-0.0.55-py3-none-win_arm64.whl", hash = "sha256:f7f3700a9a060e8f1af11e4fb63fafcaf272b041781f4ccdfda2b3b5c6c1e439", size = 11560157, upload-time = "2026-06-27T00:27:27.332Z" },
+]
+
+[[package]]
+name = "typer"
+version = "0.27.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "rich" },
+    { name = "shellingham" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/37/78/fda3361b56efc27944f24225f6ecd13d96d6fcfe37bd0eb34e2f4c63f9fc/typer-0.27.0.tar.gz", hash = "sha256:629bd12ea5d13a17148125d9a264f949eb171fb3f120f9b04d85873cab054fa5", size = 203430, upload-time = "2026-07-15T19:21:07.007Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/40/03/26a383c9e58c213199d1aad1c3d353cfc22d4444ec6d2c0bf8ad02523843/typer-0.27.0-py3-none-any.whl", hash = "sha256:6f4b27631e47f077871b7dc30e933ec0131c1390fbe0e387ea5574b5bac9ccf1", size = 122716, upload-time = "2026-07-15T19:21:05.553Z" },
 ]
 
 [[package]]

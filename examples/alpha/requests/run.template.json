@@ -1,0 +1,8 @@
+{
+  "idempotency_key": "alpha-run-submit-v1",
+  "intent_id": "alpha-intent",
+  "plan_id": "alpha-plan",
+  "project_id": "alpha-project",
+  "run_id": "alpha-run",
+  "schema_version": "alpha-run-request/v1"
+}

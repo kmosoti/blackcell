@@ -1,0 +1,112 @@
+{
+  "assurance": {
+    "independent_agent_review": "waived-by-user-for-draft-pr",
+    "mode": "root-authored",
+    "release_claim": false
+  },
+  "cleanup": {
+    "authorized_by_user": true,
+    "deterministic_branch_deleted": true,
+    "manual_cleanup_completed": true,
+    "pre_cleanup_head": "f2965ab3d1fe18357aae58042345a6a22e171203",
+    "pre_cleanup_worktree_clean": true,
+    "recoverability": "no-unique-commit-or-changes-existed",
+    "registered_worktrees_after_cleanup": 1,
+    "runtime_terminal_retained_worktree": true
+  },
+  "disposition": {
+    "alpha_tag_ready": false,
+    "automatic_redispatch": false,
+    "failure_code": "invalid-alpha-change-provider-proposal",
+    "output_quality": "not-adjudicable",
+    "proof_status": "terminal-provider-rejection",
+    "successful_live_change": false
+  },
+  "effects": {
+    "acceptance_checks_executed": 0,
+    "changed_paths": [],
+    "proposal_artifact_stored": false,
+    "repository_changes_applied": false
+  },
+  "metrics": {
+    "adapter_cost_semantics": "fixed-zero-not-external-billing-observation",
+    "durable_dispatch_to_terminal_ms": 6933,
+    "external_billing_observable": false,
+    "provider_cost_microusd": null,
+    "provider_input_tokens": null,
+    "provider_latency_ms": null,
+    "provider_output_tokens": null,
+    "unavailable_reason": "provider-result-rejected-before-metadata-artifact"
+  },
+  "project_registration": {
+    "configuration_digest": "sha256:8f437419b3af92adc04a878daeb02c9d83d641eeb0aae1fd38bf01581e1cf1bd",
+    "configuration_provider": "kernform",
+    "configuration_version": "0.1.0",
+    "digest_provenance": "operator-bound-sha256-of-base-pyproject",
+    "kernform_check_status": "failed",
+    "kernform_diagnostic_id": "KF-STATE-001",
+    "managed_configuration_claim": false
+  },
+  "provider": {
+    "adapter_id": "codex-cli",
+    "capability": "CODE",
+    "classification": "private",
+    "environment_names": [
+      "HOME"
+    ],
+    "locality": "remote-allowed",
+    "model_id": "gpt-5.6-sol",
+    "profile_id": "alpha-code-live-blackcell",
+    "tools_allowed": false
+  },
+  "recorded_on": "2026-07-22",
+  "remediation": {
+    "live_retry_performed": false,
+    "output_schema_minimum_operations": 1,
+    "source_paths": [
+      "src/blackcell/orchestration/alpha_changes.py",
+      "tests/unit/test_alpha_change_provider.py"
+    ]
+  },
+  "replay": {
+    "artifact_evidence_digest": "sha256:89be1f74dc933071bfea722f4df9f125ba7d61c0d22cb48947415d7fe8b18b2d",
+    "artifact_integrity": "verified",
+    "artifacts": [
+      {
+        "digest": "sha256:fa834d630c30021480e71226f80a9d831842141f62984ae80a95186df04d6102",
+        "role": "outcome",
+        "verified": true
+      },
+      {
+        "digest": "sha256:14c9b69c6b52a62cf47dfd21951372a5be38188cf4a7d2aecffbb96aee6e5617",
+        "role": "context",
+        "verified": true
+      }
+    ],
+    "findings": [],
+    "processed_events": 9,
+    "restart_replay_verified": true,
+    "state_digest": "sha256:c9ea0ca1237d63319cf21f027337fbb09855ed4bfc8a9c8b2628c703f7dcf720",
+    "terminal_event_digest": "sha256:0ebee6af9b1e330691802791bc19289053f77b2a2c179d6175fa15924af2bd61",
+    "terminal_event_id": "019f8bdd-e73c-7082-b20f-bd3b860ebe24"
+  },
+  "schema_version": "blackcell-alpha-live-provider-proof/v1",
+  "scope": {
+    "allowed_paths": [
+      "docs/alpha-live-provider-smoke.md"
+    ],
+    "base_commit": "f2965ab3d1fe18357aae58042345a6a22e171203",
+    "branch": "feature/repository-review-alpha",
+    "max_changed_files": 1,
+    "node_id": "create-live-proof-document",
+    "provider_attempts": 1,
+    "repository": "blackcell",
+    "run_id": "blackcell-alpha-live-run-20260722"
+  },
+  "security": {
+    "canonical_request_content_committed": false,
+    "credential_values_committed": false,
+    "provider_response_content_committed": false,
+    "provider_tools_enabled": false
+  }
+}

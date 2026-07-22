@@ -10,6 +10,21 @@ from enum import StrEnum
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from blackcell.config.alpha_review import (
+    AlphaReviewConfigError,
+    AlphaReviewWorkerRuntimeConfig,
+    load_alpha_review_config,
+)
+from blackcell.config.alpha_verify import (
+    AlphaVerifyConfigError,
+    AlphaVerifyWorkerRuntimeConfig,
+    load_alpha_verify_config,
+)
+from blackcell.config.alpha_worker import (
+    AlphaWorkerConfigError,
+    AlphaWorkerRuntimeConfig,
+    load_alpha_worker_config,
+)
 from blackcell.config.runtime import RuntimeSecurityConfig
 
 REPOSITORY_ROOT_ENV = "BLACKCELL_REPOSITORY_ROOT"
@@ -44,6 +59,9 @@ class ProcessConfigFailureCode(StrEnum):
     INVALID_WORKER_POLL = "invalid-worker-poll"
     INVALID_WORKER_LEASE = "invalid-worker-lease"
     INVALID_WORKER_ID = "invalid-worker-id"
+    INVALID_ALPHA_WORKER_CONFIG = "invalid-alpha-worker-config"
+    INVALID_ALPHA_REVIEW_CONFIG = "invalid-alpha-review-config"
+    INVALID_ALPHA_VERIFY_CONFIG = "invalid-alpha-verify-config"
     INVALID_OTEL_CONFIG = "invalid-otel-config"
     INVALID_QUOTA_CONFIG = "invalid-quota-config"
 
@@ -86,6 +104,9 @@ class RuntimeProcessConfig:
     worker_id: str
     telemetry: RuntimeTelemetryConfig
     quota: RuntimeQuotaConfig
+    alpha_worker: AlphaWorkerRuntimeConfig | None
+    alpha_review_worker: AlphaReviewWorkerRuntimeConfig | None
+    alpha_verify_worker: AlphaVerifyWorkerRuntimeConfig | None
 
     @classmethod
     def from_environment(
@@ -134,6 +155,42 @@ class RuntimeProcessConfig:
             raise ProcessConfigError(ProcessConfigFailureCode.INVALID_WORKER_ID)
         telemetry = _telemetry_config(values)
         quota = _quota_config(values)
+        try:
+            alpha_worker = load_alpha_worker_config(
+                values,
+                repository_root=repository_root,
+                data_root=security.paths.data_root,
+                expected_uid=expected_uid,
+            )
+        except AlphaWorkerConfigError as error:
+            raise ProcessConfigError(
+                ProcessConfigFailureCode.INVALID_ALPHA_WORKER_CONFIG
+            ) from error
+        try:
+            alpha_review_worker = load_alpha_review_config(
+                values,
+                repository_root=repository_root,
+                expected_uid=expected_uid,
+            )
+        except AlphaReviewConfigError as error:
+            raise ProcessConfigError(
+                ProcessConfigFailureCode.INVALID_ALPHA_REVIEW_CONFIG
+            ) from error
+        try:
+            alpha_verify_worker = load_alpha_verify_config(
+                values,
+                repository_root=repository_root,
+                expected_uid=expected_uid,
+            )
+        except AlphaVerifyConfigError as error:
+            raise ProcessConfigError(
+                ProcessConfigFailureCode.INVALID_ALPHA_VERIFY_CONFIG
+            ) from error
+        _require_separate_alpha_authority(
+            alpha_worker,
+            alpha_review_worker,
+            alpha_verify_worker,
+        )
         return cls(
             security,
             repository_root,
@@ -144,7 +201,39 @@ class RuntimeProcessConfig:
             worker_id,
             telemetry,
             quota,
+            alpha_worker,
+            alpha_review_worker,
+            alpha_verify_worker,
         )
+
+
+def _require_separate_alpha_authority(
+    execution: AlphaWorkerRuntimeConfig | None,
+    review: AlphaReviewWorkerRuntimeConfig | None,
+    verification: AlphaVerifyWorkerRuntimeConfig | None,
+) -> None:
+    if (
+        execution is not None
+        and review is not None
+        and (
+            review.provider.profile_id == execution.provider.profile_id
+            or review.worker.worker_id == execution.worker.worker_id
+            or review.worker.supervisor_id == execution.worker.worker_id
+        )
+    ):
+        raise ProcessConfigError(ProcessConfigFailureCode.INVALID_ALPHA_REVIEW_CONFIG)
+    if verification is None:
+        return
+    verification_actors = {
+        verification.worker.worker_id,
+        verification.worker.supervisor_id,
+    }
+    if execution is not None and execution.worker.worker_id in verification_actors:
+        raise ProcessConfigError(ProcessConfigFailureCode.INVALID_ALPHA_VERIFY_CONFIG)
+    if review is not None and verification_actors.intersection(
+        {review.worker.worker_id, review.worker.supervisor_id}
+    ):
+        raise ProcessConfigError(ProcessConfigFailureCode.INVALID_ALPHA_VERIFY_CONFIG)
 
 
 def _repository_root(value: str | None) -> Path:

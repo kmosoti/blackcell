@@ -1,0 +1,345 @@
+{
+  "candidate": {
+    "alpha_tag_ready": false,
+    "base_revision": "f2965ab3d1fe18357aae58042345a6a22e171203",
+    "branch": "feature/repository-review-alpha",
+    "candidate_id": "blackcell-alpha-2026-07-22-deterministic",
+    "project_version": "0.2.0",
+    "provider_mode": "recorded-deterministic",
+    "status": "deterministic-candidate-partial",
+    "worktree_state": "dirty-uncommitted"
+  },
+  "environment": {
+    "acceptance_python": {
+      "executable": "/usr/bin/python3",
+      "version": "3.12.3"
+    },
+    "architecture": "x86_64",
+    "bubblewrap_version": "0.9.0",
+    "git_version": "2.43.0",
+    "host_kernel": "6.18.33.2-microsoft-standard-WSL2",
+    "host_os": "Linux",
+    "measurement_scope": "this-wsl2-host-only",
+    "substrate": "WSL2",
+    "test_python": {
+      "launcher": "uv run python",
+      "version": "3.14.6"
+    },
+    "uv_version": "0.11.25"
+  },
+  "gates": {
+    "changed_path_format": {
+      "status": "passed"
+    },
+    "changed_path_ruff": {
+      "status": "passed"
+    },
+    "ci_full_pytest_coverage": {
+      "owner": "GitHub Actions",
+      "status": "not-run"
+    },
+    "ci_full_type_suite": {
+      "owner": "GitHub Actions",
+      "status": "not-run"
+    },
+    "focused_behavior_matrix": {
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "tools/run_pytest.py",
+        "tests/unit/test_alpha_a08_acceptance.py::test_real_project_completes_through_cli_daemon_workers_restart_and_browser",
+        "tests/unit/test_alpha_a05_acceptance.py::test_a05_hidden_shortcut_finding_deterministically_fails_and_replays",
+        "tests/unit/test_alpha_a05_acceptance.py::test_a05_reviewer_and_verifier_errors_remain_durable_non_verdicts",
+        "tests/unit/test_alpha_worker.py::test_worker_acknowledges_cancellation_from_acceptance_callback",
+        "tests/unit/test_alpha_lifecycle.py::test_startup_reconciliation_never_requeues_ambiguous_provider_dispatch",
+        "tests/unit/test_alpha_web.py::test_websocket_streams_resumed_typed_events_and_rejects_ticket_replay",
+        "tests/unit/test_alpha_worker.py::test_worker_records_content_free_provider_failure_and_retains_checkout",
+        "tests/unit/test_run_replay.py::test_v2_success_replays_exact_states_and_writes_nothing",
+        "-q",
+        "--blackcell-require-all-pass"
+      ],
+      "observed_pytest_seconds": 11.72,
+      "observed_wall_seconds": 12.17,
+      "passed": 8,
+      "skipped": 0,
+      "status": "passed",
+      "xfailed": 0
+    },
+    "focused_acceptance_bundle": {
+      "command": [
+        "uv",
+        "run",
+        "python",
+        "tools/run_pytest.py",
+        "tests/unit/test_alpha_acceptance_manifest.py::test_alpha_acceptance_manifest_is_closed_source_checked_and_not_tag_ready",
+        "tests/unit/test_alpha_a08_acceptance.py::test_real_project_completes_through_cli_daemon_workers_restart_and_browser",
+        "tests/unit/test_alpha_a05_acceptance.py::test_a05_hidden_shortcut_finding_deterministically_fails_and_replays",
+        "tests/unit/test_alpha_a05_acceptance.py::test_a05_reviewer_and_verifier_errors_remain_durable_non_verdicts",
+        "tests/unit/test_alpha_worker.py::test_worker_acknowledges_cancellation_from_acceptance_callback",
+        "tests/unit/test_alpha_lifecycle.py::test_startup_reconciliation_never_requeues_ambiguous_provider_dispatch",
+        "tests/unit/test_alpha_web.py::test_websocket_streams_resumed_typed_events_and_rejects_ticket_replay",
+        "tests/unit/test_alpha_worker.py::test_worker_records_content_free_provider_failure_and_retains_checkout",
+        "tests/unit/test_run_replay.py::test_v2_success_replays_exact_states_and_writes_nothing",
+        "-q",
+        "--blackcell-require-all-pass"
+      ],
+      "observed_pytest_seconds": 11.55,
+      "observed_wall_seconds": 11.99,
+      "passed": 9,
+      "skipped": 0,
+      "status": "passed",
+      "xfailed": 0
+    },
+    "manifest_validation": {
+      "observed_pytest_seconds": 0.16,
+      "status": "passed"
+    },
+    "project_ruff": {
+      "status": "passed"
+    }
+  },
+  "known_limitations": [
+    {
+      "claim": "Bubblewrap isolation has no BlackCell-installed seccomp filter or cgroup-v2 controller limits.",
+      "id": "isolation-hardening"
+    },
+    {
+      "claim": "Explicitly mounted runtime roots remain trusted host configuration and can expose additional executable descendants.",
+      "id": "trusted-runtime-roots"
+    },
+    {
+      "claim": "Historical DailyOperatorV2 records remain replayable, but no alpha client or daemon route may submit new work through V2.",
+      "id": "legacy-v2-read-only"
+    }
+  ],
+  "matrix": [
+    {
+      "claims": [
+        "A temporary two-node Git project crosses the public alpha CLI, production HTTP client, Litestar daemon edge, shared stores, real Git worktree, Bubblewrap checks, clear review, deterministic PASS verification, restart replay, and browser event transport.",
+        "The original repository remains unchanged while the retained execution checkout carries the admitted commit."
+      ],
+      "id": "success-path",
+      "source_paths": [
+        "src/blackcell/bootstrap/alpha_worker.py",
+        "src/blackcell/bootstrap/alpha_review_worker.py",
+        "src/blackcell/bootstrap/alpha_verify_worker.py",
+        "src/blackcell/interfaces/http/app.py",
+        "tests/unit/test_alpha_a08_acceptance.py"
+      ],
+      "status": "passed-deterministic",
+      "tests": [
+        "tests/unit/test_alpha_a08_acceptance.py::test_real_project_completes_through_cli_daemon_workers_restart_and_browser"
+      ]
+    },
+    {
+      "claims": [
+        "Fresh EventStore and ArtifactStore instances reconstruct terminal execution and verification evidence without repeating provider, effect, acceptance, review, or verification calls.",
+        "Reviewer and verifier errors remain terminal non-verdicts after restart and are not redispatched."
+      ],
+      "id": "restart",
+      "source_paths": [
+        "src/blackcell/bootstrap/alpha_runtime.py",
+        "src/blackcell/orchestration/alpha_verify_replay.py",
+        "tests/unit/test_alpha_a05_acceptance.py",
+        "tests/unit/test_alpha_a08_acceptance.py"
+      ],
+      "status": "passed-deterministic",
+      "tests": [
+        "tests/unit/test_alpha_a08_acceptance.py::test_real_project_completes_through_cli_daemon_workers_restart_and_browser",
+        "tests/unit/test_alpha_a05_acceptance.py::test_a05_reviewer_and_verifier_errors_remain_durable_non_verdicts"
+      ]
+    },
+    {
+      "claims": [
+        "Cancellation observed from the isolated acceptance callback persists the partial artifact chain, acknowledges the exact active fence, retains the checkout, and terminates the run as canceled."
+      ],
+      "id": "cancellation",
+      "source_paths": [
+        "src/blackcell/bootstrap/alpha_worker.py",
+        "src/blackcell/bootstrap/alpha_runtime.py",
+        "tests/unit/test_alpha_worker.py"
+      ],
+      "status": "passed-deterministic",
+      "tests": [
+        "tests/unit/test_alpha_worker.py::test_worker_acknowledges_cancellation_from_acceptance_callback"
+      ]
+    },
+    {
+      "claims": [
+        "Startup never requeues a provider-dispatched attempt whose external outcome is ambiguous, preserves existing changed and unchanged checkouts, reports missing retention truthfully, and preserves cancellation precedence."
+      ],
+      "id": "recovery",
+      "source_paths": [
+        "src/blackcell/bootstrap/alpha_runtime.py",
+        "src/blackcell/orchestration/alpha_lifecycle.py",
+        "tests/unit/test_alpha_lifecycle.py"
+      ],
+      "status": "passed-deterministic",
+      "tests": [
+        "tests/unit/test_alpha_lifecycle.py::test_startup_reconciliation_never_requeues_ambiguous_provider_dispatch"
+      ]
+    },
+    {
+      "claims": [
+        "A source-cited hidden-shortcut finding is structurally admitted without approval semantics, produces deterministic FAIL verification, and replays with verified report evidence.",
+        "Provider and verifier faults persist as review failure or verifier-error rather than fabricated verdicts."
+      ],
+      "id": "review-verification",
+      "source_paths": [
+        "src/blackcell/orchestration/alpha_review.py",
+        "src/blackcell/orchestration/alpha_verify.py",
+        "tests/unit/test_alpha_a05_acceptance.py"
+      ],
+      "status": "passed-deterministic",
+      "tests": [
+        "tests/unit/test_alpha_a05_acceptance.py::test_a05_hidden_shortcut_finding_deterministically_fails_and_replays",
+        "tests/unit/test_alpha_a05_acceptance.py::test_a05_reviewer_and_verifier_errors_remain_durable_non_verdicts"
+      ]
+    },
+    {
+      "claims": [
+        "A single-use authenticated browser ticket resumes after a nonzero durable cursor, returns strictly ordered alpha events without duplication, and cannot be replayed."
+      ],
+      "id": "event-resumption",
+      "source_paths": [
+        "src/blackcell/interfaces/http/alpha_web.py",
+        "src/blackcell/interfaces/http/app.py",
+        "tests/unit/test_alpha_web.py"
+      ],
+      "status": "passed-deterministic",
+      "tests": [
+        "tests/unit/test_alpha_web.py::test_websocket_streams_resumed_typed_events_and_rejects_ticket_replay"
+      ]
+    },
+    {
+      "claims": [
+        "A malformed recorded provider result produces one typed content-free terminal failure, stores no proposal artifact, retains the checkout, and does not leak provider detail or the repository path."
+      ],
+      "id": "provider-failure",
+      "source_paths": [
+        "src/blackcell/bootstrap/alpha_worker.py",
+        "src/blackcell/adapters/models/alpha_change_provider.py",
+        "tests/unit/test_alpha_worker.py"
+      ],
+      "status": "passed-deterministic",
+      "tests": [
+        "tests/unit/test_alpha_worker.py::test_worker_records_content_free_provider_failure_and_retains_checkout"
+      ]
+    },
+    {
+      "claims": [
+        "Historical DailyOperatorV2 success records replay to exact verified projections without writing events, journals, or artifacts.",
+        "This is migration and replay evidence only and does not authorize new V2 execution."
+      ],
+      "id": "legacy-replay",
+      "source_paths": [
+        "src/blackcell/adapters/persistence/sqlite/run_replay.py",
+        "src/blackcell/features/replay_run/handler.py",
+        "tests/unit/test_run_replay.py"
+      ],
+      "status": "passed-deterministic",
+      "tests": [
+        "tests/unit/test_run_replay.py::test_v2_success_replays_exact_states_and_writes_nothing"
+      ]
+    }
+  ],
+  "publication": {
+    "alpha_tag_proposed": false,
+    "commit_created": false,
+    "package_published": false,
+    "publication_performed": false,
+    "release_created": false
+  },
+  "recorded_on": "2026-07-22",
+  "residual_blockers": [
+    {
+      "blocks_alpha_tag": true,
+      "id": "maintained-project-live-provider",
+      "status": "open",
+      "unmeasured": [
+        "contract-valid live proposal and isolated acceptance execution",
+        "output quality on a representative maintained project",
+        "successful-attempt input tokens, output tokens, and provider latency",
+        "external provider billing",
+        "failure-path provider metric persistence after domain rejection"
+      ]
+    },
+    {
+      "blocks_alpha_tag": true,
+      "id": "human-interactive-client",
+      "status": "open",
+      "unmeasured": [
+        "human-driven browser or packaged TUI workflow",
+        "operator usability and recovery comprehension"
+      ]
+    },
+    {
+      "blocks_alpha_tag": true,
+      "id": "full-ci-gates",
+      "status": "open",
+      "unmeasured": [
+        "GitHub Actions full pytest coverage gate",
+        "GitHub Actions full ty gate"
+      ]
+    },
+    {
+      "blocks_alpha_tag": true,
+      "id": "package-metadata-and-compatibility",
+      "status": "open",
+      "unmeasured": [
+        "alpha package version and dependency metadata",
+        "supported Python and operating-system compatibility declaration",
+        "operator installation and upgrade guidance"
+      ]
+    },
+    {
+      "blocks_alpha_tag": true,
+      "id": "platform-matrix",
+      "status": "open",
+      "unmeasured": [
+        "native non-WSL Linux hosts",
+        "Linux hosts without usable user namespaces",
+        "macOS and Windows foreground client behavior",
+        "non-Linux isolation failure presentation"
+      ]
+    },
+    {
+      "blocks_alpha_tag": true,
+      "id": "clean-published-revision",
+      "status": "open",
+      "unmeasured": [
+        "clean intentional diff",
+        "reviewed commit",
+        "pushed branch and CI result"
+      ]
+    }
+  ],
+  "schema_version": "blackcell-alpha-acceptance/v1",
+  "success_path": {
+    "browser_resume": {
+      "after_cursor": 4,
+      "last_cursor": 17,
+      "transport": "single-use-ticket-websocket"
+    },
+    "clients": [
+      "JSON-file alpha CLI over RuntimeHttpClient",
+      "packaged browser shell over authenticated HTTP and WebSocket routes"
+    ],
+    "execution_isolation": "production BubblewrapAcceptanceRunner",
+    "project_kind": "temporary-two-node-git-fixture",
+    "provider_measurement": {
+      "adapter_id": "recorded-a08-proof",
+      "cost_microusd": 1,
+      "input_tokens": 100,
+      "latency_ms": 10,
+      "live_provider_measurement": null,
+      "output_tokens": 20,
+      "source": "deterministic-recorded-fixture"
+    },
+    "restart_boundary": "fresh event and artifact store instances",
+    "review": "recorded-clear-reviewer",
+    "test": "tests/unit/test_alpha_a08_acceptance.py::test_real_project_completes_through_cli_daemon_workers_restart_and_browser",
+    "verification": "deterministic-pass"
+  }
+}

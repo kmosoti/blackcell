@@ -70,6 +70,11 @@ class SecretValue:
 
         return self._value
 
+    def authorization_header(self) -> str:
+        """Construct the bearer value only at an authenticated transport boundary."""
+
+        return f"Bearer {self._value}"
+
 
 def load_service_token(
     environment: Mapping[str, str],

@@ -15,6 +15,7 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/atlas/graph.md",
         "docs/atlas/glossary.md",
         "docs/charter.md",
+        "docs/scope.md",
         "docs/architecture.md",
         "docs/scientific-basis.md",
         "docs/evaluation-methodology.md",
@@ -26,6 +27,7 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/adr/0006-versioned-run-feedback-protocol.md",
         "docs/adr/0007-runtime-security-boundary.md",
         "docs/adr/0008-architecture-consolidation.md",
+        "docs/adr/0009-project-runtime-scope.md",
         "docs/spec/index.md",
         "docs/spec/bcp-0028-charter-reset.md",
         "docs/spec/bcp-0029-event-kernel.md",
@@ -35,6 +37,10 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/spec/bcp-0033-operator-bench.md",
         "docs/spec/bcp-0034-evolutionary-runtime.md",
         "docs/guides/runtime-v1-release.md",
+        "docs/guides/alpha-operator-quickstart.md",
+        "docs/guides/alpha-worker-configuration.md",
+        "docs/guides/alpha-review-configuration.md",
+        "docs/guides/alpha-verify-configuration.md",
     }
 
     assert all(Path(path).exists() for path in expected)
@@ -87,6 +93,7 @@ def test_readme_local_links_and_recorded_quickstart_are_maintained() -> None:
 
     assert "uv sync --locked --all-groups" in text
     assert "bash examples/runtime-v1/recorded-operator.sh" in text
+    assert "docs/guides/alpha-operator-quickstart.md" in local_targets
     assert '"schema_version": "runtime-v1-recorded-example/v1"' in text
 
 

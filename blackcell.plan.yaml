@@ -2,7 +2,7 @@ version: 4
 project:
   key: BCP
   name: Blackcell
-  description: Event-sourced control runtime for evidence-grounded LLM agents.
+  description: Verifier-driven, project-scoped control runtime for evidence-grounded software work.
 
 principles:
   - Keep one immutable evidence ledger and domain-scoped state projectors.
@@ -13,6 +13,8 @@ principles:
   - Gate every action through typed developer-authored policy.
   - Distinguish historical replay from counterfactual reruns.
   - Promote scientific claims only after held-out comparison with simple baselines.
+  - Keep intent, prediction, review, verification, and human acceptance as distinct roles.
+  - Extend the accepted runtime only when direct product evidence identifies a missing contract.
 
 phase_1:
   product_slice: repository-operator
@@ -140,14 +142,18 @@ retired_surfaces:
   note: No package, command, writer, generated artifact, alias, or dual store remains for these prototype surfaces.
 
 architecture_consolidation:
-  status: implementation-complete-awaiting-merge
+  status: merged-complete
   branch: refactor/consolidation
   superseded_branch: refactor/architecture-consolidation
   base_ref: origin/main
   implementation_base_sha: 1a249d8aaa1f5f230c8492ab249ea06d255f24ee
   plan: refactor-consolidation.plan.yaml
   parent_epic: "Epic: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries"
-  merge_policy: PR 72 may use any repository-approved merge method after required status checks and any enabled review or conversation-resolution policy passes.
+  merge:
+    pull_request: 72
+    base_branch: main
+    merge_commit: ff1e6be69da3135d35411ae10f63208da278c4bf
+    merged_at: "2026-07-17T00:53:01Z"
   delivery_metadata:
     assignee: kmosoti
     labels:
@@ -159,7 +165,7 @@ architecture_consolidation:
     project:
       title: BlackCell
       status:
-        epic: In Progress
+        epic: Done
         completed:
           AC00: Done
           AC01: Done
@@ -168,9 +174,9 @@ architecture_consolidation:
           AC04: Done
           AC05: Done
           AC06: Done
-        active:
-          AC07: In Progress
-        queued: Todo
+          AC07: Done
+        active: {}
+        queued: null
       type: refactor
     development_branch: refactor/consolidation
   verification_policy:
@@ -211,16 +217,69 @@ architecture_consolidation:
     - AC00 remains the historical source-bound baseline for the decisions that started the program.
     - ADR 0008 supersedes the AC00 candidate scheme and retires AC07 source-bound evidence while retaining binary architecture fitness rules.
 
+alpha:
+  status: in-progress
+  accepted_on: "2026-07-22"
+  branch: feature/repository-review-alpha
+  base_revision: f2965ab3d1fe18357aae58042345a6a22e171203
+  plan: alpha.plan.yaml
+  decision: docs/adr/0009-project-runtime-scope.md
+  scope: docs/scope.md
+  target: CLI-first project-scoped agentic framework with one authoritative daemon.
+  active_work_package: A08
+  daemon:
+    process_model: foreground
+    authority: state, scheduling, policy, providers, recovery, and ordered events
+    supervision: operating-system service manager
+  clients:
+    - JSON-first CLI
+    - PyRatatui TUI
+    - Litestar web UI
+  project_configuration:
+    provider: Kernform
+    supported_version: "0.1.0"
+    wire_schema: kernform.command/v1
+    transport: argv-only subprocess
+  legacy_runtime:
+    component: DailyOperatorV2Workflow
+    disposition: migration-and-replay-evidence-only
+    new_alpha_invocation_allowed: false
+  github_reconciliation:
+    superseded_epics: [44, 54, 75]
+    superseded_standalone_issues: [42, 43]
+    replacement_epic: 91
+    replacement_issues: {A00: 92, A01: 93, A02: 94, A03: 95, A04: 96, A05: 97, A06: 98, A07: 99, A08: 100}
+    status: complete
+  non_goals:
+    - Greenfield Python, Rust, or PyO3 rewrite.
+    - Repository-local named-agent or Codex orchestration configuration.
+    - Client-owned schedulers or persistence.
+    - Distributed deployment or online self-modification.
+  verification:
+    focused_gate: >-
+      uv run python tools/run_pytest.py
+      tests/unit/test_alpha_plan.py::test_alpha_program_is_the_single_active_delivery_authority
+      tests/unit/test_alpha_plan.py::test_alpha_architecture_has_one_daemon_and_explicit_client_boundaries
+      tests/unit/test_alpha_plan.py::test_alpha_work_package_dag_is_acyclic_and_has_one_active_node
+      tests/unit/test_alpha_plan.py::test_alpha_plan_enforces_the_fast_development_loop
+      tests/unit/test_alpha_plan.py::test_canonical_files_reference_alpha_and_remove_stale_delivery_programs
+      tests/unit/test_docs_graph.py::test_docs_graph_entrypoints_exist
+      tests/unit/test_docs_graph.py::test_docs_graph_nodes_have_frontmatter
+      tests/unit/test_docs_graph.py::test_docs_graph_map_links_canonical_nodes
+      tests/unit/test_docs_graph.py::test_decision_atlas_records_every_adr_node
+      tests/unit/test_docs_graph.py::test_readme_local_links_and_recorded_quickstart_are_maintained
+      tests/unit/test_refactor_consolidation_plan.py::test_blackcell_plan_declares_the_project_program_and_historical_context
+      tests/unit/test_daemon_cli.py::test_daemon_status_reports_runtime_readiness
+      tests/unit/test_daemon_cli.py::test_daemon_status_uses_environment_endpoint_and_fails_when_not_ready
+      tests/unit/test_daemon_cli.py::test_daemon_help_exposes_status_without_legacy_submission
+      tests/unit/test_runtime_http_client.py::test_status_decodes_public_health_contracts_and_not_ready_state
+      tests/unit/test_runtime_http_client.py::test_client_rejects_malformed_or_remote_plaintext_endpoints
+      tests/unit/test_runtime_http_client.py::test_client_accepts_remote_https_and_loopback_http
+      tests/unit/test_runtime_http_client.py::test_client_failures_are_typed_bounded_and_content_free
+      tests/unit/test_runtime_http_client.py::test_stdlib_transport_bounds_responses_and_connection_failures
+      -q --blackcell-require-all-pass
+    project_gate: uv run ruff check .
+
 verification:
-  - uv run python tools/run_pytest.py tests/unit/test_release_evidence.py -q
-  - bash examples/runtime-v1/recorded-operator.sh
-  - uv run ruff format --check .
+  - uv run python tools/run_pytest.py tests/unit/test_alpha_plan.py::test_canonical_files_reference_alpha_and_remove_stale_delivery_programs tests/unit/test_docs_graph.py::test_readme_local_links_and_recorded_quickstart_are_maintained -q --blackcell-require-all-pass
   - uv run ruff check .
-  - uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing
-  - uv run ty check
-  - uv run blackcell operator run --model recorded --repo .
-  - uv run blackcell operator replay
-  - uv run blackcell bench run --condition structured --trials 1
-  - uv run blackcell bench compare --model recorded
-  - uv run blackcell bench predict
-  - uv run blackcell bench runtime --repo-root .

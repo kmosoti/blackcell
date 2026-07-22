@@ -322,6 +322,12 @@ def encode_contract(value: msgspec.Struct) -> bytes:
     return msgspec.json.encode(value)
 
 
+def contract_to_builtins(value: StrictStruct) -> object:
+    """Project a wire contract into JSON-compatible built-in values."""
+
+    return msgspec.to_builtins(value)
+
+
 def _identifier(value: str, field_name: str) -> None:
     _bounded_text(value, field_name, maximum=_MAX_ID_CHARS)
     if any(ord(character) < 0x20 or ord(character) == 0x7F for character in value):
@@ -380,7 +386,9 @@ __all__ = [
     "ReplayResponse",
     "RunResponse",
     "RunSubmissionRequest",
+    "StrictStruct",
     "WireContractError",
+    "contract_to_builtins",
     "decode_contract",
     "encode_contract",
 ]

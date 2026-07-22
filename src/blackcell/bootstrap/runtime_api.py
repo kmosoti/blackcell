@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 
 from blackcell.adapters.persistence.sqlite import SQLiteOrchestrationScheduler
+from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
 from blackcell.bootstrap.repository import compose_repository_runtime
 from blackcell.config import RuntimeSecurityConfig
 from blackcell.features.ingest_observation import (
@@ -15,6 +16,19 @@ from blackcell.features.ingest_observation import (
     ObservedClaim,
 )
 from blackcell.features.replay_run import RunReplayReport
+from blackcell.interfaces.http.alpha_contracts import (
+    AlphaCancelRunRequest,
+    AlphaEventPageResponse,
+    AlphaIntentRequest,
+    AlphaIntentResponse,
+    AlphaPlanRequest,
+    AlphaPlanResponse,
+    AlphaProjectRequest,
+    AlphaProjectResponse,
+    AlphaReplayResponse,
+    AlphaRunRequest,
+    AlphaRunResponse,
+)
 from blackcell.interfaces.http.contracts import (
     ApprovalRequest,
     ContextResponse,
@@ -35,12 +49,14 @@ from blackcell.interfaces.http.contracts import (
     RunSubmissionRequest,
 )
 from blackcell.interfaces.http.ports import (
+    AlphaRuntimeApiPort,
     RuntimeApiError,
     RuntimeApiFailureCode,
     RuntimeApiPort,
 )
 from blackcell.kernel import (
     ArtifactQuotaExceededError,
+    ArtifactStore,
     ConcurrencyError,
     EventEnvelope,
     EventStore,
@@ -65,7 +81,7 @@ from blackcell.workflows.run_protocol import EVALUATION_RECORDED
 from blackcell.workflows.telemetry import WorkflowTelemetry
 
 
-class RuntimeApiService(RuntimeApiPort):
+class RuntimeApiService(RuntimeApiPort, AlphaRuntimeApiPort):
     """Concrete HTTP-facing adapter over canonical runtime application use cases."""
 
     def __init__(
@@ -74,6 +90,8 @@ class RuntimeApiService(RuntimeApiPort):
         scheduler: OrchestrationSchedulerPort,
         *,
         events: EventStore,
+        artifacts: ArtifactStore | None = None,
+        alpha_isolation_root: Path | str | None = None,
         storage_quota: StorageQuotaPort | None = None,
     ) -> None:
         if events.path != operator.database_path:
@@ -83,6 +101,12 @@ class RuntimeApiService(RuntimeApiPort):
         self._ingestion = IngestObservationHandler(self._events)
         self._scheduler = scheduler
         self._storage_quota = storage_quota
+        self._alpha = AlphaRuntimeApiService(
+            events,
+            operator.repo_root,
+            isolation_root=alpha_isolation_root,
+            artifacts=artifacts,
+        )
 
     @classmethod
     def from_config(
@@ -92,6 +116,7 @@ class RuntimeApiService(RuntimeApiPort):
         repository_root: Path | str,
         workflow_telemetry: WorkflowTelemetry | None = None,
         artifact_max_total_bytes: int | None = None,
+        alpha_isolation_root: Path | str | None = None,
         storage_quota: StorageQuotaPort | None = None,
     ) -> RuntimeApiService:
         database_path = config.paths.ensure_database_file()
@@ -106,6 +131,8 @@ class RuntimeApiService(RuntimeApiPort):
             components.operator,
             SQLiteOrchestrationScheduler(database_path),
             events=components.events,
+            artifacts=components.artifacts,
+            alpha_isolation_root=alpha_isolation_root,
             storage_quota=storage_quota,
         )
 
@@ -117,6 +144,73 @@ class RuntimeApiService(RuntimeApiPort):
         except Exception:
             return HealthResponse(status="not-ready")
         return HealthResponse(status="ready")
+
+    def register_alpha_project(
+        self,
+        request: AlphaProjectRequest,
+        *,
+        principal_id: str,
+    ) -> AlphaProjectResponse:
+        _principal(principal_id)
+        self._require_storage()
+        return _translate(lambda: self._alpha.register_project(request, principal_id=principal_id))
+
+    def accept_alpha_intent(
+        self,
+        request: AlphaIntentRequest,
+        *,
+        principal_id: str,
+    ) -> AlphaIntentResponse:
+        _principal(principal_id)
+        self._require_storage()
+        return _translate(lambda: self._alpha.accept_intent(request, principal_id=principal_id))
+
+    def accept_alpha_plan(
+        self,
+        request: AlphaPlanRequest,
+        *,
+        principal_id: str,
+    ) -> AlphaPlanResponse:
+        _principal(principal_id)
+        self._require_storage()
+        return _translate(lambda: self._alpha.accept_plan(request, principal_id=principal_id))
+
+    def submit_alpha_run(
+        self,
+        request: AlphaRunRequest,
+        *,
+        principal_id: str,
+    ) -> AlphaRunResponse:
+        _principal(principal_id)
+        self._require_storage()
+        return _translate(lambda: self._alpha.submit_run(request, principal_id=principal_id))
+
+    def inspect_alpha_run(self, run_id: str) -> AlphaRunResponse:
+        return _translate(lambda: self._alpha.inspect_run(run_id))
+
+    def cancel_alpha_run(
+        self,
+        run_id: str,
+        request: AlphaCancelRunRequest,
+        *,
+        principal_id: str,
+    ) -> AlphaRunResponse:
+        _principal(principal_id)
+        self._require_storage()
+        return _translate(
+            lambda: self._alpha.cancel_run(run_id, request, principal_id=principal_id)
+        )
+
+    def list_alpha_events(
+        self,
+        *,
+        after_cursor: int,
+        limit: int,
+    ) -> AlphaEventPageResponse:
+        return _translate(lambda: self._alpha.list_events(after_cursor=after_cursor, limit=limit))
+
+    def replay_alpha_run(self, run_id: str) -> AlphaReplayResponse:
+        return _translate(lambda: self._alpha.replay_run(run_id))
 
     def ingest_observations(
         self,

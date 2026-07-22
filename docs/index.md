@@ -6,12 +6,17 @@ edges:
     - atlas/graph
   introduces:
     - charter
+    - scope
     - architecture
     - scientific-basis
     - evaluation-methodology
     - implementation-baseline
     - migration-ledger
     - guides/runtime-v1-release
+    - guides/alpha-operator-quickstart
+    - guides/alpha-worker-configuration
+    - guides/alpha-review-configuration
+    - guides/alpha-verify-configuration
     - spec/index
 ---
 
@@ -20,12 +25,18 @@ edges:
 ## Canonical documents
 
 - `charter.md`: identity, scope, claim gates, accepted Phase 1, and completed runtime-v1 boundaries
+- `scope.md`: accepted project-runtime direction, current product boundary, non-goals, and gates
 - `scientific-basis.md`: terminology and research promotion rules
 - `architecture.md`: event, projection, model, policy, execution, and replay boundaries
 - `evaluation-methodology.md`: OperatorBench, PredictionBench, and RuntimeBench contracts
 - `implementation-baseline.md`: measured starting point and preservation boundaries
 - `migration-ledger.md`: strangler map from current packages to target feature ownership
 - `guides/runtime-v1-release.md`: executable runtime-v1 walkthrough and unpublished evidence bundle
+- `guides/alpha-operator-quickstart.md`: source-run alpha environment, request flow, browser, restart, and nonclaims
+- `guides/alpha-worker-configuration.md`: fail-closed provider and isolation setup for opt-in alpha dispatch
+- `guides/alpha-review-configuration.md`: separate REVIEW-only profile, identity, budget, and process setup
+- `guides/alpha-verify-configuration.md`: deterministic verifier identity, lifecycle, and evidence setup
+- `../alpha.plan.yaml`: active architecture, dependency DAG, work packages, and fast gates
 - `adr/`: accepted architectural decisions
 
 The current durability boundary is defined by
@@ -41,6 +52,10 @@ retained or consolidated from direct authority, failure, persistence, substituti
 evidence rather than class, file, or import counts. Its source-bound AC00 baseline lives under
 `decisions/architecture-consolidation/`.
 
+The alpha product scope is governed by `adr/0009-project-runtime-scope.md`, `scope.md`, and
+`../alpha.plan.yaml`: one daemon owns the durable project-work loop; CLI, TUI, and web are clients;
+Kernform stays behind a pinned command contract; and legacy V2 is migration/replay evidence only.
+
 The local recovery and quota runbook is `targets/recovery.md`: verified immutable bundles,
 non-destructive cutover, verified-only retention, and the exact request/storage admission limits.
 
@@ -48,11 +63,8 @@ Runtime-v1 release evidence is complete and unpublished. The maintained guide is
 `guides/runtime-v1-release.md`; the deterministic SBOM and verification manifest live under
 `../release/runtime-v1/`.
 
-## Proposed developer-workflow research
-
-- `research/spark-repository-perception.md`: matched Terra-versus-Spark repository-perception
-  experiment using ephemeral, schema-validated, no-history worker packets. It is not a runtime
-  contract.
+The active A00-through-A08 program uses exact affected tests during iteration and one fast
+repository-wide Ruff milestone gate. Broad coverage and type checking remain CI or release gates.
 
 ## Phase 1 specifications
 

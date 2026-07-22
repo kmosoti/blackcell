@@ -27,6 +27,9 @@ def create_granian_app() -> Litestar:
             repository_root=config.repository_root,
             workflow_telemetry=telemetry.workflow,
             artifact_max_total_bytes=config.quota.artifact_max_total_bytes,
+            alpha_isolation_root=(
+                None if config.alpha_worker is None else config.alpha_worker.isolation.root
+            ),
             storage_quota=RuntimeStorageQuota(
                 config.security.paths,
                 max_active_bytes=config.quota.active_storage_max_bytes,
@@ -66,7 +69,7 @@ class GranianServer:
             loop=Loops.auto,
             task_impl=TaskImpl.asyncio,
             http=HTTPModes.http1,
-            websockets=False,
+            websockets=True,
             backlog=128,
             backpressure=config.api_backpressure,
             log_access=False,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 import sys
 from collections.abc import Sequence
@@ -13,6 +14,16 @@ from blackcell.adapters.recovery import (
     RecoveryError,
     RestoreInfo,
 )
+from blackcell.bootstrap.alpha_process import AlphaWorkerProcess, AlphaWorkerProcessError
+from blackcell.bootstrap.alpha_review_process import (
+    AlphaReviewWorkerProcess,
+    AlphaReviewWorkerProcessError,
+)
+from blackcell.bootstrap.alpha_verify_process import (
+    AlphaVerifyWorkerProcess,
+    AlphaVerifyWorkerProcessError,
+)
+from blackcell.bootstrap.daemon import RuntimeDaemon
 from blackcell.bootstrap.granian import GranianServer
 from blackcell.bootstrap.worker import RuntimeWorker
 from blackcell.config import (
@@ -28,15 +39,40 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = tuple(sys.argv[1:] if argv is None else argv)
     if arguments[:1] == ("recovery",):
         return _recovery(arguments[1:])
-    if arguments not in {("api",), ("worker",), ("worker", "--once")}:
+    if arguments not in {
+        ("api",),
+        ("alpha-worker",),
+        ("alpha-worker", "--once"),
+        ("alpha-review-worker",),
+        ("alpha-review-worker", "--once"),
+        ("alpha-verify-worker",),
+        ("alpha-verify-worker", "--once"),
+        ("daemon",),
+        ("worker",),
+        ("worker", "--once"),
+    }:
         return _failure("invalid-command", exit_code=2)
     try:
         if arguments == ("api",):
             config = RuntimeProcessConfig.from_environment()
             GranianServer(config).serve()
             return 0
+        if arguments == ("daemon",):
+            return _serve_daemon()
+        if arguments[:1] == ("alpha-worker",):
+            return _serve_alpha_worker(once=arguments == ("alpha-worker", "--once"))
+        if arguments[:1] == ("alpha-review-worker",):
+            return _serve_alpha_review_worker(once=arguments == ("alpha-review-worker", "--once"))
+        if arguments[:1] == ("alpha-verify-worker",):
+            return _serve_alpha_verify_worker(once=arguments == ("alpha-verify-worker", "--once"))
         return _serve_worker(once=arguments == ("worker", "--once"))
     except (ProcessConfigError, SecurityConfigError) as error:
+        return _failure(error.code.value)
+    except AlphaWorkerProcessError as error:
+        return _failure(error.code.value)
+    except AlphaReviewWorkerProcessError as error:
+        return _failure(error.code.value)
+    except AlphaVerifyWorkerProcessError as error:
         return _failure(error.code.value)
     except KeyboardInterrupt:
         return 130
@@ -58,6 +94,85 @@ def _serve_worker(*, once: bool) -> int:
         config = RuntimeProcessConfig.from_environment()
         worker = RuntimeWorker.from_config(config, stop_event=stop_event)
         return worker.serve(once=once)
+    finally:
+        for kind, handler in previous.items():
+            signal.signal(kind, handler)
+
+
+def _serve_alpha_worker(*, once: bool) -> int:
+    previous: dict[signal.Signals, signal._HANDLER] = {}
+    stop_event = Event()
+
+    def request_stop(_signum: int, _frame: FrameType | None) -> None:
+        stop_event.set()
+
+    for kind in (signal.SIGINT, signal.SIGTERM):
+        previous[kind] = signal.getsignal(kind)
+        signal.signal(kind, request_stop)
+    try:
+        config = RuntimeProcessConfig.from_environment()
+        worker = AlphaWorkerProcess.from_config(config, stop_event=stop_event)
+        return worker.serve(once=once)
+    finally:
+        for kind, handler in previous.items():
+            signal.signal(kind, handler)
+
+
+def _serve_alpha_review_worker(*, once: bool) -> int:
+    previous: dict[signal.Signals, signal._HANDLER] = {}
+    stop_event = Event()
+
+    def request_stop(_signum: int, _frame: FrameType | None) -> None:
+        stop_event.set()
+
+    for kind in (signal.SIGINT, signal.SIGTERM):
+        previous[kind] = signal.getsignal(kind)
+        signal.signal(kind, request_stop)
+    try:
+        config = RuntimeProcessConfig.from_environment()
+        worker = AlphaReviewWorkerProcess.from_config(config, stop_event=stop_event)
+        return worker.serve(once=once)
+    finally:
+        for kind, handler in previous.items():
+            signal.signal(kind, handler)
+
+
+def _serve_alpha_verify_worker(*, once: bool) -> int:
+    previous: dict[signal.Signals, signal._HANDLER] = {}
+    stop_event = Event()
+
+    def request_stop(_signum: int, _frame: FrameType | None) -> None:
+        stop_event.set()
+
+    for kind in (signal.SIGINT, signal.SIGTERM):
+        previous[kind] = signal.getsignal(kind)
+        signal.signal(kind, request_stop)
+    try:
+        config = RuntimeProcessConfig.from_environment()
+        worker = AlphaVerifyWorkerProcess.from_config(config, stop_event=stop_event)
+        return worker.serve(once=once)
+    finally:
+        for kind, handler in previous.items():
+            signal.signal(kind, handler)
+
+
+def _serve_daemon() -> int:
+    previous: dict[signal.Signals, signal._HANDLER] = {}
+    stop_event = Event()
+
+    def request_stop(_signum: int, _frame: FrameType | None) -> None:
+        stop_event.set()
+
+    for kind in (signal.SIGINT, signal.SIGTERM):
+        previous[kind] = signal.getsignal(kind)
+        signal.signal(kind, request_stop)
+    try:
+        config = RuntimeProcessConfig.from_environment()
+        return RuntimeDaemon.from_config(
+            config,
+            stop_event=stop_event,
+            environment=dict(os.environ),
+        ).serve()
     finally:
         for kind, handler in previous.items():
             signal.signal(kind, handler)
@@ -138,3 +253,7 @@ def _failure(code: str, *, exit_code: int = 1) -> int:
 
 
 __all__ = ["main"]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

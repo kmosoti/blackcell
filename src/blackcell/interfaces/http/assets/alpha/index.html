@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="BlackCell alpha project runtime dashboard">
+    <title>BlackCell Alpha</title>
+    <link rel="stylesheet" href="/alpha/assets/app.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#workspace">Skip to runtime workspace</a>
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Project runtime</p>
+        <h1>BlackCell <span>Alpha</span></h1>
+      </div>
+      <div id="connection-status" class="status-pill" role="status" aria-live="polite">
+        Disconnected
+      </div>
+    </header>
+
+    <main id="workspace" class="page-shell">
+      <section class="panel connection-panel" aria-labelledby="connection-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Daemon boundary</p>
+            <h2 id="connection-heading">Connect locally</h2>
+          </div>
+          <p id="cursor-display" class="cursor-label">Cursor 0</p>
+        </div>
+        <form id="connection-form" class="connection-form">
+          <label for="api-token">API bearer token</label>
+          <div class="input-row">
+            <input
+              id="api-token"
+              name="api-token"
+              type="password"
+              autocomplete="off"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="4096"
+              required
+            >
+            <button id="connect-button" class="button primary" type="submit">Connect</button>
+            <button id="disconnect-button" class="button quiet" type="button" disabled>
+              Disconnect
+            </button>
+          </div>
+          <p class="field-note">
+            Kept in this page's memory only. WebSocket URLs receive a separate one-use ticket.
+          </p>
+          <p id="connection-message" class="message" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="panel workflow-panel" aria-labelledby="workflow-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Closed contract intake</p>
+            <h2 id="workflow-heading">Advance a project workflow</h2>
+          </div>
+          <span class="count-badge">JSON · 1 MiB max</span>
+        </div>
+        <form id="workflow-form" class="workflow-form">
+          <div class="workflow-grid">
+            <div>
+              <label for="workflow-operation">Contract operation</label>
+              <select id="workflow-operation" name="workflow-operation" disabled>
+                <option value="project">Register project</option>
+                <option value="intent">Accept intent</option>
+                <option value="plan">Accept plan</option>
+                <option value="run">Submit run</option>
+              </select>
+            </div>
+            <div>
+              <label for="workflow-file">Local JSON contract</label>
+              <input
+                id="workflow-file"
+                name="workflow-file"
+                type="file"
+                accept=".json,application/json"
+                aria-describedby="workflow-note"
+                required
+                disabled
+              >
+            </div>
+            <button
+              id="workflow-submit"
+              class="button primary workflow-submit"
+              type="submit"
+              disabled
+            >
+              Send contract
+            </button>
+          </div>
+          <p id="workflow-note" class="field-note">
+            Read once, validated locally, then sent to the daemon. File contents and paths are not
+            retained.
+          </p>
+          <p id="workflow-message" class="message" role="status" aria-live="polite"></p>
+          <pre
+            id="workflow-output"
+            class="workflow-output"
+            tabindex="0"
+            aria-label="Workflow contract result"
+          >No contract submitted.</pre>
+        </form>
+      </section>
+
+      <div class="workspace-grid">
+        <section class="panel event-panel" aria-labelledby="events-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Ordered projection</p>
+              <h2 id="events-heading">Live events</h2>
+            </div>
+            <span id="event-count" class="count-badge">0 retained</span>
+          </div>
+          <div class="table-frame" tabindex="0">
+            <table>
+              <caption class="visually-hidden">Most recent alpha daemon events</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Cursor</th>
+                  <th scope="col">Event</th>
+                  <th scope="col">Stream</th>
+                  <th scope="col">Recorded</th>
+                </tr>
+              </thead>
+              <tbody id="event-rows"></tbody>
+            </table>
+            <p id="event-empty" class="empty-state">Connect to begin projecting daemon events.</p>
+          </div>
+        </section>
+
+        <aside class="panel run-panel" aria-labelledby="run-heading">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Typed commands</p>
+              <h2 id="run-heading">Run inspector</h2>
+            </div>
+          </div>
+          <form id="run-form" class="run-form">
+            <label for="run-id">Run ID</label>
+            <input
+              id="run-id"
+              name="run-id"
+              type="text"
+              autocomplete="off"
+              autocapitalize="none"
+              spellcheck="false"
+              maxlength="120"
+              pattern="[A-Za-z0-9._-]+"
+              required
+            >
+            <div class="button-grid">
+              <button class="button primary" type="submit" data-operation="status">Status</button>
+              <button class="button" type="button" data-operation="replay">Replay</button>
+              <button class="button danger" type="button" data-operation="cancel">Cancel</button>
+            </div>
+          </form>
+          <p id="operation-message" class="message" role="status" aria-live="polite"></p>
+          <pre id="operation-output" tabindex="0" aria-label="Run operation result">No result yet.</pre>
+        </aside>
+      </div>
+    </main>
+
+    <footer>
+      <span>One daemon. One ordered ledger.</span>
+      <span>JSON contracts remain authoritative.</span>
+    </footer>
+    <script type="module" src="/alpha/assets/app.js"></script>
+  </body>
+</html>

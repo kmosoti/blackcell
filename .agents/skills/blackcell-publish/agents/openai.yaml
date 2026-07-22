@@ -1,4 +1,0 @@
-interface:
-  display_name: "BlackCell Publish"
-  short_description: "Safely commit and push the active branch"
-  default_prompt: "Use $blackcell-publish to validate, commit, and push the explicitly authorized checked-out branch."
