@@ -276,8 +276,11 @@ class AlphaRuntimeApiService:
             raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
         _require_reference(intent_event, "project", project_event)
         _require_review_evidence_capacity(request)
+        plan_stream = _plan_stream(request.plan_id)
+        if not self._events.read_stream(plan_stream, limit=1):
+            self._require_plan_base_commit(request.base_commit)
         event = self._record_immutable(
-            stream_id=_plan_stream(request.plan_id),
+            stream_id=plan_stream,
             event_type=_PLAN_ACCEPTED,
             request=request,
             principal_id=principal_id,
@@ -1851,6 +1854,14 @@ class AlphaRuntimeApiService:
             raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST) from error
         if path != resolved or resolved != self._repository_root or not resolved.is_dir():
             raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST)
+
+    def _require_plan_base_commit(self, base_commit: str) -> None:
+        try:
+            self._worktrees.validate_base_commit(self._repository_root, base_commit)
+        except WorktreeLifecycleError as error:
+            if error.code is WorktreeFailureCode.BASE_COMMIT_NOT_FOUND:
+                raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST) from error
+            raise RuntimeApiError(RuntimeApiFailureCode.NOT_READY) from error
 
 
 def _project_response(event: EventEnvelope) -> AlphaProjectResponse:

@@ -535,7 +535,7 @@ def _runtime_records(
     runtime = AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
     runtime.register_project(_project(repository), principal_id="tui:test")
     runtime.accept_intent(_intent(), principal_id="tui:test")
-    runtime.accept_plan(_plan(), principal_id="tui:test")
+    runtime.accept_plan(_plan(repository), principal_id="tui:test")
     run = runtime.submit_run(_run(), principal_id="tui:test")
     replay = runtime.replay_run(run.run_id)
     events = runtime.list_events(after_cursor=0, limit=100).events

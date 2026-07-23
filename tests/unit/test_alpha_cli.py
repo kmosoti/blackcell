@@ -66,7 +66,7 @@ def test_alpha_cli_executes_complete_json_first_client_surface(
     service = AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
     project_request = _project(repository)
     intent_request = _intent()
-    plan_request = _plan()
+    plan_request = _plan(repository)
     run_request = _run()
     cancel_request = AlphaCancelRunRequest(
         schema_version="alpha-cancel-run-request/v1",

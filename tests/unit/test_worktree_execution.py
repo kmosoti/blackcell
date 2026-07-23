@@ -133,6 +133,17 @@ def test_spec_rejects_invalid_authority_before_git(tmp_path: Path) -> None:
     assert _git_text(repository.root, "branch", "--list", "blackcell/*") == ""
 
 
+def test_validate_base_commit_uses_the_bounded_repository_contract(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    lifecycle = GitWorktreeLifecycle()
+
+    lifecycle.validate_base_commit(repository.root, repository.base_commit)
+
+    with pytest.raises(WorktreeLifecycleError) as missing:
+        lifecycle.validate_base_commit(repository.root, "f" * 40)
+    assert missing.value.code is WorktreeFailureCode.BASE_COMMIT_NOT_FOUND
+
+
 def test_create_is_deterministic_and_idempotent(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     spec = _spec(repository)

@@ -28,15 +28,14 @@ from blackcell.interfaces.http import (
     create_http_app,
 )
 from blackcell.kernel import EventStore
+from tests.unit.test_alpha_runtime import _base_commit, _repository
 
 _TOKEN = "Alpha_http-token.0123456789-ABCDEFG"
 _DIGEST = "sha256:" + ("a" * 64)
-_BASE_COMMIT = "b" * 40
 
 
 def test_alpha_routes_are_authenticated_typed_and_async(tmp_path: Path) -> None:
-    repository = tmp_path / "repository"
-    repository.mkdir()
+    repository = _repository(tmp_path)
     service = _AlphaHttpPort(
         AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
     )
@@ -47,7 +46,11 @@ def test_alpha_routes_are_authenticated_typed_and_async(tmp_path: Path) -> None:
             "/api/alpha/v1/projects", json=_project_body(repository), headers=_auth()
         )
         intent = client.post("/api/alpha/v1/intents", json=_intent_body(), headers=_auth())
-        plan = client.post("/api/alpha/v1/plans", json=_plan_body(), headers=_auth())
+        plan = client.post(
+            "/api/alpha/v1/plans",
+            json=_plan_body(_base_commit(repository)),
+            headers=_auth(),
+        )
         run = client.post("/api/alpha/v1/runs", json=_run_body(), headers=_auth())
         status = client.get("/api/alpha/v1/runs/run-1/status", headers=_auth())
         events = client.get("/api/alpha/v1/events?after=0&limit=20", headers=_auth())
@@ -83,8 +86,7 @@ def test_alpha_routes_are_authenticated_typed_and_async(tmp_path: Path) -> None:
 
 
 def test_alpha_route_rejects_malformed_version_before_service(tmp_path: Path) -> None:
-    repository = tmp_path / "repository"
-    repository.mkdir()
+    repository = _repository(tmp_path)
     service = _AlphaHttpPort(
         AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
     )
@@ -99,8 +101,7 @@ def test_alpha_route_rejects_malformed_version_before_service(tmp_path: Path) ->
 
 
 def test_alpha_cancel_route_is_authenticated_typed_and_async(tmp_path: Path) -> None:
-    repository = tmp_path / "repository"
-    repository.mkdir()
+    repository = _repository(tmp_path)
     service = _AlphaHttpPort(
         AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
     )
@@ -108,7 +109,11 @@ def test_alpha_cancel_route_is_authenticated_typed_and_async(tmp_path: Path) -> 
     with _client(service) as client:
         client.post("/api/alpha/v1/projects", json=_project_body(repository), headers=_auth())
         client.post("/api/alpha/v1/intents", json=_intent_body(), headers=_auth())
-        client.post("/api/alpha/v1/plans", json=_plan_body(), headers=_auth())
+        client.post(
+            "/api/alpha/v1/plans",
+            json=_plan_body(_base_commit(repository)),
+            headers=_auth(),
+        )
         client.post("/api/alpha/v1/runs", json=_run_body(), headers=_auth())
         unauthenticated = client.post("/api/alpha/v1/runs/run-1/cancel", json=_cancel_body())
         malformed = client.post(
@@ -242,7 +247,7 @@ def _intent_body() -> dict[str, object]:
     }
 
 
-def _plan_body() -> dict[str, object]:
+def _plan_body(base_commit: str) -> dict[str, object]:
     budget = {
         "max_input_tokens": 1_000,
         "max_output_tokens": 1_000,
@@ -255,7 +260,7 @@ def _plan_body() -> dict[str, object]:
         "plan_id": "plan-1",
         "project_id": "project-1",
         "intent_id": "intent-1",
-        "base_commit": _BASE_COMMIT,
+        "base_commit": base_commit,
         "allowed_effects": ["repository-read", "process"],
         "nodes": [
             {

@@ -524,6 +524,26 @@ class GitWorktreeLifecycle:
             raise WorktreeLifecycleError(WorktreeFailureCode.GIT_UNAVAILABLE)
         object.__setattr__(self, "git_executable", executable)
 
+    def validate_base_commit(self, repository_root: Path, base_commit: str) -> None:
+        """Require one canonical repository to contain the exact commit object."""
+
+        root = _canonical_repository_root(repository_root)
+        if not isinstance(base_commit, str) or _COMMIT_ID.fullmatch(base_commit) is None:
+            raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_SPEC)
+        observed = self._git_at(root, ("rev-parse", "--show-toplevel"))
+        if observed.return_code != 0:
+            raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_REPOSITORY)
+        try:
+            observed_root = Path(self._single_line(observed)).resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_REPOSITORY) from error
+        if observed_root != root:
+            raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_REPOSITORY)
+
+        commit = self._git_at(root, ("cat-file", "-e", f"{base_commit}^{{commit}}"))
+        if commit.return_code != 0:
+            raise WorktreeLifecycleError(WorktreeFailureCode.BASE_COMMIT_NOT_FOUND)
+
     def create(self, spec: WorktreeExecutionSpec) -> WorktreeInspection:
         """Create or reopen the exact worktree named by an immutable execution spec."""
 
@@ -799,19 +819,7 @@ class GitWorktreeLifecycle:
         return False
 
     def _validate_repository(self, spec: WorktreeExecutionSpec) -> None:
-        root = self._git(spec, ("rev-parse", "--show-toplevel"))
-        if root.return_code != 0:
-            raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_REPOSITORY)
-        try:
-            resolved_root = Path(self._single_line(root)).resolve(strict=True)
-        except (OSError, RuntimeError) as error:
-            raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_REPOSITORY) from error
-        if resolved_root != spec.repository_root:
-            raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_REPOSITORY)
-
-        commit = self._git(spec, ("cat-file", "-e", f"{spec.base_commit}^{{commit}}"))
-        if commit.return_code != 0:
-            raise WorktreeLifecycleError(WorktreeFailureCode.BASE_COMMIT_NOT_FOUND)
+        self.validate_base_commit(spec.repository_root, spec.base_commit)
 
         filters = self._git(
             spec,
@@ -844,6 +852,13 @@ class GitWorktreeLifecycle:
         spec: WorktreeExecutionSpec,
         arguments: tuple[str, ...],
     ) -> BoundedProcessResult:
+        return self._git_at(spec.repository_root, arguments)
+
+    def _git_at(
+        self,
+        repository_root: Path,
+        arguments: tuple[str, ...],
+    ) -> BoundedProcessResult:
         executable = self.git_executable
         if executable is None:  # pragma: no cover - post-init invariant
             raise WorktreeLifecycleError(WorktreeFailureCode.GIT_UNAVAILABLE)
@@ -869,7 +884,7 @@ class GitWorktreeLifecycle:
         try:
             result = self.transport.run(
                 argv,
-                cwd=spec.repository_root,
+                cwd=repository_root,
                 timeout_seconds=GIT_WORKTREE_COMMAND_TIMEOUT_SECONDS,
                 stdout_limit_bytes=_GIT_STDOUT_LIMIT_BYTES,
                 stderr_limit_bytes=_GIT_STDERR_LIMIT_BYTES,

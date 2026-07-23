@@ -123,7 +123,7 @@ def test_tui_controller_offloads_complete_client_surface_and_updates_projection(
     service = AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
     project_request = _project(repository)
     intent_request = _intent()
-    plan_request = _plan()
+    plan_request = _plan(repository)
     run_request = _run()
     cancel_request = AlphaCancelRunRequest(
         schema_version="alpha-cancel-run-request/v1",
@@ -283,7 +283,7 @@ def test_tui_controller_rejects_cross_record_response_mismatches(tmp_path: Path)
     service = AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
     project_request = _project(repository)
     intent_request = _intent()
-    plan_request = _plan()
+    plan_request = _plan(repository)
     run_request = _run()
     project = service.register_project(project_request, principal_id="tui:test")
     intent = service.accept_intent(intent_request, principal_id="tui:test")

@@ -37,6 +37,7 @@ from tests.unit.test_alpha_http_api import (
     _project_body,
     _run_body,
 )
+from tests.unit.test_alpha_runtime import _base_commit, _repository
 
 
 def test_ticket_authority_is_single_use_bounded_expiring_and_redacted() -> None:
@@ -202,16 +203,14 @@ def test_websocket_rejects_invalid_cursor_client_writes_and_connection_overflow(
 
 
 def _service(tmp_path: Path) -> _AlphaHttpPort:
-    repository = tmp_path / "repository"
-    repository.mkdir(exist_ok=True)
+    repository = _repository(tmp_path)
     return _AlphaHttpPort(
         AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
     )
 
 
 def _invalid_service(tmp_path: Path) -> _AlphaHttpPort:
-    repository = tmp_path / "repository"
-    repository.mkdir()
+    repository = _repository(tmp_path)
     return _InvalidEventPagePort(
         AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
     )
@@ -258,7 +257,11 @@ def _seed_run(client: TestClient[Any], repository: Path) -> None:
     responses = (
         client.post("/api/alpha/v1/projects", json=_project_body(repository), headers=_auth()),
         client.post("/api/alpha/v1/intents", json=_intent_body(), headers=_auth()),
-        client.post("/api/alpha/v1/plans", json=_plan_body(), headers=_auth()),
+        client.post(
+            "/api/alpha/v1/plans",
+            json=_plan_body(_base_commit(repository)),
+            headers=_auth(),
+        ),
         client.post("/api/alpha/v1/runs", json=_run_body(), headers=_auth()),
     )
     assert tuple(response.status_code for response in responses) == (201, 201, 201, 202)

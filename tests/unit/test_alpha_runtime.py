@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import Any, cast
 
@@ -34,7 +35,7 @@ def test_alpha_flow_is_idempotent_restart_safe_and_live_free(tmp_path: Path) -> 
 
     project = service.register_project(_project(repository), principal_id="operator")
     intent = service.accept_intent(_intent(), principal_id="operator")
-    plan = service.accept_plan(_plan(), principal_id="operator")
+    plan = service.accept_plan(_plan(repository), principal_id="operator")
     run = service.submit_run(_run(), principal_id="operator")
 
     assert run.status == "queued"
@@ -44,7 +45,7 @@ def test_alpha_flow_is_idempotent_restart_safe_and_live_free(tmp_path: Path) -> 
     restarted = AlphaRuntimeApiService(EventStore(events.path), repository)
     assert restarted.register_project(_project(repository), principal_id="operator") == project
     assert restarted.accept_intent(_intent(), principal_id="operator") == intent
-    assert restarted.accept_plan(_plan(), principal_id="operator") == plan
+    assert restarted.accept_plan(_plan(repository), principal_id="operator") == plan
     assert restarted.inspect_run("run-1") == run
 
     first_replay = restarted.replay_run("run-1")
@@ -126,7 +127,7 @@ def test_alpha_plan_acceptance_enforces_review_evidence_item_capacity(tmp_path: 
         checks=checks(1),
     )
     exact_capacity_plan = msgspec.structs.replace(
-        _plan(),
+        _plan(repository),
         plan_id="plan-capacity",
         allowed_effects=("repository-read", "repository-write", "process"),
         nodes=(exact_capacity_node,),
@@ -137,7 +138,7 @@ def test_alpha_plan_acceptance_enforces_review_evidence_item_capacity(tmp_path: 
 
     def plan(check_count: int, plan_id: str) -> AlphaPlanRequest:
         return msgspec.structs.replace(
-            _plan(),
+            _plan(repository),
             plan_id=plan_id,
             nodes=(msgspec.structs.replace(base_node, checks=checks(check_count)),),
             idempotency_key=plan_id,
@@ -151,7 +152,7 @@ def test_alpha_plan_acceptance_enforces_review_evidence_item_capacity(tmp_path: 
 
     aggregate_nodes = tuple(msgspec.structs.replace(node, checks=checks(16)) for node in _nodes())
     aggregate_plan = msgspec.structs.replace(
-        _plan(),
+        _plan(repository),
         plan_id="plan-over-aggregate-capacity",
         nodes=aggregate_nodes,
         idempotency_key="plan-over-aggregate-capacity",
@@ -162,6 +163,27 @@ def test_alpha_plan_acceptance_enforces_review_evidence_item_capacity(tmp_path: 
     assert events.read_stream("alpha:plan:plan-over-aggregate-capacity") == ()
 
 
+def test_alpha_plan_rejects_a_missing_base_commit_without_persisting(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    events = EventStore(tmp_path / "state.sqlite3")
+    service = AlphaRuntimeApiService(events, repository)
+    service.register_project(_project(repository), principal_id="operator")
+    service.accept_intent(_intent(), principal_id="operator")
+    request = msgspec.structs.replace(
+        _plan(repository),
+        plan_id="plan-missing-base",
+        base_commit="f" * 40,
+        idempotency_key="plan-missing-base",
+    )
+
+    with pytest.raises(RuntimeApiError) as missing:
+        service.accept_plan(request, principal_id="operator")
+
+    assert missing.value.code is RuntimeApiFailureCode.INVALID_REQUEST
+    assert events.read_stream("alpha:plan:plan-missing-base") == ()
+    assert len(events) == 2
+
+
 def test_queued_cancellation_is_idempotent_and_replayed_without_live_work(
     tmp_path: Path,
 ) -> None:
@@ -170,7 +192,7 @@ def test_queued_cancellation_is_idempotent_and_replayed_without_live_work(
     service = AlphaRuntimeApiService(events, repository)
     service.register_project(_project(repository), principal_id="operator")
     service.accept_intent(_intent(), principal_id="operator")
-    service.accept_plan(_plan(), principal_id="operator")
+    service.accept_plan(_plan(repository), principal_id="operator")
     service.submit_run(_run(), principal_id="operator")
     request = AlphaCancelRunRequest(
         schema_version="alpha-cancel-run-request/v1",
@@ -238,7 +260,7 @@ def test_runtime_api_alpha_submission_never_invokes_legacy_operator(tmp_path: Pa
 
     runtime.register_alpha_project(_project(repository), principal_id="operator")
     runtime.accept_alpha_intent(_intent(), principal_id="operator")
-    runtime.accept_alpha_plan(_plan(), principal_id="operator")
+    runtime.accept_alpha_plan(_plan(repository), principal_id="operator")
     queued = runtime.submit_alpha_run(_run(), principal_id="operator")
 
     assert queued.status == "queued"
@@ -260,7 +282,17 @@ class _LegacyOperatorTrap:
 def _repository(tmp_path: Path) -> Path:
     repository = tmp_path / "repository"
     repository.mkdir()
+    _git(repository, "init", "--initial-branch=main")
+    _git(repository, "config", "user.name", "BlackCell Test")
+    _git(repository, "config", "user.email", "blackcell@example.invalid")
+    (repository / "README.md").write_text("# Alpha fixture\n", encoding="utf-8")
+    _git(repository, "add", "README.md")
+    _git(repository, "commit", "-m", "initial")
     return repository.resolve()
+
+
+def _base_commit(repository: Path) -> str:
+    return _git(repository, "rev-parse", "HEAD").stdout.decode("ascii").strip()
 
 
 def _project(repository: Path, *, project_id: str = "project-1") -> AlphaProjectRequest:
@@ -288,13 +320,13 @@ def _intent() -> AlphaIntentRequest:
     )
 
 
-def _plan() -> AlphaPlanRequest:
+def _plan(repository: Path) -> AlphaPlanRequest:
     return AlphaPlanRequest(
         schema_version="alpha-plan-request/v1",
         plan_id="plan-1",
         project_id="project-1",
         intent_id="intent-1",
-        base_commit=_BASE_COMMIT,
+        base_commit=_base_commit(repository),
         allowed_effects=("repository-read", "process"),
         nodes=_nodes(),
         idempotency_key="plan-1",
@@ -361,4 +393,13 @@ def _legacy_event(stream_id: str, suffix: str) -> EventEnvelope:
         source="test",
         payload={"suffix": suffix},
         idempotency_key=suffix,
+    )
+
+
+def _git(cwd: Path, *arguments: str) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        ("git", "--no-pager", *arguments),
+        cwd=cwd,
+        check=True,
+        capture_output=True,
     )

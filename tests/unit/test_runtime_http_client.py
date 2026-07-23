@@ -226,7 +226,7 @@ def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
     service = AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
     project_request = _project(repository)
     intent_request = _intent()
-    plan_request = _plan()
+    plan_request = _plan(repository)
     run_request = _run()
     cancel_request = AlphaCancelRunRequest(
         schema_version="alpha-cancel-run-request/v1",
