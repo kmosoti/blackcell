@@ -144,6 +144,88 @@ def test_alpha_review_worker_config_rejects_unsafe_unknown_and_shared_authority(
     assert unsafe_process.value.code is ProcessConfigFailureCode.INVALID_ALPHA_REVIEW_CONFIG
 
 
+def test_alpha_review_config_rejects_each_typed_provider_boundary(tmp_path: Path) -> None:
+    repository, _data_root, _isolation_root = _roots(tmp_path)
+    valid = _review_payload()
+    unsafe_executable = tmp_path / "unsafe-executable"
+    unsafe_executable.write_text("#!/bin/sh\nexit 0\n")
+    unsafe_executable.chmod(0o777)
+
+    variants: list[tuple[str, object]] = []
+
+    def add(name: str, section: str | None, key: str, value: object) -> None:
+        payload = copy.deepcopy(valid)
+        target = payload if section is None else cast("dict[str, object]", payload[section])
+        target[key] = value
+        variants.append((name, payload))
+
+    add("schema", None, "schema_version", "blackcell.alpha-review-config/v2")
+    add("provider-shape", None, "provider", None)
+    add("classification", "provider", "classification", "unknown")
+    add("secret", "provider", "classification", "secret")
+    add("locality", "provider", "locality", "unknown")
+    add("environment-shape", "provider", "environment_variables", "HOME")
+    add("environment-duplicate", "provider", "environment_variables", ["HOME", "HOME"])
+    add("environment-type", "provider", "environment_variables", [1])
+    add("environment-forbidden", "provider", "environment_variables", ["GIT_CONFIG"])
+    add("profile-id", "provider", "profile_id", "bad id")
+    add("empty-model", "provider", "model_id", "")
+    add("model-token", "provider", "model_id", "bad\nmodel")
+    add("relative-executable", "provider", "codex_executable", "relative-codex")
+    add("missing-executable", "provider", "codex_executable", str(tmp_path / "missing"))
+    add("unsafe-executable", "provider", "codex_executable", str(unsafe_executable))
+    add("provider-integer", "provider", "max_input_tokens", True)
+    add("worker-shape", None, "worker", None)
+    add("worker-id", "worker", "worker_id", "bad:worker")
+    add("supervisor-id", "worker", "supervisor_id", "bad:supervisor")
+    add("worker-integer", "worker", "poll_milliseconds", 0)
+
+    for index, (name, payload) in enumerate(variants):
+        source = tmp_path / f"typed-{index}-{name}.json"
+        _write_config(source, payload)
+        with pytest.raises(AlphaReviewConfigError) as caught:
+            load_alpha_review_config(
+                {ALPHA_REVIEW_CONFIG_FILE_ENV: str(source)},
+                repository_root=repository,
+            )
+        assert str(caught.value) == "invalid-alpha-review-config", name
+
+    malformed_inputs = (
+        (b"[]", "array"),
+        (b"\xff", "utf8"),
+        (b"x" * (64 * 1024 + 1), "oversized"),
+    )
+    for content, name in malformed_inputs:
+        source = tmp_path / f"malformed-{name}.json"
+        source.write_bytes(content)
+        source.chmod(0o600)
+        with pytest.raises(AlphaReviewConfigError):
+            load_alpha_review_config(
+                {ALPHA_REVIEW_CONFIG_FILE_ENV: str(source)},
+                repository_root=repository,
+            )
+
+    with pytest.raises(AlphaReviewConfigError):
+        load_alpha_review_config(
+            {ALPHA_REVIEW_CONFIG_FILE_ENV: str((tmp_path / "missing-config.json").resolve())},
+            repository_root=repository,
+        )
+
+    with pytest.raises(AlphaReviewConfigError):
+        load_alpha_review_config(
+            {ALPHA_REVIEW_CONFIG_FILE_ENV: ""},
+            repository_root=repository,
+        )
+
+    valid_source = tmp_path / "valid-for-root-type.json"
+    _write_config(valid_source, valid)
+    with pytest.raises(AlphaReviewConfigError):
+        load_alpha_review_config(
+            {ALPHA_REVIEW_CONFIG_FILE_ENV: str(valid_source)},
+            repository_root=cast("Path", object()),
+        )
+
+
 def _roots(tmp_path: Path) -> tuple[Path, Path, Path]:
     repository = tmp_path / "repository"
     repository.mkdir()

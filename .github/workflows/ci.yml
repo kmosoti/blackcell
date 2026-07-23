@@ -19,6 +19,10 @@ jobs:
         with:
           python-version: "3.14"
           enable-cache: true
+      - name: Install Bubblewrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends bubblewrap
       - run: uv sync --locked --all-groups
       - run: uv run ruff format --check .
       - run: uv run ruff check .

@@ -174,6 +174,109 @@ def test_alpha_verify_config_is_owner_only_closed_and_authority_separated(
         )
 
 
+def test_alpha_verify_config_rejects_malformed_identity_and_file_boundaries(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    valid: dict[str, object] = {
+        "schema_version": ALPHA_VERIFY_CONFIG_SCHEMA,
+        "worker": {
+            "worker_id": "alpha-verifier.test",
+            "supervisor_id": "alpha-verify-supervisor.test",
+            "lease_seconds": 300,
+            "poll_milliseconds": 125,
+        },
+    }
+    assert load_alpha_verify_config({}, repository_root=repository) is None
+
+    variants: list[tuple[str, dict[str, object]]] = []
+
+    def add(
+        name: str,
+        *,
+        root: tuple[str, object] | None = None,
+        worker: tuple[str, object] | None = None,
+    ) -> None:
+        payload = json.loads(json.dumps(valid))
+        assert isinstance(payload, dict)
+        if root is not None:
+            payload[root[0]] = root[1]
+        if worker is not None:
+            raw_worker = payload["worker"]
+            assert isinstance(raw_worker, dict)
+            raw_worker[worker[0]] = worker[1]
+        variants.append((name, cast("dict[str, object]", payload)))
+
+    add("schema", root=("schema_version", "blackcell.alpha-verify-config/v2"))
+    add("worker-shape", root=("worker", None))
+    add("worker-empty", worker=("worker_id", ""))
+    add("worker-invalid", worker=("worker_id", "bad:worker"))
+    add("lease-type", worker=("lease_seconds", True))
+    add("poll-range", worker=("poll_milliseconds", 0))
+    same_identity = json.loads(json.dumps(valid))
+    assert isinstance(same_identity, dict)
+    same_worker = same_identity["worker"]
+    assert isinstance(same_worker, dict)
+    same_worker["supervisor_id"] = same_worker["worker_id"]
+    variants.append(("same-identity", cast("dict[str, object]", same_identity)))
+
+    for index, (name, payload) in enumerate(variants):
+        source = tmp_path / f"invalid-{index}-{name}.json"
+        source.write_text(json.dumps(payload), encoding="utf-8")
+        source.chmod(0o600)
+        with pytest.raises(AlphaVerifyConfigError):
+            load_alpha_verify_config(
+                {ALPHA_VERIFY_CONFIG_FILE_ENV: str(source)},
+                repository_root=repository,
+            )
+
+    malformed = (
+        (b"[]", "array"),
+        (b"\xff", "utf8"),
+        (b"x" * (64 * 1024 + 1), "oversized"),
+        (
+            b'{"schema_version":"blackcell.alpha-verify-config/v1",'
+            b'"schema_version":"blackcell.alpha-verify-config/v1","worker":{}}',
+            "duplicate",
+        ),
+    )
+    for content, name in malformed:
+        source = tmp_path / f"malformed-{name}.json"
+        source.write_bytes(content)
+        source.chmod(0o600)
+        with pytest.raises(AlphaVerifyConfigError):
+            load_alpha_verify_config(
+                {ALPHA_VERIFY_CONFIG_FILE_ENV: str(source)},
+                repository_root=repository,
+            )
+
+    for source_value in ("", "relative.json", str((tmp_path / "missing.json").resolve())):
+        with pytest.raises(AlphaVerifyConfigError):
+            load_alpha_verify_config(
+                {ALPHA_VERIFY_CONFIG_FILE_ENV: source_value},
+                repository_root=repository,
+            )
+
+    repository_source = repository / "verify.json"
+    repository_source.write_text(json.dumps(valid), encoding="utf-8")
+    repository_source.chmod(0o600)
+    with pytest.raises(AlphaVerifyConfigError):
+        load_alpha_verify_config(
+            {ALPHA_VERIFY_CONFIG_FILE_ENV: str(repository_source)},
+            repository_root=repository,
+        )
+
+    valid_source = tmp_path / "valid-root-type.json"
+    valid_source.write_text(json.dumps(valid), encoding="utf-8")
+    valid_source.chmod(0o600)
+    with pytest.raises(AlphaVerifyConfigError):
+        load_alpha_verify_config(
+            {ALPHA_VERIFY_CONFIG_FILE_ENV: str(valid_source)},
+            repository_root=cast("Path", object()),
+        )
+
+
 def test_alpha_verify_process_reconciles_and_runs_once_against_shared_storage(
     tmp_path: Path,
 ) -> None:

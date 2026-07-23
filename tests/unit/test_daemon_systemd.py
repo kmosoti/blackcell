@@ -19,6 +19,7 @@ from blackcell.adapters.daemon_systemd import (
     SystemdServiceError,
     SystemdServiceFailureCode,
     SystemdUserServiceManager,
+    default_systemd_user_unit_directory,
     render_systemd_user_unit,
 )
 
@@ -256,6 +257,272 @@ def test_rendered_unit_is_valid_and_has_no_pid_authority(tmp_path: Path) -> None
     assert " daemon\n" in unit
     assert "PIDFile=" not in unit
     assert "Type=forking" not in unit
+
+
+def test_daemon_errors_have_stable_cli_exit_classes() -> None:
+    invalid_input = {
+        SystemdServiceFailureCode.INVALID_ENVIRONMENT_FILE,
+        SystemdServiceFailureCode.INVALID_EXECUTABLE,
+        SystemdServiceFailureCode.INVALID_UNIT_DIRECTORY,
+        SystemdServiceFailureCode.INVALID_LOG_LIMIT,
+    }
+    unavailable = {
+        SystemdServiceFailureCode.UNSUPPORTED_PLATFORM,
+        SystemdServiceFailureCode.MANAGER_UNAVAILABLE,
+        SystemdServiceFailureCode.COMMAND_FAILED,
+    }
+
+    for code in SystemdServiceFailureCode:
+        expected = 1 if code in invalid_input else 3 if code in unavailable else 4
+        assert SystemdServiceError(code).cli_exit_code == expected
+
+
+def test_status_rejects_untrusted_manager_responses() -> None:
+    assert not SystemdUserServiceManager(runner=FakeRunner(), platform="darwin").status().available
+
+    invalid_results = (
+        BoundedProcessError(BoundedProcessFailureCode.OUTPUT_INCOMPLETE),
+        _result(b"", return_code=1),
+        _result(_status(), stderr=b"unexpected"),
+        _result(b"\xff"),
+        _result(_status() + b"LoadState=loaded\n"),
+        _result(b"LoadState=loaded\n"),
+        _result(_status(pid=-1)),
+    )
+    expected_codes = (
+        SystemdServiceFailureCode.INVALID_RESPONSE,
+        None,
+        SystemdServiceFailureCode.INVALID_RESPONSE,
+        SystemdServiceFailureCode.INVALID_RESPONSE,
+        SystemdServiceFailureCode.INVALID_RESPONSE,
+        SystemdServiceFailureCode.INVALID_RESPONSE,
+        SystemdServiceFailureCode.INVALID_RESPONSE,
+    )
+    for result, expected_code in zip(invalid_results, expected_codes, strict=True):
+        manager = SystemdUserServiceManager(runner=FakeRunner(result))
+        if expected_code is None:
+            assert not manager.status().available
+        else:
+            with pytest.raises(SystemdServiceError) as caught:
+                manager.status()
+            assert caught.value.code is expected_code
+
+
+def test_control_commands_map_process_failures_and_state_mismatches() -> None:
+    unavailable = SystemdUserServiceManager(runner=FakeRunner(_result(b"", return_code=1)))
+    with pytest.raises(SystemdServiceError) as unavailable_error:
+        unavailable.start()
+    assert unavailable_error.value.code is SystemdServiceFailureCode.MANAGER_UNAVAILABLE
+
+    missing = SystemdUserServiceManager(
+        runner=FakeRunner(_result(_status(load="not-found", unit_file="")))
+    )
+    with pytest.raises(SystemdServiceError) as missing_error:
+        missing.stop()
+    assert missing_error.value.code is SystemdServiceFailureCode.COMMAND_FAILED
+
+    mismatch = SystemdUserServiceManager(
+        runner=FakeRunner(_result(_status()), _result(b""), _result(_status()))
+    )
+    with pytest.raises(SystemdServiceError) as mismatch_error:
+        mismatch.restart()
+    assert mismatch_error.value.code is SystemdServiceFailureCode.COMMAND_FAILED
+
+    failure_codes = (
+        (BoundedProcessFailureCode.SPAWN_FAILED, SystemdServiceFailureCode.MANAGER_UNAVAILABLE),
+        (BoundedProcessFailureCode.OUTPUT_TOO_LARGE, SystemdServiceFailureCode.INVALID_RESPONSE),
+        (BoundedProcessFailureCode.TIMED_OUT, SystemdServiceFailureCode.COMMAND_FAILED),
+    )
+    for process_code, expected_code in failure_codes:
+        manager = SystemdUserServiceManager(
+            runner=FakeRunner(_result(_status()), BoundedProcessError(process_code))
+        )
+        with pytest.raises(SystemdServiceError) as caught:
+            manager.start()
+        assert caught.value.code is expected_code
+
+    nonzero = SystemdUserServiceManager(
+        runner=FakeRunner(_result(_status()), _result(b"", return_code=1))
+    )
+    with pytest.raises(SystemdServiceError) as nonzero_error:
+        nonzero.start()
+    assert nonzero_error.value.code is SystemdServiceFailureCode.COMMAND_FAILED
+
+
+def test_install_rolls_back_new_unit_on_control_or_postcondition_failure(tmp_path: Path) -> None:
+    environment_file = _environment_file(tmp_path)
+    executable = _runtime_executable()
+
+    control_directory = tmp_path / "control-failure"
+    control_runner = FakeRunner(
+        _result(_status(load="not-found")),
+        BoundedProcessError(BoundedProcessFailureCode.TIMED_OUT),
+        _result(b""),
+        _result(b""),
+    )
+    with pytest.raises(SystemdServiceError) as control_error:
+        SystemdUserServiceManager(
+            runner=control_runner,
+            unit_directory=control_directory,
+        ).install(environment_file=environment_file, runtime_executable=executable)
+    assert control_error.value.code is SystemdServiceFailureCode.COMMAND_FAILED
+    assert not (control_directory / SYSTEMD_UNIT_NAME).exists()
+
+    postcondition_directory = tmp_path / "postcondition-failure"
+    postcondition_runner = FakeRunner(
+        _result(_status(load="not-found")),
+        _result(b""),
+        _result(b""),
+        _result(_status(unit_file="disabled")),
+        _result(b""),
+        _result(b""),
+    )
+    with pytest.raises(SystemdServiceError) as postcondition_error:
+        SystemdUserServiceManager(
+            runner=postcondition_runner,
+            unit_directory=postcondition_directory,
+        ).install(environment_file=environment_file, runtime_executable=executable)
+    assert postcondition_error.value.code is SystemdServiceFailureCode.INSTALL_FAILED
+    assert not (postcondition_directory / SYSTEMD_UNIT_NAME).exists()
+
+
+def test_logs_reject_unavailable_malformed_and_unbounded_journal_data() -> None:
+    unavailable = SystemdUserServiceManager(runner=FakeRunner(_result(b"", return_code=1)))
+    with pytest.raises(SystemdServiceError) as unavailable_error:
+        unavailable.logs(lines=1)
+    assert unavailable_error.value.code is SystemdServiceFailureCode.MANAGER_UNAVAILABLE
+
+    malformed = (
+        _result(b"{}", stderr=b"unexpected"),
+        _result(b"not-json"),
+        _result(b"[]"),
+        _result(json.dumps({"__REALTIME_TIMESTAMP": "1"}).encode()),
+        _result(json.dumps({"MESSAGE": "message", "__REALTIME_TIMESTAMP": "bad"}).encode()),
+        _result(
+            json.dumps(
+                {"MESSAGE": "message", "__REALTIME_TIMESTAMP": "1", "PRIORITY": "8"}
+            ).encode()
+        ),
+        _result(
+            json.dumps(
+                {
+                    "MESSAGE": "message",
+                    "__REALTIME_TIMESTAMP": "1",
+                    "PRIORITY": "6",
+                    "_PID": "bad",
+                }
+            ).encode()
+        ),
+        _result(
+            b"\n".join(
+                json.dumps({"MESSAGE": "message", "__REALTIME_TIMESTAMP": str(index)}).encode()
+                for index in range(201)
+            )
+        ),
+    )
+    for result in malformed:
+        manager = SystemdUserServiceManager(runner=FakeRunner(_result(_status()), result))
+        with pytest.raises(SystemdServiceError) as caught:
+            manager.logs(lines=1)
+        assert caught.value.code is SystemdServiceFailureCode.INVALID_RESPONSE
+
+    default_fields = SystemdUserServiceManager(
+        runner=FakeRunner(
+            _result(_status()),
+            _result(
+                b"\n" + json.dumps({"MESSAGE": "message", "__REALTIME_TIMESTAMP": "1"}).encode()
+            ),
+        )
+    ).logs(lines=1)
+    assert default_fields.entries[0].priority == 6
+    assert default_fields.entries[0].pid is None
+
+
+def test_install_validates_paths_permissions_platform_and_unit_conflicts(tmp_path: Path) -> None:
+    environment_file = _environment_file(tmp_path)
+    executable = _runtime_executable()
+
+    invalid_environments = [Path("relative.env"), (tmp_path / "missing.env").resolve()]
+    wrong_mode = tmp_path / "wrong-mode.env"
+    wrong_mode.write_text("VALUE=1\n")
+    wrong_mode.chmod(0o644)
+    invalid_environments.append(wrong_mode.resolve())
+    environment_directory = tmp_path / "environment-directory"
+    environment_directory.mkdir()
+    environment_directory.chmod(0o600)
+    invalid_environments.append(environment_directory.resolve())
+    environment_link = tmp_path / "environment-link"
+    environment_link.symlink_to(environment_file)
+    invalid_environments.append(environment_link)
+    for value in invalid_environments:
+        with pytest.raises(SystemdServiceError) as caught:
+            SystemdUserServiceManager(runner=FakeRunner()).install(
+                environment_file=value,
+                runtime_executable=executable,
+            )
+        assert caught.value.code is SystemdServiceFailureCode.INVALID_ENVIRONMENT_FILE
+
+    non_executable = tmp_path / "not-executable"
+    non_executable.write_text("#!/bin/sh\n")
+    non_executable.chmod(0o600)
+    invalid_executables = [Path("relative"), (tmp_path / "missing-bin").resolve(), non_executable]
+    for value in invalid_executables:
+        with pytest.raises(SystemdServiceError) as caught:
+            SystemdUserServiceManager(runner=FakeRunner()).install(
+                environment_file=environment_file,
+                runtime_executable=value,
+            )
+        assert caught.value.code is SystemdServiceFailureCode.INVALID_EXECUTABLE
+
+    with pytest.raises(SystemdServiceError) as unsupported:
+        SystemdUserServiceManager(runner=FakeRunner(), platform="darwin").install(
+            environment_file=environment_file,
+            runtime_executable=executable,
+        )
+    assert unsupported.value.code is SystemdServiceFailureCode.UNSUPPORTED_PLATFORM
+
+    with pytest.raises(SystemdServiceError) as relative_directory:
+        SystemdUserServiceManager(
+            runner=FakeRunner(_result(_status())),
+            unit_directory=Path("relative-systemd"),
+        ).install(environment_file=environment_file, runtime_executable=executable)
+    assert relative_directory.value.code is SystemdServiceFailureCode.INVALID_UNIT_DIRECTORY
+
+    file_directory = tmp_path / "not-a-directory"
+    file_directory.write_text("preserve")
+    with pytest.raises(SystemdServiceError) as invalid_directory:
+        SystemdUserServiceManager(
+            runner=FakeRunner(_result(_status())),
+            unit_directory=file_directory,
+        ).install(environment_file=environment_file, runtime_executable=executable)
+    assert invalid_directory.value.code is SystemdServiceFailureCode.INVALID_UNIT_DIRECTORY
+
+    conflict_directory = tmp_path / "symlink-conflict"
+    conflict_directory.mkdir()
+    (conflict_directory / SYSTEMD_UNIT_NAME).symlink_to(environment_file)
+    with pytest.raises(SystemdServiceError) as symlink_conflict:
+        SystemdUserServiceManager(
+            runner=FakeRunner(_result(_status(load="not-found"))),
+            unit_directory=conflict_directory,
+        ).install(environment_file=environment_file, runtime_executable=executable)
+    assert symlink_conflict.value.code is SystemdServiceFailureCode.UNIT_CONFLICT
+
+
+def test_default_unit_directory_and_unit_quoting_are_fail_closed(tmp_path: Path) -> None:
+    configured = tmp_path / "xdg"
+    assert default_systemd_user_unit_directory({"XDG_CONFIG_HOME": str(configured)}) == (
+        configured / "systemd/user"
+    )
+    assert default_systemd_user_unit_directory({}).parts[-2:] == ("systemd", "user")
+    with pytest.raises(SystemdServiceError) as relative:
+        default_systemd_user_unit_directory({"XDG_CONFIG_HOME": "relative"})
+    assert relative.value.code is SystemdServiceFailureCode.INVALID_UNIT_DIRECTORY
+
+    unit = render_systemd_user_unit(Path('/opt/black%cell"\\runtime'), Path("/tmp/runtime.env"))
+    assert 'ExecStart="/opt/black%%cell\\"\\\\runtime" daemon' in unit
+    with pytest.raises(SystemdServiceError) as control_character:
+        render_systemd_user_unit(Path("/opt/blackcell\nruntime"), Path("/tmp/runtime.env"))
+    assert control_character.value.code is SystemdServiceFailureCode.INSTALL_FAILED
 
 
 def _environment_file(tmp_path: Path) -> Path:

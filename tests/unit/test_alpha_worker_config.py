@@ -129,6 +129,95 @@ def test_alpha_worker_config_rejects_unsafe_implicit_and_unknown_input_content_f
     assert str(process_error.value) == "invalid-alpha-worker-config"
 
 
+def test_alpha_worker_config_rejects_each_typed_authority_boundary(tmp_path: Path) -> None:
+    repository, data_root, isolation_root = _roots(tmp_path)
+    valid = _payload(isolation_root)
+    runtime_root = tmp_path / "runtime-root"
+    runtime_root.mkdir()
+    repository_isolation = repository / "nested-isolation"
+    repository_isolation.mkdir(mode=0o700)
+    repository_isolation.chmod(0o700)
+    wrong_mode_root = tmp_path / "wrong-mode-root"
+    wrong_mode_root.mkdir(mode=0o755)
+    wrong_mode_root.chmod(0o755)
+    unsafe_executable = tmp_path / "unsafe-executable"
+    unsafe_executable.write_text("#!/bin/sh\nexit 0\n")
+    unsafe_executable.chmod(0o777)
+
+    variants: list[tuple[str, object]] = []
+
+    def add(name: str, section: str | None, key: str, value: object) -> None:
+        payload = copy.deepcopy(valid)
+        target = payload if section is None else cast("dict[str, object]", payload[section])
+        target[key] = value
+        variants.append((name, payload))
+
+    add("schema", None, "schema_version", "blackcell.alpha-worker-config/v2")
+    add("provider-shape", None, "provider", None)
+    add("classification", "provider", "classification", "unknown")
+    add("secret", "provider", "classification", "secret")
+    add("locality", "provider", "locality", "unknown")
+    add("environment-shape", "provider", "environment_variables", "HOME")
+    add("environment-duplicate", "provider", "environment_variables", ["HOME", "HOME"])
+    add("environment-type", "provider", "environment_variables", [1])
+    add("environment-forbidden", "provider", "environment_variables", ["PYTHONPATH"])
+    add("profile-id", "provider", "profile_id", "bad id")
+    add("model-token", "provider", "model_id", "bad\nmodel")
+    add("missing-executable", "provider", "codex_executable", str(tmp_path / "missing"))
+    add("unsafe-executable", "provider", "codex_executable", str(unsafe_executable))
+    add("integer", "provider", "max_input_tokens", True)
+    add("repository-overlap", "isolation", "root", str(repository_isolation))
+    add("owner-mode", "isolation", "root", str(wrong_mode_root))
+    add("aliases-empty", "isolation", "executables", {})
+    add("alias-invalid", "isolation", "executables", {"bad alias": str(_executable("true"))})
+    add("runtime-shape", "isolation", "runtime_roots", str(runtime_root))
+    add("runtime-duplicate", "isolation", "runtime_roots", [str(runtime_root), str(runtime_root)])
+    add("runtime-protected", "isolation", "runtime_roots", [str(data_root)])
+    add("worker-shape", None, "worker", None)
+    add("worker-id", "worker", "worker_id", "bad:worker")
+    add("worker-integer", "worker", "stdout_limit_bytes", 0)
+
+    invalid_limits = copy.deepcopy(valid)
+    cast("dict[str, object]", cast("dict[str, object]", invalid_limits["isolation"])["limits"])[
+        "cpu_seconds"
+    ] = 0
+    variants.append(("limits", invalid_limits))
+
+    for index, (name, payload) in enumerate(variants):
+        source = tmp_path / f"typed-{index}-{name}.json"
+        _write_config(source, payload)
+        with pytest.raises(AlphaWorkerConfigError) as caught:
+            load_alpha_worker_config(
+                {ALPHA_WORKER_CONFIG_FILE_ENV: str(source)},
+                repository_root=repository,
+                data_root=data_root,
+            )
+        assert str(caught.value) == "invalid-alpha-worker-config", name
+
+    malformed_inputs = (
+        (b"[]", "array"),
+        (b"\xff", "utf8"),
+        (b"x" * (256 * 1024 + 1), "oversized"),
+    )
+    for content, name in malformed_inputs:
+        source = tmp_path / f"malformed-{name}.json"
+        source.write_bytes(content)
+        source.chmod(0o600)
+        with pytest.raises(AlphaWorkerConfigError):
+            load_alpha_worker_config(
+                {ALPHA_WORKER_CONFIG_FILE_ENV: str(source)},
+                repository_root=repository,
+                data_root=data_root,
+            )
+
+    with pytest.raises(AlphaWorkerConfigError):
+        load_alpha_worker_config(
+            {ALPHA_WORKER_CONFIG_FILE_ENV: str((tmp_path / "missing-config.json").resolve())},
+            repository_root=repository,
+            data_root=data_root,
+        )
+
+
 def _roots(tmp_path: Path) -> tuple[Path, Path, Path]:
     repository = tmp_path / "repository"
     repository.mkdir()

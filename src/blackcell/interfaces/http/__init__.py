@@ -62,6 +62,8 @@ from blackcell.interfaces.http.contracts import (
     StrictStruct,
     WireContractError,
     contract_to_builtins,
+    contract_to_json_builtins,
+    convert_contract,
     decode_contract,
     encode_contract,
 )
@@ -139,6 +141,8 @@ __all__ = [
     "WireContractError",
     "alpha_plan_topological_order",
     "contract_to_builtins",
+    "contract_to_json_builtins",
+    "convert_contract",
     "create_http_app",
     "decode_contract",
     "encode_contract",

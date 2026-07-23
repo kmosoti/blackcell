@@ -10,8 +10,6 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
-import msgspec
-
 from blackcell.adapters.bounded_process import (
     BoundedProcessError,
     BoundedProcessFailureCode,
@@ -19,7 +17,13 @@ from blackcell.adapters.bounded_process import (
     BoundedProcessRunner,
     BoundedStreamCapture,
 )
-from blackcell.interfaces.http import WireContractError, decode_contract
+from blackcell.interfaces.http import (
+    StrictStruct,
+    WireContractError,
+    contract_to_json_builtins,
+    convert_contract,
+    decode_contract,
+)
 from blackcell.interfaces.kernform_contracts import (
     KernformWireArtifact,
     KernformWireCheckResult,
@@ -489,15 +493,18 @@ def _validated_init_result(
     }
 
 
-def _convert_result[ResultT: msgspec.Struct](value: object, result_type: type[ResultT]) -> ResultT:
+def _convert_result[ResultT: StrictStruct](
+    value: object,
+    result_type: type[ResultT],
+) -> ResultT:
     try:
-        return msgspec.convert(value, type=result_type, strict=True)
-    except (msgspec.ValidationError, TypeError, ValueError) as error:
+        return convert_contract(value, result_type)
+    except WireContractError as error:
         raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE) from error
 
 
-def _result_document(value: msgspec.Struct) -> dict[str, object]:
-    document = msgspec.json.decode(msgspec.json.encode(value))
+def _result_document(value: StrictStruct) -> dict[str, object]:
+    document = contract_to_json_builtins(value)
     if not isinstance(document, dict) or any(not isinstance(key, str) for key in document):
         raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
     return cast("dict[str, object]", document)

@@ -318,6 +318,15 @@ def decode_contract[ContractT](data: bytes, contract_type: type[ContractT]) -> C
         raise WireContractError() from error
 
 
+def convert_contract[ContractT](value: object, contract_type: type[ContractT]) -> ContractT:
+    """Strictly convert built-in values at the interface contract boundary."""
+
+    try:
+        return msgspec.convert(value, type=contract_type, strict=True)
+    except (msgspec.ValidationError, TypeError, ValueError) as error:
+        raise WireContractError() from error
+
+
 def encode_contract(value: msgspec.Struct) -> bytes:
     return msgspec.json.encode(value)
 
@@ -326,6 +335,12 @@ def contract_to_builtins(value: StrictStruct) -> object:
     """Project a wire contract into JSON-compatible built-in values."""
 
     return msgspec.to_builtins(value)
+
+
+def contract_to_json_builtins(value: StrictStruct) -> object:
+    """Project a wire contract through its exact JSON representation."""
+
+    return msgspec.json.decode(msgspec.json.encode(value))
 
 
 def _identifier(value: str, field_name: str) -> None:
@@ -389,6 +404,8 @@ __all__ = [
     "StrictStruct",
     "WireContractError",
     "contract_to_builtins",
+    "contract_to_json_builtins",
+    "convert_contract",
     "decode_contract",
     "encode_contract",
 ]
