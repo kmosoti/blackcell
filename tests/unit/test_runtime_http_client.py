@@ -9,6 +9,7 @@ from urllib.request import OpenerDirector
 import msgspec
 import pytest
 
+import blackcell.adapters.runtime_http as runtime_http
 from blackcell.adapters.runtime_http import (
     RuntimeClientError,
     RuntimeClientFailureCode,
@@ -21,10 +22,13 @@ from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
 from blackcell.config import SecretValue
 from blackcell.interfaces.http import (
     AlphaCancelRunRequest,
+    AlphaEventPageResponse,
+    AlphaEventResponse,
     ErrorResponse,
     HealthResponse,
     encode_contract,
 )
+from blackcell.interfaces.http.contracts import MAX_REQUEST_BODY_BYTES
 from blackcell.kernel import EventStore
 from tests.unit.test_alpha_runtime import _intent, _plan, _project, _repository, _run
 
@@ -133,9 +137,12 @@ def test_client_failures_are_typed_bounded_and_content_free() -> None:
     assert "credential leak" not in str(malformed.value)
 
 
-def test_stdlib_transport_bounds_responses_and_connection_failures() -> None:
+def test_stdlib_transport_bounds_responses_and_connection_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(runtime_http, "MAX_RESPONSE_BODY_BYTES", 16)
     oversized = UrllibRuntimeTransport(
-        _opener=cast(OpenerDirector, _FakeOpener(_FakeUrlResponse(b"x" * 1_048_577)))
+        _opener=cast(OpenerDirector, _FakeOpener(_FakeUrlResponse(b"x" * 17)))
     )
     with pytest.raises(RuntimeClientError) as too_large:
         oversized.request(
@@ -160,6 +167,41 @@ def test_stdlib_transport_bounds_responses_and_connection_failures() -> None:
         )
     assert failed.value.code is RuntimeClientFailureCode.CONNECTION_FAILED
     assert "sensitive host details" not in str(failed.value)
+
+
+def test_alpha_client_decodes_valid_service_response_larger_than_request_limit() -> None:
+    event = AlphaEventResponse(
+        event_id="event-1",
+        cursor=1,
+        stream_id="alpha:plan:plan-1",
+        stream_sequence=1,
+        event_type="alpha.plan.accepted",
+        event_schema_version=1,
+        recorded_at="2026-07-23T12:00:00+00:00",
+        correlation_id="correlation-1",
+        causation_id=None,
+        actor="operator",
+        payload_digest="sha256:" + "a" * 64,
+        payload={"accepted_plan": "x" * MAX_REQUEST_BODY_BYTES},
+    )
+    page = AlphaEventPageResponse(
+        after_cursor=0,
+        limit=1,
+        scanned_events=1,
+        events=(event,),
+        next_cursor=1,
+        has_more=False,
+    )
+    body = encode_contract(page)
+    response = _FakeUrlResponse(body)
+    transport = UrllibRuntimeTransport(
+        _opener=cast(OpenerDirector, _FakeOpener(response)),
+    )
+    client = RuntimeHttpClient(transport=transport, token=SecretValue(_TOKEN))
+
+    assert len(body) > MAX_REQUEST_BODY_BYTES
+    assert client.list_alpha_events(limit=1) == page
+    assert response.closed
 
 
 def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(

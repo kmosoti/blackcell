@@ -80,7 +80,10 @@ owns strict request encoding, response decoding, endpoint policy, bounded failur
 transport for project registration, intent and plan acceptance, run submission, status, cancellation,
 replay, and ordered event pages. Clients provide the API token only through `BLACKCELL_API_TOKEN` or
 the existing owner-only file named by `BLACKCELL_API_TOKEN_FILE`; credentials are never accepted as
-CLI arguments or represented in output. The JSON-first `blackcell alpha` commands load mutation
+CLI arguments or represented in output. Incoming request contracts remain capped at 1 MiB. Client
+response reads and typed decoding instead share a closed 256 MiB ceiling, which covers the maximum
+200-event service page with request-sized payloads plus envelopes without accepting unbounded remote
+content. The JSON-first `blackcell alpha` commands load mutation
 inputs from bounded, regular, closed-contract JSON files and delegate all reads and writes to that
 client. They do not open runtime storage, schedule work, or invoke `/api/v1/runs`. Cross-language
 projections use the same closed alpha wire contracts and must validate their own response bindings;

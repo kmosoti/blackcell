@@ -41,6 +41,7 @@ from blackcell.interfaces.http.alpha_web import (
 )
 from blackcell.interfaces.http.app import create_http_app
 from blackcell.interfaces.http.contracts import (
+    MAX_RESPONSE_BODY_BYTES,
     ApprovalRequest,
     ClaimRequest,
     ContextResponse,
@@ -65,6 +66,7 @@ from blackcell.interfaces.http.contracts import (
     contract_to_json_builtins,
     convert_contract,
     decode_contract,
+    decode_response_contract,
     encode_contract,
 )
 from blackcell.interfaces.http.ports import (
@@ -81,6 +83,7 @@ from blackcell.interfaces.http.quota import (
 __all__ = [
     "ALPHA_WEB_SOCKET_PATH",
     "MAX_ALPHA_EVENT_PAGE_SIZE",
+    "MAX_RESPONSE_BODY_BYTES",
     "AlphaAcceptanceCheck",
     "AlphaCancelRunRequest",
     "AlphaEventPageResponse",
@@ -145,5 +148,6 @@ __all__ = [
     "convert_contract",
     "create_http_app",
     "decode_contract",
+    "decode_response_contract",
     "encode_contract",
 ]

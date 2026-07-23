@@ -6,7 +6,11 @@ from pathlib import PurePosixPath
 from typing import Literal
 
 from blackcell.interfaces.http.contracts import StrictStruct, WireContractError
-from blackcell.orchestration.alpha_acceptance import MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS
+from blackcell.orchestration.alpha_acceptance import (
+    MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS,
+    is_alpha_acceptance_check_id,
+    is_alpha_acceptance_executable_alias,
+)
 
 MAX_ALPHA_EVENT_PAGE_SIZE = 200
 _MAX_ID_CHARS = 120
@@ -176,11 +180,14 @@ class AlphaAcceptanceCheck(StrictStruct, frozen=True):
     expected_exit_code: int = 0
 
     def __post_init__(self) -> None:
-        _identifier(self.check_id)
+        if not is_alpha_acceptance_check_id(self.check_id):
+            raise WireContractError()
         if not self.argv or len(self.argv) > _MAX_CHECK_ARGV:
             raise WireContractError()
         for token in self.argv:
             _bounded_token(token)
+        if not is_alpha_acceptance_executable_alias(self.argv[0]):
+            raise WireContractError()
         _bounded_integer(self.expected_exit_code, minimum=0, maximum=255)
 
 

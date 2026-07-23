@@ -54,6 +54,14 @@ class AlphaAcceptanceError(RuntimeError):
         super().__init__(code.value)
 
 
+def is_alpha_acceptance_check_id(value: object) -> bool:
+    return isinstance(value, str) and _IDENTIFIER.fullmatch(value) is not None
+
+
+def is_alpha_acceptance_executable_alias(value: object) -> bool:
+    return isinstance(value, str) and _EXECUTABLE_ALIAS.fullmatch(value) is not None
+
+
 @dataclass(frozen=True, slots=True)
 class AlphaAcceptanceCommand:
     check_id: str
@@ -69,12 +77,10 @@ class AlphaAcceptanceCommand:
     def __post_init__(self) -> None:
         if (
             self.schema_version != ALPHA_ACCEPTANCE_COMMAND_SCHEMA
-            or not isinstance(self.check_id, str)
-            or _IDENTIFIER.fullmatch(self.check_id) is None
+            or not is_alpha_acceptance_check_id(self.check_id)
             or not isinstance(self.argv, tuple)
             or not 1 <= len(self.argv) <= _MAX_ARGV
-            or not isinstance(self.argv[0], str)
-            or _EXECUTABLE_ALIAS.fullmatch(self.argv[0]) is None
+            or not is_alpha_acceptance_executable_alias(self.argv[0])
         ):
             raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_COMMAND)
         for token in self.argv:
@@ -225,4 +231,6 @@ __all__ = [
     "AlphaAcceptanceStream",
     "alpha_acceptance_command_payload",
     "alpha_acceptance_result_payload",
+    "is_alpha_acceptance_check_id",
+    "is_alpha_acceptance_executable_alias",
 ]

@@ -275,6 +275,18 @@ def test_alpha_node_budget_timeout_matches_executable_acceptance_limit() -> None
         AlphaNodeBudget(1_000, 1_000, MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS + 1, 0, 0)
 
 
+def test_alpha_check_identity_and_alias_match_executable_acceptance_contract() -> None:
+    boundary = AlphaAcceptanceCheck("check-1", ("a" * 64, "--version"))
+
+    assert boundary.argv[0] == "a" * 64
+    for check_id in ("-check", "a" * 121):
+        with pytest.raises(WireContractError):
+            AlphaAcceptanceCheck(check_id, ("python", "--version"))
+    for executable in ("tool/name", "a" * 65):
+        with pytest.raises(WireContractError):
+            AlphaAcceptanceCheck("check-1", (executable, "--version"))
+
+
 def _valid_plan() -> AlphaPlanRequest:
     budget = AlphaNodeBudget(
         max_input_tokens=1_000,

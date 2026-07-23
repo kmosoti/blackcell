@@ -14,6 +14,7 @@ from urllib.request import HTTPRedirectHandler, OpenerDirector, ProxyHandler, Re
 from blackcell.config import SecretValue
 from blackcell.interfaces.http import (
     MAX_ALPHA_EVENT_PAGE_SIZE,
+    MAX_RESPONSE_BODY_BYTES,
     AlphaCancelRunRequest,
     AlphaEventPageResponse,
     AlphaIntentRequest,
@@ -29,7 +30,7 @@ from blackcell.interfaces.http import (
     HealthResponse,
     StrictStruct,
     WireContractError,
-    decode_contract,
+    decode_response_contract,
     encode_contract,
 )
 
@@ -38,7 +39,6 @@ RUNTIME_ENDPOINT_ENV = "BLACKCELL_RUNTIME_ENDPOINT"
 _DEFAULT_TIMEOUT_SECONDS = 5.0
 _MAX_TIMEOUT_SECONDS = 30.0
 _MAX_ENDPOINT_CHARS = 2_048
-_MAX_RESPONSE_BODY_BYTES = 1_048_576
 _MAX_SERVICE_ERROR_CHARS = 100
 
 HttpMethod = Literal["GET", "POST"]
@@ -357,10 +357,10 @@ def _read_response(
     read = getattr(response, "read", None)
     if not callable(read):
         raise RuntimeClientError(RuntimeClientFailureCode.INVALID_RESPONSE)
-    body = read(_MAX_RESPONSE_BODY_BYTES + 1)
+    body = read(MAX_RESPONSE_BODY_BYTES + 1)
     if not isinstance(body, bytes):
         raise RuntimeClientError(RuntimeClientFailureCode.INVALID_RESPONSE)
-    if len(body) > _MAX_RESPONSE_BODY_BYTES:
+    if len(body) > MAX_RESPONSE_BODY_BYTES:
         raise RuntimeClientError(RuntimeClientFailureCode.RESPONSE_TOO_LARGE)
     return RuntimeHttpResponse(
         status_code=status_code,
@@ -383,7 +383,7 @@ def _decode_expected[ContractT: StrictStruct](
     if _media_type(response.content_type) != "application/json":
         raise RuntimeClientError(RuntimeClientFailureCode.INVALID_RESPONSE)
     try:
-        return decode_contract(response.body, contract_type)
+        return decode_response_contract(response.body, contract_type)
     except WireContractError as error:
         raise RuntimeClientError(RuntimeClientFailureCode.INVALID_RESPONSE) from error
 
@@ -392,7 +392,7 @@ def _decode_service_error(response: RuntimeHttpResponse) -> str | None:
     if _media_type(response.content_type) != "application/json":
         return None
     try:
-        return decode_contract(response.body, ErrorResponse).error
+        return decode_response_contract(response.body, ErrorResponse).error
     except WireContractError:
         return None
 

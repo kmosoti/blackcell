@@ -7,6 +7,7 @@ from typing import Literal
 import msgspec
 
 MAX_REQUEST_BODY_BYTES = 1_048_576
+MAX_RESPONSE_BODY_BYTES = 256 * MAX_REQUEST_BODY_BYTES
 MAX_EVENT_PAGE_SIZE = 200
 MAX_REPLAY_EVENTS = 256
 _MAX_ID_CHARS = 200
@@ -310,7 +311,28 @@ class ErrorResponse(StrictStruct, frozen=True):
 
 
 def decode_contract[ContractT](data: bytes, contract_type: type[ContractT]) -> ContractT:
-    if not data or len(data) > MAX_REQUEST_BODY_BYTES:
+    return _decode_bounded_contract(
+        data,
+        contract_type,
+        maximum_bytes=MAX_REQUEST_BODY_BYTES,
+    )
+
+
+def decode_response_contract[ContractT](data: bytes, contract_type: type[ContractT]) -> ContractT:
+    return _decode_bounded_contract(
+        data,
+        contract_type,
+        maximum_bytes=MAX_RESPONSE_BODY_BYTES,
+    )
+
+
+def _decode_bounded_contract[ContractT](
+    data: bytes,
+    contract_type: type[ContractT],
+    *,
+    maximum_bytes: int,
+) -> ContractT:
+    if not data or len(data) > maximum_bytes:
         raise WireContractError()
     try:
         return msgspec.json.decode(data, type=contract_type, strict=True)
@@ -380,6 +402,7 @@ def _aware(value: datetime) -> None:
 __all__ = [
     "MAX_EVENT_PAGE_SIZE",
     "MAX_REQUEST_BODY_BYTES",
+    "MAX_RESPONSE_BODY_BYTES",
     "ApprovalRequest",
     "ClaimRequest",
     "ContextResponse",
@@ -407,5 +430,6 @@ __all__ = [
     "contract_to_json_builtins",
     "convert_contract",
     "decode_contract",
+    "decode_response_contract",
     "encode_contract",
 ]

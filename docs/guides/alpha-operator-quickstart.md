@@ -155,8 +155,10 @@ Before submission, replace every repository-specific value:
 3. In `plan.template.json`, replace the all-zero `base_commit`, node objective, allowed paths,
    budget, executable aliases, argv-only acceptance check, and expected exit code. Every writer must
    be dependency-ordered, and every accepted executable alias must exist in the execution-worker
-   configuration. Node timeouts are bounded from 1 through 600 seconds so every accepted value is
-   executable by the acceptance runner. Plan admission reserves the complete review-evidence shape
+   configuration. An alias is 1 through 64 ASCII characters, begins alphanumerically, and otherwise
+   contains only letters, digits, `.`, `_`, `+`, or `-`. Node timeouts are bounded from 1 through 600
+   seconds so every accepted value is executable by the acceptance runner. Plan admission reserves
+   the complete review-evidence shape
    across all nodes: one outcome per node, four artifacts per check, and up to three source/effect
    artifacts per maximum changed file must fit the closed 128-item context limit.
 4. Keep the project, intent, plan, and run identifiers cross-linked. If an identifier changes,
