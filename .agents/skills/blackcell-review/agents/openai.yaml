@@ -1,4 +1,0 @@
-interface:
-  display_name: "BlackCell Review"
-  short_description: "Review consequential BlackCell changes"
-  default_prompt: "Use $blackcell-review to independently review a consequential BlackCell change with a validated handoff."

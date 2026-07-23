@@ -1,0 +1,4 @@
+{
+  "idempotency_key": "alpha-run-cancel-v1",
+  "schema_version": "alpha-cancel-run-request/v1"
+}

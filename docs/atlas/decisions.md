@@ -12,6 +12,7 @@ edges:
     - adr/0006-versioned-run-feedback-protocol
     - adr/0007-runtime-security-boundary
     - adr/0008-architecture-consolidation
+    - adr/0009-project-runtime-scope
 ---
 
 # Decisions
@@ -37,3 +38,8 @@ edges:
   exposure.
 - Remove false boundaries only when source evidence shows that authority, time, persistence,
   security, recovery, and independent failure semantics remain intact.
+- Build the alpha around one foreground daemon; keep CLI, PyRatatui TUI, and Litestar web as clients
+  of its typed service contracts.
+- Integrate Kernform through pinned agent-mode JSON rather than importing its Python/Rust internals.
+- Retain `DailyOperatorV2Workflow` only for migration and replay evidence; no new alpha surface may
+  invoke it.

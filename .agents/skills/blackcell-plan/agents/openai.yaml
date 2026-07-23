@@ -1,4 +1,0 @@
-interface:
-  display_name: "BlackCell Plan"
-  short_description: "Plan metadata-complete BlackCell program changes"
-  default_prompt: "Use $blackcell-plan to ground the repository and produce a decision-complete, metadata-complete plan without editing files."

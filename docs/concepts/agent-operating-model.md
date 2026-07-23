@@ -14,5 +14,5 @@ This document formerly specified prompt sections for the generated OpenCode agen
 retired that pack and its prototype world/NeSy/harness dependencies.
 
 Blackcell's product roles are now typed orchestration contracts for planner, executor, reviewer,
-verifier, and synthesizer nodes. Repository Codex collaboration is separate developer tooling
-governed directly by `AGENTS.md` and `.agents/skills/`; it is not projected by the product CLI.
+verifier, and synthesizer nodes. Repository contributor guidance lives only in `AGENTS.md`; it is
+not projected by the product CLI and does not configure the runtime.

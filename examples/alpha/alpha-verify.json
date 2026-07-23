@@ -1,0 +1,9 @@
+{
+  "schema_version": "blackcell.alpha-verify-config/v1",
+  "worker": {
+    "lease_seconds": 300,
+    "poll_milliseconds": 250,
+    "supervisor_id": "alpha-verify-supervisor.local-1",
+    "worker_id": "alpha-verifier.local-1"
+  }
+}

@@ -7,6 +7,7 @@ from typing import Literal
 import msgspec
 
 MAX_REQUEST_BODY_BYTES = 1_048_576
+MAX_RESPONSE_BODY_BYTES = 256 * MAX_REQUEST_BODY_BYTES
 MAX_EVENT_PAGE_SIZE = 200
 MAX_REPLAY_EVENTS = 256
 _MAX_ID_CHARS = 200
@@ -310,7 +311,28 @@ class ErrorResponse(StrictStruct, frozen=True):
 
 
 def decode_contract[ContractT](data: bytes, contract_type: type[ContractT]) -> ContractT:
-    if not data or len(data) > MAX_REQUEST_BODY_BYTES:
+    return _decode_bounded_contract(
+        data,
+        contract_type,
+        maximum_bytes=MAX_REQUEST_BODY_BYTES,
+    )
+
+
+def decode_response_contract[ContractT](data: bytes, contract_type: type[ContractT]) -> ContractT:
+    return _decode_bounded_contract(
+        data,
+        contract_type,
+        maximum_bytes=MAX_RESPONSE_BODY_BYTES,
+    )
+
+
+def _decode_bounded_contract[ContractT](
+    data: bytes,
+    contract_type: type[ContractT],
+    *,
+    maximum_bytes: int,
+) -> ContractT:
+    if not data or len(data) > maximum_bytes:
         raise WireContractError()
     try:
         return msgspec.json.decode(data, type=contract_type, strict=True)
@@ -318,8 +340,29 @@ def decode_contract[ContractT](data: bytes, contract_type: type[ContractT]) -> C
         raise WireContractError() from error
 
 
+def convert_contract[ContractT](value: object, contract_type: type[ContractT]) -> ContractT:
+    """Strictly convert built-in values at the interface contract boundary."""
+
+    try:
+        return msgspec.convert(value, type=contract_type, strict=True)
+    except (msgspec.ValidationError, TypeError, ValueError) as error:
+        raise WireContractError() from error
+
+
 def encode_contract(value: msgspec.Struct) -> bytes:
     return msgspec.json.encode(value)
+
+
+def contract_to_builtins(value: StrictStruct) -> object:
+    """Project a wire contract into JSON-compatible built-in values."""
+
+    return msgspec.to_builtins(value)
+
+
+def contract_to_json_builtins(value: StrictStruct) -> object:
+    """Project a wire contract through its exact JSON representation."""
+
+    return msgspec.json.decode(msgspec.json.encode(value))
 
 
 def _identifier(value: str, field_name: str) -> None:
@@ -359,6 +402,7 @@ def _aware(value: datetime) -> None:
 __all__ = [
     "MAX_EVENT_PAGE_SIZE",
     "MAX_REQUEST_BODY_BYTES",
+    "MAX_RESPONSE_BODY_BYTES",
     "ApprovalRequest",
     "ClaimRequest",
     "ContextResponse",
@@ -380,7 +424,12 @@ __all__ = [
     "ReplayResponse",
     "RunResponse",
     "RunSubmissionRequest",
+    "StrictStruct",
     "WireContractError",
+    "contract_to_builtins",
+    "contract_to_json_builtins",
+    "convert_contract",
     "decode_contract",
+    "decode_response_contract",
     "encode_contract",
 ]

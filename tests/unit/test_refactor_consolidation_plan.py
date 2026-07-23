@@ -69,19 +69,22 @@ def _baseline_evidence_targets() -> dict[tuple[str, str], str]:
     }
 
 
-def test_consolidation_plan_has_a_merge_ready_program_contract() -> None:
+def test_consolidation_plan_has_a_completed_program_contract() -> None:
     plan = _plan()
     program = plan["program"]
 
     assert plan["schema_version"] == "blackcell-refactor-consolidation-plan/v1"
-    assert program["status"] == "implementation-complete-awaiting-merge"
+    assert program["status"] == "merged-complete"
     assert program["branch"] == "refactor/consolidation"
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
     assert program["implementation_base_sha"] == ("1a249d8aaa1f5f230c8492ab249ea06d255f24ee")
-    assert "repository-approved merge method" in program["merge_policy"]
-    assert "required status checks" in program["merge_policy"]
-    assert "evidence" not in program["merge_policy"]
+    assert program["merge"] == {
+        "pull_request": 72,
+        "base_branch": "main",
+        "merge_commit": "ff1e6be69da3135d35411ae10f63208da278c4bf",
+        "merged_at": "2026-07-17T00:53:01Z",
+    }
     assert "runtime-v1" in program["runtime_v1_context"]
     assert program["verification_policy"]["runtime_v1_evidence"] == "historical-read-only"
     assert set(plan["planning_dimensions"]) == REQUIRED_DIMENSIONS
@@ -99,7 +102,7 @@ def test_consolidation_plan_has_a_merge_ready_program_contract() -> None:
     assert delivery["project"] == {
         "title": "BlackCell",
         "status": {
-            "epic": "In Progress",
+            "epic": "Done",
             "completed": {
                 "AC00": "Done",
                 "AC01": "Done",
@@ -108,9 +111,10 @@ def test_consolidation_plan_has_a_merge_ready_program_contract() -> None:
                 "AC04": "Done",
                 "AC05": "Done",
                 "AC06": "Done",
+                "AC07": "Done",
             },
-            "active": {"AC07": "In Progress"},
-            "queued": "Todo",
+            "active": {},
+            "queued": None,
         },
         "type": "refactor",
     }
@@ -126,10 +130,9 @@ def test_consolidation_plan_has_a_merge_ready_program_contract() -> None:
             69: [65, 67],
             70: [64],
             71: [65, 66, 67, 68, 69, 70],
-            60: [65, 66, 67],
-            61: [60],
         },
     }
+    assert "implementation-complete-awaiting-merge" not in PLAN_PATH.read_text(encoding="utf-8")
 
 
 def test_every_work_package_has_direct_evidence_and_three_scenarios() -> None:
@@ -204,7 +207,8 @@ def test_work_package_dependencies_are_acyclic_and_backward_mapped() -> None:
         "AC05",
         "AC06",
     }
-    assert by_id["AC07"]["status"] == "implementation-complete-awaiting-merge"
+    assert by_id["AC07"]["status"] == "accepted"
+    assert by_id["AC07"]["accepted_on"].isoformat() == "2026-07-17"
     assert by_id["AC07"]["decision_updated_on"].isoformat() == "2026-07-16"
     assert by_id["AC07"]["decision_artifact"] == (
         "docs/decisions/architecture-consolidation/ac07-architecture-fitness.json"
@@ -217,12 +221,18 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     program = plan["architecture_consolidation"]
 
     assert plan["runtime_v1"]["status"] == "evidence-complete"
-    assert program["status"] == "implementation-complete-awaiting-merge"
+    assert program["status"] == "merged-complete"
     assert program["branch"] == "refactor/consolidation"
     assert program["superseded_branch"] == "refactor/architecture-consolidation"
     assert program["base_ref"] == "origin/main"
     assert program["implementation_base_sha"] == ("1a249d8aaa1f5f230c8492ab249ea06d255f24ee")
     assert program["plan"] == "refactor-consolidation.plan.yaml"
+    assert program["merge"] == {
+        "pull_request": 72,
+        "base_branch": "main",
+        "merge_commit": "ff1e6be69da3135d35411ae10f63208da278c4bf",
+        "merged_at": "2026-07-17T00:53:01Z",
+    }
     assert program["planning_model"] == [
         "strategic",
         "logistics",
@@ -235,7 +245,7 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     assert program["delivery_metadata"]["assignee"] == "kmosoti"
     assert program["delivery_metadata"]["labels"]["documentation"] == ["AC00", "AC06"]
     assert program["delivery_metadata"]["project"]["status"] == {
-        "epic": "In Progress",
+        "epic": "Done",
         "completed": {
             "AC00": "Done",
             "AC01": "Done",
@@ -244,9 +254,10 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
             "AC04": "Done",
             "AC05": "Done",
             "AC06": "Done",
+            "AC07": "Done",
         },
-        "active": {"AC07": "In Progress"},
-        "queued": "Todo",
+        "active": {},
+        "queued": None,
     }
     policy = program["verification_policy"]
     assert policy["runtime_v1_evidence"] == "historical-read-only"
@@ -269,4 +280,7 @@ def test_blackcell_plan_declares_the_project_program_and_historical_context() ->
     )
     assert all(
         "architecture_consolidation_evidence" not in command for command in plan["verification"]
+    )
+    assert "implementation-complete-awaiting-merge" not in BLACKCELL_PLAN_PATH.read_text(
+        encoding="utf-8"
     )

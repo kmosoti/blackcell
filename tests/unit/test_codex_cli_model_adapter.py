@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import stat
 import subprocess
 from datetime import UTC, datetime
@@ -83,7 +84,7 @@ class Runner:
     def __call__(self, command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         self.calls.append((command, kwargs))
         workspace = Path(kwargs["cwd"])
-        if command[:2] == ["git", "init"]:
+        if Path(command[0]).name == "git" and command[1] == "init":
             (workspace / ".git").mkdir()
             return subprocess.CompletedProcess(command, 0, "", "")
         if self.timeout:
@@ -182,6 +183,42 @@ def test_codex_cli_adapter_uses_exact_isolated_read_only_boundary() -> None:
         "output-schema.json": 0o600,
         "model-response.json": 0o600,
     }
+
+
+def test_codex_cli_adapter_uses_pinned_executables_and_explicit_environment() -> None:
+    runner = Runner()
+    ticks = iter((10.0, 10.0, 10.01))
+    git = _executable("git")
+    codex = _executable("true")
+    environment = {"CODEX_HOME": "/tmp/codex-test"}
+    adapter = CodexCliModelAdapter(
+        executable=codex,
+        git_executable=git,
+        environment=environment,
+        runner=runner,
+        clock=lambda: next(ticks),
+    )
+
+    adapter.invoke(_request(), model_id="gpt-test")
+
+    assert runner.calls[0][0][0] == str(git)
+    assert runner.calls[1][0][0] == str(codex)
+    assert runner.calls[0][1]["env"] == environment
+    assert runner.calls[1][1]["env"] == environment
+
+
+def test_codex_cli_adapter_rejects_pinned_executable_identity_drift(tmp_path: Path) -> None:
+    executable = tmp_path / "codex"
+    shutil.copyfile(_executable("true"), executable)
+    executable.chmod(0o755)
+    runner = Runner()
+    adapter = CodexCliModelAdapter(executable=executable, runner=runner)
+    executable.chmod(0o775)
+
+    with pytest.raises(CodexCliAdapterError, match="identity changed"):
+        adapter.invoke(_request(), model_id="gpt-test")
+
+    assert len(runner.calls) == 1
 
 
 def test_codex_cli_adapter_integrates_with_gateway_policy() -> None:
@@ -294,7 +331,7 @@ def test_codex_cli_adapter_enforces_all_output_boundaries(
     adapter = CodexCliModelAdapter(
         runner=runner,
         clock=lambda: next(ticks),
-        **adapter_kwargs,
+        **adapter_kwargs,  # ty: ignore[invalid-argument-type]
     )
 
     with pytest.raises(CodexCliOutputError, match=message):
@@ -351,6 +388,11 @@ def test_codex_cli_adapter_rejects_invalid_constructor_bounds(
         CodexCliModelAdapter(**kwargs)  # ty: ignore[invalid-argument-type]
 
 
+def test_codex_cli_adapter_rejects_invalid_explicit_environment() -> None:
+    with pytest.raises(ValueError, match="environment"):
+        CodexCliModelAdapter(environment={"INVALID": "value\x00"})
+
+
 def _request(*, secret: str = "safe", latency_ms: int = 2_000) -> ModelRequest:
     return ModelRequest(
         "request:1",
@@ -366,6 +408,12 @@ def _request(*, secret: str = "safe", latency_ms: int = 2_000) -> ModelRequest:
         "node:planner",
         deterministic_required=False,
     )
+
+
+def _executable(name: str) -> Path:
+    value = shutil.which(name)
+    assert value is not None
+    return Path(value).resolve(strict=True)
 
 
 def _decision_request() -> RequestDecision:

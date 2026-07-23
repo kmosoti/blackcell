@@ -61,7 +61,7 @@ def test_granian_server_fixes_the_bounded_single_worker_asgi_contract(tmp_path: 
         "loop": Loops.auto,
         "task_impl": TaskImpl.asyncio,
         "http": HTTPModes.http1,
-        "websockets": False,
+        "websockets": True,
         "backlog": 128,
         "backpressure": 17,
         "log_access": False,

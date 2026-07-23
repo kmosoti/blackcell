@@ -3,6 +3,19 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Protocol
 
+from blackcell.interfaces.http.alpha_contracts import (
+    AlphaCancelRunRequest,
+    AlphaEventPageResponse,
+    AlphaIntentRequest,
+    AlphaIntentResponse,
+    AlphaPlanRequest,
+    AlphaPlanResponse,
+    AlphaProjectRequest,
+    AlphaProjectResponse,
+    AlphaReplayResponse,
+    AlphaRunRequest,
+    AlphaRunResponse,
+)
 from blackcell.interfaces.http.contracts import (
     ApprovalRequest,
     ContextResponse,
@@ -72,7 +85,57 @@ class RuntimeApiPort(Protocol):
     ) -> OrchestrationApprovalResponse: ...
 
 
+class AlphaRuntimeApiPort(Protocol):
+    def register_alpha_project(
+        self,
+        request: AlphaProjectRequest,
+        *,
+        principal_id: str,
+    ) -> AlphaProjectResponse: ...
+
+    def accept_alpha_intent(
+        self,
+        request: AlphaIntentRequest,
+        *,
+        principal_id: str,
+    ) -> AlphaIntentResponse: ...
+
+    def accept_alpha_plan(
+        self,
+        request: AlphaPlanRequest,
+        *,
+        principal_id: str,
+    ) -> AlphaPlanResponse: ...
+
+    def submit_alpha_run(
+        self,
+        request: AlphaRunRequest,
+        *,
+        principal_id: str,
+    ) -> AlphaRunResponse: ...
+
+    def inspect_alpha_run(self, run_id: str) -> AlphaRunResponse: ...
+
+    def cancel_alpha_run(
+        self,
+        run_id: str,
+        request: AlphaCancelRunRequest,
+        *,
+        principal_id: str,
+    ) -> AlphaRunResponse: ...
+
+    def list_alpha_events(
+        self,
+        *,
+        after_cursor: int,
+        limit: int,
+    ) -> AlphaEventPageResponse: ...
+
+    def replay_alpha_run(self, run_id: str) -> AlphaReplayResponse: ...
+
+
 __all__ = [
+    "AlphaRuntimeApiPort",
     "RuntimeApiError",
     "RuntimeApiFailureCode",
     "RuntimeApiPort",

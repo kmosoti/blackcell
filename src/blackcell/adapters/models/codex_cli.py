@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Set
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -50,6 +53,66 @@ RunCommand = Callable[..., subprocess.CompletedProcess[str]]
 MonotonicClock = Callable[[], float]
 
 
+@dataclass(frozen=True, slots=True)
+class _ExecutableCommand:
+    token: str
+    identity: tuple[int, int, int, int, int] | None
+
+    @classmethod
+    def create(cls, value: str | Path, *, label: str) -> _ExecutableCommand:
+        token = os.fspath(value)
+        if not token or "\x00" in token:
+            raise ValueError(f"{label} executable is invalid")
+        if not Path(token).is_absolute():
+            if (
+                isinstance(value, Path)
+                or "/" in token
+                or any(character.isspace() for character in token)
+            ):
+                raise ValueError(f"{label} executable is invalid")
+            return cls(token, None)
+        path = Path(token)
+        try:
+            resolved = path.resolve(strict=True)
+            metadata = resolved.stat(follow_symlinks=False)
+        except (OSError, RuntimeError) as error:
+            raise ValueError(f"{label} executable is invalid") from error
+        if (
+            resolved != path
+            or not stat.S_ISREG(metadata.st_mode)
+            or not os.access(resolved, os.X_OK)
+            or metadata.st_mode & (stat.S_ISUID | stat.S_ISGID | 0o022)
+        ):
+            raise ValueError(f"{label} executable is invalid")
+        return cls(
+            str(resolved),
+            (
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_mode,
+                metadata.st_size,
+                metadata.st_mtime_ns,
+            ),
+        )
+
+    def verified_token(self) -> str:
+        if self.identity is None:
+            return self.token
+        try:
+            metadata = Path(self.token).stat(follow_symlinks=False)
+        except OSError as error:
+            raise CodexCliAdapterError("configured executable identity changed") from error
+        if (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+        ) != self.identity:
+            raise CodexCliAdapterError("configured executable identity changed")
+        return self.token
+
+
 class CodexCliAdapterError(RuntimeError):
     """The bounded host-model process failed without exposing provider content."""
 
@@ -73,6 +136,9 @@ class CodexCliModelAdapter:
     def __init__(
         self,
         *,
+        executable: str | Path = "codex",
+        git_executable: str | Path = "git",
+        environment: Mapping[str, str] | None = None,
         timeout_ceiling_seconds: float = 120.0,
         max_input_bytes: int = 1_048_576,
         max_stdout_bytes: int = 1_048_576,
@@ -87,6 +153,21 @@ class CodexCliModelAdapter:
             or timeout_ceiling_seconds <= 0
         ):
             raise ValueError("Codex CLI timeout ceiling must be positive")
+        self._executable = _ExecutableCommand.create(executable, label="Codex CLI")
+        self._git_executable = _ExecutableCommand.create(git_executable, label="Git")
+        if environment is not None and (
+            not isinstance(environment, Mapping)
+            or not all(
+                isinstance(key, str)
+                and key
+                and "\x00" not in key
+                and isinstance(value, str)
+                and "\x00" not in value
+                for key, value in environment.items()
+            )
+        ):
+            raise ValueError("Codex CLI environment is invalid")
+        self._environment = None if environment is None else dict(environment)
         for name, value in (
             ("max_input_bytes", max_input_bytes),
             ("max_stdout_bytes", max_stdout_bytes),
@@ -146,8 +227,17 @@ class CodexCliModelAdapter:
             remaining = deadline_seconds - max(0.0, self._clock() - started)
             if remaining <= 0:
                 raise CodexCliTimeoutError("Codex CLI request exhausted its setup deadline")
-            command = _command(workspace, schema_path, response_path, model_id)
+            command = _command(
+                self._executable.verified_token(),
+                workspace,
+                schema_path,
+                response_path,
+                model_id,
+            )
             try:
+                environment_options = (
+                    {} if self._environment is None else {"env": dict(self._environment)}
+                )
                 completed = self._runner(
                     command,
                     cwd=workspace,
@@ -156,6 +246,7 @@ class CodexCliModelAdapter:
                     text=True,
                     timeout=remaining,
                     check=False,
+                    **environment_options,
                 )
             except subprocess.TimeoutExpired:
                 raise CodexCliTimeoutError("Codex CLI request exceeded its deadline") from None
@@ -186,13 +277,17 @@ class CodexCliModelAdapter:
 
     def _initialize_repository(self, workspace: Path, deadline_seconds: float) -> None:
         try:
+            environment_options = (
+                {} if self._environment is None else {"env": dict(self._environment)}
+            )
             completed = self._runner(
-                ["git", "init", "--quiet"],
+                [self._git_executable.verified_token(), "init", "--quiet"],
                 cwd=workspace,
                 capture_output=True,
                 text=True,
                 timeout=min(deadline_seconds, 10.0),
                 check=False,
+                **environment_options,
             )
         except subprocess.TimeoutExpired as error:
             raise CodexCliTimeoutError(
@@ -207,13 +302,14 @@ class CodexCliModelAdapter:
 
 
 def _command(
+    executable: str,
     workspace: Path,
     schema_path: Path,
     response_path: Path,
     model_id: str,
 ) -> list[str]:
     command = [
-        "codex",
+        executable,
         "--ask-for-approval",
         "never",
         "--sandbox",

@@ -8,6 +8,8 @@ from typing import Any
 
 from rich.console import Console
 
+from blackcell.interfaces.http import StrictStruct, contract_to_builtins
+
 
 class OutputMode(StrEnum):
     JSON = "json"
@@ -96,6 +98,9 @@ def _json(value: object, *, indent: int | None = None) -> str:
 
 
 def _jsonable(value: object) -> Any:
+    if isinstance(value, StrictStruct):
+        return _jsonable(contract_to_builtins(value))
+
     if is_dataclass(value) and not isinstance(value, type):
         return {item.name: _jsonable(getattr(value, item.name)) for item in fields(value)}
 

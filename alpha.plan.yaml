@@ -1,0 +1,415 @@
+schema_version: blackcell-alpha-plan/v1
+
+program:
+  id: blackcell-alpha
+  status: in-progress
+  accepted_on: "2026-07-22"
+  branch: feature/repository-review-alpha
+  base_revision: f2965ab3d1fe18357aae58042345a6a22e171203
+  active_work_package: A08
+  objective: >-
+    Deliver a usable local BlackCell alpha whose CLI, TUI, and web views are clients of one
+    durable project-work daemon, with explicit configuration, execution, review, verification,
+    and replay boundaries.
+  authority: Direct repository-owner instruction on 2026-07-22.
+  supersedes:
+    - repository-local named-agent and Codex orchestration configuration
+    - the uncommitted human-gated product-proof delivery program
+    - GitHub epic 75 and its greenfield Rust, PyO3, and custom-agent execution DAG
+
+product:
+  identity: CLI-first project-scoped agentic framework
+  primary_loop:
+    - capture explicit intent and constraints
+    - inspect bounded project evidence
+    - build and verify a dependency-safe plan
+    - execute approved work in isolation
+    - review independently from execution
+    - verify declared outcomes from source evidence
+    - retain replayable events and artifacts
+  non_goals:
+    - greenfield rewrite of the existing Python runtime
+    - BlackCell-owned Rust or PyO3 configuration layer
+    - repository-local assistant identities or model-selection policy
+    - distributed scheduling, Kubernetes, or a visual workflow builder
+    - online self-modification or automatic production deployment
+
+architecture:
+  authority:
+    owner: daemon
+    rule: CLI, TUI, and web clients never own scheduler, persistence, policy, or run state.
+  daemon:
+    process_model: foreground
+    entrypoint_target: blackcell daemon foreground
+    api_style: versioned typed HTTP plus an ordered event stream
+    alpha_api_prefix: /api/alpha/v1
+    owns:
+      - project registry and configuration snapshots
+      - intent, plan, run, review, verification, and replay records
+      - scheduler leases, fencing, recovery, and provider dispatch
+      - ordered client events and authoritative status
+    supervision:
+      strategy: operating-system service manager
+      linux_default: systemd user service
+      portable_fallback: documented foreground process
+      forbidden:
+        - double-fork daemonization
+        - custom PID-file authority
+        - a second scheduler embedded in a client
+  clients:
+    contract_rule: All clients consume the same closed alpha wire contracts; same-language projections share one typed client implementation.
+    cli:
+      role: complete automation and recovery surface
+      output_default: json
+      current_alpha_surface:
+        - daemon status
+        - POST /api/alpha/v1/projects
+        - POST /api/alpha/v1/intents
+        - POST /api/alpha/v1/plans
+        - POST /api/alpha/v1/runs
+        - POST /api/alpha/v1/runs/{run_id}/cancel
+        - GET /api/alpha/v1/runs/{run_id}/status
+        - GET /api/alpha/v1/runs/{run_id}/replay
+        - GET /api/alpha/v1/events?after={cursor}
+      prohibited:
+        - submitting alpha work through /api/v1/runs
+        - dispatching or executing queued alpha work before A04
+    tui:
+      framework: PyRatatui 0.2
+      role: interactive projection over daemon state and commands
+      concurrency: native terminal rendering stays on the event loop; client calls use bounded async tasks
+    web:
+      framework: Litestar
+      role: browser projection over the same daemon contracts
+      updates: channels and WebSockets consume the ordered daemon event stream
+  project_configuration:
+    provider: Kernform
+    supported_version: "0.1.0"
+    wire_schema: kernform.command/v1
+    transport: argv-only subprocess
+    version_probe: [kernform, --agent, --version]
+    command_prefix: [kernform, --agent, --format, json]
+    initial_commands: [check, init]
+    prohibited_initial_commands: [inspect]
+    reason_inspect_is_deferred: Its repository inventory can exceed the alpha adapter output budget.
+    boundaries:
+      - never import a sibling Kernform checkout or its Python or Rust internals
+      - reject unsupported versions and schema values before applying artifacts
+      - validate command-specific check and init result fields, semantics, and path bindings before exposing them to clients
+      - use bounded stdout, stderr, and wall-clock budgets
+      - preserve stable exit classes and diagnostic codes without parsing human prose
+      - persist the invoked version, argv digest, result digest, and accepted artifacts
+  legacy_runtime:
+    component: DailyOperatorV2Workflow
+    disposition: migration-and-replay-evidence-only
+    rule: No new alpha CLI, TUI, web, or daemon command may invoke it.
+    retained_for:
+      - reading and replaying historical runtime-v1 records
+      - extracting reusable event, policy, persistence, and recovery contracts
+
+delivery:
+  repository: kmosoti/blackcell
+  integration_branch: feature/repository-review-alpha
+  active_programs: 1
+  tracked_writer_limit: 1
+  remote_mutations:
+    - kind: github-epic-dag-created
+      epic: 91
+      children: {A00: 92, A01: 93, A02: 94, A03: 95, A04: 96, A05: 97, A06: 98, A07: 99, A08: 100}
+      edge_count: 10
+      project: {owner: kmosoti, number: 7}
+      development_branch: null
+      verified: true
+    - kind: github-issues-closed
+      reason: not_planned
+      issues: [42, 43, 44, 45, 50, 51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90]
+      verified: true
+  github_reconciliation:
+    status: complete
+    superseded_epics: [44, 54, 75]
+    superseded_standalone_issues: [42, 43]
+    superseded_observability_issues: [45, 50, 51, 52]
+    superseded_scaffolding_issues: [55, 56, 57, 58, 59, 60, 61]
+    superseded_greenfield_issues: [76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90]
+    close_reason: not_planned
+    replacement_epic: 91
+    replacement_issues: {A00: 92, A01: 93, A02: 94, A03: 95, A04: 96, A05: 97, A06: 98, A07: 99, A08: 100}
+    readback:
+      child_order: [92, 93, 94, 95, 96, 97, 98, 99, 100]
+      edge_count: 10
+      topological_waves: [[92], [93, 94], [95], [96], [97], [98, 99], [100]]
+      project_fields: {epic_status: In Progress, active_status: In Progress, queued_status: Todo, priority: P0}
+      linked_development_branches: []
+
+test_strategy:
+  ordinary_iteration:
+    - run only exact affected pytest nodes with --blackcell-require-all-pass
+    - run Ruff check and format check only on changed Python paths
+    - run one pytest process at a time
+  milestone_gate: uv run ruff check .
+  ci_owned:
+    - complete pytest coverage gate
+    - repository-wide type check
+    - broad compatibility matrix
+  local_full_suite_rule: Run only for a release or publication request, or when focused evidence cannot bound the change.
+
+verification:
+  focused_gate: >-
+    uv run python tools/run_pytest.py
+    tests/unit/test_alpha_plan.py::test_alpha_program_is_the_single_active_delivery_authority
+    tests/unit/test_alpha_plan.py::test_alpha_architecture_has_one_daemon_and_explicit_client_boundaries
+    tests/unit/test_alpha_plan.py::test_alpha_work_package_dag_is_acyclic_and_has_one_active_node
+    tests/unit/test_alpha_plan.py::test_alpha_plan_enforces_the_fast_development_loop
+    tests/unit/test_alpha_plan.py::test_canonical_files_reference_alpha_and_remove_stale_delivery_programs
+    tests/unit/test_docs_graph.py::test_docs_graph_entrypoints_exist
+    tests/unit/test_docs_graph.py::test_docs_graph_nodes_have_frontmatter
+    tests/unit/test_docs_graph.py::test_docs_graph_map_links_canonical_nodes
+    tests/unit/test_docs_graph.py::test_decision_atlas_records_every_adr_node
+    tests/unit/test_docs_graph.py::test_readme_local_links_and_recorded_quickstart_are_maintained
+    tests/unit/test_refactor_consolidation_plan.py::test_blackcell_plan_declares_the_project_program_and_historical_context
+    tests/unit/test_daemon_cli.py::test_daemon_status_reports_runtime_readiness
+    tests/unit/test_daemon_cli.py::test_daemon_status_uses_environment_endpoint_and_fails_when_not_ready
+    tests/unit/test_daemon_cli.py::test_daemon_help_exposes_status_without_legacy_submission
+    tests/unit/test_runtime_http_client.py::test_status_decodes_public_health_contracts_and_not_ready_state
+    tests/unit/test_runtime_http_client.py::test_client_rejects_malformed_or_remote_plaintext_endpoints
+    tests/unit/test_runtime_http_client.py::test_client_accepts_remote_https_and_loopback_http
+    tests/unit/test_runtime_http_client.py::test_client_failures_are_typed_bounded_and_content_free
+    tests/unit/test_runtime_http_client.py::test_stdlib_transport_bounds_responses_and_connection_failures
+    -q --blackcell-require-all-pass
+  project_gate: uv run ruff check .
+
+work_packages:
+  - id: A00
+    title: Rebaseline and remove conflicting control planes
+    status: completed
+    depends_on: []
+    issue_number: 92
+    acceptance:
+      - AGENTS.md is the only repository-local assistant configuration.
+      - Stale product-proof and BC00-through-BC14 plans are absent.
+      - Canonical documents and blackcell.plan.yaml point to this alpha plan.
+      - The daemon CLI cannot submit work to DailyOperatorV2Workflow.
+      - The obsolete GitHub programs are reconciled after local verification.
+    candidate_evidence:
+      - AGENTS.md is the only repository-local assistant configuration and the stale .agents and .codex trees are absent
+      - obsolete product-proof and scope-realignment artifacts are absent while canonical scope, architecture, and delivery files point to this alpha plan
+      - the daemon and alpha CLI surfaces do not expose legacy /api/v1 run submission or invoke DailyOperatorV2Workflow
+      - superseded GitHub programs are closed not planned and native replacement epic 91 retains the verified child and dependency graph
+    remaining: []
+  - id: A01
+    title: Daemon client and service lifecycle
+    status: completed
+    depends_on: [A00]
+    issue_number: 93
+    existing_foundation:
+      - blackcell-runtime foreground API and worker processes
+      - public liveness and readiness routes
+      - bounded daemon status HTTP client
+    acceptance:
+      - foreground, install, start, stop, restart, status, and logs have typed outcomes
+      - systemd user supervision is optional and never becomes runtime state authority
+      - restart and recovery preserve one scheduler and one data root
+    candidate_evidence:
+      - blackcell daemon foreground delegates to the canonical runtime entry point while status uses the bounded authenticated health client
+      - install, start, stop, restart, status, and bounded logs use typed systemd user-service results without PID-file or implicit start authority
+      - one foreground daemon supervises the API plus only explicitly configured execution, review, and verification children against shared repository and data roots
+      - sibling exit and bounded graceful or forced shutdown are tested, and no configuration path starts the historical V2 worker
+    remaining: []
+  - id: A02
+    title: Kernform project configuration boundary
+    status: completed
+    depends_on: [A00]
+    issue_number: 94
+    acceptance:
+      - project check and init use the pinned agent-mode command contract
+      - unsupported versions, oversized output, timeouts, and malformed envelopes fail closed
+      - accepted artifacts are bounded to the requested project root
+    candidate_evidence:
+      - the argv-only adapter probes and requires Kernform 0.1.0, then invokes only the closed kernform.command/v1 agent JSON check and init commands
+      - direct subprocess capture bounds stdout, stderr, wall time, token, diagnostic, capability, and artifact counts with stable content-free failures
+      - check and init preserve exact invocation evidence, reject schema, version, exit, truncation, and stderr drift, and canonicalize every returned artifact inside the requested project root
+      - closed check and init result contracts reject unknown fields, malformed catalog and plan identities, invalid conformance relationships, duplicate or unsorted requirements, unbounded counts, mismatched artifact references, and result-path escapes
+      - a disposable read-only integration probe against the current Kernform 0.1.0 Python/Rust checkout initialized a 64-operation API/web project and then validated all 39 managed files as conformant through the production BlackCell adapter
+      - the JSON-first project CLI exposes only check and init, preserves Kernform failure exit classes, and accepts an explicit executable boundary
+    remaining: []
+  - id: A03
+    title: Alpha intent, plan, run, and event contracts
+    status: completed
+    depends_on: [A01, A02]
+    issue_number: 95
+    acceptance:
+      - /api/alpha/v1 has strict versioned contracts and one ordered event stream
+      - a run is asynchronous and never calls the legacy synchronous run route
+      - replay can reconstruct accepted intent and plan state without live providers
+    candidate_evidence:
+      - immutable project, intent, plan, and queued-run streams use the existing event ledger
+      - exact duplicate, restart, cursor-resume, HTTP 202, and live-free replay nodes pass locally
+      - accepted plans bind an exact Git base commit and per-node repository path authority
+    remaining: []
+  - id: A04
+    title: Provider boundary and isolated execution
+    status: completed
+    depends_on: [A03]
+    issue_number: 96
+    acceptance:
+      - providers receive bounded evidence without ambient execution authority
+      - mutating work runs in a recoverable isolated worktree with path and effect budgets
+      - leases, fencing, cancellation, and reconciliation are observable and tested
+    candidate_evidence:
+      - immutable lease and policy inputs derive one deterministic local branch and worktree path
+      - inspection counts base-relative committed changes and all untracked files against path budgets
+      - failure retains an existing checkout while explicit clean successful removal preserves the local branch
+      - bounded content-addressed evidence gives the proposal provider no repository path, mutable checkout, or tool authority
+      - a closed create/replace/delete proposal is bound to the exact evidence digest and gateway budgets
+      - the provider-facing JSON schema now requires at least one operation before the stricter host domain parser runs; the one live rejection that exposed the gap was preserved without redispatch
+      - the host-owned text executor preflights every effect, rejects symlinks and stale content, rolls back caught partial failure, and verifies the exact worktree delta
+      - append-only claim and preparation events bind attempts, monotonic fencing tokens, workers, expiries, exact worktree specs, and clean inspections
+      - typed idempotent cancellation closes queued work immediately and retains an active checkout until the exact fenced worker acknowledges stop
+      - explicit startup reconciliation requeues only missing or unchanged checkouts that have not crossed the provider-dispatch boundary; changed, uninspectable, or provider-ambiguous work becomes reconciliation-required
+      - the Linux acceptance backend fails closed unless Bubblewrap proves distinct mount, PID, IPC, UTS, cgroup, and network namespaces through its dedicated JSON status channel
+      - direct argv resolves only host-allowlisted canonical executables; the worktree and explicit runtime roots are read-only, Git metadata and ambient host trees are absent, and no shell or host network is available
+      - fixed environment, temporary-filesystem, address-space, CPU, process, file, wall-clock, stdout, and stderr limits produce content-free typed infrastructure failures
+      - cooperative cancellation tears down the Bubblewrap process tree, and exact before/after Git inspections reject any project-state drift while bounded stream bytes retain exact digests and lengths
+      - every acceptance check declares repository-read and process effects, and every repository writer additionally declares bounded path authority
+      - accepted repository writers form one dependency-ordered chain, so alpha rejects divergent implicit merge semantics
+      - the host commits admitted changes with fixed identity, disabled hooks and signing, ignored global and system Git configuration, and bounded direct argv
+      - node success binds the exact clean policy-compliant inspection and final Git head, reports the successful checkout as retained, and survives live-free replay
+      - durable cleanup intent precedes successful-checkout removal; completed or failed evidence survives restart, preserves the local branch and commit, and updates retained-checkout truth without rewriting the run outcome
+      - the closed worker policy bounds globally retained successful checkouts by durable success order, recovers pending cleanup before dispatch, and stops new work while the configured count cannot be satisfied
+      - each later checkout derives its base from the latest successful writer in its dependency ancestry, or from the accepted plan base when no writer precedes it
+      - queued-run discovery follows durable global event order rather than lexical run identifiers
+      - the host evidence collector reads only admitted regular UTF-8 files, excludes Git metadata and links, and enforces 64-file, per-file, and total-byte limits before provider invocation
+      - one injected bootstrap worker claims the first dependency-ready node, invokes the proposal and text-effect ports only for repository writers, and runs every declared check through the injected isolation boundary
+      - context, proposal, provider metadata, admitted effects, raw bounded check streams, typed check results, and terminal manifests are content-addressed before a lifecycle event references them
+      - one strict pre-dispatch event binds the exact fenced worker, deterministic provider request ID, and already-stored canonical context; restart after that marker never auto-requeues the provider call
+      - success, stable failure, and cooperative cancellation bind the terminal outcome digest when storage succeeds; cancellation retains completed partial stages and closes the pre-success race
+      - check-only nodes bypass provider and mutation ports while executing from the latest successful dependency-writer head
+      - the daemon starts API-only when alpha configuration is absent and never auto-starts the historical V2 worker
+      - one owner-only closed JSON contract outside the repository fixes the CODE profile, model, remote locality, classification, provider environment names, executable identities, isolation roots, aliases, and resource bounds before child spawn
+      - the configured alpha worker shares the canonical ledger and artifact store, reconciles startup before dispatch, honors storage headroom, and polls only when idle or fenced by a competitor
+      - pinned Codex and Git argv plus a denylisted explicit environment allowlist keep canonical provider input on stdin and exclude the daemon API token and ambient process configuration
+    remaining: []
+  - id: A05
+    title: Review, verification, and replay
+    status: completed
+    depends_on: [A04]
+    issue_number: 97
+    acceptance:
+      - review and verification are separate from the executor and from each other
+      - findings bind claims to source evidence and cannot weaken acceptance checks
+      - run replay is live-free and detects missing or changed artifacts
+    candidate_evidence:
+      - alpha-replay/v2 re-folds the event grammar before bounded artifact reads and invokes no provider, executor, acceptance runner, or worktree effect
+      - alpha-node-outcome/v2 binds canonical context, proposal, provider, effect, exact acceptance command, result, stdout, and stderr artifacts to the durable lease and plan
+      - replay reports verified, failed, inconclusive, or not-applicable with stable findings and a deterministic evidence digest while exposing no artifact content
+      - missing metadata, changed bytes, noncanonical JSON, unsupported schemas, and source-binding mismatches are distinguished from unavailable storage or absent terminal evidence
+      - the API and configured alpha worker open the same database-backed artifact store and configured isolation root, so completed runs replay identically after restart
+      - a bounded host-owned review context binds the accepted objective, constraints, dependency graph, path and effect scope, exact check argv and expected exits, result identities, and replay evidence digests
+      - REVIEW gateway calls receive only immutable source and command excerpts with host-derived evidence IDs and no tools; their closed output can propose cited findings but cannot approve, self-admit, or rewrite acceptance
+      - deterministic structural admission rejects context drift, invented evidence, out-of-range citations, duplicate identities, unknown fields, and the fixed correctness and reward-hacking taxonomy
+      - a separate alpha review stream claims the exact successful execution event with an immutable run-state and artifact-evidence snapshot, monotonic attempt and fence, worker identity, and expiry
+      - review provider dispatch is durably fenced by a deterministic request ID plus acceptance and context artifact digests; success binds proposal, provider-result, and admitted-review artifacts without asserting approval or verification
+      - restart requeues only a pre-dispatch review claim under a new fence, while a post-dispatch restart becomes reconciliation-required and can never auto-redispatch
+      - review preparation reuses the live-free artifact verifier and accepts only a fully verified successful execution graph; no provider, executor, acceptance runner, worktree, or network port is present
+      - the prepared acceptance snapshot binds accepted project, intent, plan, DAG, effects, paths, exact check commands, expected exits, result identities, pass state, and base revision
+      - complete bounded source-before, source-after, effect, outcome, command, result, stdout, and stderr evidence receives host-derived artifact, node, path or check, and line identities; oversize and aggregate overflow fail closed without truncation or omission
+      - the review-only worker has exactly execution-source, fenced scheduler, artifact-store, and REVIEW-provider ports; it contains no executor, acceptance runner, worktree, shell, or network-effect authority
+      - successful execution candidates bind the terminal execution snapshot independently of later successful-worktree cleanup, are revalidated after claim, and store canonical review context before provider dispatch
+      - proposal, provider-result, and structurally admitted review artifacts commit before success; preparation, provider, admission, artifact, persistence, and stale-fence failures remain stable and content-free
+      - completed review is never selected twice after process reconstruction, and a crash after dispatch remains ambiguous for supervisor reconciliation rather than repeating REVIEW
+      - an owner-only closed JSON contract outside the repository explicitly fixes a distinct REVIEW profile, model, remote locality, classification, token/cost/latency budgets, canonical Codex and Git executables, environment names, reviewer and supervisor identities, lease, and poll interval
+      - the review foreground process validates provider boundaries before storage, reconciles as the supervisor, dispatches as the reviewer, honors storage headroom, and can be enabled as a daemon child independently of execution without starting V2
+      - concrete execution-source, reviewer-transition, and write-only artifact facades keep reconciliation, worktree mutation, and artifact-read authority outside the review coordinator object graph
+      - the deterministic verifier binds objective, constraints, nodes, write scopes, exact checks, and review policy into an excerpt-free intent-to-evidence matrix whose rows carry only criterion, evidence, and finding identities
+      - complete host outcome, source/effect, and command/result/stdout/stderr coverage plus a clear review passes; failed checks, unresolved findings, or check-artifact identity drift fail; missing or duplicate required evidence is inconclusive
+      - a separate verification stream binds the exact successful execution and review events, full review artifact chain, replay identities, and finding count under monotonic verifier attempts and fencing tokens
+      - completed pass, fail, or inconclusive verdicts bind report and matrix digests, while verifier-error is a distinct terminal state and incomplete pure verification can be safely requeued without an external-dispatch ambiguity
+      - successful-review discovery follows durable event order without reading artifacts before claim; preparation then revalidates the immutable candidate and reconstructs the execution context through live-free replay
+      - canonical context, proposal, provider-result, and admitted-review bytes are checked against exact media types, digests, bindings, deterministic admission, and finding count before verification
+      - the verifier-only worker has exactly immutable verification-source, fenced scheduler, write-only artifact, and deterministic-verifier ports, commits the canonical report before completion, and never selects a completed verdict again after restart
+      - source, verifier, report-artifact, and persistence faults become stable content-free verifier-error outcomes, while pass, fail, and inconclusive remain completed verdicts
+      - an owner-only closed verifier contract outside the repository fixes distinct verifier and verification-supervisor identities, lease duration, and polling cadence without model or executable authority
+      - the foreground verifier process reconciles only as the supervisor, runs through narrow source, transition, report-write, and deterministic-verifier facades, honors shared storage headroom, and supports diagnostic once mode
+      - the daemon validates and starts alpha-verify-worker only when explicitly configured, including verify-only composition, and never infers it from execution or review configuration
+      - alpha-replay/v2 includes a closed verification projection that re-folds the verifier stream, revalidates exact execution and successful-review source events, and reads no live repository or worktree state
+      - completed verdict replay requires one canonical report whose content address, media type, closed schema, candidate bindings, verdict, and matrix digest match the durable stream
+      - not-started, claimed, requeued, completed, and verifier-error states remain distinct; a report stored before verifier-error is checked without converting the error into a verdict
+      - report tamper, missing metadata, invalid JSON or schema, noncanonical bytes, binding drift, and unavailable storage produce stable content-free integrity findings and one deterministic verification evidence digest
+      - a real execution-to-review-to-verification acceptance chain admits a source-cited hidden-shortcut finding, preserves its non-approval semantics, produces a completed fail verdict, and replays it after restart
+      - reviewer provider failure persists without redispatch or a verification verdict, while verifier failure persists and replays as verifier-error with no verdict after restart
+    remaining: []
+  - id: A06
+    title: PyRatatui TUI
+    status: completed
+    depends_on: [A05]
+    issue_number: 98
+    acceptance:
+      - the TUI uses the shared typed client and non-blocking workers
+      - reconnect resumes from an event cursor without creating another authority
+    candidate_evidence:
+      - one strict authenticated RuntimeHttpClient covers project registration, intent and plan acceptance, run submission, status, cancellation, replay, and ordered event pages
+      - JSON-first blackcell alpha commands expose the complete typed automation surface and accept mutation contracts only through bounded regular JSON files
+      - client credentials come only from the existing environment or owner-only token-file boundary, remain redacted, and never appear as command arguments
+      - the shared client rejects malformed identifiers and pagination, remote plaintext endpoints, redirects, oversized bodies, unexpected media types, and invalid response contracts with bounded typed failures
+      - a framework-neutral asynchronous controller offloads every synchronous client operation, serializes event refresh, validates response bindings and cursor monotonicity, and retains a bounded immutable projection
+      - project, intent, plan, submit, status, cancel, replay, and event operations are available to a thin interactive shell without scheduler, persistence, provider, worktree, credential, or legacy-runtime authority
+      - optional cursor checkpoints use canonical owner-only atomic files keyed by hashed endpoint identity and bind the last visible alpha event without retaining credentials or endpoint text
+      - reconnect validates the stored ledger position and event witness through the shared client before adoption, while refresh persists before in-memory advancement so failure can replay but never skip events
+      - a public PyRatatui shell projects connection state, bounded ordered events, and run status, replay, and cancellation exclusively through AlphaTuiController with service values rendered as bounded plain text
+      - native terminal drawing remains on the asyncio event-loop thread while connection, event, and shared workflow/run tasks use duplicate-start suppression; headless tests prove input remains responsive during pending refresh and failures remain content-free
+      - the shell accepts only an injected controller factory, contains no credential widget or authority port, and is exposed only by blackcell alpha tui through the shared authenticated RuntimeHttpClient and owner-only cursor store
+      - controller admission now binds complete project, intent, plan, and run response content plus cross-linked replay identities and topological order before atomically replacing the selected project workflow projection
+      - a separate exclusive workflow lane reads one canonical absolute no-follow regular JSON file of at most 1 MiB off the UI loop, clears the path immediately, decodes the selected closed request contract, and invokes only the injected project, intent, plan, or run controller method
+      - the public shell renders bounded plain-text project and intent summaries, the accepted plan DAG, run state, replay artifact metadata, integrity findings, verification lifecycle, verdict, and evidence status, plus only the retained-checkout or reconciliation state present in current contracts
+      - headless coverage proves project-through-run submission, replay projection, responsive run and event controls, and content-free rejection of missing, symlinked, empty, oversized, malformed, and operation-mismatched files; the six-node focused gate passed in 5.53 seconds on 2026-07-22
+      - PyRatatui 0.2.9 is a bounded direct runtime dependency with a locked cp310-abi3 wheel that imports on the measured Python 3.14 host; seven exact shell and CLI nodes passed in 1.46 seconds
+      - alpha-replay/v2 still exposes only integrity findings, verification metadata, and retained or reconciliation state; the shell labels unavailable review findings and does not invent recovery authority
+    remaining: []
+  - id: A07
+    title: Web projection and real-time events
+    status: completed
+    depends_on: [A05]
+    issue_number: 99
+    acceptance:
+      - the web UI uses a closed contract-validating same-origin client and daemon authentication boundary
+      - WebSocket reconnect resumes ordered events without polling mutable storage directly
+    candidate_evidence:
+      - an authenticated read-scope HTTP route exchanges the bearer credential for a bounded short-lived single-use WebSocket ticket while retaining only its digest and expiry
+      - the read-only socket consumes its ticket before accept, validates a bounded cursor, and sends strict alpha event pages directly from AlphaRuntimeApiPort in durable global order
+      - awaited sends, one disconnect receive, bounded polling, stable close codes, and a process-local connection cap prevent unbounded client backlog or polling load
+      - Granian enables ASGI WebSockets without changing the one-worker, bounded-backpressure, disabled-access-log daemon contract
+      - a public data-free /alpha shell serves only bounded packaged same-origin assets with no-store, a closed content security policy, frame denial, and no browser session or cookie authority
+      - the dependency-free browser client rejects remote plaintext credential transport, retains the bearer and resume cursor only in memory, and requests a fresh one-use socket ticket for every initial or reconnect attempt
+      - exact ticket, event-page, event, run, and replay bindings are checked before cursor advancement or display; response bytes, retained events, reconnect delay, identifiers, and safe DOM rendering are bounded
+      - accessible status, replay, cancellation, and live ordered-event views clear credentials and projections on disconnect, page exit, or protocol failure
+      - an accessible local-file intake sends project, intent, plan, and run contracts through the same in-memory authenticated client without retaining file content, file paths, or request objects
+      - request bytes, closed keys, schemas, identifiers, digests, collections, node budgets, effects, repository paths, checks, DAG topology, and writer ordering fail locally before transport while the daemon remains final admission authority
+      - accepted project, intent, plan, and run responses must match the submitted identities and content before plain-text display; a run response selects the inspector only after that binding passes
+      - replacement connection, disconnect, page teardown, validation failure, and abort clear the file control and workflow projection without leaking submitted JSON
+    remaining: []
+  - id: A08
+    title: Real-project proof and alpha freeze
+    status: active
+    depends_on: [A06, A07]
+    issue_number: 100
+    acceptance:
+      - one nontrivial project completes through CLI and at least one interactive client
+      - restart, cancellation, recovery, review, verification, and replay evidence pass
+      - docs, package metadata, and compatibility claims match the measured alpha behavior
+    candidate_evidence:
+      - the CLI and browser now expose the same closed project, intent, plan, run, status, cancellation, replay, and ordered-event daemon contracts without invoking the legacy run API
+      - an exact deterministic A08 proof creates a real two-node Git project, admits it through the public JSON-file CLI and production HTTP client/Litestar/RuntimeApiService path, applies one bounded recorded-provider change in a real Git worktree, and runs both checks through the production Bubblewrap acceptance runner
+      - the same proof completes clear independent review and deterministic PASS verification, then reconstructs verified execution and verification evidence from fresh event and artifact store instances without another provider, effect, or acceptance call
+      - the packaged browser shell reads terminal status and replay from that same daemon data root and resumes the ticketed WebSocket at queued-run cursor 4, receiving the exact ordered execution, review, and verification events through cursor 17
+      - the global alpha event projection now includes the canonical review and verification lifecycle event sets; previously replay succeeded while browser streaming failed closed when review events entered the shared ledger
+      - recorded provider evidence is asserted as 100 input tokens, 20 output tokens, 10 ms, and 1 micro-USD, and the focused isolated proof passed locally in 2.10 seconds on 2026-07-22; these deterministic fixture values are not live-provider measurements
+      - release/alpha/acceptance-manifest.json closes the deterministic candidate evidence over exact source paths and eight exact behavior nodes covering success, restart, cancellation, provider-ambiguous recovery, review and verification, event resumption, provider failure, and read-only legacy replay
+      - the source-checking manifest contract plus all eight behavior nodes passed together in one pytest process in 11.55 seconds on the measured WSL2 host; changed-path Ruff and format checks plus the project Ruff gate also passed
+      - the source-run alpha operator quickstart binds the secure runtime environment, checked request templates, exact CLI and browser flow, execution/review/verification configuration, cancellation, restart, replay, and measured nonclaims; every template decodes through the production contract
+      - one authorized production BlackCell CODE-provider attempt against the BlackCell base reached a durable terminal invalid-proposal failure in 6,933 ms, applied no change, ran no acceptance command, and replayed verified context and outcome artifacts after API restart without redispatch
+      - the live failure proof explicitly records that provider tokens, provider latency, and cost were not persisted before rejection, that external billing is not observable, and that the checkout lacked Kernform managed state; no successful-live-output or conformance claim is inferred
+      - the clean failed checkout and base-only deterministic branch were inspected, removed under explicit operator authority, and pruned back to one registered worktree without losing a unique commit or change
+    remaining:
+      - complete a contract-valid change on a representative maintained Kernform project with an explicitly configured live provider and a human-driven browser or packaged TUI, capturing actual output quality, successful-attempt tokens and latency, external billing evidence when available, and recovery comprehension
+      - run the CI-owned full coverage and type gates for the locked PyRatatui dependency and public TUI entry point
+      - measure supported and unsupported platforms, reconcile a clean intentional revision, and publish only after separate commit, push, tag, and release authority

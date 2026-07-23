@@ -2,13 +2,17 @@ schema_version: blackcell-refactor-consolidation-plan/v1
 
 program:
   name: architecture-consolidation
-  status: implementation-complete-awaiting-merge
+  status: merged-complete
   title: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries
   branch: refactor/consolidation
   superseded_branch: refactor/architecture-consolidation
   base_ref: origin/main
   implementation_base_sha: 1a249d8aaa1f5f230c8492ab249ea06d255f24ee
-  merge_policy: PR 72 may use any repository-approved merge method after required status checks and any enabled review or conversation-resolution policy passes.
+  merge:
+    pull_request: 72
+    base_branch: main
+    merge_commit: ff1e6be69da3135d35411ae10f63208da278c4bf
+    merged_at: "2026-07-17T00:53:01Z"
   runtime_v1_context: runtime-v1 evidence is frozen foundational history, not architecture-consolidation acceptance evidence.
   verification_policy:
     runtime_v1_evidence: historical-read-only
@@ -95,7 +99,7 @@ issue_delivery:
   project:
     title: BlackCell
     status:
-      epic: In Progress
+      epic: Done
       completed:
         AC00: Done
         AC01: Done
@@ -104,9 +108,9 @@ issue_delivery:
         AC04: Done
         AC05: Done
         AC06: Done
-      active:
-        AC07: In Progress
-      queued: Todo
+        AC07: Done
+      active: {}
+      queued: null
     type: refactor
   parent:
     issue_number: 63
@@ -126,8 +130,6 @@ issue_delivery:
       69: [65, 67]
       70: [64]
       71: [65, 66, 67, 68, 69, 70]
-      60: [65, 66, 67]
-      61: [60]
 
 work_packages:
   - id: AC00
@@ -402,7 +404,8 @@ work_packages:
   - id: AC07
     issue_number: 71
     title: Enforce architecture fitness without source-bound release evidence
-    status: implementation-complete-awaiting-merge
+    status: accepted
+    accepted_on: 2026-07-17
     decision_updated_on: 2026-07-16
     decision_artifact: docs/decisions/architecture-consolidation/ac07-architecture-fitness.json
     depends_on: [AC01, AC02, AC03, AC04, AC05, AC06]

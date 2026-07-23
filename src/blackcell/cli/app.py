@@ -1,5 +1,10 @@
+import asyncio
+import os
+import shutil
+import stat
 import sys
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal, Never
 
@@ -9,12 +14,42 @@ from rich.console import Console
 from rich.table import Table
 
 from blackcell import __version__
+from blackcell.adapters.daemon_systemd import (
+    SystemdLifecycleResult,
+    SystemdServiceError,
+    SystemdServiceFailureCode,
+    SystemdUnitStatus,
+    SystemdUserServiceManager,
+)
+from blackcell.adapters.kernform_cli import (
+    DEFAULT_KERNFORM_EXECUTABLE,
+    KERNFORM_EXECUTABLE_ENV,
+    KernformCliClient,
+    KernformClientError,
+    KernformInvocationResult,
+    KernformProfile,
+)
 from blackcell.adapters.retrieval import Fts5EvidenceRetriever
+from blackcell.adapters.runtime_http import (
+    DEFAULT_RUNTIME_ENDPOINT,
+    RUNTIME_ENDPOINT_ENV,
+    RuntimeClientError,
+    RuntimeHttpClient,
+    RuntimeServiceStatus,
+)
+from blackcell.adapters.tui_cursor import FileAlphaTuiCursorStore
+from blackcell.bootstrap.process import main as runtime_process_main
 from blackcell.bootstrap.repository import (
     compose_repository_runtime,
     default_repository_database_path,
 )
 from blackcell.cli.output import OutputRenderer
+from blackcell.config import (
+    DATA_DIR_ENV,
+    SecurityConfigError,
+    SecurityConfigFailureCode,
+    load_service_token,
+)
 from blackcell.evaluation import (
     BenchmarkAggregate,
     BenchmarkScenario,
@@ -42,6 +77,21 @@ from blackcell.evaluation import (
 from blackcell.features.project_operational_state import OperationalBeliefState
 from blackcell.features.replay_run import RunReplayReport
 from blackcell.features.retrieve_evidence import DeterministicEvidenceRetriever
+from blackcell.interfaces.http import (
+    AlphaCancelRunRequest,
+    AlphaIntentRequest,
+    AlphaPlanRequest,
+    AlphaProjectRequest,
+    AlphaRunRequest,
+    StrictStruct,
+    WireContractError,
+    decode_contract,
+)
+from blackcell.interfaces.tui import (
+    AlphaTuiApp,
+    AlphaTuiController,
+    AlphaTuiCursorError,
+)
 from blackcell.kernel import EventEnvelope, EventStore, KernelError
 from blackcell.models import ActionProposal, CodexExecModel, DecisionModel
 from blackcell.operator import (
@@ -97,20 +147,432 @@ class BlackCellCli(App):
         )
 
 
+@dataclass(frozen=True, slots=True)
+class DaemonStatusResult:
+    endpoint: str | None
+    live: bool
+    ready: bool
+    runtime_error: str | None
+    service: SystemdUnitStatus
+    schema_version: Literal["daemon-status/v1"] = "daemon-status/v1"
+
+
+@dataclass(frozen=True, slots=True)
+class DaemonForegroundResult:
+    operation: Literal["foreground"] = "foreground"
+    outcome: Literal["stopped"] = "stopped"
+    schema_version: Literal["daemon-lifecycle/v1"] = "daemon-lifecycle/v1"
+
+
 _OUTPUT = OutputRenderer()
+_MAX_ALPHA_REQUEST_FILE_BYTES = 2 * 1024 * 1024
 
 app = BlackCellCli(
     name="blackcell",
-    help="Blackcell event-sourced control runtime for context-guided agents.",
+    help="BlackCell CLI-first project agent framework.",
     version=__version__,
 )
 operator_app = App(name="operator")
+daemon_app = App(name="daemon")
+project_app = App(name="project")
 events_app = App(name="events")
 bench_app = App(name="bench")
+alpha_app = App(name="alpha")
+alpha_project_app = App(name="project")
+alpha_intent_app = App(name="intent")
+alpha_plan_app = App(name="plan")
+alpha_run_app = App(name="run")
+alpha_events_app = App(name="events")
 
 app.command(operator_app)
+app.command(daemon_app)
+app.command(project_app)
 app.command(events_app)
 app.command(bench_app)
+app.command(alpha_app)
+alpha_app.command(alpha_project_app)
+alpha_app.command(alpha_intent_app)
+alpha_app.command(alpha_plan_app)
+alpha_app.command(alpha_run_app)
+alpha_app.command(alpha_events_app)
+
+
+@daemon_app.command(name="status")
+def daemon_status(
+    endpoint: Annotated[
+        str | None,
+        Parameter(
+            "--endpoint",
+            help=(
+                f"Runtime base URL; defaults to ${RUNTIME_ENDPOINT_ENV} "
+                f"or {DEFAULT_RUNTIME_ENDPOINT}."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Report service-manager state and runtime liveness/readiness."""
+    try:
+        service = SystemdUserServiceManager().status()
+    except SystemdServiceError as error:
+        _fail(str(error), code=error.cli_exit_code)
+    runtime: RuntimeServiceStatus | None = None
+    runtime_error: str | None = None
+    runtime_client: RuntimeHttpClient | None = None
+    try:
+        runtime_client = RuntimeHttpClient(endpoint=_daemon_endpoint(endpoint))
+        runtime = runtime_client.status()
+    except RuntimeClientError as error:
+        runtime_error = str(error)
+    status = DaemonStatusResult(
+        endpoint=(
+            runtime.endpoint if runtime is not None else getattr(runtime_client, "endpoint", None)
+        ),
+        live=runtime.live if runtime is not None else False,
+        ready=runtime.ready if runtime is not None else False,
+        runtime_error=runtime_error,
+        service=service,
+    )
+    _output().emit(status, rich=_daemon_status_table(status))
+    if not status.ready:
+        raise SystemExit(1)
+
+
+@daemon_app.command(name="foreground")
+def daemon_foreground() -> None:
+    """Run the API and any explicitly configured alpha worker in the foreground."""
+    exit_code = runtime_process_main(("daemon",))
+    if exit_code:
+        raise SystemExit(exit_code)
+    _output().emit(DaemonForegroundResult())
+
+
+@daemon_app.command(name="install")
+def daemon_install(
+    environment_file: Annotated[
+        Path,
+        Parameter(
+            "--environment-file",
+            help="Existing owner-only systemd EnvironmentFile with runtime configuration.",
+        ),
+    ],
+    runtime_executable: Annotated[
+        Path | None,
+        Parameter(
+            "--runtime-executable",
+            help="Absolute blackcell-runtime executable; defaults to PATH resolution.",
+        ),
+    ] = None,
+) -> None:
+    """Install and enable the idempotent systemd user service without starting it."""
+    try:
+        executable = runtime_executable or _default_runtime_executable()
+        result = SystemdUserServiceManager().install(
+            environment_file=environment_file,
+            runtime_executable=executable,
+        )
+    except SystemdServiceError as error:
+        _fail(str(error), code=error.cli_exit_code)
+    _output().emit(result)
+
+
+@daemon_app.command(name="start")
+def daemon_start() -> None:
+    """Start the installed systemd user service."""
+    _emit_daemon_lifecycle("start")
+
+
+@daemon_app.command(name="stop")
+def daemon_stop() -> None:
+    """Stop the installed systemd user service."""
+    _emit_daemon_lifecycle("stop")
+
+
+@daemon_app.command(name="restart")
+def daemon_restart() -> None:
+    """Restart or start the installed systemd user service."""
+    _emit_daemon_lifecycle("restart")
+
+
+@daemon_app.command(name="logs")
+def daemon_logs(
+    lines: Annotated[
+        int,
+        Parameter("--lines", help="Most recent journal entries, from 1 through 200."),
+    ] = 100,
+) -> None:
+    """Read a bounded set of typed systemd journal entries."""
+    try:
+        result = SystemdUserServiceManager().logs(lines=lines)
+    except SystemdServiceError as error:
+        _fail(str(error), code=error.cli_exit_code)
+    _output().emit(result)
+
+
+@alpha_project_app.command(name="register")
+def alpha_project_register(
+    request: Annotated[
+        Path,
+        Parameter("--request", help="Closed alpha-project-request/v1 JSON file."),
+    ],
+    endpoint: Annotated[
+        str | None,
+        Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
+    ] = None,
+) -> None:
+    """Register one project through the shared alpha daemon client."""
+    contract = _load_alpha_request(request, AlphaProjectRequest)
+    _output().emit(
+        _invoke_alpha_http(
+            lambda client: client.register_alpha_project(contract),
+            endpoint=endpoint,
+        )
+    )
+
+
+@alpha_intent_app.command(name="accept")
+def alpha_intent_accept(
+    request: Annotated[
+        Path,
+        Parameter("--request", help="Closed alpha-intent-request/v1 JSON file."),
+    ],
+    endpoint: Annotated[
+        str | None,
+        Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
+    ] = None,
+) -> None:
+    """Accept one bounded project intent through the daemon."""
+    contract = _load_alpha_request(request, AlphaIntentRequest)
+    _output().emit(
+        _invoke_alpha_http(lambda client: client.accept_alpha_intent(contract), endpoint=endpoint)
+    )
+
+
+@alpha_plan_app.command(name="accept")
+def alpha_plan_accept(
+    request: Annotated[
+        Path,
+        Parameter("--request", help="Closed alpha-plan-request/v1 JSON file."),
+    ],
+    endpoint: Annotated[
+        str | None,
+        Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
+    ] = None,
+) -> None:
+    """Accept one dependency-safe alpha plan through the daemon."""
+    contract = _load_alpha_request(request, AlphaPlanRequest)
+    _output().emit(
+        _invoke_alpha_http(lambda client: client.accept_alpha_plan(contract), endpoint=endpoint)
+    )
+
+
+@alpha_run_app.command(name="submit")
+def alpha_run_submit(
+    request: Annotated[
+        Path,
+        Parameter("--request", help="Closed alpha-run-request/v1 JSON file."),
+    ],
+    endpoint: Annotated[
+        str | None,
+        Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
+    ] = None,
+) -> None:
+    """Submit one asynchronous alpha run through the daemon."""
+    contract = _load_alpha_request(request, AlphaRunRequest)
+    _output().emit(
+        _invoke_alpha_http(lambda client: client.submit_alpha_run(contract), endpoint=endpoint)
+    )
+
+
+@alpha_run_app.command(name="status")
+def alpha_run_status(
+    run_id: str,
+    endpoint: Annotated[
+        str | None,
+        Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
+    ] = None,
+) -> None:
+    """Read authoritative alpha run status from the daemon."""
+    _output().emit(
+        _invoke_alpha_http(lambda client: client.inspect_alpha_run(run_id), endpoint=endpoint)
+    )
+
+
+@alpha_run_app.command(name="cancel")
+def alpha_run_cancel(
+    run_id: str,
+    request: Annotated[
+        Path,
+        Parameter("--request", help="Closed alpha-cancel-run-request/v1 JSON file."),
+    ],
+    endpoint: Annotated[
+        str | None,
+        Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
+    ] = None,
+) -> None:
+    """Request cooperative cancellation through the daemon."""
+    contract = _load_alpha_request(request, AlphaCancelRunRequest)
+    _output().emit(
+        _invoke_alpha_http(
+            lambda client: client.cancel_alpha_run(run_id, contract),
+            endpoint=endpoint,
+        )
+    )
+
+
+@alpha_run_app.command(name="replay")
+def alpha_run_replay(
+    run_id: str,
+    endpoint: Annotated[
+        str | None,
+        Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
+    ] = None,
+) -> None:
+    """Replay execution and verification evidence without live effects."""
+    _output().emit(
+        _invoke_alpha_http(lambda client: client.replay_alpha_run(run_id), endpoint=endpoint)
+    )
+
+
+@alpha_events_app.command(name="list")
+def alpha_events_list(
+    after: Annotated[
+        int,
+        Parameter("--after", help="Resume after this global event cursor."),
+    ] = 0,
+    limit: Annotated[
+        int,
+        Parameter("--limit", help="Maximum alpha events to return, from 1 through 200."),
+    ] = 100,
+    endpoint: Annotated[
+        str | None,
+        Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
+    ] = None,
+) -> None:
+    """Read alpha events in durable global order."""
+    _output().emit(
+        _invoke_alpha_http(
+            lambda client: client.list_alpha_events(after_cursor=after, limit=limit),
+            endpoint=endpoint,
+        )
+    )
+
+
+@alpha_app.command(name="tui")
+def alpha_tui(
+    endpoint: Annotated[
+        str | None,
+        Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
+    ] = None,
+    cursor_dir: Annotated[
+        Path | None,
+        Parameter(
+            "--cursor-dir",
+            help=(f"Owner-only cursor directory; defaults to ${DATA_DIR_ENV}/alpha-tui-cursors."),
+        ),
+    ] = None,
+    refresh_seconds: Annotated[
+        float | None,
+        Parameter(
+            "--refresh-seconds",
+            help="Ordered-event refresh interval from 0.25 through 60; use none to disable.",
+        ),
+    ] = 1.0,
+    frames_per_second: Annotated[
+        float,
+        Parameter("--frames-per-second", help="Terminal render rate from 1 through 60."),
+    ] = 20.0,
+) -> None:
+    """Run the PyRatatui projection over the shared authenticated alpha client."""
+    try:
+        _launch_alpha_tui(
+            endpoint=endpoint,
+            cursor_dir=cursor_dir,
+            refresh_seconds=refresh_seconds,
+            frames_per_second=frames_per_second,
+        )
+    except SecurityConfigError as error:
+        _fail(str(error), code=2)
+    except RuntimeClientError as error:
+        _fail(str(error), code=error.cli_exit_code)
+    except AlphaTuiCursorError as error:
+        _fail(str(error), code=2)
+    except ValueError:
+        _fail("invalid-alpha-tui-configuration", code=2)
+
+
+@project_app.command(name="check")
+def project_check(
+    path: Annotated[
+        Path,
+        Parameter("--path", help="Existing project root to check."),
+    ] = Path("."),
+    kernform: Annotated[
+        str | None,
+        Parameter(
+            "--kernform",
+            help=(
+                f"Kernform executable; defaults to ${KERNFORM_EXECUTABLE_ENV} "
+                f"or {DEFAULT_KERNFORM_EXECUTABLE}."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Check project conformance through Kernform's pinned agent contract."""
+    result = _invoke_kernform(lambda client: client.check(path), executable=kernform)
+    _output().emit(result)
+    if result.exit_code:
+        raise SystemExit(result.exit_code)
+
+
+@project_app.command(name="init")
+def project_init(
+    name: str,
+    destination: Annotated[
+        Path,
+        Parameter("--destination", help="Project root to initialize."),
+    ],
+    profile: Annotated[
+        KernformProfile,
+        Parameter("--profile", help="Kernform project profile."),
+    ] = "library",
+    capabilities: Annotated[
+        tuple[str, ...],
+        Parameter("--with", help="Additional Kernform capability; repeat as needed."),
+    ] = (),
+    no_git: Annotated[
+        bool,
+        Parameter("--no-git", help="Do not initialize a Git repository."),
+    ] = False,
+    initial_commit: Annotated[
+        bool,
+        Parameter("--initial-commit", help="Create Kernform's initial Git commit."),
+    ] = False,
+    kernform: Annotated[
+        str | None,
+        Parameter(
+            "--kernform",
+            help=(
+                f"Kernform executable; defaults to ${KERNFORM_EXECUTABLE_ENV} "
+                f"or {DEFAULT_KERNFORM_EXECUTABLE}."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Initialize one project through Kernform's pinned agent contract."""
+    result = _invoke_kernform(
+        lambda client: client.init(
+            name=name,
+            destination=destination,
+            profile=profile,
+            capabilities=capabilities,
+            no_git=no_git,
+            initial_commit=initial_commit,
+        ),
+        executable=kernform,
+    )
+    _output().emit(result)
+    if result.exit_code:
+        raise SystemExit(result.exit_code)
 
 
 @operator_app.command(name="run")
@@ -538,6 +1000,19 @@ def bench_runtime(
     _output().emit(report, rich=_runtime_benchmark_table(report))
 
 
+def _daemon_status_table(status: DaemonStatusResult) -> Table:
+    table = Table(title="BlackCell Runtime")
+    table.add_column("Field")
+    table.add_column("Value")
+    table.add_row("Endpoint", status.endpoint or "unavailable")
+    table.add_row("Live", "yes" if status.live else "no")
+    table.add_row("Ready", "yes" if status.ready else "no")
+    table.add_row("Service installed", "yes" if status.service.installed else "no")
+    table.add_row("Service active", "yes" if status.service.active else "no")
+    table.add_row("Service substate", status.service.substate)
+    return table
+
+
 def _kernel_events_table(events: Sequence[EventEnvelope]) -> Table:
     table = Table(title="Kernel Events")
     table.add_column("Position")
@@ -750,6 +1225,112 @@ def _extract_output_flags(tokens: str | Iterable[str]) -> tuple[list[str], bool,
 
 def _operator_database(repo: Path, database: Path | None) -> Path:
     return database if database is not None else default_repository_database_path(repo)
+
+
+def _daemon_endpoint(value: str | None) -> str:
+    if value is not None:
+        return value
+    return os.environ.get(RUNTIME_ENDPOINT_ENV, DEFAULT_RUNTIME_ENDPOINT)
+
+
+def _default_runtime_executable() -> Path:
+    executable = shutil.which("blackcell-runtime")
+    if executable is None:
+        raise SystemdServiceError(SystemdServiceFailureCode.INVALID_EXECUTABLE)
+    return Path(executable)
+
+
+def _emit_daemon_lifecycle(operation: Literal["start", "stop", "restart"]) -> None:
+    manager = SystemdUserServiceManager()
+    try:
+        result: SystemdLifecycleResult
+        if operation == "start":
+            result = manager.start()
+        elif operation == "stop":
+            result = manager.stop()
+        else:
+            result = manager.restart()
+    except SystemdServiceError as error:
+        _fail(str(error), code=error.cli_exit_code)
+    _output().emit(result)
+
+
+def _invoke_kernform(
+    operation: Callable[[KernformCliClient], KernformInvocationResult],
+    *,
+    executable: str | None,
+) -> KernformInvocationResult:
+    selected = (
+        executable
+        if executable is not None
+        else os.environ.get(KERNFORM_EXECUTABLE_ENV, DEFAULT_KERNFORM_EXECUTABLE)
+    )
+    try:
+        return operation(KernformCliClient(executable=selected))
+    except KernformClientError as error:
+        _fail(str(error), code=error.cli_exit_code)
+
+
+def _invoke_alpha_http[ResultT](
+    operation: Callable[[RuntimeHttpClient], ResultT],
+    *,
+    endpoint: str | None,
+) -> ResultT:
+    try:
+        token = load_service_token(os.environ)
+        client = RuntimeHttpClient(endpoint=_daemon_endpoint(endpoint), token=token)
+        return operation(client)
+    except SecurityConfigError as error:
+        _fail(str(error), code=2)
+    except RuntimeClientError as error:
+        _fail(str(error), code=error.cli_exit_code)
+
+
+def _launch_alpha_tui(
+    *,
+    endpoint: str | None,
+    cursor_dir: Path | None,
+    refresh_seconds: float | None,
+    frames_per_second: float,
+) -> None:
+    token = load_service_token(os.environ)
+    selected_endpoint = _daemon_endpoint(endpoint)
+    selected_cursor_dir = cursor_dir
+    if selected_cursor_dir is None:
+        data_root = os.environ.get(DATA_DIR_ENV)
+        if data_root is None:
+            raise SecurityConfigError(SecurityConfigFailureCode.INVALID_DATA_DIRECTORY)
+        selected_cursor_dir = Path(data_root) / "alpha-tui-cursors"
+    cursor_store = FileAlphaTuiCursorStore.prepare(selected_cursor_dir)
+    client = RuntimeHttpClient(endpoint=selected_endpoint, token=token)
+    controller = AlphaTuiController(client, cursor_store=cursor_store)
+    shell = AlphaTuiApp(
+        lambda: controller,
+        event_refresh_seconds=refresh_seconds,
+        frames_per_second=frames_per_second,
+    )
+    asyncio.run(shell.run())
+
+
+def _load_alpha_request[ContractT: StrictStruct](
+    path: Path,
+    contract_type: type[ContractT],
+) -> ContractT:
+    try:
+        metadata = path.lstat()
+        if (
+            stat.S_ISLNK(metadata.st_mode)
+            or not stat.S_ISREG(metadata.st_mode)
+            or not 1 <= metadata.st_size <= _MAX_ALPHA_REQUEST_FILE_BYTES
+        ):
+            raise ValueError
+        with path.open("rb") as handle:
+            content = handle.read(_MAX_ALPHA_REQUEST_FILE_BYTES + 1)
+        if len(content) != metadata.st_size or len(content) > _MAX_ALPHA_REQUEST_FILE_BYTES:
+            raise ValueError
+        return decode_contract(content, contract_type)
+    except OSError, ValueError, WireContractError:
+        _fail("invalid-alpha-request-file", code=2)
 
 
 def _validate_operator_run_budgets(

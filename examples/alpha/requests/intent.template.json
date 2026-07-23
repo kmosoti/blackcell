@@ -1,0 +1,13 @@
+{
+  "assumptions": [],
+  "constraints": [
+    "Change only the paths admitted by the accepted plan.",
+    "Do not publish, deploy, or invoke the legacy V2 runtime."
+  ],
+  "idempotency_key": "alpha-intent-accept-v1",
+  "intent_id": "alpha-intent",
+  "objective": "Replace this objective with one bounded, testable project change.",
+  "project_id": "alpha-project",
+  "schema_version": "alpha-intent-request/v1",
+  "unresolved_questions": []
+}

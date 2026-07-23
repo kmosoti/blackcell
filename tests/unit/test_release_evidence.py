@@ -32,9 +32,8 @@ def _sha256(payload: bytes) -> str:
     return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
 
-def _runtime_closure() -> tuple[set[str], set[str]]:
-    with (ROOT / "uv.lock").open("rb") as stream:
-        lock = tomllib.load(stream)
+def _runtime_closure(lock_bytes: bytes) -> tuple[set[str], set[str]]:
+    lock = tomllib.loads(lock_bytes.decode("utf-8"))
     packages = {package["name"]: package for package in lock["package"]}
     root = packages["blackcell"]
     selected = {"blackcell"}
@@ -176,9 +175,9 @@ def test_release_evidence_verifier_fails_closed_on_drift(
         release_evidence._verify(tmp_path)
 
 
-def test_cyclonedx_sbom_is_the_locked_runtime_dependency_closure() -> None:
+def test_historical_cyclonedx_sbom_is_the_ratified_locked_runtime_dependency_closure() -> None:
     sbom = _json(SBOM_PATH)
-    selected, direct = _runtime_closure()
+    selected, direct = _runtime_closure(_git_blob(AC00_BASELINE_SHA, Path("uv.lock")))
     components = sbom["components"]
     assert isinstance(components, list)
     dependencies = sbom["dependencies"]
