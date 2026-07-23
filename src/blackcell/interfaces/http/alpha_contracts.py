@@ -216,6 +216,7 @@ class AlphaPlanNode(StrictStruct, frozen=True):
                 not self.allowed_paths
                 or self.budget.max_changed_files < 1
                 or self.budget.max_input_tokens < 1
+                or self.budget.max_output_tokens < 1
             ):
                 raise WireContractError()
         elif self.allowed_paths or self.budget.max_changed_files != 0:

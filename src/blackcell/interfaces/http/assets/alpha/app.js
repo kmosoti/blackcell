@@ -948,7 +948,8 @@ function validPlanNode(node, allowedEffects) {
   return writesRepository
     ? node.allowed_paths.length > 0 &&
         node.budget.max_changed_files >= 1 &&
-        node.budget.max_input_tokens >= 1
+        node.budget.max_input_tokens >= 1 &&
+        node.budget.max_output_tokens >= 1
     : node.allowed_paths.length === 0 && node.budget.max_changed_files === 0;
 }
 
