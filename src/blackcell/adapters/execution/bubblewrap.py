@@ -42,6 +42,7 @@ from blackcell.orchestration.alpha_acceptance import (
 )
 
 BUBBLEWRAP_ISOLATION_POLICY_SCHEMA = "blackcell.bubblewrap-isolation-policy/v1"
+BUBBLEWRAP_ACCEPTANCE_PROBE_TIMEOUT_SECONDS = 2
 
 _ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\Z")
 _SYSTEM_ROOTS = tuple(
@@ -311,7 +312,7 @@ class BubblewrapAcceptanceRunner:
         try:
             result, exit_code = self._launch(
                 argv_builder,
-                timeout_seconds=2.0,
+                timeout_seconds=BUBBLEWRAP_ACCEPTANCE_PROBE_TIMEOUT_SECONDS,
                 stdout_limit_bytes=1024,
                 stderr_limit_bytes=16 * 1024,
                 cancel_requested=None,
@@ -579,6 +580,7 @@ def _map_process_failure(code: BoundedProcessFailureCode) -> AlphaAcceptanceFail
 
 
 __all__ = [
+    "BUBBLEWRAP_ACCEPTANCE_PROBE_TIMEOUT_SECONDS",
     "BUBBLEWRAP_ISOLATION_POLICY_SCHEMA",
     "BubblewrapAcceptanceRunner",
     "BubblewrapExecutable",

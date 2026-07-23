@@ -14,12 +14,14 @@ from typing import Any, Literal, cast
 
 import pytest
 
+import blackcell.bootstrap.alpha_process as alpha_process_module
+from blackcell.adapters.models import CodexCliModelAdapter
 from blackcell.bootstrap.alpha_process import AlphaWorkerProcess
 from blackcell.bootstrap.alpha_runtime import (
     AlphaRuntimeApiService,
     AlphaWorktreeMaintenanceReport,
 )
-from blackcell.bootstrap.alpha_worker import AlphaWorkerCycleResult
+from blackcell.bootstrap.alpha_worker import AlphaRuntimeWorker, AlphaWorkerCycleResult
 from blackcell.bootstrap.process import main
 from blackcell.bootstrap.runtime_api import RuntimeApiService
 from blackcell.config import (
@@ -41,6 +43,10 @@ from blackcell.interfaces.http import (
     AlphaRunRequest,
 )
 from blackcell.kernel import ArtifactStore, EventStore
+from blackcell.orchestration.alpha_changes import (
+    MAX_ALPHA_CHANGE_CONTEXT_BYTES,
+    MAX_ALPHA_CHANGE_PROPOSAL_BYTES,
+)
 
 TOKEN = "Alpha-worker_process-token.0123456789-ABCDEFG"
 CONFIGURATION_DIGEST = "sha256:" + "a" * 64
@@ -111,6 +117,30 @@ def test_alpha_process_reconciles_then_runs_once_against_shared_storage(tmp_path
     assert config.security.paths.database_path.is_file()
     assert stat.S_IMODE(config.security.paths.database_path.stat().st_mode) == 0o600
     assert config.security.paths.artifact_root.is_dir()
+
+
+def test_alpha_process_composes_codex_caps_from_change_wire_contracts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def recording_adapter(**kwargs: Any) -> CodexCliModelAdapter:
+        captured.update(kwargs)
+        return CodexCliModelAdapter(**kwargs)
+
+    monkeypatch.setattr(alpha_process_module, "CodexCliModelAdapter", recording_adapter)
+
+    process = AlphaWorkerProcess.from_config(_config(tmp_path), environment={})
+
+    assert captured["max_input_bytes"] == MAX_ALPHA_CHANGE_CONTEXT_BYTES + 1024 * 1024
+    assert captured["max_response_bytes"] == MAX_ALPHA_CHANGE_PROPOSAL_BYTES + 1024 * 1024
+    assert (
+        captured["max_stdout_bytes"]
+        == 2 * (MAX_ALPHA_CHANGE_PROPOSAL_BYTES + 1024 * 1024) + 1024 * 1024
+    )
+    coordinator = cast("AlphaRuntimeWorker", process.coordinator)
+    assert coordinator.evidence.lifecycle is coordinator.worktrees
 
 
 def test_alpha_process_dispatches_check_only_run_through_real_composition(

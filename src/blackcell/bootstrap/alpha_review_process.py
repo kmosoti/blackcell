@@ -26,13 +26,26 @@ from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
 from blackcell.config import AlphaReviewWorkerRuntimeConfig, RuntimeProcessConfig
 from blackcell.gateway import GatewayBudget, GatewayProfile, ModelCapability, ModelGateway
 from blackcell.kernel import ArtifactRef, ArtifactStore, EventStore
-from blackcell.orchestration.alpha_review import AlphaReviewContext
+from blackcell.orchestration.alpha_review import (
+    MAX_ALPHA_REVIEW_CONTEXT_BYTES,
+    MAX_ALPHA_REVIEW_PROPOSAL_BYTES,
+    AlphaReviewContext,
+)
 from blackcell.orchestration.alpha_review_lifecycle import (
     AlphaReviewCandidate,
     AlphaReviewLease,
     AlphaReviewLifecycleState,
 )
 from blackcell.runtime import RuntimeStorageQuota, StorageQuotaPort
+
+_CODEX_CONTRACT_OVERHEAD_BYTES = 1024 * 1024
+ALPHA_REVIEW_CODEX_MAX_INPUT_BYTES = MAX_ALPHA_REVIEW_CONTEXT_BYTES + _CODEX_CONTRACT_OVERHEAD_BYTES
+ALPHA_REVIEW_CODEX_MAX_RESPONSE_BYTES = (
+    MAX_ALPHA_REVIEW_PROPOSAL_BYTES + _CODEX_CONTRACT_OVERHEAD_BYTES
+)
+ALPHA_REVIEW_CODEX_MAX_STDOUT_BYTES = (
+    2 * ALPHA_REVIEW_CODEX_MAX_RESPONSE_BYTES + _CODEX_CONTRACT_OVERHEAD_BYTES
+)
 
 
 class AlphaReviewWorkerProcessFailureCode(StrEnum):
@@ -276,6 +289,9 @@ def _reviewer(
         git_executable=provider.git_executable,
         environment=provider_environment,
         timeout_ceiling_seconds=provider.timeout_ceiling_seconds,
+        max_input_bytes=ALPHA_REVIEW_CODEX_MAX_INPUT_BYTES,
+        max_stdout_bytes=ALPHA_REVIEW_CODEX_MAX_STDOUT_BYTES,
+        max_response_bytes=ALPHA_REVIEW_CODEX_MAX_RESPONSE_BYTES,
     )
     profile = GatewayProfile(
         profile_id=provider.profile_id,
@@ -310,6 +326,9 @@ def _review_policy(config: AlphaReviewWorkerRuntimeConfig) -> AlphaReviewWorkerP
 
 
 __all__ = [
+    "ALPHA_REVIEW_CODEX_MAX_INPUT_BYTES",
+    "ALPHA_REVIEW_CODEX_MAX_RESPONSE_BYTES",
+    "ALPHA_REVIEW_CODEX_MAX_STDOUT_BYTES",
     "AlphaReviewCycleRunner",
     "AlphaReviewReconciliationPort",
     "AlphaReviewWorkerProcess",

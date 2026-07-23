@@ -14,6 +14,7 @@ from blackcell.adapters.execution.bubblewrap import (
     BubblewrapExecutable,
     BubblewrapIsolationPolicy,
 )
+from blackcell.adapters.execution.evidence import AlphaEvidenceCollector
 from blackcell.adapters.execution.text_changes import TextChangeExecutor
 from blackcell.adapters.execution.worktree import GitWorktreeLifecycle
 from blackcell.adapters.models import CODEX_CLI_ADAPTER_ID, CodexCliModelAdapter
@@ -30,7 +31,20 @@ from blackcell.bootstrap.alpha_worker import (
 from blackcell.config import AlphaWorkerRuntimeConfig, RuntimeProcessConfig
 from blackcell.gateway import GatewayProfile, ModelCapability, ModelGateway
 from blackcell.kernel import ArtifactStore, EventStore
+from blackcell.orchestration.alpha_changes import (
+    MAX_ALPHA_CHANGE_CONTEXT_BYTES,
+    MAX_ALPHA_CHANGE_PROPOSAL_BYTES,
+)
 from blackcell.runtime import RuntimeStorageQuota, StorageQuotaPort
+
+_CODEX_CONTRACT_OVERHEAD_BYTES = 1024 * 1024
+ALPHA_CHANGE_CODEX_MAX_INPUT_BYTES = MAX_ALPHA_CHANGE_CONTEXT_BYTES + _CODEX_CONTRACT_OVERHEAD_BYTES
+ALPHA_CHANGE_CODEX_MAX_RESPONSE_BYTES = (
+    MAX_ALPHA_CHANGE_PROPOSAL_BYTES + _CODEX_CONTRACT_OVERHEAD_BYTES
+)
+ALPHA_CHANGE_CODEX_MAX_STDOUT_BYTES = (
+    2 * ALPHA_CHANGE_CODEX_MAX_RESPONSE_BYTES + _CODEX_CONTRACT_OVERHEAD_BYTES
+)
 
 
 class AlphaWorkerProcessFailureCode(StrEnum):
@@ -106,6 +120,7 @@ class AlphaWorkerProcess:
             change_executor=TextChangeExecutor(boundaries.worktrees),
             acceptance=boundaries.acceptance,
             worktrees=boundaries.worktrees,
+            evidence=AlphaEvidenceCollector(boundaries.worktrees),
             policy=AlphaWorkerPolicy(
                 worker_id=alpha.worker.worker_id,
                 classification=alpha.provider.classification,
@@ -194,6 +209,9 @@ def _execution_boundaries(
         git_executable=provider_config.git_executable,
         environment=provider_environment,
         timeout_ceiling_seconds=provider_config.timeout_ceiling_seconds,
+        max_input_bytes=ALPHA_CHANGE_CODEX_MAX_INPUT_BYTES,
+        max_stdout_bytes=ALPHA_CHANGE_CODEX_MAX_STDOUT_BYTES,
+        max_response_bytes=ALPHA_CHANGE_CODEX_MAX_RESPONSE_BYTES,
     )
     profile = GatewayProfile(
         profile_id=provider_config.profile_id,
@@ -234,6 +252,9 @@ def _execution_boundaries(
 
 
 __all__ = [
+    "ALPHA_CHANGE_CODEX_MAX_INPUT_BYTES",
+    "ALPHA_CHANGE_CODEX_MAX_RESPONSE_BYTES",
+    "ALPHA_CHANGE_CODEX_MAX_STDOUT_BYTES",
     "AlphaCycleRunner",
     "AlphaReconciliationPort",
     "AlphaWorkerProcess",

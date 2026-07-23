@@ -7,10 +7,12 @@ from typing import cast
 import pytest
 
 from blackcell.gateway import DataClassification, GatewayBudget, LocalityPolicy
-from blackcell.kernel._json import bytes_digest
+from blackcell.kernel._json import bytes_digest, canonical_json_bytes
 from blackcell.orchestration.alpha_changes import (
     ALPHA_CHANGE_CONTEXT_SCHEMA,
     ALPHA_CHANGE_PROPOSAL_SCHEMA_VERSION,
+    MAX_ALPHA_CHANGE_CONTEXT_BYTES,
+    MAX_ALPHA_CHANGE_PROPOSAL_BYTES,
     AlphaChangeContext,
     AlphaChangeContractError,
     AlphaChangeContractFailureCode,
@@ -25,6 +27,40 @@ from blackcell.orchestration.alpha_changes import (
     alpha_change_proposal_payload,
     alpha_change_provider_result_payload,
 )
+
+
+def test_change_provider_wire_contracts_exceed_the_legacy_adapter_default() -> None:
+    evidence_content = "x" * (256 * 1024)
+    context = AlphaChangeContext(
+        objective="Use the complete admitted evidence budget.",
+        constraints=("Preserve the declared behavior.",),
+        base_commit="a" * 40,
+        allowed_paths=("src",),
+        max_changed_paths=4,
+        files=tuple(
+            _evidence_file(f"src/evidence-{index}.txt", evidence_content) for index in range(4)
+        ),
+    )
+    proposal = AlphaChangeProposal(
+        proposal_id="proposal-large",
+        evidence_digest=context.digest,
+        operations=tuple(
+            AlphaFileChange(
+                AlphaTextOperation.CREATE,
+                f"src/generated-{index}.txt",
+                None,
+                "x" * (1024 * 1024),
+            )
+            for index in range(4)
+        ),
+        summary="Create four contract-sized files.",
+    )
+
+    context_bytes = len(canonical_json_bytes(alpha_change_context_payload(context)))
+    proposal_bytes = len(canonical_json_bytes(alpha_change_proposal_payload(proposal)))
+
+    assert 1024 * 1024 < context_bytes <= MAX_ALPHA_CHANGE_CONTEXT_BYTES
+    assert 1024 * 1024 < proposal_bytes <= MAX_ALPHA_CHANGE_PROPOSAL_BYTES
 
 
 def test_evidence_context_is_bounded_content_addressed_and_authority_free() -> None:

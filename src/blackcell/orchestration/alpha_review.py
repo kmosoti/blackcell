@@ -41,8 +41,8 @@ MAX_ALPHA_REVIEW_EVIDENCE_ITEMS = 128
 _MAX_EVIDENCE_EXCERPT_BYTES = 32 * 1024
 _MAX_EVIDENCE_BYTES = 512 * 1024
 _MAX_ACCEPTANCE_BYTES = 2 * 1024 * 1024
-_MAX_CONTEXT_BYTES = 3 * 1024 * 1024
-_MAX_PROPOSAL_BYTES = 1024 * 1024
+MAX_ALPHA_REVIEW_CONTEXT_BYTES = 3 * 1024 * 1024
+MAX_ALPHA_REVIEW_PROPOSAL_BYTES = 1024 * 1024
 _MAX_FINDINGS = 64
 _MAX_CITATIONS = 8
 _MAX_LINE = 10_000_000
@@ -329,7 +329,10 @@ class AlphaReviewContext:
             }:
                 raise AlphaReviewContractError(AlphaReviewContractFailureCode.INVALID_CONTEXT)
         object.__setattr__(self, "evidence", evidence)
-        if len(canonical_json_bytes(alpha_review_context_payload(self))) > _MAX_CONTEXT_BYTES:
+        if (
+            len(canonical_json_bytes(alpha_review_context_payload(self)))
+            > MAX_ALPHA_REVIEW_CONTEXT_BYTES
+        ):
             raise AlphaReviewContractError(AlphaReviewContractFailureCode.INVALID_CONTEXT)
 
     @property
@@ -400,7 +403,10 @@ class AlphaReviewProposal:
             or not _bounded_text(self.summary, _MAX_TEXT_BYTES)
         ):
             raise AlphaReviewContractError(AlphaReviewContractFailureCode.INVALID_PROPOSAL)
-        if len(canonical_json_bytes(alpha_review_proposal_payload(self))) > _MAX_PROPOSAL_BYTES:
+        if (
+            len(canonical_json_bytes(alpha_review_proposal_payload(self)))
+            > MAX_ALPHA_REVIEW_PROPOSAL_BYTES
+        ):
             raise AlphaReviewContractError(AlphaReviewContractFailureCode.INVALID_PROPOSAL)
 
     @property
@@ -999,7 +1005,9 @@ __all__ = [
     "ALPHA_REVIEW_PROPOSAL_OUTPUT_SCHEMA",
     "ALPHA_REVIEW_PROPOSAL_SCHEMA",
     "ALPHA_REVIEW_PROVIDER_RESULT_SCHEMA",
+    "MAX_ALPHA_REVIEW_CONTEXT_BYTES",
     "MAX_ALPHA_REVIEW_EVIDENCE_ITEMS",
+    "MAX_ALPHA_REVIEW_PROPOSAL_BYTES",
     "AlphaAdmittedReview",
     "AlphaProposedReviewFinding",
     "AlphaReviewAcceptance",

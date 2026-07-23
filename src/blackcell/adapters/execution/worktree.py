@@ -39,7 +39,13 @@ _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _MAX_ALLOWED_PATHS = 256
 _MAX_CHANGED_PATHS = 10_000
 _MAX_REPOSITORY_PATH_CHARS = 4096
-_GIT_TIMEOUT_SECONDS = 120.0
+GIT_WORKTREE_COMMAND_TIMEOUT_SECONDS = 120
+# create: repository validation (3), branch lookup (1), add (1), full inspection (10)
+MAX_GIT_WORKTREE_CREATE_COMMANDS = 15
+# inspect: repository validation (3), identity/fence checks (4), path-diff checks (3)
+MAX_GIT_WORKTREE_INSPECT_COMMANDS = 10
+# commit: inspection (10), stage/commit (2), terminal inspection (10)
+MAX_GIT_WORKTREE_COMMIT_COMMANDS = 22
 _GIT_STDOUT_LIMIT_BYTES = 16 * 1024 * 1024
 _GIT_STDERR_LIMIT_BYTES = 64 * 1024
 _EXTERNAL_FILTER_PATTERN = r"^filter\..*\.(clean|smudge|process)$"
@@ -864,7 +870,7 @@ class GitWorktreeLifecycle:
             result = self.transport.run(
                 argv,
                 cwd=spec.repository_root,
-                timeout_seconds=_GIT_TIMEOUT_SECONDS,
+                timeout_seconds=GIT_WORKTREE_COMMAND_TIMEOUT_SECONDS,
                 stdout_limit_bytes=_GIT_STDOUT_LIMIT_BYTES,
                 stderr_limit_bytes=_GIT_STDERR_LIMIT_BYTES,
                 environment=environment,

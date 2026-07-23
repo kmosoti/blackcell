@@ -11,6 +11,8 @@ from threading import Event
 from types import FrameType
 from typing import Any, Literal, cast
 
+import blackcell.bootstrap.alpha_review_process as alpha_review_process_module
+from blackcell.adapters.models import CodexCliModelAdapter
 from blackcell.bootstrap.alpha_review_process import AlphaReviewWorkerProcess
 from blackcell.bootstrap.alpha_review_runtime import AlphaReviewReconciliationReport
 from blackcell.bootstrap.alpha_review_worker import (
@@ -25,6 +27,10 @@ from blackcell.config import (
     DATA_DIR_ENV,
     REPOSITORY_ROOT_ENV,
     RuntimeProcessConfig,
+)
+from blackcell.orchestration.alpha_review import (
+    MAX_ALPHA_REVIEW_CONTEXT_BYTES,
+    MAX_ALPHA_REVIEW_PROPOSAL_BYTES,
 )
 
 TOKEN = "Alpha-review_process-token.0123456789-ABCDEFG"
@@ -95,6 +101,28 @@ def test_alpha_review_process_reconciles_and_runs_once_against_shared_storage(
     assert not hasattr(coordinator.execution, "maintain_successful_worktrees")
     assert not hasattr(coordinator.scheduler, "reconcile")
     assert not hasattr(coordinator.artifacts, "get_bytes")
+
+
+def test_alpha_review_process_composes_codex_caps_from_review_wire_contracts(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def recording_adapter(**kwargs: Any) -> CodexCliModelAdapter:
+        captured.update(kwargs)
+        return CodexCliModelAdapter(**kwargs)
+
+    monkeypatch.setattr(alpha_review_process_module, "CodexCliModelAdapter", recording_adapter)
+
+    AlphaReviewWorkerProcess.from_config(_config(tmp_path), environment={})
+
+    assert captured["max_input_bytes"] == MAX_ALPHA_REVIEW_CONTEXT_BYTES + 1024 * 1024
+    assert captured["max_response_bytes"] == MAX_ALPHA_REVIEW_PROPOSAL_BYTES + 1024 * 1024
+    assert (
+        captured["max_stdout_bytes"]
+        == 2 * (MAX_ALPHA_REVIEW_PROPOSAL_BYTES + 1024 * 1024) + 1024 * 1024
+    )
 
 
 def test_alpha_review_process_validates_provider_environment_before_storage(

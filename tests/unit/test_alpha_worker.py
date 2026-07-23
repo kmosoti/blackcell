@@ -21,6 +21,9 @@ from blackcell.adapters.models.alpha_change_provider import (
 )
 from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
 from blackcell.bootstrap.alpha_worker import (
+    MAX_ALPHA_WORKER_ACCEPTANCE_WORKTREE_SECONDS,
+    MAX_ALPHA_WORKER_READ_BASE_WORKTREE_SECONDS,
+    MAX_ALPHA_WORKER_WRITE_BASE_WORKTREE_SECONDS,
     AlphaRuntimeWorker,
     AlphaRuntimeWorkerPort,
     AlphaWorkerPolicy,
@@ -286,7 +289,7 @@ def test_worker_executes_writer_then_check_from_persisted_artifact_chain(
     assert restarted.replay_run("run-1").run.status == "succeeded"
 
 
-def test_worker_lease_covers_provider_and_each_acceptance_deadline(
+def test_worker_lease_covers_worktrees_provider_and_each_acceptance_deadline(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -320,8 +323,20 @@ def test_worker_lease_covers_provider_and_each_acceptance_deadline(
         for event in events.read_stream("alpha:run:run-1")
         if event.event_type == "alpha.node.claimed"
     )
+    assert MAX_ALPHA_WORKER_READ_BASE_WORKTREE_SECONDS == 47 * 120
+    assert MAX_ALPHA_WORKER_WRITE_BASE_WORKTREE_SECONDS == 77 * 120
+    assert MAX_ALPHA_WORKER_ACCEPTANCE_WORKTREE_SECONDS == 20 * 120
     assert datetime.fromisoformat(cast("str", claimed.payload["expires_at"])) == (
-        claimed_at + timedelta(seconds=30 * 3 + 17)
+        claimed_at
+        + timedelta(
+            seconds=(
+                MAX_ALPHA_WORKER_WRITE_BASE_WORKTREE_SECONDS
+                + 2 * MAX_ALPHA_WORKER_ACCEPTANCE_WORKTREE_SECONDS
+                + 30 * 3
+                + 2 * 2
+                + 17
+            )
+        )
     )
     assert tuple(command.check_id for command in acceptance.commands) == (
         "write-check-1",

@@ -15,7 +15,7 @@ from pathlib import PurePosixPath
 
 from blackcell.gateway import DataClassification, GatewayBudget, LocalityPolicy
 from blackcell.kernel import JsonInput, JsonValue
-from blackcell.kernel._json import bytes_digest, json_digest
+from blackcell.kernel._json import bytes_digest, canonical_json_bytes, json_digest
 
 ALPHA_CHANGE_CONTEXT_SCHEMA = "alpha-change-context/v1"
 ALPHA_CHANGE_PROPOSAL_SCHEMA_VERSION = "alpha-change-proposal/v1"
@@ -30,6 +30,9 @@ _MAX_CONSTRAINT_BYTES = 2 * 1024
 MAX_ALPHA_EVIDENCE_FILES = 64
 MAX_ALPHA_EVIDENCE_FILE_BYTES = 256 * 1024
 MAX_ALPHA_EVIDENCE_BYTES = 1024 * 1024
+# Canonical JSON ceilings include worst-case string escaping and are enforced after sorting.
+MAX_ALPHA_CHANGE_CONTEXT_BYTES = 16 * 1024 * 1024
+MAX_ALPHA_CHANGE_PROPOSAL_BYTES = 32 * 1024 * 1024
 _MAX_ALLOWED_PATHS = 256
 _MAX_CHANGED_PATHS = 10_000
 _MAX_OPERATIONS = 256
@@ -139,6 +142,11 @@ class AlphaChangeContext:
             raise AlphaChangeContractError(AlphaChangeContractFailureCode.INVALID_EVIDENCE)
         object.__setattr__(self, "allowed_paths", allowed_paths)
         object.__setattr__(self, "files", files)
+        if (
+            len(canonical_json_bytes(alpha_change_context_payload(self)))
+            > MAX_ALPHA_CHANGE_CONTEXT_BYTES
+        ):
+            raise AlphaChangeContractError(AlphaChangeContractFailureCode.INVALID_EVIDENCE)
 
     @property
     def digest(self) -> str:
@@ -225,6 +233,11 @@ class AlphaChangeProposal:
             code=AlphaChangeContractFailureCode.INVALID_PROPOSAL,
         )
         object.__setattr__(self, "operations", operations)
+        if (
+            len(canonical_json_bytes(alpha_change_proposal_payload(self)))
+            > MAX_ALPHA_CHANGE_PROPOSAL_BYTES
+        ):
+            raise AlphaChangeContractError(AlphaChangeContractFailureCode.INVALID_PROPOSAL)
 
     @property
     def digest(self) -> str:
@@ -515,6 +528,8 @@ __all__ = [
     "ALPHA_CHANGE_PROPOSAL_OUTPUT_SCHEMA",
     "ALPHA_CHANGE_PROPOSAL_SCHEMA_VERSION",
     "ALPHA_CHANGE_PROVIDER_RESULT_SCHEMA",
+    "MAX_ALPHA_CHANGE_CONTEXT_BYTES",
+    "MAX_ALPHA_CHANGE_PROPOSAL_BYTES",
     "MAX_ALPHA_EVIDENCE_BYTES",
     "MAX_ALPHA_EVIDENCE_FILES",
     "MAX_ALPHA_EVIDENCE_FILE_BYTES",

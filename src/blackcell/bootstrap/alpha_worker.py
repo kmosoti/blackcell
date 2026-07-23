@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Literal, Protocol
 
+from blackcell.adapters.execution.bubblewrap import BUBBLEWRAP_ACCEPTANCE_PROBE_TIMEOUT_SECONDS
 from blackcell.adapters.execution.evidence import AlphaEvidenceCollector, AlphaEvidenceError
 from blackcell.adapters.execution.text_changes import (
     TextChangeAdmission,
@@ -19,6 +20,10 @@ from blackcell.adapters.execution.text_changes import (
     text_change_result_payload,
 )
 from blackcell.adapters.execution.worktree import (
+    GIT_WORKTREE_COMMAND_TIMEOUT_SECONDS,
+    MAX_GIT_WORKTREE_COMMIT_COMMANDS,
+    MAX_GIT_WORKTREE_CREATE_COMMANDS,
+    MAX_GIT_WORKTREE_INSPECT_COMMANDS,
     GitWorktreeLifecycle,
     WorktreeExecutionSpec,
     WorktreeLifecycleError,
@@ -67,6 +72,21 @@ from blackcell.orchestration.alpha_changes import (
 from blackcell.orchestration.alpha_lifecycle import alpha_provider_request_id
 
 _COMMIT = re.compile(r"[0-9a-f]{40}\Z")
+# Every node creates a worktree, takes the conservative dirty-commit path, and performs one
+# terminal inspection. Writers additionally inspect during evidence collection and twice around
+# admitted text effects. Each acceptance check performs a before/after inspection of its own.
+MAX_ALPHA_WORKER_READ_BASE_WORKTREE_SECONDS = GIT_WORKTREE_COMMAND_TIMEOUT_SECONDS * (
+    MAX_GIT_WORKTREE_CREATE_COMMANDS
+    + MAX_GIT_WORKTREE_COMMIT_COMMANDS
+    + MAX_GIT_WORKTREE_INSPECT_COMMANDS
+)
+MAX_ALPHA_WORKER_WRITE_BASE_WORKTREE_SECONDS = (
+    MAX_ALPHA_WORKER_READ_BASE_WORKTREE_SECONDS
+    + 3 * GIT_WORKTREE_COMMAND_TIMEOUT_SECONDS * MAX_GIT_WORKTREE_INSPECT_COMMANDS
+)
+MAX_ALPHA_WORKER_ACCEPTANCE_WORKTREE_SECONDS = (
+    2 * GIT_WORKTREE_COMMAND_TIMEOUT_SECONDS * MAX_GIT_WORKTREE_INSPECT_COMMANDS
+)
 
 
 class AlphaWorkerFailureCode(StrEnum):
@@ -226,9 +246,21 @@ class AlphaRuntimeWorker:
         bounded_timeout_stages = len(ready.node.checks) + int(
             "repository-write" in ready.node.effects
         )
+        acceptance_check_count = len(ready.node.checks)
+        base_worktree_seconds = (
+            MAX_ALPHA_WORKER_WRITE_BASE_WORKTREE_SECONDS
+            if "repository-write" in ready.node.effects
+            else MAX_ALPHA_WORKER_READ_BASE_WORKTREE_SECONDS
+        )
+        worktree_seconds = (
+            base_worktree_seconds
+            + acceptance_check_count * MAX_ALPHA_WORKER_ACCEPTANCE_WORKTREE_SECONDS
+        )
         expires_at = utc_now() + timedelta(
             seconds=(
                 ready.node.budget.timeout_seconds * bounded_timeout_stages
+                + worktree_seconds
+                + acceptance_check_count * BUBBLEWRAP_ACCEPTANCE_PROBE_TIMEOUT_SECONDS
                 + self.policy.lease_grace_seconds
             )
         )
@@ -594,6 +626,9 @@ def _failure_code(error: Exception, *, phase: str) -> str:
 
 __all__ = [
     "ALPHA_NODE_OUTCOME_SCHEMA",
+    "MAX_ALPHA_WORKER_ACCEPTANCE_WORKTREE_SECONDS",
+    "MAX_ALPHA_WORKER_READ_BASE_WORKTREE_SECONDS",
+    "MAX_ALPHA_WORKER_WRITE_BASE_WORKTREE_SECONDS",
     "AlphaAcceptanceRunnerPort",
     "AlphaArtifactLink",
     "AlphaArtifactStorePort",
