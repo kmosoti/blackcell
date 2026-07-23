@@ -318,20 +318,52 @@ def _join_drains(drains: tuple[threading.Thread, threading.Thread], timeout: flo
 
 def _terminate_process_group(process: subprocess.Popen[bytes], *, force: bool = False) -> None:
     requested_signal = signal.SIGKILL if force else signal.SIGTERM
+    group_exists = True
     try:
         os.killpg(process.pid, requested_signal)
     except ProcessLookupError:
-        pass
+        group_exists = False
     except OSError as error:
         raise BoundedProcessError(BoundedProcessFailureCode.OUTPUT_INCOMPLETE) from error
+
+    if group_exists and not _wait_for_process_group_exit(process):
+        if force:
+            raise BoundedProcessError(BoundedProcessFailureCode.OUTPUT_INCOMPLETE)
+        _terminate_process_group(process, force=True)
+        return
+
+    _reap_process_leader(process)
+
+
+def _wait_for_process_group_exit(process: subprocess.Popen[bytes]) -> bool:
+    deadline = time.monotonic() + _TERMINATION_GRACE_SECONDS
+    while _process_group_exists(process.pid):
+        process.poll()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(_PROCESS_POLL_SECONDS, remaining))
+    process.poll()
+    return True
+
+
+def _process_group_exists(process_group_id: int) -> bool:
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except OSError as error:
+        raise BoundedProcessError(BoundedProcessFailureCode.OUTPUT_INCOMPLETE) from error
+    return True
+
+
+def _reap_process_leader(process: subprocess.Popen[bytes]) -> None:
     if process.poll() is not None:
         return
     try:
         process.wait(timeout=_TERMINATION_GRACE_SECONDS)
     except subprocess.TimeoutExpired:
-        if force:
-            raise BoundedProcessError(BoundedProcessFailureCode.OUTPUT_INCOMPLETE) from None
-        _terminate_process_group(process, force=True)
+        raise BoundedProcessError(BoundedProcessFailureCode.OUTPUT_INCOMPLETE) from None
 
 
 __all__ = [

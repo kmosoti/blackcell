@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import signal
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -104,6 +106,46 @@ def test_runner_cancellation_terminates_the_process_group(tmp_path: Path) -> Non
     while _process_is_live(child_pid) and time.monotonic() < deadline:
         time.sleep(0.01)
     assert not _process_is_live(child_pid)
+
+
+def test_runner_force_kills_a_term_resistant_descendant_after_the_leader_exits(
+    tmp_path: Path,
+) -> None:
+    child_pid_path = tmp_path / "term-resistant-child.pid"
+    child_script = (
+        "import os,pathlib,signal,sys,time;"
+        "signal.signal(signal.SIGTERM,signal.SIG_IGN);"
+        "os.close(1);os.close(2);"
+        "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()),encoding='utf-8');"
+        "time.sleep(30)"
+    )
+    leader_script = (
+        "import subprocess,sys,time;"
+        f"subprocess.Popen([sys.executable,'-c',{child_script!r},sys.argv[1]]);"
+        "time.sleep(30)"
+    )
+
+    child_pid: int | None = None
+    try:
+        with pytest.raises(BoundedProcessError) as canceled:
+            BoundedProcessRunner().run(
+                (sys.executable, "-c", leader_script, str(child_pid_path)),
+                cwd=tmp_path,
+                timeout_seconds=5.0,
+                stdout_limit_bytes=8,
+                stderr_limit_bytes=8,
+                cancel_requested=child_pid_path.exists,
+            )
+
+        assert canceled.value.code is BoundedProcessFailureCode.CANCELED
+        child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+        assert not _process_is_live(child_pid)
+    finally:
+        if child_pid is None and child_pid_path.exists():
+            child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+        if child_pid is not None and _process_is_live(child_pid):
+            with suppress(ProcessLookupError):
+                os.kill(child_pid, signal.SIGKILL)
 
 
 def _process_is_live(pid: int) -> bool:

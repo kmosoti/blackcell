@@ -528,7 +528,7 @@ def _unique_repository_paths(values: tuple[str, ...]) -> None:
             path.is_absolute()
             or path.as_posix() != value
             or any(part in {"", ".", ".."} for part in path.parts)
-            or path.parts[0] == ".git"
+            or ".git" in path.parts
         ):
             raise WireContractError()
 

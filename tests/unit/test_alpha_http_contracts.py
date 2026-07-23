@@ -287,6 +287,33 @@ def test_alpha_check_identity_and_alias_match_executable_acceptance_contract() -
             AlphaAcceptanceCheck("check-1", (executable, "--version"))
 
 
+def test_alpha_plan_paths_match_the_downstream_git_metadata_prohibition() -> None:
+    budget = AlphaNodeBudget(1_000, 1_000, 30, 0, 1)
+
+    for repository_path in (".git", "src/.git", "src/.git/config"):
+        with pytest.raises(WireContractError):
+            AlphaPlanNode(
+                node_id="write",
+                objective="Apply one bounded change.",
+                depends_on=(),
+                budget=budget,
+                effects=("repository-read", "repository-write", "process"),
+                allowed_paths=(repository_path,),
+                checks=(AlphaAcceptanceCheck("write-check", ("python", "--version")),),
+            )
+
+    accepted = AlphaPlanNode(
+        node_id="write",
+        objective="Apply one bounded change.",
+        depends_on=(),
+        budget=budget,
+        effects=("repository-read", "repository-write", "process"),
+        allowed_paths=("src/.github/config.yml",),
+        checks=(AlphaAcceptanceCheck("write-check", ("python", "--version")),),
+    )
+    assert accepted.allowed_paths == ("src/.github/config.yml",)
+
+
 def _valid_plan() -> AlphaPlanRequest:
     budget = AlphaNodeBudget(
         max_input_tokens=1_000,
