@@ -48,6 +48,7 @@ const EVENT_TYPES = new Set([
   "alpha.run.canceled",
   "alpha.run.reconciliation-required",
   "alpha.review.claimed",
+  "alpha.review.lease-renewed",
   "alpha.review.provider-dispatch-started",
   "alpha.review.succeeded",
   "alpha.review.failed",
@@ -945,7 +946,9 @@ function validPlanNode(node, allowedEffects) {
   }
   const writesRepository = node.effects.includes("repository-write");
   return writesRepository
-    ? node.allowed_paths.length > 0 && node.budget.max_changed_files >= 1
+    ? node.allowed_paths.length > 0 &&
+        node.budget.max_changed_files >= 1 &&
+        node.budget.max_input_tokens >= 1
     : node.allowed_paths.length === 0 && node.budget.max_changed_files === 0;
 }
 

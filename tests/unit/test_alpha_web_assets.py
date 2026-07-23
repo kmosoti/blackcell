@@ -190,6 +190,7 @@ def test_alpha_web_workflow_surface_is_bounded_closed_and_accessible() -> None:
         "validateRunResponse",
         "planTopologicalOrder",
         "writersAreOrdered",
+        "node.budget.max_input_tokens >= 1",
         "boundedInteger(value.timeout_seconds, 1, MAX_ACCEPTANCE_TIMEOUT_SECONDS)",
         "EXECUTABLE_ALIAS.test(value.argv[0])",
         'part !== ".git"',

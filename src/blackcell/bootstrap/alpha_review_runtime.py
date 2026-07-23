@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 
@@ -22,6 +22,7 @@ from blackcell.orchestration.alpha_review_lifecycle import (
     ALPHA_REVIEW_CLAIMED,
     ALPHA_REVIEW_DISPATCH_AMBIGUOUS,
     ALPHA_REVIEW_FAILED,
+    ALPHA_REVIEW_LEASE_RENEWED,
     ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED,
     ALPHA_REVIEW_RECONCILIATION_REQUIRED,
     ALPHA_REVIEW_REQUEUED,
@@ -150,6 +151,43 @@ class AlphaReviewRuntimeService:
         self._append(candidate.run_id, existing, event)
         return AlphaClaimedReview(lease=lease, claim_event_id=event.event_id)
 
+    def renew_lease(
+        self,
+        lease: AlphaReviewLease,
+        *,
+        lease_expires_at: datetime,
+        principal_id: str,
+        renewed_at: datetime | None = None,
+    ) -> AlphaReviewLease:
+        state, existing = self._require_active(
+            lease,
+            principal_id,
+            AlphaReviewLifecycleStatus.CLAIMED,
+        )
+        try:
+            at = _aware(renewed_at or utc_now())
+            expires_at = _aware(lease_expires_at)
+        except ValueError as error:
+            raise AlphaReviewRuntimeError(AlphaReviewRuntimeFailureCode.INVALID_REQUEST) from error
+        if expires_at <= at or expires_at <= lease.expires_at:
+            raise AlphaReviewRuntimeError(AlphaReviewRuntimeFailureCode.INVALID_REQUEST)
+        renewed = replace(lease, expires_at=expires_at)
+        event = self._transition(
+            state,
+            ALPHA_REVIEW_LEASE_RENEWED,
+            {
+                "previous_lease_digest": lease.digest,
+                "lease_digest": renewed.digest,
+                "lease": alpha_review_lease_payload(renewed),
+                "status": "claimed",
+            },
+            principal_id=principal_id,
+            idempotency_key=f"review-lease-renewed:{lease.digest}:{renewed.digest}",
+            recorded_at=at,
+        )
+        self._append(lease.run_id, existing, event)
+        return renewed
+
     def record_provider_dispatch(
         self,
         lease: AlphaReviewLease,
@@ -260,8 +298,6 @@ class AlphaReviewRuntimeService:
             at = _aware(failed_at or utc_now())
         except ValueError as error:
             raise AlphaReviewRuntimeError(AlphaReviewRuntimeFailureCode.INVALID_REQUEST) from error
-        if at > lease.expires_at:
-            raise AlphaReviewRuntimeError(AlphaReviewRuntimeFailureCode.CONFLICT)
         event = self._transition(
             state,
             ALPHA_REVIEW_FAILED,

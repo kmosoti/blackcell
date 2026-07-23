@@ -18,6 +18,7 @@ from blackcell.orchestration.alpha_review_lifecycle import (
     ALPHA_REVIEW_CLAIMED,
     ALPHA_REVIEW_DISPATCH_AMBIGUOUS,
     ALPHA_REVIEW_FAILED,
+    ALPHA_REVIEW_LEASE_RENEWED,
     ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED,
     ALPHA_REVIEW_RECONCILIATION_REQUIRED,
     ALPHA_REVIEW_REQUEUED,
@@ -123,6 +124,14 @@ def test_review_scheduler_requeues_only_pre_dispatch_restart(tmp_path: Path) -> 
     assert report.ambiguous_run_ids == ()
     assert state is not None
     assert state.status is AlphaReviewLifecycleStatus.REQUEUED
+    with pytest.raises(AlphaReviewRuntimeError) as reconciled:
+        restarted.renew_lease(
+            first.lease,
+            lease_expires_at=NOW + timedelta(minutes=20),
+            principal_id="reviewer-1",
+            renewed_at=NOW + timedelta(minutes=11),
+        )
+    assert reconciled.value.code is AlphaReviewRuntimeFailureCode.CONFLICT
 
     second = restarted.claim(
         candidate,
@@ -136,6 +145,52 @@ def test_review_scheduler_requeues_only_pre_dispatch_restart(tmp_path: Path) -> 
     assert tuple(
         event.event_type for event in events.read_stream(alpha_review_stream(candidate.run_id))
     ) == (ALPHA_REVIEW_CLAIMED, ALPHA_REVIEW_REQUEUED, ALPHA_REVIEW_CLAIMED)
+
+
+def test_review_scheduler_renews_and_closes_the_exact_lease_after_expiry(
+    tmp_path: Path,
+) -> None:
+    events, candidate = _events_and_candidate(tmp_path / "events.sqlite3")
+    service = AlphaReviewRuntimeService(events)
+    claimed = service.claim(
+        candidate,
+        worker_id="reviewer-1",
+        lease_expires_at=NOW + timedelta(seconds=1),
+        claimed_at=NOW,
+    )
+
+    renewed = service.renew_lease(
+        claimed.lease,
+        lease_expires_at=NOW + timedelta(minutes=10),
+        principal_id="reviewer-1",
+        renewed_at=NOW + timedelta(seconds=2),
+    )
+
+    assert renewed.expires_at == NOW + timedelta(minutes=10)
+    state = service.inspect(candidate.run_id)
+    assert state is not None
+    assert state.lease == renewed
+    with pytest.raises(AlphaReviewRuntimeError) as stale:
+        service.renew_lease(
+            claimed.lease,
+            lease_expires_at=NOW + timedelta(minutes=20),
+            principal_id="reviewer-1",
+            renewed_at=NOW + timedelta(seconds=3),
+        )
+    assert stale.value.code is AlphaReviewRuntimeFailureCode.CONFLICT
+
+    failed = service.record_failure(
+        renewed,
+        failure_code="alpha-review-preparation-failed",
+        result_artifact_digest=None,
+        principal_id="reviewer-1",
+        failed_at=NOW + timedelta(minutes=11),
+    )
+
+    assert failed.status is AlphaReviewLifecycleStatus.FAILED
+    assert tuple(
+        event.event_type for event in events.read_stream(alpha_review_stream(candidate.run_id))
+    ) == (ALPHA_REVIEW_CLAIMED, ALPHA_REVIEW_LEASE_RENEWED, ALPHA_REVIEW_FAILED)
 
 
 def test_review_scheduler_marks_post_dispatch_restart_ambiguous(tmp_path: Path) -> None:

@@ -180,6 +180,7 @@ def test_alpha_event_contract_accepts_worktree_cleanup_events() -> None:
 def test_alpha_event_contract_accepts_review_and_verification_events() -> None:
     event_types = (
         "alpha.review.claimed",
+        "alpha.review.lease-renewed",
         "alpha.review.provider-dispatch-started",
         "alpha.review.succeeded",
         "alpha.review.failed",
@@ -212,6 +213,31 @@ def test_alpha_event_contract_accepts_review_and_verification_events() -> None:
             AlphaEventResponse,
         )
         assert event.event_type == event_type
+
+
+def test_alpha_plan_requires_positive_input_only_for_repository_writers() -> None:
+    check = AlphaAcceptanceCheck("check-1", ("python", "--version"))
+    acceptance_only = AlphaPlanNode(
+        node_id="accept",
+        objective="Run acceptance without requesting a model change.",
+        depends_on=(),
+        budget=AlphaNodeBudget(0, 0, 30, 0, 0),
+        effects=("repository-read", "process"),
+        allowed_paths=(),
+        checks=(check,),
+    )
+
+    assert acceptance_only.budget.max_input_tokens == 0
+    with pytest.raises(WireContractError):
+        AlphaPlanNode(
+            node_id="write",
+            objective="Request a bounded repository change.",
+            depends_on=(),
+            budget=AlphaNodeBudget(0, 1_000, 30, 0, 1),
+            effects=("repository-read", "repository-write", "process"),
+            allowed_paths=("src/example.py",),
+            checks=(check,),
+        )
 
 
 def test_alpha_plan_requires_explicit_check_effects_and_serial_writers() -> None:

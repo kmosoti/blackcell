@@ -106,6 +106,21 @@ class _AlphaReviewWorkerScheduler:
             claimed_at=claimed_at,
         )
 
+    def renew_lease(
+        self,
+        lease: AlphaReviewLease,
+        *,
+        lease_expires_at: datetime,
+        principal_id: str,
+        renewed_at: datetime | None = None,
+    ) -> AlphaReviewLease:
+        return self._scheduler.renew_lease(
+            lease,
+            lease_expires_at=lease_expires_at,
+            principal_id=principal_id,
+            renewed_at=renewed_at,
+        )
+
     def record_provider_dispatch(
         self,
         lease: AlphaReviewLease,

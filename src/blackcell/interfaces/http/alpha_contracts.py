@@ -45,6 +45,7 @@ AlphaEventType = Literal[
     "alpha.run.canceled",
     "alpha.run.reconciliation-required",
     "alpha.review.claimed",
+    "alpha.review.lease-renewed",
     "alpha.review.provider-dispatch-started",
     "alpha.review.succeeded",
     "alpha.review.failed",
@@ -211,7 +212,11 @@ class AlphaPlanNode(StrictStruct, frozen=True):
             raise WireContractError()
         _unique_repository_paths(self.allowed_paths)
         if "repository-write" in self.effects:
-            if not self.allowed_paths or self.budget.max_changed_files < 1:
+            if (
+                not self.allowed_paths
+                or self.budget.max_changed_files < 1
+                or self.budget.max_input_tokens < 1
+            ):
                 raise WireContractError()
         elif self.allowed_paths or self.budget.max_changed_files != 0:
             raise WireContractError()

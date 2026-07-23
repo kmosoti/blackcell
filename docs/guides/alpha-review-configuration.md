@@ -87,7 +87,12 @@ without a concurrently configured execution worker so an existing durable ledger
 neither setting starts the historical V2 worker.
 
 On startup, `supervisor_id` reconciles existing review leases. A claim that stopped before provider
-dispatch may be requeued under a new fence. Once `alpha.review.provider-dispatch-started` exists, the
-request is never automatically repeated: restart records `alpha-review-dispatch-ambiguous` and
-requires explicit reconciliation. The provider receives only the already-stored, live-free,
-artifact-verified context and cannot approve its own proposal or alter acceptance criteria.
+dispatch may be requeued under a new fence. Evidence replay and context persistence occur before
+provider dispatch. The worker may append `alpha.review.lease-renewed` for its exact active
+pre-dispatch fence so bounded preparation does not consume the provider deadline or strand an
+expired claim; supervisor reconciliation still fences that worker through the durable stream
+sequence. A preparation failure may close an expired claim only while that exact fence remains
+active. Once `alpha.review.provider-dispatch-started` exists, the request is never automatically
+repeated: restart records `alpha-review-dispatch-ambiguous` and requires explicit reconciliation.
+The provider receives only the already-stored, live-free, artifact-verified context and cannot
+approve its own proposal or alter acceptance criteria.

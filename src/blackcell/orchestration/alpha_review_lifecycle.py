@@ -14,6 +14,7 @@ from blackcell.kernel._json import json_digest
 from blackcell.orchestration.alpha_lifecycle import ALPHA_EVENT_SOURCE
 
 ALPHA_REVIEW_CLAIMED = "alpha.review.claimed"
+ALPHA_REVIEW_LEASE_RENEWED = "alpha.review.lease-renewed"
 ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED = "alpha.review.provider-dispatch-started"
 ALPHA_REVIEW_SUCCEEDED = "alpha.review.succeeded"
 ALPHA_REVIEW_FAILED = "alpha.review.failed"
@@ -25,6 +26,7 @@ ALPHA_REVIEW_DISPATCH_AMBIGUOUS = "alpha-review-dispatch-ambiguous"
 ALPHA_REVIEW_EVENT_TYPES = frozenset(
     {
         ALPHA_REVIEW_CLAIMED,
+        ALPHA_REVIEW_LEASE_RENEWED,
         ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED,
         ALPHA_REVIEW_SUCCEEDED,
         ALPHA_REVIEW_FAILED,
@@ -316,6 +318,32 @@ def fold_alpha_review_lifecycle(
             finding_count = None
             failure_code = None
             result_artifact_digest = None
+        elif event.event_type == ALPHA_REVIEW_LEASE_RENEWED:
+            _exact(
+                payload,
+                {
+                    "principal_id",
+                    "previous_lease_digest",
+                    "lease_digest",
+                    "lease",
+                    "status",
+                },
+            )
+            renewed = alpha_review_lease_from_mapping(_mapping(payload.get("lease")))
+            if (
+                lease is None
+                or status is not AlphaReviewLifecycleStatus.CLAIMED
+                or principal != lease.worker_id
+                or renewed.worker_id != principal
+                or payload.get("previous_lease_digest") != lease.digest
+                or payload.get("lease_digest") != renewed.digest
+                or payload.get("status") != "claimed"
+                or renewed.expires_at <= event.recorded_at
+                or renewed.expires_at <= lease.expires_at
+                or _renewable_lease_identity(renewed) != _renewable_lease_identity(lease)
+            ):
+                raise AlphaReviewLifecycleError()
+            lease = renewed
         elif event.event_type == ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED:
             _exact(
                 payload,
@@ -408,7 +436,15 @@ def fold_alpha_review_lifecycle(
                 AlphaReviewLifecycleStatus.PROVIDER_DISPATCHED,
             }:
                 raise AlphaReviewLifecycleError()
-            _active_lease(payload, principal, event, lease, status, status)
+            _active_lease(
+                payload,
+                principal,
+                event,
+                lease,
+                status,
+                status,
+                allow_expired=True,
+            )
             failure_code = _failure(payload.get("failure_code"))
             result = payload.get("result_artifact_digest")
             result_artifact_digest = None if result is None else _digest(result)
@@ -519,6 +555,8 @@ def _active_lease(
     lease: AlphaReviewLease | None,
     actual_status: AlphaReviewLifecycleStatus | None,
     expected_status: AlphaReviewLifecycleStatus,
+    *,
+    allow_expired: bool = False,
 ) -> AlphaReviewLease:
     if (
         lease is None
@@ -527,7 +565,7 @@ def _active_lease(
         or payload.get("review_id") != lease.review_id
         or payload.get("lease_digest") != lease.digest
         or principal != lease.worker_id
-        or event.recorded_at > lease.expires_at
+        or (not allow_expired and event.recorded_at > lease.expires_at)
     ):
         raise AlphaReviewLifecycleError()
     return lease
@@ -554,6 +592,21 @@ def _immutable_lease_identity(value: AlphaReviewLease) -> tuple[str, ...]:
     return (
         value.run_id,
         value.review_id,
+        value.run_event_id,
+        value.run_event_digest,
+        value.state_digest,
+        value.artifact_evidence_digest,
+    )
+
+
+def _renewable_lease_identity(value: AlphaReviewLease) -> tuple[object, ...]:
+    return (
+        value.schema_version,
+        value.run_id,
+        value.review_id,
+        value.attempt,
+        value.fencing_token,
+        value.worker_id,
         value.run_event_id,
         value.run_event_digest,
         value.state_digest,
@@ -629,6 +682,7 @@ __all__ = [
     "ALPHA_REVIEW_DISPATCH_AMBIGUOUS",
     "ALPHA_REVIEW_EVENT_TYPES",
     "ALPHA_REVIEW_FAILED",
+    "ALPHA_REVIEW_LEASE_RENEWED",
     "ALPHA_REVIEW_LEASE_SCHEMA",
     "ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED",
     "ALPHA_REVIEW_RECONCILIATION_REQUIRED",

@@ -9,6 +9,7 @@ from blackcell.kernel import EventEnvelope, JsonInput
 from blackcell.orchestration.alpha_lifecycle import ALPHA_EVENT_SOURCE
 from blackcell.orchestration.alpha_review_lifecycle import (
     ALPHA_REVIEW_CLAIMED,
+    ALPHA_REVIEW_LEASE_RENEWED,
     ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED,
     ALPHA_REVIEW_SUCCEEDED,
     AlphaReviewLease,
@@ -127,6 +128,46 @@ def test_review_lifecycle_rejects_stale_fences_unknown_fields_and_self_admission
         fold_alpha_review_lifecycle(lease.run_id, (substituted,))
 
 
+def test_review_lifecycle_renews_only_the_exact_claimed_lease_after_expiry() -> None:
+    lease = replace(_lease(), expires_at=NOW + timedelta(seconds=1))
+    claim = _claim(lease)
+    renewed = replace(lease, expires_at=NOW + timedelta(minutes=10))
+    renewal = _event(
+        renewed,
+        sequence=2,
+        event_type=ALPHA_REVIEW_LEASE_RENEWED,
+        causation_id=claim.event_id,
+        recorded_at=NOW + timedelta(seconds=2),
+        payload={
+            "previous_lease_digest": lease.digest,
+            "lease_digest": renewed.digest,
+            "lease": alpha_review_lease_payload(renewed),
+            "status": "claimed",
+        },
+    )
+
+    state = fold_alpha_review_lifecycle(lease.run_id, (claim, renewal))
+
+    assert state.status is AlphaReviewLifecycleStatus.CLAIMED
+    assert state.lease == renewed
+    changed_fence = replace(renewed, fencing_token=2)
+    invalid = _event(
+        changed_fence,
+        sequence=2,
+        event_type=ALPHA_REVIEW_LEASE_RENEWED,
+        causation_id=claim.event_id,
+        recorded_at=NOW + timedelta(seconds=2),
+        payload={
+            "previous_lease_digest": lease.digest,
+            "lease_digest": changed_fence.digest,
+            "lease": alpha_review_lease_payload(changed_fence),
+            "status": "claimed",
+        },
+    )
+    with pytest.raises(AlphaReviewLifecycleError):
+        fold_alpha_review_lifecycle(lease.run_id, (claim, invalid))
+
+
 def _lease() -> AlphaReviewLease:
     run_id = "run-1"
     return AlphaReviewLease(
@@ -173,6 +214,7 @@ def _event(
     event_type: str,
     causation_id: str,
     payload: dict[str, JsonInput],
+    recorded_at: datetime | None = None,
 ) -> EventEnvelope:
     return EventEnvelope.create(
         stream_id=alpha_review_stream(lease.run_id),
@@ -181,7 +223,7 @@ def _event(
         actor=lease.worker_id,
         source=ALPHA_EVENT_SOURCE,
         payload={"principal_id": lease.worker_id, **payload},
-        recorded_at=NOW + timedelta(seconds=sequence),
+        recorded_at=recorded_at or NOW + timedelta(seconds=sequence),
         correlation_id="correlation-1",
         causation_id=causation_id,
     )

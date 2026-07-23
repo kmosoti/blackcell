@@ -30,6 +30,7 @@ from blackcell.orchestration.alpha_review import (
 )
 from blackcell.orchestration.alpha_review_lifecycle import (
     ALPHA_REVIEW_FAILED,
+    ALPHA_REVIEW_LEASE_RENEWED,
     ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED,
     ALPHA_REVIEW_RECONCILIATION_REQUIRED,
     ALPHA_REVIEW_SUCCEEDED,
@@ -164,7 +165,9 @@ def test_review_worker_persists_context_dispatch_proposal_provider_and_admission
     assert reopened.run_once().status == "idle"
 
 
-def test_review_worker_preserves_completion_reserve_in_provider_budget(tmp_path: Path) -> None:
+def test_review_worker_renews_after_preparation_and_preserves_completion_reserve(
+    tmp_path: Path,
+) -> None:
     execution, events, artifacts, _, _, _, _, _ = _completed_writer(tmp_path)
     reviewer = RecordingReviewer()
     times = iter((NOW, NOW + timedelta(seconds=15), NOW + timedelta(seconds=16)))
@@ -184,10 +187,13 @@ def test_review_worker_preserves_completion_reserve_in_provider_budget(tmp_path:
     result = worker.run_once()
 
     assert result.status == "review-succeeded"
-    assert reviewer.calls[0].budget.max_latency_ms == 165_000
+    assert reviewer.calls[0].budget.max_latency_ms == 180_000
     state = AlphaReviewRuntimeService(events).inspect("run-1")
     assert state is not None
-    assert state.lease.expires_at == NOW + timedelta(seconds=210)
+    assert state.lease.expires_at == NOW + timedelta(seconds=225)
+    assert ALPHA_REVIEW_LEASE_RENEWED in tuple(
+        event.event_type for event in events.read_stream(alpha_review_stream("run-1"))
+    )
     with pytest.raises(ValueError, match="invalid alpha review worker policy"):
         AlphaReviewWorkerPolicy(
             worker_id="reviewer-1",
@@ -196,12 +202,12 @@ def test_review_worker_preserves_completion_reserve_in_provider_budget(tmp_path:
         )
 
 
-def test_review_worker_fails_before_dispatch_when_provider_window_is_exhausted(
+def test_review_worker_renews_after_preparation_outlasts_the_original_lease(
     tmp_path: Path,
 ) -> None:
     execution, events, artifacts, _, _, _, _, _ = _completed_writer(tmp_path)
     reviewer = RecordingReviewer()
-    times = iter((NOW, NOW + timedelta(seconds=181), NOW + timedelta(seconds=182)))
+    times = iter((NOW, NOW + timedelta(seconds=211), NOW + timedelta(seconds=212)))
     worker = AlphaReviewWorker(
         execution=execution,
         scheduler=AlphaReviewRuntimeService(events),
@@ -217,14 +223,16 @@ def test_review_worker_fails_before_dispatch_when_provider_window_is_exhausted(
 
     result = worker.run_once()
 
-    assert result.status == "review-failed"
-    assert result.failure_code == "alpha-review-provider-failed"
-    assert reviewer.calls == []
+    assert result.status == "review-succeeded"
+    assert reviewer.calls[0].budget.max_latency_ms == 180_000
     event_types = tuple(
         event.event_type for event in events.read_stream(alpha_review_stream("run-1"))
     )
-    assert ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED not in event_types
-    assert event_types[-1] == ALPHA_REVIEW_FAILED
+    assert event_types[1:] == (
+        ALPHA_REVIEW_LEASE_RENEWED,
+        ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED,
+        ALPHA_REVIEW_SUCCEEDED,
+    )
 
 
 def test_review_worker_records_stable_preparation_provider_and_admission_failures(
@@ -234,14 +242,23 @@ def test_review_worker_records_stable_preparation_provider_and_admission_failure
     preparation_root.mkdir()
     execution, events, artifacts, _, _, outcome, _, _ = _completed_writer(preparation_root)
     artifacts.path_for(_linked_digest(outcome, "context_artifact")).write_bytes(b"tampered")
-    preparation = _worker(
-        execution,
-        AlphaReviewRuntimeService(events),
-        artifacts,
-        RecordingReviewer(),
+    preparation_times = iter((NOW, NOW + timedelta(seconds=301)))
+    preparation = AlphaReviewWorker(
+        execution=execution,
+        scheduler=AlphaReviewRuntimeService(events),
+        artifacts=artifacts,
+        reviewer=RecordingReviewer(),
+        policy=AlphaReviewWorkerPolicy(
+            worker_id="reviewer-1",
+            budget=GatewayBudget(20_000, 2_000, 30_000, 10_000),
+        ),
+        clock=lambda: next(preparation_times),
     ).run_once()
     assert preparation.status == "review-failed"
     assert preparation.failure_code == "alpha-review-artifacts-not-verified"
+    preparation_state = AlphaReviewRuntimeService(events).inspect("run-1")
+    assert preparation_state is not None
+    assert preparation_state.status is AlphaReviewLifecycleStatus.FAILED
 
     provider_root = tmp_path / "provider"
     provider_root.mkdir()

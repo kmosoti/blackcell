@@ -62,6 +62,15 @@ class AlphaReviewSchedulerPort(Protocol):
         claimed_at: datetime | None = None,
     ) -> AlphaClaimedReview: ...
 
+    def renew_lease(
+        self,
+        lease: AlphaReviewLease,
+        *,
+        lease_expires_at: datetime,
+        principal_id: str,
+        renewed_at: datetime | None = None,
+    ) -> AlphaReviewLease: ...
+
     def record_provider_dispatch(
         self,
         lease: AlphaReviewLease,
@@ -212,6 +221,14 @@ class AlphaReviewWorker:
             last_artifact_digest = context_ref.digest
             phase = "provider"
             dispatched_at = self.clock()
+            renewed_expires_at = dispatched_at + timedelta(seconds=self.policy.lease_seconds)
+            if renewed_expires_at > lease.expires_at:
+                lease = self.scheduler.renew_lease(
+                    lease,
+                    lease_expires_at=renewed_expires_at,
+                    principal_id=self.policy.worker_id,
+                    renewed_at=dispatched_at,
+                )
             provider_budget = self._provider_budget(lease, dispatched_at)
             dispatch_event_id = self.scheduler.record_provider_dispatch(
                 lease,
