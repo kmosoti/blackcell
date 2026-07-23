@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import fields, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -172,6 +173,28 @@ def test_verifier_worker_persists_each_completed_verdict_and_never_reselects(
         assert worker.run_once().status == "idle"
 
 
+def test_verifier_worker_records_completion_after_lease_expiry_while_claim_is_active(
+    tmp_path: Path,
+) -> None:
+    source, scheduler, artifacts = _completed_clear_review(tmp_path)
+    times = iter((NOW, NOW + timedelta(seconds=2), NOW + timedelta(seconds=2)))
+    worker = _worker(
+        source,
+        scheduler,
+        artifacts,
+        StatusVerifier(AlphaVerificationStatus.PASS),
+        lease_seconds=1,
+        clock=lambda: next(times),
+    )
+
+    result = worker.run_once()
+
+    assert result.status == "verification-completed"
+    state = scheduler.inspect("run-1")
+    assert state is not None
+    assert state.status is AlphaVerificationLifecycleStatus.COMPLETED
+
+
 def test_verifier_worker_records_stable_source_verifier_artifact_and_persistence_errors(
     tmp_path: Path,
 ) -> None:
@@ -272,12 +295,15 @@ def _worker(
     scheduler: AlphaVerificationSchedulerPort,
     artifacts: AlphaVerificationArtifactStorePort,
     verifier: AlphaVerifierPort,
+    *,
+    lease_seconds: int = 300,
+    clock: Callable[[], datetime] | None = None,
 ) -> AlphaVerificationWorker:
     return AlphaVerificationWorker(
         source=source,
         scheduler=scheduler,
         artifacts=artifacts,
         verifier=verifier,
-        policy=AlphaVerificationWorkerPolicy("verifier-1"),
-        clock=lambda: NOW,
+        policy=AlphaVerificationWorkerPolicy("verifier-1", lease_seconds),
+        clock=(lambda: NOW) if clock is None else clock,
     )

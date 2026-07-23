@@ -188,8 +188,6 @@ class AlphaVerificationRuntimeService:
             raise AlphaVerificationRuntimeError(
                 AlphaVerificationRuntimeFailureCode.INVALID_REQUEST
             ) from error
-        if at > lease.expires_at:
-            raise AlphaVerificationRuntimeError(AlphaVerificationRuntimeFailureCode.CONFLICT)
         event = self._transition(
             state,
             ALPHA_VERIFICATION_COMPLETED,
@@ -227,8 +225,6 @@ class AlphaVerificationRuntimeService:
             raise AlphaVerificationRuntimeError(
                 AlphaVerificationRuntimeFailureCode.INVALID_REQUEST
             ) from error
-        if at > lease.expires_at:
-            raise AlphaVerificationRuntimeError(AlphaVerificationRuntimeFailureCode.CONFLICT)
         event = self._transition(
             state,
             ALPHA_VERIFICATION_FAILED,

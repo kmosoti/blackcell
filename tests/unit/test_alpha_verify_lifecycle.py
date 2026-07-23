@@ -66,6 +66,31 @@ def test_verification_lifecycle_folds_claim_and_each_completed_verdict() -> None
         assert not state.active
 
 
+def test_verification_lifecycle_accepts_late_terminal_for_exact_active_lease() -> None:
+    lease = replace(_lease(), expires_at=NOW + timedelta(seconds=1))
+    completed = _terminal(
+        lease,
+        event_type=ALPHA_VERIFICATION_COMPLETED,
+        event_id="completed-after-expiry",
+        payload={
+            "principal_id": lease.worker_id,
+            "run_id": lease.run_id,
+            "verification_id": lease.verification_id,
+            "lease_digest": lease.digest,
+            "verdict": "pass",
+            "report_artifact_digest": REPORT_DIGEST,
+            "matrix_digest": MATRIX_DIGEST,
+            "status": "completed",
+        },
+        recorded_at=NOW + timedelta(seconds=2),
+    )
+
+    state = fold_alpha_verification_lifecycle(lease.run_id, (_claimed(lease), completed))
+
+    assert state.status is AlphaVerificationLifecycleStatus.COMPLETED
+    assert state.lease.digest == lease.digest
+
+
 def test_verification_lifecycle_rejects_stale_fences_unknown_fields_and_error_confusion() -> None:
     lease = _lease()
     claimed = _claimed(lease)
@@ -220,6 +245,7 @@ def _terminal(
     event_id: str,
     payload: dict[str, JsonInput],
     actor: str | None = None,
+    recorded_at: datetime | None = None,
 ) -> EventEnvelope:
     return EventEnvelope.create(
         event_id=event_id,
@@ -229,7 +255,7 @@ def _terminal(
         actor=actor or lease.worker_id,
         source=ALPHA_EVENT_SOURCE,
         payload=payload,
-        recorded_at=NOW + timedelta(seconds=1),
+        recorded_at=recorded_at or NOW + timedelta(seconds=1),
         correlation_id="correlation-1",
         causation_id="claim-1",
     )

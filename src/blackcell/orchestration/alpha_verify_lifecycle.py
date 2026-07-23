@@ -379,7 +379,7 @@ def fold_alpha_verification_lifecycle(
                     "status",
                 },
             )
-            active = _active_lease(payload, principal, event, lease, status)
+            active = _active_lease(payload, principal, lease, status)
             try:
                 completed_verdict = AlphaVerificationStatus(payload.get("verdict"))
             except TypeError, ValueError:
@@ -406,7 +406,7 @@ def fold_alpha_verification_lifecycle(
                     "status",
                 },
             )
-            _active_lease(payload, principal, event, lease, status)
+            _active_lease(payload, principal, lease, status)
             failure_code = _failure(payload.get("failure_code"))
             result = payload.get("result_artifact_digest")
             result_artifact_digest = None if result is None else _digest(result)
@@ -493,10 +493,11 @@ def alpha_verification_lifecycle_payload(
 def _active_lease(
     payload: Mapping[str, JsonValue],
     principal: str,
-    event: EventEnvelope,
     lease: AlphaVerificationLease | None,
     status: AlphaVerificationLifecycleStatus | None,
 ) -> AlphaVerificationLease:
+    # Wall-clock expiry alone does not supersede deterministic work. The exact active
+    # lease and optimistic append fence decide whether a late terminal event may win.
     if (
         lease is None
         or status is not AlphaVerificationLifecycleStatus.CLAIMED
@@ -504,7 +505,6 @@ def _active_lease(
         or payload.get("verification_id") != lease.verification_id
         or payload.get("lease_digest") != lease.digest
         or principal != lease.worker_id
-        or event.recorded_at > lease.expires_at
     ):
         raise AlphaVerificationLifecycleError()
     return lease

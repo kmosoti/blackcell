@@ -37,7 +37,7 @@ _MAX_ARGV = 32
 _MAX_ARG_BYTES = 2 * 1024
 _MAX_PATHS = 256
 _MAX_PATH_CHARS = 4_096
-_MAX_EVIDENCE_ITEMS = 128
+MAX_ALPHA_REVIEW_EVIDENCE_ITEMS = 128
 _MAX_EVIDENCE_EXCERPT_BYTES = 32 * 1024
 _MAX_EVIDENCE_BYTES = 512 * 1024
 _MAX_ACCEPTANCE_BYTES = 2 * 1024 * 1024
@@ -308,7 +308,7 @@ class AlphaReviewContext:
             or _DIGEST.fullmatch(self.state_digest) is None
             or _DIGEST.fullmatch(self.artifact_evidence_digest) is None
             or not isinstance(self.evidence, tuple)
-            or not 1 <= len(self.evidence) <= _MAX_EVIDENCE_ITEMS
+            or not 1 <= len(self.evidence) <= MAX_ALPHA_REVIEW_EVIDENCE_ITEMS
             or not all(isinstance(item, AlphaReviewEvidence) for item in self.evidence)
             or sum(len(item.excerpt.encode("utf-8")) for item in self.evidence)
             > _MAX_EVIDENCE_BYTES
@@ -999,6 +999,7 @@ __all__ = [
     "ALPHA_REVIEW_PROPOSAL_OUTPUT_SCHEMA",
     "ALPHA_REVIEW_PROPOSAL_SCHEMA",
     "ALPHA_REVIEW_PROVIDER_RESULT_SCHEMA",
+    "MAX_ALPHA_REVIEW_EVIDENCE_ITEMS",
     "AlphaAdmittedReview",
     "AlphaProposedReviewFinding",
     "AlphaReviewAcceptance",

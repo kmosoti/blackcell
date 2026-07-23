@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
+import msgspec
 import pytest
 
 from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
@@ -98,6 +99,67 @@ def test_alpha_submission_rejects_mismatched_references_and_conflicts(tmp_path: 
     with pytest.raises(RuntimeApiError) as absent:
         service.submit_run(_run(), principal_id="operator")
     assert absent.value.code is RuntimeApiFailureCode.NOT_FOUND
+
+
+def test_alpha_plan_acceptance_enforces_review_evidence_item_capacity(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    events = EventStore(tmp_path / "state.sqlite3")
+    service = AlphaRuntimeApiService(events, repository)
+    service.register_project(_project(repository), principal_id="operator")
+    service.accept_intent(_intent(), principal_id="operator")
+    base_node = _nodes()[0]
+
+    def checks(count: int) -> tuple[AlphaAcceptanceCheck, ...]:
+        return tuple(
+            AlphaAcceptanceCheck(
+                check_id=f"check-{index:02d}",
+                argv=("python", "-m", "compileall", "src"),
+            )
+            for index in range(count)
+        )
+
+    exact_capacity_node = msgspec.structs.replace(
+        base_node,
+        budget=msgspec.structs.replace(base_node.budget, max_changed_files=41),
+        effects=("repository-read", "repository-write", "process"),
+        allowed_paths=("src",),
+        checks=checks(1),
+    )
+    exact_capacity_plan = msgspec.structs.replace(
+        _plan(),
+        plan_id="plan-capacity",
+        allowed_effects=("repository-read", "repository-write", "process"),
+        nodes=(exact_capacity_node,),
+        idempotency_key="plan-capacity",
+    )
+    accepted = service.accept_plan(exact_capacity_plan, principal_id="operator")
+    assert accepted.plan_id == "plan-capacity"
+
+    def plan(check_count: int, plan_id: str) -> AlphaPlanRequest:
+        return msgspec.structs.replace(
+            _plan(),
+            plan_id=plan_id,
+            nodes=(msgspec.structs.replace(base_node, checks=checks(check_count)),),
+            idempotency_key=plan_id,
+        )
+
+    with pytest.raises(RuntimeApiError) as over_capacity:
+        service.accept_plan(plan(32, "plan-over-capacity"), principal_id="operator")
+
+    assert over_capacity.value.code is RuntimeApiFailureCode.INVALID_REQUEST
+    assert events.read_stream("alpha:plan:plan-over-capacity") == ()
+
+    aggregate_nodes = tuple(msgspec.structs.replace(node, checks=checks(16)) for node in _nodes())
+    aggregate_plan = msgspec.structs.replace(
+        _plan(),
+        plan_id="plan-over-aggregate-capacity",
+        nodes=aggregate_nodes,
+        idempotency_key="plan-over-aggregate-capacity",
+    )
+    with pytest.raises(RuntimeApiError) as aggregate_capacity:
+        service.accept_plan(aggregate_plan, principal_id="operator")
+    assert aggregate_capacity.value.code is RuntimeApiFailureCode.INVALID_REQUEST
+    assert events.read_stream("alpha:plan:plan-over-aggregate-capacity") == ()
 
 
 def test_queued_cancellation_is_idempotent_and_replayed_without_live_work(

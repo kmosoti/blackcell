@@ -92,7 +92,10 @@ from blackcell.orchestration.alpha_replay import (
     build_alpha_review_context_from_artifacts,
     verify_alpha_run_artifacts,
 )
-from blackcell.orchestration.alpha_review import AlphaReviewContext
+from blackcell.orchestration.alpha_review import (
+    MAX_ALPHA_REVIEW_EVIDENCE_ITEMS,
+    AlphaReviewContext,
+)
 from blackcell.orchestration.alpha_review_lifecycle import (
     ALPHA_REVIEW_EVENT_TYPES,
     AlphaReviewCandidate,
@@ -272,6 +275,7 @@ class AlphaRuntimeApiService:
         ):
             raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
         _require_reference(intent_event, "project", project_event)
+        _require_review_evidence_capacity(request)
         event = self._record_immutable(
             stream_id=_plan_stream(request.plan_id),
             event_type=_PLAN_ACCEPTED,
@@ -2275,6 +2279,14 @@ def _intent_stream(intent_id: str) -> str:
 
 def _plan_stream(plan_id: str) -> str:
     return f"alpha:plan:{plan_id}"
+
+
+def _require_review_evidence_capacity(request: AlphaPlanRequest) -> None:
+    required_items = sum(
+        1 + (4 * len(node.checks)) + (3 * node.budget.max_changed_files) for node in request.nodes
+    )
+    if required_items > MAX_ALPHA_REVIEW_EVIDENCE_ITEMS:
+        raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST)
 
 
 def _run_stream(run_id: str) -> str:

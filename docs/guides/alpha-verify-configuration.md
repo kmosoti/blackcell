@@ -85,8 +85,11 @@ service reconstructs and verifies their immutable events and artifacts without a
 acceptance check, or worktree call. A model review is input evidence, not the verification verdict.
 
 The worker claims a fenced verification lease, writes its canonical report artifact first, then
-records completion with the exact report and matrix digests. On restart, an expired pre-completion
-claim may be requeued under a higher fence. A stored report without a durable completion remains
+records completion with the exact report and matrix digests. Deterministic verification may finish
+after the lease's wall-clock expiry; that terminal write is accepted only while the same lease
+digest, worker, and claimed lifecycle state remain active. A supervisor requeue or newer fencing
+token makes the old worker stale and rejects its terminal write. On restart, an incomplete claim may
+be requeued under a higher fence. A stored report without a durable completion remains
 `verifier-error`; it is never promoted to `pass` from file presence or metadata inference.
 
 Inspect the resulting lifecycle through the shared client:

@@ -172,6 +172,65 @@ def test_verification_scheduler_records_stable_verifier_error_and_rejects_stale_
     )
 
 
+def test_verification_scheduler_accepts_late_terminal_events_only_for_active_lease(
+    tmp_path: Path,
+) -> None:
+    completed_events, completed_candidate = _events_and_candidate(tmp_path / "completed.sqlite3")
+    completed_service = AlphaVerificationRuntimeService(completed_events)
+    completed_claim = completed_service.claim(
+        completed_candidate,
+        worker_id="verifier-1",
+        lease_expires_at=NOW + timedelta(seconds=1),
+        claimed_at=NOW,
+    )
+    completed = completed_service.record_completed(
+        completed_claim.lease,
+        verdict=AlphaVerificationStatus.PASS,
+        report_artifact_digest=RESULT_DIGEST,
+        matrix_digest=MATRIX_DIGEST,
+        principal_id="verifier-1",
+        completed_at=NOW + timedelta(seconds=2),
+    )
+    assert completed.status is AlphaVerificationLifecycleStatus.COMPLETED
+
+    failed_events, failed_candidate = _events_and_candidate(tmp_path / "failed.sqlite3")
+    failed_service = AlphaVerificationRuntimeService(failed_events)
+    failed_claim = failed_service.claim(
+        failed_candidate,
+        worker_id="verifier-1",
+        lease_expires_at=NOW + timedelta(seconds=1),
+        claimed_at=NOW,
+    )
+    failed = failed_service.record_failure(
+        failed_claim.lease,
+        failure_code="alpha-verifier-error",
+        result_artifact_digest=None,
+        principal_id="verifier-1",
+        failed_at=NOW + timedelta(seconds=2),
+    )
+    assert failed.status is AlphaVerificationLifecycleStatus.FAILED
+
+    stale_events, stale_candidate = _events_and_candidate(tmp_path / "stale.sqlite3")
+    stale_service = AlphaVerificationRuntimeService(stale_events)
+    stale_claim = stale_service.claim(
+        stale_candidate,
+        worker_id="verifier-1",
+        lease_expires_at=NOW + timedelta(seconds=1),
+        claimed_at=NOW,
+    )
+    stale_service.reconcile(principal_id="verification-supervisor")
+    with pytest.raises(AlphaVerificationRuntimeError) as stale:
+        stale_service.record_completed(
+            stale_claim.lease,
+            verdict=AlphaVerificationStatus.PASS,
+            report_artifact_digest=RESULT_DIGEST,
+            matrix_digest=MATRIX_DIGEST,
+            principal_id="verifier-1",
+            completed_at=NOW + timedelta(seconds=2),
+        )
+    assert stale.value.code is AlphaVerificationRuntimeFailureCode.CONFLICT
+
+
 def _events_and_candidate(path: Path) -> tuple[EventStore, AlphaVerificationCandidate]:
     events = EventStore(path)
     run_id = "run-1"

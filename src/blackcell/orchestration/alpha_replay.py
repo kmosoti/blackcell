@@ -52,6 +52,7 @@ from blackcell.orchestration.alpha_changes import (
     alpha_change_proposal_from_mapping,
 )
 from blackcell.orchestration.alpha_review import (
+    MAX_ALPHA_REVIEW_EVIDENCE_ITEMS,
     AlphaReviewAcceptance,
     AlphaReviewCheck,
     AlphaReviewContext,
@@ -71,7 +72,6 @@ _MAX_JSON_ARTIFACT_BYTES = 4 * 1024 * 1024
 _MAX_STREAM_BYTES = 16 * 1024 * 1024
 _MAX_TOTAL_BYTES = 64 * 1024 * 1024
 _MAX_ARTIFACT_RELATIONSHIPS = 16_384
-_MAX_REVIEW_EVIDENCE_ITEMS = 128
 _MAX_REVIEW_EXCERPT_BYTES = 32 * 1024
 _MAX_REVIEW_EVIDENCE_BYTES = 512 * 1024
 
@@ -609,7 +609,7 @@ def build_alpha_review_context_from_artifacts(
             )
             evidence.extend(_review_evidence_for_node(material))
         if (
-            len(evidence) > _MAX_REVIEW_EVIDENCE_ITEMS
+            len(evidence) > MAX_ALPHA_REVIEW_EVIDENCE_ITEMS
             or sum(len(item.excerpt.encode("utf-8")) for item in evidence)
             > _MAX_REVIEW_EVIDENCE_BYTES
         ):
