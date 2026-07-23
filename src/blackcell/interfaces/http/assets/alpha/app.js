@@ -1175,7 +1175,7 @@ function boundedWireText(value, maximum) {
     value.length <= maximum &&
     [...value].every((character) => {
       const code = character.codePointAt(0);
-      return code !== undefined && code >= 0x20 && code !== 0x7f;
+      return code !== undefined && code !== 0x00 && code !== 0x7f;
     })
   );
 }

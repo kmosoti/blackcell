@@ -3,7 +3,17 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from blackcell.interfaces.http import MAX_RESPONSE_BODY_BYTES, AlphaWebTicketAuthority
+import pytest
+
+from blackcell.interfaces.http import (
+    MAX_RESPONSE_BODY_BYTES,
+    AlphaAcceptanceCheck,
+    AlphaIntentRequest,
+    AlphaNodeBudget,
+    AlphaPlanNode,
+    AlphaWebTicketAuthority,
+    WireContractError,
+)
 from blackcell.interfaces.http.alpha_web_assets import load_alpha_web_assets
 from tests.unit.test_alpha_web import _client, _service
 
@@ -142,6 +152,55 @@ def test_browser_response_ceiling_matches_the_http_service_contract() -> None:
     request_bytes = int(request_match.group(1).replace("_", ""))
     response_multiplier = int(response_match.group(1).replace("_", ""))
     assert request_bytes * response_multiplier == MAX_RESPONSE_BODY_BYTES
+
+
+def test_browser_text_validation_matches_the_service_multiline_contract() -> None:
+    accepted = AlphaIntentRequest(
+        schema_version="alpha-intent-request/v1",
+        intent_id="intent-1",
+        project_id="project-1",
+        objective="Inspect the first line.\nInspect the second line.",
+        constraints=("Keep\tthe tabbed constraint.",),
+        assumptions=(),
+        unresolved_questions=(),
+        idempotency_key="intent-request-1",
+    )
+    assert "\n" in accepted.objective
+    assert "\t" in accepted.constraints[0]
+    plan_node = AlphaPlanNode(
+        node_id="inspect",
+        objective="Inspect the first surface.\nInspect the second surface.",
+        depends_on=(),
+        budget=AlphaNodeBudget(0, 0, 1, 0, 0),
+        effects=("repository-read", "process"),
+        allowed_paths=(),
+        checks=(AlphaAcceptanceCheck("inspect-check", ("python",)),),
+    )
+    assert "\n" in plan_node.objective
+    for invalid in ("contains\x00nul", "contains\x7fdel"):
+        with pytest.raises(WireContractError):
+            AlphaIntentRequest(
+                schema_version="alpha-intent-request/v1",
+                intent_id="intent-1",
+                project_id="project-1",
+                objective=invalid,
+                constraints=(),
+                assumptions=(),
+                unresolved_questions=(),
+                idempotency_key="intent-request-1",
+            )
+
+    javascript = load_alpha_web_assets().javascript.decode("utf-8")
+    validator = re.search(
+        r"function boundedWireText\(.*?\n}\n\nfunction boundedNonblankText",
+        javascript,
+        flags=re.DOTALL,
+    )
+    assert validator is not None
+    source = validator.group(0)
+    assert "code !== 0x00" in source
+    assert "code !== 0x7f" in source
+    assert "code >= 0x20" not in source
 
 
 def test_alpha_web_workflow_surface_is_bounded_closed_and_accessible() -> None:
