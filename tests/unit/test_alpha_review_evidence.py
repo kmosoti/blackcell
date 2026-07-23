@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 import blackcell.orchestration.alpha_replay as alpha_replay
+from blackcell.adapters.execution.worktree import WorktreeExecutionSpec
 from blackcell.kernel import ArtifactStore
 from blackcell.kernel._json import json_digest
+from blackcell.orchestration.alpha_acceptance import (
+    AlphaAcceptanceCommand,
+    AlphaAcceptanceResult,
+    AlphaAcceptanceStream,
+)
 from blackcell.orchestration.alpha_changes import AlphaTextOperation
 from blackcell.orchestration.alpha_replay import (
     AlphaReviewEvidenceError,
@@ -20,6 +27,7 @@ from tests.unit.test_alpha_replay import (
     _expectation,
     _linked_digest,
 )
+from tests.unit.test_alpha_worker import RecordingAcceptance
 
 
 def test_review_evidence_builds_exact_acceptance_and_all_verified_excerpts(
@@ -122,7 +130,7 @@ def test_review_evidence_rejects_tamper_definition_drift_and_non_success(
     assert tampered.value.code is AlphaReviewEvidenceFailureCode.ARTIFACTS_NOT_VERIFIED
 
 
-def test_review_evidence_fails_closed_on_excerpt_and_aggregate_budgets(
+def test_review_evidence_truncates_oversized_artifacts_and_enforces_aggregate_budget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -134,9 +142,59 @@ def test_review_evidence_fails_closed_on_excerpt_and_aggregate_budgets(
     )
     expectation = _expectation(outcome, result_digest=json_digest(outcome))
     state_digest = runtime.replay_run("run-1").state_digest
-    with pytest.raises(AlphaReviewEvidenceError) as oversized:
-        _build(artifacts, state_digest, expectation)
-    assert oversized.value.code is AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED
+    context = _build(artifacts, state_digest, expectation)
+    source_before = next(item for item in context.evidence if item.kind.value == "source-before")
+    assert len(source_before.excerpt.encode("utf-8")) <= 32 * 1024
+    assert source_before.excerpt.endswith(
+        "\n...[truncated; complete artifact retained by digest]\n"
+    )
+    assert source_before.artifact_digest == _linked_digest(outcome, "context_artifact")
+
+    original_run = RecordingAcceptance.run
+
+    def run_with_large_binary_stdout(
+        self: RecordingAcceptance,
+        command: AlphaAcceptanceCommand,
+        spec: WorktreeExecutionSpec,
+        *,
+        cancel_requested: Callable[[], bool] | None = None,
+    ) -> AlphaAcceptanceResult:
+        result = original_run(
+            self,
+            command,
+            spec,
+            cancel_requested=cancel_requested,
+        )
+        return replace(result, stdout=AlphaAcceptanceStream(b"\xff" * (64 * 1024)))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(RecordingAcceptance, "run", run_with_large_binary_stdout)
+        binary_root = tmp_path / "binary"
+        binary_root.mkdir()
+        binary_runtime, _, binary_artifacts, _, _, binary_outcome, _, _ = _completed_writer(
+            binary_root
+        )
+        binary_expectation = _expectation(
+            binary_outcome,
+            result_digest=json_digest(binary_outcome),
+        )
+        binary_context = _build(
+            binary_artifacts,
+            binary_runtime.replay_run("run-1").state_digest,
+            binary_expectation,
+        )
+
+    stdout = next(item for item in binary_context.evidence if item.kind.value == "check-stdout")
+    assert stdout.excerpt.startswith("base64-prefix:")
+    assert stdout.excerpt.endswith("\n...[truncated; complete artifact retained by digest]\n")
+    assert len(stdout.excerpt.encode("utf-8")) <= 32 * 1024
+    assert stdout.artifact_digest == AlphaAcceptanceStream(b"\xff" * (64 * 1024)).digest
+
+    with monkeypatch.context() as patch:
+        patch.setattr(alpha_replay, "_MAX_REVIEW_EVIDENCE_BYTES", 8 * 128)
+        constrained = _build(artifacts, state_digest, expectation)
+    assert sum(len(item.excerpt.encode("utf-8")) for item in constrained.evidence) <= 8 * 128
+    assert any("[truncated;" in item.excerpt for item in constrained.evidence)
 
     aggregate_root = tmp_path / "aggregate"
     aggregate_root.mkdir()

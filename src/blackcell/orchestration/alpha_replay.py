@@ -74,6 +74,7 @@ _MAX_TOTAL_BYTES = 64 * 1024 * 1024
 _MAX_ARTIFACT_RELATIONSHIPS = 16_384
 _MAX_REVIEW_EXCERPT_BYTES = 32 * 1024
 _MAX_REVIEW_EVIDENCE_BYTES = 512 * 1024
+_REVIEW_TRUNCATION_MARKER = "\n...[truncated; complete artifact retained by digest]\n"
 
 type AlphaReplayNodeStatus = Literal[
     "pending",
@@ -584,6 +585,15 @@ def build_alpha_review_context_from_artifacts(
     plan_nodes: list[AlphaReviewPlanNode] = []
     evidence: list[AlphaReviewEvidence] = []
     try:
+        evidence_item_count = sum(_review_evidence_item_count(material) for material in materials)
+        if not 1 <= evidence_item_count <= MAX_ALPHA_REVIEW_EVIDENCE_ITEMS:
+            raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED)
+        maximum_excerpt_bytes = min(
+            _MAX_REVIEW_EXCERPT_BYTES,
+            _MAX_REVIEW_EVIDENCE_BYTES // evidence_item_count,
+        )
+        if maximum_excerpt_bytes < 1:
+            raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED)
         for material in materials:
             expectation = material.expectation
             plan_nodes.append(
@@ -607,9 +617,14 @@ def build_alpha_review_context_from_artifacts(
                     ),
                 )
             )
-            evidence.extend(_review_evidence_for_node(material))
+            evidence.extend(
+                _review_evidence_for_node(
+                    material,
+                    maximum_excerpt_bytes=maximum_excerpt_bytes,
+                )
+            )
         if (
-            len(evidence) > MAX_ALPHA_REVIEW_EVIDENCE_ITEMS
+            len(evidence) != evidence_item_count
             or sum(len(item.excerpt.encode("utf-8")) for item in evidence)
             > _MAX_REVIEW_EVIDENCE_BYTES
         ):
@@ -638,8 +653,22 @@ def build_alpha_review_context_from_artifacts(
         ) from error
 
 
+def _review_evidence_item_count(material: _VerifiedNodeMaterial) -> int:
+    count = 1 + (4 * len(material.checks))
+    if material.expectation.repository_write:
+        if material.proposal is None:
+            raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.DEFINITION_MISMATCH)
+        count += sum(
+            3 if operation.operation is AlphaTextOperation.REPLACE else 2
+            for operation in material.proposal.operations
+        )
+    return count
+
+
 def _review_evidence_for_node(
     material: _VerifiedNodeMaterial,
+    *,
+    maximum_excerpt_bytes: int,
 ) -> tuple[AlphaReviewEvidence, ...]:
     expectation = material.expectation
     result: list[AlphaReviewEvidence] = []
@@ -649,6 +678,7 @@ def _review_evidence_for_node(
         node_id=expectation.node_id,
         artifact_digest=material.outcome_link.digest,
         data=material.outcome_bytes,
+        maximum_excerpt_bytes=maximum_excerpt_bytes,
     )
 
     context = material.context
@@ -680,6 +710,7 @@ def _review_evidence_for_node(
                     data=before[operation.path].encode("utf-8"),
                     path=operation.path,
                     operation=operation.operation,
+                    maximum_excerpt_bytes=maximum_excerpt_bytes,
                 )
             if operation.operation in {AlphaTextOperation.CREATE, AlphaTextOperation.REPLACE}:
                 if operation.content is None:
@@ -694,6 +725,7 @@ def _review_evidence_for_node(
                     data=operation.content.encode("utf-8"),
                     path=operation.path,
                     operation=operation.operation,
+                    maximum_excerpt_bytes=maximum_excerpt_bytes,
                 )
             _append_review_evidence(
                 result,
@@ -703,6 +735,7 @@ def _review_evidence_for_node(
                 data=material.effect_bytes,
                 path=operation.path,
                 operation=operation.operation,
+                maximum_excerpt_bytes=maximum_excerpt_bytes,
             )
 
     for check in material.checks:
@@ -714,6 +747,7 @@ def _review_evidence_for_node(
             artifact_digest=check.recorded.command.digest,
             data=check.command_bytes,
             check_id=check_id,
+            maximum_excerpt_bytes=maximum_excerpt_bytes,
         )
         _append_review_evidence(
             result,
@@ -722,6 +756,7 @@ def _review_evidence_for_node(
             artifact_digest=check.recorded.result.digest,
             data=check.result_bytes,
             check_id=check_id,
+            maximum_excerpt_bytes=maximum_excerpt_bytes,
         )
         _append_review_evidence(
             result,
@@ -731,6 +766,7 @@ def _review_evidence_for_node(
             data=check.stdout,
             check_id=check_id,
             binary_allowed=True,
+            maximum_excerpt_bytes=maximum_excerpt_bytes,
         )
         _append_review_evidence(
             result,
@@ -740,6 +776,7 @@ def _review_evidence_for_node(
             data=check.stderr,
             check_id=check_id,
             binary_allowed=True,
+            maximum_excerpt_bytes=maximum_excerpt_bytes,
         )
     return tuple(result)
 
@@ -755,23 +792,13 @@ def _append_review_evidence(
     check_id: str | None = None,
     operation: AlphaTextOperation | None = None,
     binary_allowed: bool = False,
+    maximum_excerpt_bytes: int,
 ) -> None:
-    if len(data) > _MAX_REVIEW_EXCERPT_BYTES:
-        raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED)
-    try:
-        excerpt = data.decode("utf-8")
-    except UnicodeDecodeError:
-        if not binary_allowed:
-            raise AlphaReviewEvidenceError(
-                AlphaReviewEvidenceFailureCode.DEFINITION_MISMATCH
-            ) from None
-        excerpt = "base64:" + base64.b64encode(data).decode("ascii")
-    if "\x00" in excerpt:
-        if not binary_allowed:
-            raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.DEFINITION_MISMATCH)
-        excerpt = "base64:" + base64.b64encode(data).decode("ascii")
-    if len(excerpt.encode("utf-8")) > _MAX_REVIEW_EXCERPT_BYTES:
-        raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED)
+    excerpt = _bounded_review_excerpt(
+        data,
+        binary_allowed=binary_allowed,
+        maximum_bytes=maximum_excerpt_bytes,
+    )
     target.append(
         AlphaReviewEvidence(
             kind=kind,
@@ -784,6 +811,54 @@ def _append_review_evidence(
             operation=operation,
         )
     )
+
+
+def _bounded_review_excerpt(
+    data: bytes,
+    *,
+    binary_allowed: bool,
+    maximum_bytes: int,
+) -> str:
+    try:
+        excerpt = data.decode("utf-8")
+    except UnicodeDecodeError:
+        if not binary_allowed:
+            raise AlphaReviewEvidenceError(
+                AlphaReviewEvidenceFailureCode.DEFINITION_MISMATCH
+            ) from None
+        return _bounded_base64_excerpt(data, maximum_bytes=maximum_bytes)
+    if "\x00" in excerpt:
+        if not binary_allowed:
+            raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.DEFINITION_MISMATCH)
+        return _bounded_base64_excerpt(data, maximum_bytes=maximum_bytes)
+    encoded = excerpt.encode("utf-8")
+    if len(encoded) <= maximum_bytes:
+        return excerpt
+    marker = _REVIEW_TRUNCATION_MARKER.encode("utf-8")
+    if maximum_bytes <= len(marker):
+        raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED)
+    prefix = encoded[: maximum_bytes - len(marker)].decode("utf-8", errors="ignore")
+    return prefix + _REVIEW_TRUNCATION_MARKER
+
+
+def _bounded_base64_excerpt(data: bytes, *, maximum_bytes: int) -> str:
+    complete = "base64:" + base64.b64encode(data).decode("ascii")
+    if len(complete.encode("utf-8")) <= maximum_bytes:
+        return complete
+    label = "base64-prefix:"
+    reserved = len(label.encode("utf-8")) + len(_REVIEW_TRUNCATION_MARKER.encode("utf-8"))
+    available = maximum_bytes - reserved
+    raw_prefix_bytes = (available // 4) * 3
+    if raw_prefix_bytes < 1:
+        raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED)
+    excerpt = (
+        label
+        + base64.b64encode(data[:raw_prefix_bytes]).decode("ascii")
+        + _REVIEW_TRUNCATION_MARKER
+    )
+    if len(excerpt.encode("utf-8")) > maximum_bytes:  # pragma: no cover - arithmetic invariant
+        raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED)
+    return excerpt
 
 
 def _verify_node(

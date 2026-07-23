@@ -304,11 +304,14 @@ Review preparation has no live provider or effect port. It reuses the artifact r
 continues only for a fully verified successful execution graph. From those already-checked objects,
 the host reconstructs the accepted project, intent, plan, DAG, effects, path limits, exact check
 commands and expected exits, command and result identities, pass state, and accepted base revision.
-It emits complete source-before, source-after, effect, outcome, command, result, stdout, and stderr
-evidence with content-derived IDs and exact node, path or check, and line identities. Empty streams
-remain explicit empty evidence. A required excerpt over 32 KiB, more than 128 items, or more than
-512 KiB in aggregate makes preparation inconclusive; the host never truncates or silently omits
-changed source or check evidence to fit a model context.
+It emits source-before, source-after, effect, outcome, command, result, stdout, and stderr evidence
+with content-derived IDs and exact node, path or check, and line identities. Empty streams remain
+explicit empty evidence. Replay verifies every complete artifact and retains its digest as evidence
+identity. When content exceeds its allocated excerpt budget, the host emits a deterministic UTF-8
+or base64 prefix with an explicit truncation marker; it never drops the evidence item or disguises a
+partial excerpt as the complete artifact. The per-item allocation is the lesser of 32 KiB and the
+512 KiB aggregate divided by the exact item count. More than 128 items still fails before execution
+through plan admission and remains a closed review-context boundary.
 
 The review-only worker has four capabilities: discover immutable successful-execution snapshots,
 claim and finish the fenced review stream, write content-addressed artifacts, and call a REVIEW-only

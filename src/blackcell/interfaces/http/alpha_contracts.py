@@ -6,6 +6,7 @@ from pathlib import PurePosixPath
 from typing import Literal
 
 from blackcell.interfaces.http.contracts import StrictStruct, WireContractError
+from blackcell.orchestration.alpha_acceptance import MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS
 
 MAX_ALPHA_EVENT_PAGE_SIZE = 200
 _MAX_ID_CHARS = 120
@@ -160,7 +161,11 @@ class AlphaNodeBudget(StrictStruct, frozen=True):
     def __post_init__(self) -> None:
         _bounded_integer(self.max_input_tokens, minimum=0, maximum=1_000_000)
         _bounded_integer(self.max_output_tokens, minimum=0, maximum=1_000_000)
-        _bounded_integer(self.timeout_seconds, minimum=1, maximum=86_400)
+        _bounded_integer(
+            self.timeout_seconds,
+            minimum=1,
+            maximum=MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS,
+        )
         _bounded_integer(self.max_cost_microusd, minimum=0, maximum=10_000_000_000)
         _bounded_integer(self.max_changed_files, minimum=0, maximum=10_000)
 

@@ -15,6 +15,7 @@ from blackcell.interfaces.http import (
     alpha_plan_topological_order,
     decode_contract,
 )
+from blackcell.orchestration.alpha_acceptance import MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS
 
 _DIGEST = "sha256:" + ("a" * 64)
 _BASE_COMMIT = "b" * 40
@@ -264,6 +265,14 @@ def test_alpha_plan_requires_explicit_check_effects_and_serial_writers() -> None
         idempotency_key="serial-writers",
     )
     assert alpha_plan_topological_order(accepted.nodes) == ("write-a", "write-b")
+
+
+def test_alpha_node_budget_timeout_matches_executable_acceptance_limit() -> None:
+    accepted = AlphaNodeBudget(1_000, 1_000, MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS, 0, 0)
+
+    assert accepted.timeout_seconds == 600
+    with pytest.raises(WireContractError):
+        AlphaNodeBudget(1_000, 1_000, MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS + 1, 0, 0)
 
 
 def _valid_plan() -> AlphaPlanRequest:

@@ -24,7 +24,7 @@ _EXECUTABLE_ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _MAX_ARGV = 32
 _MAX_ARG_CHARS = 2_048
-_MAX_TIMEOUT_SECONDS = 600.0
+MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS = 600
 _MAX_STREAM_BYTES = 16 * 1024 * 1024
 
 
@@ -92,7 +92,7 @@ class AlphaAcceptanceCommand:
             or isinstance(self.timeout_seconds, bool)
             or not isinstance(self.timeout_seconds, int | float)
             or not math.isfinite(self.timeout_seconds)
-            or not 0 < self.timeout_seconds <= _MAX_TIMEOUT_SECONDS
+            or not 0 < self.timeout_seconds <= MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS
         ):
             raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_COMMAND)
         for limit in (self.stdout_limit_bytes, self.stderr_limit_bytes):
@@ -217,6 +217,7 @@ __all__ = [
     "ALPHA_ACCEPTANCE_COMMAND_SCHEMA",
     "ALPHA_ACCEPTANCE_RESULT_SCHEMA",
     "ALPHA_ACCEPTANCE_STREAM_SCHEMA",
+    "MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS",
     "AlphaAcceptanceCommand",
     "AlphaAcceptanceError",
     "AlphaAcceptanceFailureCode",
