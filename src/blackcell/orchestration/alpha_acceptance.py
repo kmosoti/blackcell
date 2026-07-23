@@ -25,7 +25,7 @@ _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _MAX_ARGV = 32
 _MAX_ARG_CHARS = 2_048
 MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS = 600
-_MAX_STREAM_BYTES = 16 * 1024 * 1024
+MAX_ALPHA_ACCEPTANCE_STREAM_BYTES = 16 * 1024 * 1024
 
 
 class AlphaAcceptanceFailureCode(StrEnum):
@@ -105,7 +105,7 @@ class AlphaAcceptanceCommand:
             if (
                 isinstance(limit, bool)
                 or not isinstance(limit, int)
-                or not 1 <= limit <= _MAX_STREAM_BYTES
+                or not 1 <= limit <= MAX_ALPHA_ACCEPTANCE_STREAM_BYTES
             ):
                 raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_COMMAND)
 
@@ -223,6 +223,7 @@ __all__ = [
     "ALPHA_ACCEPTANCE_COMMAND_SCHEMA",
     "ALPHA_ACCEPTANCE_RESULT_SCHEMA",
     "ALPHA_ACCEPTANCE_STREAM_SCHEMA",
+    "MAX_ALPHA_ACCEPTANCE_STREAM_BYTES",
     "MAX_ALPHA_ACCEPTANCE_TIMEOUT_SECONDS",
     "AlphaAcceptanceCommand",
     "AlphaAcceptanceError",

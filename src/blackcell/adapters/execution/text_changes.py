@@ -22,8 +22,9 @@ from blackcell.adapters.execution.worktree import (
     WorktreeInspection,
 )
 from blackcell.kernel import JsonInput
-from blackcell.kernel._json import bytes_digest, json_digest
+from blackcell.kernel._json import bytes_digest, canonical_json_bytes
 from blackcell.orchestration.alpha_changes import (
+    MAX_ALPHA_TEXT_CHANGE_RESULT_BYTES,
     AlphaChangeProposal,
     AlphaFileChange,
     AlphaTextOperation,
@@ -118,7 +119,10 @@ class TextChangeExecutionResult:
             or tuple(effect.path for effect in self.effects) != self.changed_paths
         ):
             raise TextChangeExecutionError(TextChangeFailureCode.EFFECT_EVIDENCE_MISMATCH)
-        object.__setattr__(self, "result_digest", json_digest(text_change_result_payload(self)))
+        payload = canonical_json_bytes(text_change_result_payload(self))
+        if len(payload) > MAX_ALPHA_TEXT_CHANGE_RESULT_BYTES:
+            raise TextChangeExecutionError(TextChangeFailureCode.EFFECT_EVIDENCE_MISMATCH)
+        object.__setattr__(self, "result_digest", bytes_digest(payload))
 
 
 class TextFileEffects(Protocol):

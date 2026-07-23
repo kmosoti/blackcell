@@ -22,6 +22,7 @@ from blackcell.orchestration.alpha_acceptance import (
     ALPHA_ACCEPTANCE_COMMAND_SCHEMA,
     ALPHA_ACCEPTANCE_RESULT_SCHEMA,
     ALPHA_ACCEPTANCE_STREAM_SCHEMA,
+    MAX_ALPHA_ACCEPTANCE_STREAM_BYTES,
     AlphaAcceptanceCommand,
     AlphaAcceptanceResult,
     AlphaAcceptanceStream,
@@ -44,6 +45,9 @@ from blackcell.orchestration.alpha_artifacts import (
 from blackcell.orchestration.alpha_changes import (
     ALPHA_CHANGE_CONTEXT_SCHEMA,
     ALPHA_CHANGE_PROVIDER_RESULT_SCHEMA,
+    MAX_ALPHA_CHANGE_CONTEXT_BYTES,
+    MAX_ALPHA_CHANGE_PROPOSAL_BYTES,
+    MAX_ALPHA_TEXT_CHANGE_RESULT_BYTES,
     AlphaChangeContext,
     AlphaChangeProposal,
     AlphaChangeProviderResult,
@@ -66,11 +70,10 @@ _TEXT_CHANGE_RESULT_SCHEMA = "alpha-text-change-result/v1"
 _BINARY_MEDIA_TYPE = "application/octet-stream"
 _JSON_ENCODING = "utf-8"
 _MAX_OUTCOME_BYTES = 4 * 1024 * 1024
-_MAX_CONTEXT_BYTES = 2 * 1024 * 1024
-_MAX_PROPOSAL_BYTES = 8 * 1024 * 1024
 _MAX_JSON_ARTIFACT_BYTES = 4 * 1024 * 1024
-_MAX_STREAM_BYTES = 16 * 1024 * 1024
-_MAX_TOTAL_BYTES = 64 * 1024 * 1024
+# Plan admission reserves at most 128 review relationships. One maximum-size stream per
+# relationship is a conservative closed bound for every admitted context/proposal/check graph.
+_MAX_TOTAL_BYTES = MAX_ALPHA_REVIEW_EVIDENCE_ITEMS * MAX_ALPHA_ACCEPTANCE_STREAM_BYTES
 _MAX_ARTIFACT_RELATIONSHIPS = 16_384
 _MAX_REVIEW_EXCERPT_BYTES = 32 * 1024
 _MAX_REVIEW_EVIDENCE_BYTES = 512 * 1024
@@ -204,14 +207,22 @@ class AlphaArtifactReplayReport:
 
 
 @dataclass(frozen=True, slots=True)
+class _ReviewExcerptSource:
+    prefix: bytes = field(repr=False)
+    size_bytes: int
+    binary: bool
+
+
+@dataclass(frozen=True, slots=True)
 class _VerifiedCheckMaterial:
     command: AlphaAcceptanceCommand
-    result: AlphaAcceptanceResult
+    result_digest: str
+    passed: bool
     recorded: AlphaCheckArtifacts
     command_bytes: bytes
     result_bytes: bytes
-    stdout: bytes
-    stderr: bytes
+    stdout: _ReviewExcerptSource
+    stderr: _ReviewExcerptSource
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,10 +232,8 @@ class _VerifiedNodeMaterial:
     outcome_link: AlphaArtifactLink
     outcome_bytes: bytes
     context: AlphaChangeContext | None
-    context_bytes: bytes | None
     proposal: AlphaChangeProposal | None
-    proposal_bytes: bytes | None
-    effect_bytes: bytes | None
+    effect: _ReviewExcerptSource | None
     checks: tuple[_VerifiedCheckMaterial, ...]
 
 
@@ -252,6 +261,7 @@ class _ArtifactSession:
     reader: AlphaArtifactReaderPort
     artifacts: list[AlphaReplayArtifactEvidence] = field(default_factory=list)
     bytes_by_digest: dict[str, bytes] = field(default_factory=dict)
+    counted_digests: set[str] = field(default_factory=set)
     references_by_digest: dict[str, ArtifactRef] = field(default_factory=dict)
     total_bytes: int = 0
 
@@ -315,6 +325,7 @@ class _ArtifactSession:
         media_type: str,
         encoding: str | None,
         maximum_bytes: int,
+        retain_bytes: bool = True,
     ) -> bytes:
         return self._read(
             link,
@@ -324,6 +335,7 @@ class _ArtifactSession:
             media_type=media_type,
             encoding=encoding,
             maximum_bytes=maximum_bytes,
+            retain_bytes=retain_bytes,
         )
 
     def _read(
@@ -336,6 +348,7 @@ class _ArtifactSession:
         media_type: str,
         encoding: str | None,
         maximum_bytes: int,
+        retain_bytes: bool = True,
     ) -> bytes:
         reference = self._stat(
             link.digest,
@@ -375,7 +388,8 @@ class _ArtifactSession:
             )
         data = self.bytes_by_digest.get(link.digest)
         if data is None:
-            if self.total_bytes + link.size_bytes > _MAX_TOTAL_BYTES:
+            first_read = link.digest not in self.counted_digests
+            if first_read and self.total_bytes + link.size_bytes > _MAX_TOTAL_BYTES:
                 raise _issue(
                     AlphaArtifactReplayStatus.INCONCLUSIVE,
                     AlphaReplayFindingCode.ARTIFACT_BUDGET_EXCEEDED,
@@ -426,8 +440,11 @@ class _ArtifactSession:
                     check_id,
                     link.digest,
                 )
-            self.bytes_by_digest[link.digest] = data
-            self.total_bytes += len(data)
+            if retain_bytes:
+                self.bytes_by_digest[link.digest] = data
+            if first_read:
+                self.counted_digests.add(link.digest)
+                self.total_bytes += len(data)
         if len(self.artifacts) >= _MAX_ARTIFACT_RELATIONSHIPS:
             raise _issue(
                 AlphaArtifactReplayStatus.INCONCLUSIVE,
@@ -578,7 +595,7 @@ def build_alpha_review_context_from_artifacts(
         or any(node.repository_write != ("repository-write" in node.effects) for node in nodes)
         or any(not node.depends_on and node.base_commit != base_commit for node in nodes)
         or any(not material.checks for material in materials)
-        or any(not check.result.passed for material in materials for check in material.checks)
+        or any(not check.passed for material in materials for check in material.checks)
     ):
         raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.DEFINITION_MISMATCH)
 
@@ -610,8 +627,8 @@ def build_alpha_review_context_from_artifacts(
                             argv=check.command.argv,
                             expected_exit_code=check.command.expected_exit_code,
                             command_digest=check.command.digest,
-                            result_digest=check.result.digest,
-                            passed=check.result.passed,
+                            result_digest=check.result_digest,
+                            passed=check.passed,
                         )
                         for check in material.checks
                     ),
@@ -687,12 +704,10 @@ def _review_evidence_for_node(
         if (
             context is None
             or proposal is None
-            or material.context_bytes is None
-            or material.proposal_bytes is None
             or material.manifest.context_artifact is None
             or material.manifest.proposal_artifact is None
             or material.manifest.effect_artifact is None
-            or material.effect_bytes is None
+            or material.effect is None
         ):
             raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.DEFINITION_MISMATCH)
         before = {item.path: item.content for item in context.files}
@@ -732,7 +747,7 @@ def _review_evidence_for_node(
                 kind=AlphaReviewEvidenceKind.EFFECT,
                 node_id=expectation.node_id,
                 artifact_digest=material.manifest.effect_artifact.digest,
-                data=material.effect_bytes,
+                data=material.effect,
                 path=operation.path,
                 operation=operation.operation,
                 maximum_excerpt_bytes=maximum_excerpt_bytes,
@@ -787,18 +802,19 @@ def _append_review_evidence(
     kind: AlphaReviewEvidenceKind,
     node_id: str,
     artifact_digest: str,
-    data: bytes,
+    data: bytes | _ReviewExcerptSource,
     path: str | None = None,
     check_id: str | None = None,
     operation: AlphaTextOperation | None = None,
     binary_allowed: bool = False,
     maximum_excerpt_bytes: int,
 ) -> None:
-    excerpt = _bounded_review_excerpt(
-        data,
-        binary_allowed=binary_allowed,
-        maximum_bytes=maximum_excerpt_bytes,
+    source = (
+        data
+        if isinstance(data, _ReviewExcerptSource)
+        else _review_excerpt_source(data, binary_allowed=binary_allowed)
     )
+    excerpt = _bounded_review_excerpt(source, maximum_bytes=maximum_excerpt_bytes)
     target.append(
         AlphaReviewEvidence(
             kind=kind,
@@ -813,47 +829,57 @@ def _append_review_evidence(
     )
 
 
-def _bounded_review_excerpt(
+def _review_excerpt_source(
     data: bytes,
     *,
     binary_allowed: bool,
-    maximum_bytes: int,
-) -> str:
+) -> _ReviewExcerptSource:
+    binary = False
     try:
-        excerpt = data.decode("utf-8")
+        decoded = data.decode("utf-8")
     except UnicodeDecodeError:
         if not binary_allowed:
             raise AlphaReviewEvidenceError(
                 AlphaReviewEvidenceFailureCode.DEFINITION_MISMATCH
             ) from None
-        return _bounded_base64_excerpt(data, maximum_bytes=maximum_bytes)
-    if "\x00" in excerpt:
+        binary = True
+    if not binary and "\x00" in decoded:
         if not binary_allowed:
             raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.DEFINITION_MISMATCH)
-        return _bounded_base64_excerpt(data, maximum_bytes=maximum_bytes)
-    encoded = excerpt.encode("utf-8")
-    if len(encoded) <= maximum_bytes:
-        return excerpt
+        binary = True
+    return _ReviewExcerptSource(
+        prefix=data[:_MAX_REVIEW_EXCERPT_BYTES],
+        size_bytes=len(data),
+        binary=binary,
+    )
+
+
+def _bounded_review_excerpt(source: _ReviewExcerptSource, *, maximum_bytes: int) -> str:
+    if source.binary:
+        return _bounded_base64_excerpt(source, maximum_bytes=maximum_bytes)
+    if source.size_bytes <= maximum_bytes:
+        return source.prefix.decode("utf-8")
     marker = _REVIEW_TRUNCATION_MARKER.encode("utf-8")
     if maximum_bytes <= len(marker):
         raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED)
-    prefix = encoded[: maximum_bytes - len(marker)].decode("utf-8", errors="ignore")
+    prefix = source.prefix[: maximum_bytes - len(marker)].decode("utf-8", errors="ignore")
     return prefix + _REVIEW_TRUNCATION_MARKER
 
 
-def _bounded_base64_excerpt(data: bytes, *, maximum_bytes: int) -> str:
-    complete = "base64:" + base64.b64encode(data).decode("ascii")
-    if len(complete.encode("utf-8")) <= maximum_bytes:
-        return complete
+def _bounded_base64_excerpt(source: _ReviewExcerptSource, *, maximum_bytes: int) -> str:
+    if source.size_bytes == len(source.prefix):
+        complete = "base64:" + base64.b64encode(source.prefix).decode("ascii")
+        if len(complete.encode("utf-8")) <= maximum_bytes:
+            return complete
     label = "base64-prefix:"
     reserved = len(label.encode("utf-8")) + len(_REVIEW_TRUNCATION_MARKER.encode("utf-8"))
     available = maximum_bytes - reserved
-    raw_prefix_bytes = (available // 4) * 3
+    raw_prefix_bytes = min(len(source.prefix), (available // 4) * 3)
     if raw_prefix_bytes < 1:
         raise AlphaReviewEvidenceError(AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED)
     excerpt = (
         label
-        + base64.b64encode(data[:raw_prefix_bytes]).decode("ascii")
+        + base64.b64encode(source.prefix[:raw_prefix_bytes]).decode("ascii")
         + _REVIEW_TRUNCATION_MARKER
     )
     if len(excerpt.encode("utf-8")) > maximum_bytes:  # pragma: no cover - arithmetic invariant
@@ -913,12 +939,10 @@ def _verify_node(
         raise _binding_issue(expectation.node_id, AlphaReplayArtifactRole.OUTCOME, outcome_digest)
 
     context: AlphaChangeContext | None = None
-    context_bytes: bytes | None = None
     proposal: AlphaChangeProposal | None = None
-    proposal_bytes: bytes | None = None
-    effect_bytes: bytes | None = None
+    effect: _ReviewExcerptSource | None = None
     if manifest.context_artifact is not None:
-        context, context_bytes = _verify_context(session, expectation, manifest.context_artifact)
+        context = _verify_context(session, expectation, manifest.context_artifact)
     if manifest.proposal_artifact is not None:
         if context is None:
             raise _binding_issue(
@@ -926,7 +950,7 @@ def _verify_node(
                 AlphaReplayArtifactRole.PROPOSAL,
                 manifest.proposal_artifact.digest,
             )
-        proposal, proposal_bytes = _verify_proposal(
+        proposal = _verify_proposal(
             session,
             expectation,
             manifest.proposal_artifact,
@@ -947,7 +971,7 @@ def _verify_node(
                 AlphaReplayArtifactRole.EFFECT,
                 manifest.effect_artifact.digest,
             )
-        effect_bytes = _verify_effect(
+        effect = _verify_effect(
             session,
             expectation,
             manifest.effect_artifact,
@@ -964,10 +988,8 @@ def _verify_node(
         outcome_link=outcome_link,
         outcome_bytes=outcome_bytes,
         context=context,
-        context_bytes=context_bytes,
         proposal=proposal,
-        proposal_bytes=proposal_bytes,
-        effect_bytes=effect_bytes,
+        effect=effect,
         checks=checks,
     )
 
@@ -1023,7 +1045,7 @@ def _verify_context(
     session: _ArtifactSession,
     expectation: AlphaReplayNodeExpectation,
     link: AlphaArtifactLink,
-) -> tuple[AlphaChangeContext, bytes]:
+) -> AlphaChangeContext:
     data = session.read_link(
         link,
         node_id=expectation.node_id,
@@ -1031,7 +1053,8 @@ def _verify_context(
         check_id=None,
         media_type=ALPHA_CONTEXT_MEDIA_TYPE,
         encoding=_JSON_ENCODING,
-        maximum_bytes=_MAX_CONTEXT_BYTES,
+        maximum_bytes=MAX_ALPHA_CHANGE_CONTEXT_BYTES,
+        retain_bytes=False,
     )
     raw = _canonical_mapping(
         data,
@@ -1061,7 +1084,7 @@ def _verify_context(
             AlphaReplayArtifactRole.CONTEXT,
             link.digest,
         )
-    return context, data
+    return context
 
 
 def _verify_proposal(
@@ -1069,7 +1092,7 @@ def _verify_proposal(
     expectation: AlphaReplayNodeExpectation,
     link: AlphaArtifactLink,
     context: AlphaChangeContext,
-) -> tuple[AlphaChangeProposal, bytes]:
+) -> AlphaChangeProposal:
     data = session.read_link(
         link,
         node_id=expectation.node_id,
@@ -1077,7 +1100,8 @@ def _verify_proposal(
         check_id=None,
         media_type=ALPHA_PROPOSAL_MEDIA_TYPE,
         encoding=_JSON_ENCODING,
-        maximum_bytes=_MAX_PROPOSAL_BYTES,
+        maximum_bytes=MAX_ALPHA_CHANGE_PROPOSAL_BYTES,
+        retain_bytes=False,
     )
     raw = _canonical_mapping(
         data,
@@ -1100,7 +1124,7 @@ def _verify_proposal(
             AlphaReplayArtifactRole.PROPOSAL,
             link.digest,
         )
-    return proposal, data
+    return proposal
 
 
 def _verify_provider(
@@ -1117,6 +1141,7 @@ def _verify_provider(
         media_type=ALPHA_PROVIDER_MEDIA_TYPE,
         encoding=_JSON_ENCODING,
         maximum_bytes=_MAX_JSON_ARTIFACT_BYTES,
+        retain_bytes=False,
     )
     raw = _canonical_mapping(
         data,
@@ -1148,7 +1173,7 @@ def _verify_effect(
     *,
     context: AlphaChangeContext,
     proposal: AlphaChangeProposal,
-) -> bytes:
+) -> _ReviewExcerptSource:
     data = session.read_link(
         link,
         node_id=expectation.node_id,
@@ -1156,7 +1181,8 @@ def _verify_effect(
         check_id=None,
         media_type=ALPHA_EFFECT_MEDIA_TYPE,
         encoding=_JSON_ENCODING,
-        maximum_bytes=_MAX_JSON_ARTIFACT_BYTES,
+        maximum_bytes=MAX_ALPHA_TEXT_CHANGE_RESULT_BYTES,
+        retain_bytes=False,
     )
     raw = _canonical_mapping(
         data,
@@ -1176,7 +1202,7 @@ def _verify_effect(
             AlphaReplayArtifactRole.EFFECT,
             link.digest,
         )
-    return data
+    return _review_excerpt_source(data, binary_allowed=False)
 
 
 def _verify_check(
@@ -1246,7 +1272,8 @@ def _verify_check(
         check_id=expected.check_id,
         media_type=_BINARY_MEDIA_TYPE,
         encoding=None,
-        maximum_bytes=_MAX_STREAM_BYTES,
+        maximum_bytes=MAX_ALPHA_ACCEPTANCE_STREAM_BYTES,
+        retain_bytes=False,
     )
     stderr = session.read_link(
         recorded.stderr,
@@ -1255,7 +1282,8 @@ def _verify_check(
         check_id=expected.check_id,
         media_type=_BINARY_MEDIA_TYPE,
         encoding=None,
-        maximum_bytes=_MAX_STREAM_BYTES,
+        maximum_bytes=MAX_ALPHA_ACCEPTANCE_STREAM_BYTES,
+        retain_bytes=False,
     )
     try:
         result = _result_from_mapping(raw_result, stdout=stdout, stderr=stderr)
@@ -1284,12 +1312,13 @@ def _verify_check(
         )
     return _VerifiedCheckMaterial(
         command=command,
-        result=result,
+        result_digest=result.digest,
+        passed=result.passed,
         recorded=recorded,
         command_bytes=command_bytes,
         result_bytes=result_bytes,
-        stdout=stdout,
-        stderr=stderr,
+        stdout=_review_excerpt_source(stdout, binary_allowed=True),
+        stderr=_review_excerpt_source(stderr, binary_allowed=True),
     )
 
 

@@ -7,11 +7,13 @@ const MAX_RUN_ID_CHARS = 120;
 const MAX_COLLECTION_ITEMS = 64;
 const MAX_PLAN_NODES = 64;
 const MAX_CHECK_ARGV = 32;
+const MAX_ACCEPTANCE_TIMEOUT_SECONDS = 600;
 const EVENT_PAGE_LIMIT = 100;
 const RUN_ID = /^[A-Za-z0-9._-]+$/;
 const SAFE_ERROR = /^[A-Za-z0-9._-]{1,100}$/;
 const TICKET = /^[A-Za-z0-9_-]{32,128}$/;
 const IDENTIFIER = /^[A-Za-z0-9._-]{1,120}$/;
+const EXECUTABLE_ALIAS = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/;
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
 const EFFECTS = new Set(["network", "process", "repository-read", "repository-write"]);
@@ -953,7 +955,7 @@ function validPlanBudget(value) {
     hasExactKeys(value, PLAN_BUDGET_KEYS) &&
     boundedInteger(value.max_input_tokens, 0, 1_000_000) &&
     boundedInteger(value.max_output_tokens, 0, 1_000_000) &&
-    boundedInteger(value.timeout_seconds, 1, 86_400) &&
+    boundedInteger(value.timeout_seconds, 1, MAX_ACCEPTANCE_TIMEOUT_SECONDS) &&
     boundedInteger(value.max_cost_microusd, 0, 10_000_000_000) &&
     boundedInteger(value.max_changed_files, 0, 10_000)
   );
@@ -967,6 +969,7 @@ function validAcceptanceCheck(value) {
     Array.isArray(value.argv) &&
     value.argv.length >= 1 &&
     value.argv.length <= MAX_CHECK_ARGV &&
+    EXECUTABLE_ALIAS.test(value.argv[0]) &&
     value.argv.every((argument) => boundedWireText(argument, 2048)) &&
     boundedInteger(value.expected_exit_code, 0, 255)
   );
@@ -1227,8 +1230,7 @@ function validRepositoryPath(value) {
   const parts = value.split("/");
   return (
     parts.length > 0 &&
-    parts[0] !== ".git" &&
-    parts.every((part) => part !== "" && part !== "." && part !== "..")
+    parts.every((part) => part !== "" && part !== "." && part !== ".." && part !== ".git")
   );
 }
 

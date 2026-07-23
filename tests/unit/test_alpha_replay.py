@@ -162,6 +162,9 @@ def _completed_writer(
     tmp_path: Path,
     *,
     source_content: str | None = None,
+    writer_check_ids: tuple[str, ...] = ("write-check",),
+    stream_limit_bytes: int = 1024 * 1024,
+    artifact_quota_bytes: int = 16 * 1024 * 1024,
 ) -> tuple[
     AlphaRuntimeApiService,
     EventStore,
@@ -173,13 +176,20 @@ def _completed_writer(
     RecordingAcceptance,
 ]:
     runtime, events, artifacts, repository, isolation, base_commit = _runtime(tmp_path)
+    artifacts.max_total_bytes = artifact_quota_bytes
     if source_content is not None:
         (repository / "src" / "value.py").write_text(source_content)
         _git(repository, "add", "src/value.py")
         _git(repository, "commit", "-m", "expand review evidence")
         base_commit = _git_text(repository, "rev-parse", "HEAD")
     artifacts.put_text("", media_type="text/plain")
-    _submit(runtime, repository, base_commit, writer_only=True)
+    _submit(
+        runtime,
+        repository,
+        base_commit,
+        writer_only=True,
+        writer_check_ids=writer_check_ids,
+    )
     lifecycle = GitWorktreeLifecycle()
     provider = ReplacingProvider()
     acceptance = RecordingAcceptance(lifecycle)
@@ -190,7 +200,11 @@ def _completed_writer(
         change_executor=TextChangeExecutor(lifecycle),
         acceptance=acceptance,
         worktrees=lifecycle,
-        policy=AlphaWorkerPolicy("worker-1"),
+        policy=AlphaWorkerPolicy(
+            "worker-1",
+            stdout_limit_bytes=stream_limit_bytes,
+            stderr_limit_bytes=stream_limit_bytes,
+        ),
     )
     result = worker.run_once()
     assert result.status == "node-succeeded"
@@ -222,6 +236,7 @@ def _expectation(
     outcome: Mapping[str, object],
     *,
     result_digest: str,
+    check_ids: tuple[str, ...] = ("write-check",),
 ) -> AlphaReplayNodeExpectation:
     return AlphaReplayNodeExpectation(
         node_id="write",
@@ -232,13 +247,14 @@ def _expectation(
         effects=("repository-read", "repository-write", "process"),
         allowed_paths=("src/value.py",),
         max_changed_paths=1,
-        checks=(
+        checks=tuple(
             AlphaReplayCheckExpectation(
-                "write-check",
+                check_id,
                 ("python", "-m", "compileall", "src"),
                 0,
                 30,
-            ),
+            )
+            for check_id in check_ids
         ),
         status="succeeded",
         attempt=cast("int", outcome["attempt"]),

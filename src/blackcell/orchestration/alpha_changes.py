@@ -33,6 +33,7 @@ MAX_ALPHA_EVIDENCE_BYTES = 1024 * 1024
 # Canonical JSON ceilings include worst-case string escaping and are enforced after sorting.
 MAX_ALPHA_CHANGE_CONTEXT_BYTES = 16 * 1024 * 1024
 MAX_ALPHA_CHANGE_PROPOSAL_BYTES = 32 * 1024 * 1024
+MAX_ALPHA_TEXT_CHANGE_RESULT_BYTES = 16 * 1024 * 1024
 _MAX_ALLOWED_PATHS = 256
 _MAX_CHANGED_PATHS = 10_000
 _MAX_OPERATIONS = 256
@@ -533,6 +534,7 @@ __all__ = [
     "MAX_ALPHA_EVIDENCE_BYTES",
     "MAX_ALPHA_EVIDENCE_FILES",
     "MAX_ALPHA_EVIDENCE_FILE_BYTES",
+    "MAX_ALPHA_TEXT_CHANGE_RESULT_BYTES",
     "AlphaChangeContext",
     "AlphaChangeContractError",
     "AlphaChangeContractFailureCode",

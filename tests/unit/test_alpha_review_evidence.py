@@ -11,6 +11,7 @@ from blackcell.adapters.execution.worktree import WorktreeExecutionSpec
 from blackcell.kernel import ArtifactStore
 from blackcell.kernel._json import json_digest
 from blackcell.orchestration.alpha_acceptance import (
+    MAX_ALPHA_ACCEPTANCE_STREAM_BYTES,
     AlphaAcceptanceCommand,
     AlphaAcceptanceResult,
     AlphaAcceptanceStream,
@@ -28,6 +29,8 @@ from tests.unit.test_alpha_replay import (
     _linked_digest,
 )
 from tests.unit.test_alpha_worker import RecordingAcceptance
+
+_TRUNCATION_MARKER = "\n...[truncated; complete artifact retained by digest]\n"
 
 
 def test_review_evidence_builds_exact_acceptance_and_all_verified_excerpts(
@@ -208,6 +211,58 @@ def test_review_evidence_truncates_oversized_artifacts_and_enforces_aggregate_bu
     with pytest.raises(AlphaReviewEvidenceError) as aggregate:
         _build(clean_artifacts, clean_state_digest, clean_expectation)
     assert aggregate.value.code is AlphaReviewEvidenceFailureCode.EVIDENCE_BUDGET_EXCEEDED
+
+
+def test_review_evidence_replays_two_checks_at_full_stream_capacity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_run = RecordingAcceptance.run
+    check_ids = ("capacity-one", "capacity-two")
+    stream_digests: set[str] = set()
+
+    def run_with_full_streams(
+        self: RecordingAcceptance,
+        command: AlphaAcceptanceCommand,
+        spec: WorktreeExecutionSpec,
+        *,
+        cancel_requested: Callable[[], bool] | None = None,
+    ) -> AlphaAcceptanceResult:
+        result = original_run(
+            self,
+            command,
+            spec,
+            cancel_requested=cancel_requested,
+        )
+        offset = check_ids.index(command.check_id) * 2
+        stdout = AlphaAcceptanceStream(bytes((0xFC + offset,)) * MAX_ALPHA_ACCEPTANCE_STREAM_BYTES)
+        stderr = AlphaAcceptanceStream(bytes((0xFD + offset,)) * MAX_ALPHA_ACCEPTANCE_STREAM_BYTES)
+        stream_digests.update((stdout.digest, stderr.digest))
+        return replace(result, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(RecordingAcceptance, "run", run_with_full_streams)
+    runtime, _, artifacts, _, _, outcome, _, _ = _completed_writer(
+        tmp_path,
+        writer_check_ids=check_ids,
+        stream_limit_bytes=MAX_ALPHA_ACCEPTANCE_STREAM_BYTES,
+        artifact_quota_bytes=128 * 1024 * 1024,
+    )
+    expectation = _expectation(
+        outcome,
+        result_digest=json_digest(outcome),
+        check_ids=check_ids,
+    )
+
+    context = _build(artifacts, runtime.replay_run("run-1").state_digest, expectation)
+
+    streams = tuple(
+        item for item in context.evidence if item.kind.value in {"check-stdout", "check-stderr"}
+    )
+    assert len(streams) == 4
+    assert {item.artifact_digest for item in streams} == stream_digests
+    assert all(item.excerpt.startswith("base64-prefix:") for item in streams)
+    assert all(item.excerpt.endswith(_TRUNCATION_MARKER) for item in streams)
+    assert all(len(item.excerpt.encode("utf-8")) <= 32 * 1024 for item in streams)
 
 
 def _build(

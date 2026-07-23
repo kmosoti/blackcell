@@ -40,6 +40,7 @@ from blackcell.interfaces.http import AlphaRunResponse, RuntimeApiError
 from blackcell.kernel import ArtifactRef, JsonInput, KernelError, utc_now
 from blackcell.kernel._json import canonical_json_bytes
 from blackcell.orchestration.alpha_acceptance import (
+    MAX_ALPHA_ACCEPTANCE_STREAM_BYTES,
     AlphaAcceptanceCommand,
     AlphaAcceptanceError,
     AlphaAcceptanceFailureCode,
@@ -199,7 +200,11 @@ class AlphaWorkerPolicy:
         ):
             raise ValueError("invalid alpha worker policy")
         for limit in (self.stdout_limit_bytes, self.stderr_limit_bytes):
-            if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 16 << 20:
+            if (
+                isinstance(limit, bool)
+                or not isinstance(limit, int)
+                or not 1 <= limit <= MAX_ALPHA_ACCEPTANCE_STREAM_BYTES
+            ):
                 raise ValueError("invalid alpha worker policy")
         if (
             isinstance(self.lease_grace_seconds, bool)

@@ -153,6 +153,8 @@ def test_alpha_web_workflow_surface_is_bounded_closed_and_accessible() -> None:
 
     for required in (
         "MAX_REQUEST_BYTES = 1_048_576",
+        "MAX_ACCEPTANCE_TIMEOUT_SECONDS = 600",
+        "EXECUTABLE_ALIAS = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/",
         "file.arrayBuffer()",
         'new TextDecoder("utf-8", { fatal: true })',
         'elements.workflowFile.value = ""',
@@ -172,6 +174,9 @@ def test_alpha_web_workflow_surface_is_bounded_closed_and_accessible() -> None:
         "validateRunResponse",
         "planTopologicalOrder",
         "writersAreOrdered",
+        "boundedInteger(value.timeout_seconds, 1, MAX_ACCEPTANCE_TIMEOUT_SECONDS)",
+        "EXECUTABLE_ALIAS.test(value.argv[0])",
+        'part !== ".git"',
         "sameJsonValue",
         "elements.workflowOutput.textContent",
         "elements.runId.value = value.run_id",
@@ -186,6 +191,7 @@ def test_alpha_web_workflow_surface_is_bounded_closed_and_accessible() -> None:
         "state.workflowRequest",
         "state.request",
         "/api/v1/runs",
+        "86_400",
     ):
         assert forbidden not in javascript
 
