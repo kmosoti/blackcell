@@ -679,6 +679,7 @@ def _review_evidence_for_node(
                     artifact_digest=material.manifest.context_artifact.digest,
                     data=before[operation.path].encode("utf-8"),
                     path=operation.path,
+                    operation=operation.operation,
                 )
             if operation.operation in {AlphaTextOperation.CREATE, AlphaTextOperation.REPLACE}:
                 if operation.content is None:
@@ -692,6 +693,7 @@ def _review_evidence_for_node(
                     artifact_digest=material.manifest.proposal_artifact.digest,
                     data=operation.content.encode("utf-8"),
                     path=operation.path,
+                    operation=operation.operation,
                 )
             _append_review_evidence(
                 result,
@@ -700,6 +702,7 @@ def _review_evidence_for_node(
                 artifact_digest=material.manifest.effect_artifact.digest,
                 data=material.effect_bytes,
                 path=operation.path,
+                operation=operation.operation,
             )
 
     for check in material.checks:
@@ -750,6 +753,7 @@ def _append_review_evidence(
     data: bytes,
     path: str | None = None,
     check_id: str | None = None,
+    operation: AlphaTextOperation | None = None,
     binary_allowed: bool = False,
 ) -> None:
     if len(data) > _MAX_REVIEW_EXCERPT_BYTES:
@@ -777,6 +781,7 @@ def _append_review_evidence(
             start_line=1,
             path=path,
             check_id=check_id,
+            operation=operation,
         )
     )
 

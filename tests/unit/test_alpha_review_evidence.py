@@ -8,6 +8,7 @@ import pytest
 import blackcell.orchestration.alpha_replay as alpha_replay
 from blackcell.kernel import ArtifactStore
 from blackcell.kernel._json import json_digest
+from blackcell.orchestration.alpha_changes import AlphaTextOperation
 from blackcell.orchestration.alpha_replay import (
     AlphaReviewEvidenceError,
     AlphaReviewEvidenceFailureCode,
@@ -70,9 +71,12 @@ def test_review_evidence_builds_exact_acceptance_and_all_verified_excerpts(
         "check-stderr",
     }.issubset(by_kind)
     assert by_kind["source-before"].path == "src/value.py"
+    assert by_kind["source-before"].operation is AlphaTextOperation.REPLACE
     assert by_kind["source-before"].excerpt == "VALUE = 1\n"
     assert by_kind["source-after"].path == "src/value.py"
+    assert by_kind["source-after"].operation is AlphaTextOperation.REPLACE
     assert by_kind["source-after"].excerpt == "VALUE = 2\n"
+    assert by_kind["effect"].operation is AlphaTextOperation.REPLACE
     assert '"changed_paths":["src/value.py"]' in by_kind["effect"].excerpt
     assert by_kind["check-stdout"].excerpt == "write-check\n"
     assert by_kind["check-command"].check_id == "write-check"

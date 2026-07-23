@@ -10,6 +10,7 @@ import pytest
 from blackcell.gateway import DataClassification, GatewayBudget, LocalityPolicy
 from blackcell.kernel import JsonInput
 from blackcell.kernel._json import json_digest
+from blackcell.orchestration.alpha_changes import AlphaTextOperation
 from blackcell.orchestration.alpha_review import (
     ALPHA_ADMITTED_REVIEW_SCHEMA,
     ALPHA_REVIEW_PROPOSAL_OUTPUT_SCHEMA,
@@ -51,6 +52,8 @@ def test_review_context_binds_immutable_acceptance_and_host_derived_evidence() -
     acceptance = context.acceptance
     node = acceptance.nodes[0]
     check = node.checks[0]
+    operation = context.evidence[0].operation
+    assert operation is not None
     payload = alpha_review_context_payload(context)
 
     assert payload["acceptance_digest"] == acceptance.digest
@@ -65,6 +68,7 @@ def test_review_context_binds_immutable_acceptance_and_host_derived_evidence() -
             "kind": context.evidence[0].kind.value,
             "node_id": context.evidence[0].node_id,
             "artifact_digest": context.evidence[0].artifact_digest,
+            "operation": operation.value,
             "path": context.evidence[0].path,
             "check_id": context.evidence[0].check_id,
             "start_line": context.evidence[0].start_line,
@@ -334,6 +338,9 @@ def test_review_evidence_and_context_bind_exact_host_evidence() -> None:
         {"start_line": 0},
         {"check_id": "bad id"},
         {"path": None},
+        {"operation": None},
+        {"operation": cast("AlphaTextOperation", "replace")},
+        {"operation": AlphaTextOperation.DELETE},
         {"kind": AlphaReviewEvidenceKind.CHECK_RESULT, "path": None, "check_id": None},
         {"kind": AlphaReviewEvidenceKind.OUTCOME, "path": "src/value.py"},
         {"start_line": 10_000_000, "excerpt": "first\nsecond\n"},
@@ -593,6 +600,7 @@ def review_context() -> AlphaReviewContext:
         node_id=node.node_id,
         artifact_digest=DIGEST_C,
         path="src/value.py",
+        operation=AlphaTextOperation.REPLACE,
         start_line=10,
         excerpt="VALUE = 2\nassert VALUE == 2\n",
     )

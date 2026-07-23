@@ -8,6 +8,7 @@ import pytest
 
 from blackcell.kernel import JsonInput
 from blackcell.kernel._json import json_digest
+from blackcell.orchestration.alpha_changes import AlphaTextOperation
 from blackcell.orchestration.alpha_review import (
     AlphaAdmittedReview,
     AlphaProposedReviewFinding,
@@ -181,6 +182,115 @@ def test_verifier_distinguishes_failed_checks_from_missing_or_ambiguous_evidence
     assert AlphaVerificationReasonCode.EVIDENCE_IDENTITY_MISMATCH in mismatch_row.reason_codes
 
 
+@pytest.mark.parametrize("operation", (AlphaTextOperation.CREATE, AlphaTextOperation.DELETE))
+def test_verifier_accepts_operation_specific_create_and_delete_evidence(
+    operation: AlphaTextOperation,
+) -> None:
+    context = _context_for_operation(operation)
+
+    report = verify_alpha_review(context, _admitted(context))
+    scope = next(
+        row for row in report.matrix if row.kind is AlphaVerificationCriterionKind.WRITE_SCOPE
+    )
+
+    assert report.status is AlphaVerificationStatus.PASS
+    assert scope.reason_codes == (AlphaVerificationReasonCode.EVIDENCE_COMPLETE,)
+    source_kinds = {
+        item.kind
+        for item in context.evidence
+        if item.kind
+        in {AlphaReviewEvidenceKind.SOURCE_BEFORE, AlphaReviewEvidenceKind.SOURCE_AFTER}
+    }
+    assert source_kinds == {
+        AlphaReviewEvidenceKind.SOURCE_AFTER
+        if operation is AlphaTextOperation.CREATE
+        else AlphaReviewEvidenceKind.SOURCE_BEFORE
+    }
+
+
+@pytest.mark.parametrize(
+    "missing_kind",
+    (AlphaReviewEvidenceKind.SOURCE_BEFORE, AlphaReviewEvidenceKind.SOURCE_AFTER),
+)
+def test_verifier_requires_both_source_sides_for_replace(
+    missing_kind: AlphaReviewEvidenceKind,
+) -> None:
+    context = _context()
+    context = replace(
+        context,
+        evidence=tuple(item for item in context.evidence if item.kind is not missing_kind),
+    )
+
+    report = verify_alpha_review(context, _admitted(context))
+    scope = next(
+        row for row in report.matrix if row.kind is AlphaVerificationCriterionKind.WRITE_SCOPE
+    )
+
+    assert report.status is AlphaVerificationStatus.INCONCLUSIVE
+    assert AlphaVerificationReasonCode.CHANGE_EVIDENCE_MISSING in scope.reason_codes
+
+
+@pytest.mark.parametrize(
+    ("operation", "missing_kind"),
+    (
+        (AlphaTextOperation.CREATE, AlphaReviewEvidenceKind.SOURCE_AFTER),
+        (AlphaTextOperation.DELETE, AlphaReviewEvidenceKind.SOURCE_BEFORE),
+    ),
+)
+def test_verifier_rejects_missing_operation_specific_source_evidence(
+    operation: AlphaTextOperation,
+    missing_kind: AlphaReviewEvidenceKind,
+) -> None:
+    context = _context_for_operation(operation)
+    context = replace(
+        context,
+        evidence=tuple(item for item in context.evidence if item.kind is not missing_kind),
+    )
+
+    report = verify_alpha_review(context, _admitted(context))
+    scope = next(
+        row for row in report.matrix if row.kind is AlphaVerificationCriterionKind.WRITE_SCOPE
+    )
+
+    assert report.status is AlphaVerificationStatus.INCONCLUSIVE
+    assert AlphaVerificationReasonCode.CHANGE_EVIDENCE_MISSING in scope.reason_codes
+
+
+def test_verifier_keeps_duplicate_and_conflicting_change_evidence_ambiguous() -> None:
+    context = _context_for_operation(AlphaTextOperation.CREATE)
+    source_after = next(
+        item for item in context.evidence if item.kind is AlphaReviewEvidenceKind.SOURCE_AFTER
+    )
+    effect = next(item for item in context.evidence if item.kind is AlphaReviewEvidenceKind.EFFECT)
+    variants = (
+        replace(
+            context,
+            evidence=(
+                *context.evidence,
+                replace(
+                    source_after,
+                    artifact_digest=_digest("duplicate-source-after"),
+                ),
+            ),
+        ),
+        replace(
+            context,
+            evidence=tuple(
+                replace(item, operation=AlphaTextOperation.REPLACE) if item is effect else item
+                for item in context.evidence
+            ),
+        ),
+    )
+
+    for variant in variants:
+        report = verify_alpha_review(variant, _admitted(variant))
+        scope = next(
+            row for row in report.matrix if row.kind is AlphaVerificationCriterionKind.WRITE_SCOPE
+        )
+        assert report.status is AlphaVerificationStatus.INCONCLUSIVE
+        assert AlphaVerificationReasonCode.EVIDENCE_AMBIGUOUS in scope.reason_codes
+
+
 def test_verifier_rejects_binding_and_citation_drift_content_free() -> None:
     context = _context()
     admitted = _admitted(context)
@@ -277,6 +387,7 @@ def _context() -> AlphaReviewContext:
             "VALUE = 1\n",
             1,
             path="src/value.py",
+            operation=AlphaTextOperation.REPLACE,
         ),
         AlphaReviewEvidence(
             AlphaReviewEvidenceKind.SOURCE_AFTER,
@@ -285,6 +396,7 @@ def _context() -> AlphaReviewContext:
             "VALUE = 2\n",
             1,
             path="src/value.py",
+            operation=AlphaTextOperation.REPLACE,
         ),
         AlphaReviewEvidence(
             AlphaReviewEvidenceKind.EFFECT,
@@ -293,6 +405,7 @@ def _context() -> AlphaReviewContext:
             '{"changed_paths":["src/value.py"]}',
             1,
             path="src/value.py",
+            operation=AlphaTextOperation.REPLACE,
         ),
         AlphaReviewEvidence(
             AlphaReviewEvidenceKind.OUTCOME,
@@ -339,6 +452,28 @@ def _context() -> AlphaReviewContext:
         state_digest=_digest("state"),
         artifact_evidence_digest=_digest("artifact-evidence"),
         evidence=evidence,
+    )
+
+
+def _context_for_operation(operation: AlphaTextOperation) -> AlphaReviewContext:
+    context = _context()
+    excluded_kind = (
+        AlphaReviewEvidenceKind.SOURCE_BEFORE
+        if operation is AlphaTextOperation.CREATE
+        else AlphaReviewEvidenceKind.SOURCE_AFTER
+    )
+    change_kinds = {
+        AlphaReviewEvidenceKind.SOURCE_BEFORE,
+        AlphaReviewEvidenceKind.SOURCE_AFTER,
+        AlphaReviewEvidenceKind.EFFECT,
+    }
+    return replace(
+        context,
+        evidence=tuple(
+            replace(item, operation=operation) if item.kind in change_kinds else item
+            for item in context.evidence
+            if item.kind is not excluded_kind
+        ),
     )
 
 

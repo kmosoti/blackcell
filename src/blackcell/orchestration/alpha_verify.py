@@ -10,6 +10,7 @@ from typing import cast
 
 from blackcell.kernel import JsonInput
 from blackcell.kernel._json import canonical_json_bytes, json_digest
+from blackcell.orchestration.alpha_changes import AlphaTextOperation
 from blackcell.orchestration.alpha_review import (
     AlphaAdmittedReview,
     AlphaProposedReviewFinding,
@@ -532,18 +533,42 @@ def _scope_row(
     evidence: _EvidenceIndex,
     findings: _FindingIndex,
 ) -> AlphaVerificationMatrixRow:
-    required = (
+    change_kinds = (
         AlphaReviewEvidenceKind.SOURCE_BEFORE,
         AlphaReviewEvidenceKind.SOURCE_AFTER,
         AlphaReviewEvidenceKind.EFFECT,
     )
     selected = tuple(
-        item for kind in required for item in evidence.select(kind, node_id=node.node_id)
+        item for kind in change_kinds for item in evidence.select(kind, node_id=node.node_id)
     )
     matched_findings = findings.scope_for_node(node.node_id)
     reasons: list[AlphaVerificationReasonCode] = []
-    if any(not evidence.select(kind, node_id=node.node_id) for kind in required):
+    paths = tuple(sorted({item.path for item in selected if item.path is not None}))
+    if not paths:
         reasons.append(AlphaVerificationReasonCode.CHANGE_EVIDENCE_MISSING)
+    for path in paths:
+        path_evidence = tuple(item for item in selected if item.path == path)
+        operations = {item.operation for item in path_evidence}
+        if len(operations) != 1 or None in operations:
+            reasons.append(AlphaVerificationReasonCode.EVIDENCE_AMBIGUOUS)
+            continue
+        operation = cast("AlphaTextOperation", next(iter(operations)))
+        required = {
+            AlphaTextOperation.CREATE: (
+                AlphaReviewEvidenceKind.SOURCE_AFTER,
+                AlphaReviewEvidenceKind.EFFECT,
+            ),
+            AlphaTextOperation.REPLACE: change_kinds,
+            AlphaTextOperation.DELETE: (
+                AlphaReviewEvidenceKind.SOURCE_BEFORE,
+                AlphaReviewEvidenceKind.EFFECT,
+            ),
+        }[operation]
+        counts = tuple(sum(item.kind is kind for item in path_evidence) for kind in required)
+        if any(count == 0 for count in counts):
+            reasons.append(AlphaVerificationReasonCode.CHANGE_EVIDENCE_MISSING)
+        if any(count > 1 for count in counts):
+            reasons.append(AlphaVerificationReasonCode.EVIDENCE_AMBIGUOUS)
     if matched_findings:
         reasons.append(AlphaVerificationReasonCode.UNRESOLVED_REVIEW_FINDING)
     if not reasons:

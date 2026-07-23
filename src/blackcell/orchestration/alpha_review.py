@@ -17,6 +17,7 @@ from blackcell.gateway import (
 )
 from blackcell.kernel import JsonInput, JsonValue
 from blackcell.kernel._json import canonical_json_bytes, json_digest
+from blackcell.orchestration.alpha_changes import AlphaTextOperation
 
 ALPHA_REVIEW_ACCEPTANCE_SCHEMA = "alpha-review-acceptance/v1"
 ALPHA_REVIEW_CONTEXT_SCHEMA = "alpha-review-context/v1"
@@ -218,6 +219,7 @@ class AlphaReviewEvidence:
     start_line: int
     path: str | None = None
     check_id: str | None = None
+    operation: AlphaTextOperation | None = None
     end_line: int = field(init=False)
     evidence_id: str = field(init=False)
 
@@ -233,6 +235,7 @@ class AlphaReviewEvidence:
             or not isinstance(self.start_line, int)
             or not 1 <= self.start_line <= _MAX_LINE
             or (self.check_id is not None and _IDENTIFIER.fullmatch(self.check_id) is None)
+            or (self.operation is not None and not isinstance(self.operation, AlphaTextOperation))
         ):
             raise AlphaReviewContractError(AlphaReviewContractFailureCode.INVALID_CONTEXT)
         path = None if self.path is None else _repository_evidence_path(self.path)
@@ -247,7 +250,19 @@ class AlphaReviewEvidence:
             AlphaReviewEvidenceKind.CHECK_STDOUT,
             AlphaReviewEvidenceKind.CHECK_STDERR,
         }
-        if source_kind != (path is not None) or check_kind != (self.check_id is not None):
+        if (
+            source_kind != (path is not None)
+            or source_kind != (self.operation is not None)
+            or check_kind != (self.check_id is not None)
+            or (
+                self.kind is AlphaReviewEvidenceKind.SOURCE_BEFORE
+                and self.operation is AlphaTextOperation.CREATE
+            )
+            or (
+                self.kind is AlphaReviewEvidenceKind.SOURCE_AFTER
+                and self.operation is AlphaTextOperation.DELETE
+            )
+        ):
             raise AlphaReviewContractError(AlphaReviewContractFailureCode.INVALID_CONTEXT)
         if self.kind is AlphaReviewEvidenceKind.OUTCOME and (
             path is not None or self.check_id is not None
@@ -267,6 +282,7 @@ class AlphaReviewEvidence:
                     "kind": self.kind.value,
                     "node_id": self.node_id,
                     "artifact_digest": self.artifact_digest,
+                    "operation": (None if self.operation is None else self.operation.value),
                     "path": path,
                     "check_id": self.check_id,
                     "start_line": self.start_line,
@@ -572,6 +588,7 @@ def alpha_review_context_payload(value: AlphaReviewContext) -> dict[str, JsonInp
                 "kind": item.kind.value,
                 "node_id": item.node_id,
                 "artifact_digest": item.artifact_digest,
+                "operation": None if item.operation is None else item.operation.value,
                 "path": item.path,
                 "check_id": item.check_id,
                 "start_line": item.start_line,
