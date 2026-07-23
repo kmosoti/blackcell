@@ -118,6 +118,21 @@ def test_client_accepts_remote_https_and_loopback_http() -> None:
     )
 
 
+def test_client_validates_generic_and_replay_timeouts_independently() -> None:
+    RuntimeHttpClient(transport=FakeTransport(), timeout_seconds=30.0)
+    RuntimeHttpClient(transport=FakeTransport(), replay_timeout_seconds=3_600.0)
+
+    for timeout in (30.01, 0, True, float("nan")):
+        with pytest.raises(RuntimeClientError) as caught:
+            RuntimeHttpClient(transport=FakeTransport(), timeout_seconds=timeout)
+        assert caught.value.code is RuntimeClientFailureCode.INVALID_TIMEOUT
+
+    for timeout in (3_600.01, 0, True, float("nan")):
+        with pytest.raises(RuntimeClientError) as caught:
+            RuntimeHttpClient(transport=FakeTransport(), replay_timeout_seconds=timeout)
+        assert caught.value.code is RuntimeClientFailureCode.INVALID_TIMEOUT
+
+
 def test_client_failures_are_typed_bounded_and_content_free() -> None:
     rejected = RuntimeHttpClient(
         transport=FakeTransport(_response(401, ErrorResponse(error="authentication-required"))),
@@ -269,6 +284,16 @@ def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
     assert transport.requests[0].body == encode_contract(project_request)
     assert transport.requests[4].body is None
     assert transport.requests[-1].body == encode_contract(cancel_request)
+    assert [item.timeout_seconds for item in transport.requests] == [
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        5.0,
+        600.0,
+        5.0,
+    ]
     assert _TOKEN not in repr(client)
 
 

@@ -38,6 +38,8 @@ DEFAULT_RUNTIME_ENDPOINT = "http://127.0.0.1:8080"
 RUNTIME_ENDPOINT_ENV = "BLACKCELL_RUNTIME_ENDPOINT"
 _DEFAULT_TIMEOUT_SECONDS = 5.0
 _MAX_TIMEOUT_SECONDS = 30.0
+_DEFAULT_REPLAY_TIMEOUT_SECONDS = 600.0
+_MAX_REPLAY_TIMEOUT_SECONDS = 3_600.0
 _MAX_ENDPOINT_CHARS = 2_048
 _MAX_SERVICE_ERROR_CHARS = 100
 
@@ -189,14 +191,16 @@ class RuntimeHttpClient:
     )
     timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS
     token: SecretValue | None = field(default=None, repr=False, compare=False)
+    replay_timeout_seconds: float = _DEFAULT_REPLAY_TIMEOUT_SECONDS
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "endpoint", _normalize_endpoint(self.endpoint))
-        if (
-            isinstance(self.timeout_seconds, bool)
-            or not isinstance(self.timeout_seconds, int | float)
-            or not math.isfinite(self.timeout_seconds)
-            or not 0 < self.timeout_seconds <= _MAX_TIMEOUT_SECONDS
+        if not _valid_timeout(
+            self.timeout_seconds,
+            maximum=_MAX_TIMEOUT_SECONDS,
+        ) or not _valid_timeout(
+            self.replay_timeout_seconds,
+            maximum=_MAX_REPLAY_TIMEOUT_SECONDS,
         ):
             raise RuntimeClientError(RuntimeClientFailureCode.INVALID_TIMEOUT)
 
@@ -282,6 +286,7 @@ class RuntimeHttpClient:
             f"/api/alpha/v1/runs/{_path_identifier(run_id)}/replay",
             (200,),
             AlphaReplayResponse,
+            timeout_seconds=self.replay_timeout_seconds,
         )
 
     def list_alpha_events(
@@ -314,6 +319,8 @@ class RuntimeHttpClient:
         expected_statuses: tuple[int, ...],
         response_type: type[ResponseT],
         request: StrictStruct | None = None,
+        *,
+        timeout_seconds: float | None = None,
     ) -> ResponseT:
         if self.token is None:
             raise RuntimeClientError(RuntimeClientFailureCode.MISSING_AUTHENTICATION)
@@ -326,7 +333,13 @@ class RuntimeHttpClient:
             headers["content-type"] = "application/json"
             body = encode_contract(request)
         return _decode_expected(
-            self._request(path, method=method, headers=headers, body=body),
+            self._request(
+                path,
+                method=method,
+                headers=headers,
+                body=body,
+                timeout_seconds=timeout_seconds,
+            ),
             expected_statuses,
             response_type,
         )
@@ -338,13 +351,16 @@ class RuntimeHttpClient:
         method: HttpMethod = "GET",
         headers: Mapping[str, str] | None = None,
         body: bytes | None = None,
+        timeout_seconds: float | None = None,
     ) -> RuntimeHttpResponse:
         return self.transport.request(
             method,
             f"{self.endpoint}{path}",
             headers={"accept": "application/json"} if headers is None else headers,
             body=body,
-            timeout_seconds=float(self.timeout_seconds),
+            timeout_seconds=float(
+                self.timeout_seconds if timeout_seconds is None else timeout_seconds
+            ),
         )
 
 
@@ -434,6 +450,15 @@ def _is_loopback(host: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
+def _valid_timeout(value: object, *, maximum: float) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, int | float)
+        and math.isfinite(value)
+        and 0 < value <= maximum
+    )
 
 
 def _media_type(value: str) -> str:

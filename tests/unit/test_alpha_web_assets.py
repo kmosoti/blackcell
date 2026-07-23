@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
-from blackcell.interfaces.http import AlphaWebTicketAuthority
+from blackcell.interfaces.http import MAX_RESPONSE_BODY_BYTES, AlphaWebTicketAuthority
 from blackcell.interfaces.http.alpha_web_assets import load_alpha_web_assets
 from tests.unit.test_alpha_web import _client, _service
 
@@ -126,6 +127,21 @@ def test_browser_client_keeps_credentials_in_memory_and_uses_only_alpha_contract
     assert "@import" not in css
     assert "http://" not in css
     assert "https://" not in css
+
+
+def test_browser_response_ceiling_matches_the_http_service_contract() -> None:
+    javascript = load_alpha_web_assets().javascript.decode("utf-8")
+    request_match = re.search(r"const MAX_REQUEST_BYTES = ([0-9_]+);", javascript)
+    response_match = re.search(
+        r"const MAX_RESPONSE_BYTES = ([0-9_]+) \* MAX_REQUEST_BYTES;",
+        javascript,
+    )
+
+    assert request_match is not None
+    assert response_match is not None
+    request_bytes = int(request_match.group(1).replace("_", ""))
+    response_multiplier = int(response_match.group(1).replace("_", ""))
+    assert request_bytes * response_multiplier == MAX_RESPONSE_BODY_BYTES
 
 
 def test_alpha_web_workflow_surface_is_bounded_closed_and_accessible() -> None:
