@@ -25,6 +25,18 @@ ARCHITECTURE_GATE = (
     + " ".join(ARCHITECTURE_NODE_IDS)
     + " -q --blackcell-require-all-pass"
 )
+BUBBLEWRAP_SETUP = """\
+sudo apt-get update
+sudo apt-get install --yes --no-install-recommends apparmor-profiles bubblewrap
+sudo apparmor_parser --replace /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+/usr/bin/bwrap \\
+  --unshare-all \\
+  --die-with-parent \\
+  --ro-bind / / \\
+  --proc /proc \\
+  --dev /dev \\
+  /usr/bin/true
+"""
 
 
 def _jobs() -> dict[str, Any]:
@@ -85,6 +97,24 @@ def test_quality_gate_uses_full_history_and_the_no_ignore_suite() -> None:
     assert "if" not in full_suite
     assert "continue-on-error" not in full_suite
     assert "--ignore" not in full_suite["run"]
+
+
+def test_quality_runner_configures_bubblewrap_without_disabling_userns_policy() -> None:
+    setup = next(
+        step for step in _quality_steps() if step.get("name") == "Configure Bubblewrap sandbox"
+    )
+
+    assert setup == {
+        "name": "Configure Bubblewrap sandbox",
+        "run": BUBBLEWRAP_SETUP,
+    }
+    assert "apparmor-profiles bubblewrap" in BUBBLEWRAP_SETUP
+    assert "bwrap-userns-restrict" in BUBBLEWRAP_SETUP
+    assert "/usr/bin/bwrap" in BUBBLEWRAP_SETUP
+
+    workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "apparmor_restrict_unprivileged_userns=0" not in workflow_text
+    assert "kernel.unprivileged_userns_clone=1" not in workflow_text
 
 
 def test_ci_has_no_source_bound_evidence_gate_or_bypass() -> None:
