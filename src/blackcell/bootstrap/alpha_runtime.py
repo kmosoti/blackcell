@@ -277,8 +277,13 @@ class AlphaRuntimeApiService:
         _require_reference(intent_event, "project", project_event)
         _require_review_evidence_capacity(request)
         plan_stream = _plan_stream(request.plan_id)
-        if not self._events.read_stream(plan_stream, limit=1):
-            self._require_plan_base_commit(request.base_commit)
+        prior_plan = self._events.read_stream(plan_stream, limit=1)
+        retained_plan = (
+            _decode_request(self._required_event(plan_stream, _PLAN_ACCEPTED), AlphaPlanRequest)
+            if prior_plan
+            else request
+        )
+        self._retain_plan_base_commit(retained_plan.plan_id, retained_plan.base_commit)
         event = self._record_immutable(
             stream_id=plan_stream,
             event_type=_PLAN_ACCEPTED,
@@ -1855,9 +1860,13 @@ class AlphaRuntimeApiService:
         if path != resolved or resolved != self._repository_root or not resolved.is_dir():
             raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST)
 
-    def _require_plan_base_commit(self, base_commit: str) -> None:
+    def _retain_plan_base_commit(self, plan_id: str, base_commit: str) -> None:
         try:
-            self._worktrees.validate_base_commit(self._repository_root, base_commit)
+            self._worktrees.retain_plan_base_commit(
+                self._repository_root,
+                plan_id=plan_id,
+                base_commit=base_commit,
+            )
         except WorktreeLifecycleError as error:
             if error.code is WorktreeFailureCode.BASE_COMMIT_NOT_FOUND:
                 raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST) from error

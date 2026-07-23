@@ -35,6 +35,7 @@ WORKTREE_INSPECTION_SCHEMA = "blackcell.worktree-inspection/v1"
 WORKTREE_REMOVAL_SCHEMA = "blackcell.worktree-removal/v1"
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
+_PLAN_ID = re.compile(r"[A-Za-z0-9._-]{1,120}\Z")
 _COMMIT_ID = re.compile(r"[0-9a-f]{40}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _MAX_ALLOWED_PATHS = 256
@@ -60,6 +61,7 @@ class WorktreeFailureCode(StrEnum):
     INVALID_ISOLATION_ROOT = "invalid-worktree-isolation-root"
     UNSAFE_REPOSITORY_CONFIGURATION = "unsafe-worktree-repository-configuration"
     BASE_COMMIT_NOT_FOUND = "worktree-base-commit-not-found"
+    BASE_COMMIT_RETENTION_FAILED = "worktree-base-commit-retention-failed"
     GIT_UNAVAILABLE = "worktree-git-unavailable"
     GIT_SPAWN_FAILED = "worktree-git-spawn-failed"
     GIT_TIMED_OUT = "worktree-git-timed-out"
@@ -560,6 +562,41 @@ class GitWorktreeLifecycle:
         commit = self._git_at(root, ("cat-file", "-e", f"{base_commit}^{{commit}}"))
         if commit.return_code != 0:
             raise WorktreeLifecycleError(WorktreeFailureCode.BASE_COMMIT_NOT_FOUND)
+
+    def retain_plan_base_commit(
+        self,
+        repository_root: Path,
+        *,
+        plan_id: str,
+        base_commit: str,
+    ) -> str:
+        """Pin one immutable plan base for the durable lifetime of its accepted plan."""
+
+        if not isinstance(plan_id, str) or _PLAN_ID.fullmatch(plan_id) is None:
+            raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_SPEC)
+        root = _canonical_repository_root(repository_root)
+        self.validate_base_commit(root, base_commit)
+        plan_key = hashlib.sha256(plan_id.encode("utf-8")).hexdigest()
+        reference = f"refs/blackcell/alpha/plans/{plan_key}"
+        created = self._git_at(
+            root,
+            ("update-ref", reference, base_commit, "0" * 40),
+        )
+        if created.return_code == 0:
+            return reference
+
+        existing = self._git_at(root, ("show-ref", "--verify", "--hash", reference))
+        if existing.return_code != 0:
+            raise WorktreeLifecycleError(WorktreeFailureCode.BASE_COMMIT_RETENTION_FAILED)
+        try:
+            retained_commit = self._single_line(existing)
+        except WorktreeLifecycleError as error:
+            raise WorktreeLifecycleError(
+                WorktreeFailureCode.BASE_COMMIT_RETENTION_FAILED
+            ) from error
+        if retained_commit != base_commit:
+            raise WorktreeLifecycleError(WorktreeFailureCode.BASE_COMMIT_RETENTION_FAILED)
+        return reference
 
     def create(self, spec: WorktreeExecutionSpec) -> WorktreeInspection:
         """Create or reopen the exact worktree named by an immutable execution spec."""

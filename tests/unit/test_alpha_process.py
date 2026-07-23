@@ -16,7 +16,11 @@ import pytest
 
 import blackcell.bootstrap.alpha_process as alpha_process_module
 from blackcell.adapters.models import CodexCliModelAdapter
-from blackcell.bootstrap.alpha_process import AlphaWorkerProcess
+from blackcell.bootstrap.alpha_process import (
+    AlphaWorkerProcess,
+    AlphaWorkerProcessError,
+    AlphaWorkerProcessFailureCode,
+)
 from blackcell.bootstrap.alpha_runtime import (
     AlphaRuntimeApiService,
     AlphaWorktreeMaintenanceReport,
@@ -24,6 +28,7 @@ from blackcell.bootstrap.alpha_runtime import (
 from blackcell.bootstrap.alpha_worker import AlphaRuntimeWorker, AlphaWorkerCycleResult
 from blackcell.bootstrap.process import main
 from blackcell.bootstrap.runtime_api import RuntimeApiService
+from blackcell.bootstrap.worker_process_lock import WorkerProcessRole, worker_process_lock
 from blackcell.config import (
     ALPHA_WORKER_CONFIG_FILE_ENV,
     ALPHA_WORKER_CONFIG_SCHEMA,
@@ -281,6 +286,30 @@ def test_alpha_process_loop_polls_only_when_idle_or_conflicted(tmp_path: Path) -
     )
     assert blocked_process.serve(once=True) == 3
     assert blocked.calls == 0
+
+
+def test_alpha_process_requires_exclusive_role_ownership_before_reconciliation(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    order: list[str] = []
+    coordinator = RecordingCoordinator(("idle",))
+    process = AlphaWorkerProcess(coordinator, RecordingRuntime(order), config)
+
+    with (
+        worker_process_lock(config.security.paths, WorkerProcessRole.ALPHA_EXECUTION),
+        worker_process_lock(config.security.paths, WorkerProcessRole.ALPHA_REVIEW),
+        worker_process_lock(config.security.paths, WorkerProcessRole.ALPHA_VERIFICATION),
+        pytest.raises(AlphaWorkerProcessError) as duplicate,
+    ):
+        process.serve(once=True)
+
+    assert duplicate.value.code is AlphaWorkerProcessFailureCode.ALREADY_RUNNING
+    assert order == []
+    assert coordinator.calls == 0
+    for role in WorkerProcessRole:
+        lock_path = config.security.paths.data_root / f".{role.value}.lock"
+        assert stat.S_IMODE(lock_path.stat().st_mode) == 0o600
 
 
 def test_alpha_process_entrypoint_restores_signal_handlers(monkeypatch: Any) -> None:

@@ -23,6 +23,12 @@ from blackcell.bootstrap.alpha_review_worker import (
     AlphaReviewWorkerPolicy,
 )
 from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
+from blackcell.bootstrap.worker_process_lock import (
+    WorkerProcessLockError,
+    WorkerProcessLockFailureCode,
+    WorkerProcessRole,
+    worker_process_lock,
+)
 from blackcell.config import AlphaReviewWorkerRuntimeConfig, RuntimeProcessConfig
 from blackcell.gateway import GatewayBudget, GatewayProfile, ModelCapability, ModelGateway
 from blackcell.kernel import ArtifactRef, ArtifactStore, EventStore
@@ -50,6 +56,8 @@ ALPHA_REVIEW_CODEX_MAX_STDOUT_BYTES = (
 
 class AlphaReviewWorkerProcessFailureCode(StrEnum):
     NOT_CONFIGURED = "alpha-review-worker-not-configured"
+    ALREADY_RUNNING = "alpha-review-worker-already-running"
+    LOCK_UNAVAILABLE = "alpha-review-worker-lock-unavailable"
 
 
 class AlphaReviewWorkerProcessError(RuntimeError):
@@ -254,18 +262,31 @@ class AlphaReviewWorkerProcess:
 
     def serve(self, *, once: bool = False) -> int:
         alpha = _required_review_config(self.config)
-        self.scheduler.reconcile(principal_id=alpha.worker.supervisor_id)
-        while not self.stop_event.is_set():
-            cycle = (
-                None
-                if self.storage_quota is not None and not self.storage_quota.has_mutation_capacity()
-                else self.coordinator.run_once()
+        try:
+            with worker_process_lock(
+                self.config.security.paths,
+                WorkerProcessRole.ALPHA_REVIEW,
+            ):
+                self.scheduler.reconcile(principal_id=alpha.worker.supervisor_id)
+                while not self.stop_event.is_set():
+                    cycle = (
+                        None
+                        if self.storage_quota is not None
+                        and not self.storage_quota.has_mutation_capacity()
+                        else self.coordinator.run_once()
+                    )
+                    if once:
+                        return 3 if cycle is None or cycle.status == "idle" else 0
+                    if cycle is None or cycle.status in {"idle", "claim-conflict"}:
+                        self.stop_event.wait(alpha.worker.poll_milliseconds / 1_000)
+                return 0
+        except WorkerProcessLockError as error:
+            code = (
+                AlphaReviewWorkerProcessFailureCode.ALREADY_RUNNING
+                if error.code is WorkerProcessLockFailureCode.ALREADY_RUNNING
+                else AlphaReviewWorkerProcessFailureCode.LOCK_UNAVAILABLE
             )
-            if once:
-                return 3 if cycle is None or cycle.status == "idle" else 0
-            if cycle is None or cycle.status in {"idle", "claim-conflict"}:
-                self.stop_event.wait(alpha.worker.poll_milliseconds / 1_000)
-        return 0
+            raise AlphaReviewWorkerProcessError(code) from error
 
 
 def validate_alpha_review_worker_runtime_config(

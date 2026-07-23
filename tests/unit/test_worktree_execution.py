@@ -146,6 +146,40 @@ def test_validate_base_commit_uses_the_bounded_repository_contract(tmp_path: Pat
     assert missing.value.code is WorktreeFailureCode.BASE_COMMIT_NOT_FOUND
 
 
+def test_retain_plan_base_commit_creates_one_immutable_plan_ref(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    lifecycle = GitWorktreeLifecycle()
+    tree = _git_text(repository.root, "rev-parse", "HEAD^{tree}")
+    orphan = _git_text(repository.root, "commit-tree", tree, "-m", "orphan plan base")
+
+    reference = lifecycle.retain_plan_base_commit(
+        repository.root,
+        plan_id=".plan-1",
+        base_commit=orphan,
+    )
+
+    assert reference.startswith("refs/blackcell/alpha/plans/")
+    assert _git_text(repository.root, "show-ref", "--verify", "--hash", reference) == orphan
+    assert (
+        lifecycle.retain_plan_base_commit(
+            repository.root,
+            plan_id=".plan-1",
+            base_commit=orphan,
+        )
+        == reference
+    )
+
+    with pytest.raises(WorktreeLifecycleError) as moved:
+        lifecycle.retain_plan_base_commit(
+            repository.root,
+            plan_id=".plan-1",
+            base_commit=repository.base_commit,
+        )
+
+    assert moved.value.code is WorktreeFailureCode.BASE_COMMIT_RETENTION_FAILED
+    assert _git_text(repository.root, "show-ref", "--verify", "--hash", reference) == orphan
+
+
 def test_create_is_deterministic_and_idempotent(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     spec = _spec(repository)

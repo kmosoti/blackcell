@@ -28,6 +28,12 @@ from blackcell.bootstrap.alpha_worker import (
     AlphaWorkerCycleResult,
     AlphaWorkerPolicy,
 )
+from blackcell.bootstrap.worker_process_lock import (
+    WorkerProcessLockError,
+    WorkerProcessLockFailureCode,
+    WorkerProcessRole,
+    worker_process_lock,
+)
 from blackcell.config import AlphaWorkerRuntimeConfig, RuntimeProcessConfig
 from blackcell.gateway import GatewayProfile, ModelCapability, ModelGateway
 from blackcell.kernel import ArtifactStore, EventStore
@@ -49,6 +55,8 @@ ALPHA_CHANGE_CODEX_MAX_STDOUT_BYTES = (
 
 class AlphaWorkerProcessFailureCode(StrEnum):
     NOT_CONFIGURED = "alpha-worker-not-configured"
+    ALREADY_RUNNING = "alpha-worker-already-running"
+    LOCK_UNAVAILABLE = "alpha-worker-lock-unavailable"
 
 
 class AlphaWorkerProcessError(RuntimeError):
@@ -145,32 +153,45 @@ class AlphaWorkerProcess:
     def serve(self, *, once: bool = False) -> int:
         alpha = _required_alpha_config(self.config)
         worker_id = alpha.worker.worker_id
-        self.runtime.reconcile_startup(principal_id=worker_id)
-        maintenance = self.runtime.maintain_successful_worktrees(
-            max_retained=alpha.worker.max_retained_successful_worktrees,
-            principal_id=worker_id,
-        )
-        while not self.stop_event.is_set():
-            if not maintenance.quota_satisfied or (
-                self.storage_quota is not None and not self.storage_quota.has_mutation_capacity()
+        try:
+            with worker_process_lock(
+                self.config.security.paths,
+                WorkerProcessRole.ALPHA_EXECUTION,
             ):
-                cycle: AlphaWorkerCycleResult | None = None
-            else:
-                cycle = self.coordinator.run_once()
-            if cycle is not None and cycle.status in {
-                "node-succeeded",
-                "node-failed",
-                "node-canceled",
-            }:
+                self.runtime.reconcile_startup(principal_id=worker_id)
                 maintenance = self.runtime.maintain_successful_worktrees(
                     max_retained=alpha.worker.max_retained_successful_worktrees,
                     principal_id=worker_id,
                 )
-            if once:
-                return 3 if cycle is None or cycle.status == "idle" else 0
-            if cycle is None or cycle.status in {"idle", "claim-conflict"}:
-                self.stop_event.wait(self.config.worker_poll_milliseconds / 1_000)
-        return 0
+                while not self.stop_event.is_set():
+                    if not maintenance.quota_satisfied or (
+                        self.storage_quota is not None
+                        and not self.storage_quota.has_mutation_capacity()
+                    ):
+                        cycle: AlphaWorkerCycleResult | None = None
+                    else:
+                        cycle = self.coordinator.run_once()
+                    if cycle is not None and cycle.status in {
+                        "node-succeeded",
+                        "node-failed",
+                        "node-canceled",
+                    }:
+                        maintenance = self.runtime.maintain_successful_worktrees(
+                            max_retained=alpha.worker.max_retained_successful_worktrees,
+                            principal_id=worker_id,
+                        )
+                    if once:
+                        return 3 if cycle is None or cycle.status == "idle" else 0
+                    if cycle is None or cycle.status in {"idle", "claim-conflict"}:
+                        self.stop_event.wait(self.config.worker_poll_milliseconds / 1_000)
+                return 0
+        except WorkerProcessLockError as error:
+            code = (
+                AlphaWorkerProcessFailureCode.ALREADY_RUNNING
+                if error.code is WorkerProcessLockFailureCode.ALREADY_RUNNING
+                else AlphaWorkerProcessFailureCode.LOCK_UNAVAILABLE
+            )
+            raise AlphaWorkerProcessError(code) from error
 
 
 def validate_alpha_worker_runtime_config(

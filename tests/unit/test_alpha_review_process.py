@@ -11,15 +11,22 @@ from threading import Event
 from types import FrameType
 from typing import Any, Literal, cast
 
+import pytest
+
 import blackcell.bootstrap.alpha_review_process as alpha_review_process_module
 from blackcell.adapters.models import CodexCliModelAdapter
-from blackcell.bootstrap.alpha_review_process import AlphaReviewWorkerProcess
+from blackcell.bootstrap.alpha_review_process import (
+    AlphaReviewWorkerProcess,
+    AlphaReviewWorkerProcessError,
+    AlphaReviewWorkerProcessFailureCode,
+)
 from blackcell.bootstrap.alpha_review_runtime import AlphaReviewReconciliationReport
 from blackcell.bootstrap.alpha_review_worker import (
     AlphaReviewWorker,
     AlphaReviewWorkerCycleResult,
 )
 from blackcell.bootstrap.process import main
+from blackcell.bootstrap.worker_process_lock import WorkerProcessRole, worker_process_lock
 from blackcell.config import (
     ALPHA_REVIEW_CONFIG_FILE_ENV,
     ALPHA_REVIEW_CONFIG_SCHEMA,
@@ -206,6 +213,25 @@ def test_alpha_review_process_loop_uses_review_polling_policy(tmp_path: Path) ->
     )
     assert blocked_process.serve(once=True) == 3
     assert blocked.calls == 0
+
+
+def test_alpha_review_process_rejects_duplicate_role_before_reconciliation(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    order: list[str] = []
+    coordinator = RecordingCoordinator(("idle",))
+    process = AlphaReviewWorkerProcess(coordinator, RecordingScheduler(order), config)
+
+    with (
+        worker_process_lock(config.security.paths, WorkerProcessRole.ALPHA_REVIEW),
+        pytest.raises(AlphaReviewWorkerProcessError) as duplicate,
+    ):
+        process.serve(once=True)
+
+    assert duplicate.value.code is AlphaReviewWorkerProcessFailureCode.ALREADY_RUNNING
+    assert order == []
+    assert coordinator.calls == 0
 
 
 def test_alpha_review_process_entrypoint_restores_signal_handlers_and_fails_closed(

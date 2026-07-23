@@ -13,13 +13,18 @@ from typing import Any, Literal, cast
 
 import pytest
 
-from blackcell.bootstrap.alpha_verify_process import AlphaVerifyWorkerProcess
+from blackcell.bootstrap.alpha_verify_process import (
+    AlphaVerifyWorkerProcess,
+    AlphaVerifyWorkerProcessError,
+    AlphaVerifyWorkerProcessFailureCode,
+)
 from blackcell.bootstrap.alpha_verify_runtime import AlphaVerificationReconciliationReport
 from blackcell.bootstrap.alpha_verify_worker import (
     AlphaVerificationWorker,
     AlphaVerificationWorkerCycleResult,
 )
 from blackcell.bootstrap.process import main
+from blackcell.bootstrap.worker_process_lock import WorkerProcessRole, worker_process_lock
 from blackcell.config import (
     ALPHA_REVIEW_CONFIG_FILE_ENV,
     ALPHA_REVIEW_CONFIG_SCHEMA,
@@ -327,6 +332,25 @@ def test_alpha_verify_process_loop_uses_verification_polling_and_storage_policy(
     )
     assert blocked_process.serve(once=True) == 3
     assert blocked.calls == 0
+
+
+def test_alpha_verify_process_rejects_duplicate_role_before_reconciliation(
+    tmp_path: Path,
+) -> None:
+    config = RuntimeProcessConfig.from_environment(_environment(tmp_path))
+    order: list[str] = []
+    coordinator = RecordingCoordinator(("idle",))
+    process = AlphaVerifyWorkerProcess(coordinator, RecordingScheduler(order), config)
+
+    with (
+        worker_process_lock(config.security.paths, WorkerProcessRole.ALPHA_VERIFICATION),
+        pytest.raises(AlphaVerifyWorkerProcessError) as duplicate,
+    ):
+        process.serve(once=True)
+
+    assert duplicate.value.code is AlphaVerifyWorkerProcessFailureCode.ALREADY_RUNNING
+    assert order == []
+    assert coordinator.calls == 0
 
 
 def test_alpha_verify_process_entrypoint_restores_signal_handlers_and_fails_closed(

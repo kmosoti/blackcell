@@ -24,6 +24,12 @@ from blackcell.bootstrap.alpha_verify_worker import (
     AlphaVerificationWorkerPolicy,
     DeterministicAlphaVerifier,
 )
+from blackcell.bootstrap.worker_process_lock import (
+    WorkerProcessLockError,
+    WorkerProcessLockFailureCode,
+    WorkerProcessRole,
+    worker_process_lock,
+)
 from blackcell.config import AlphaVerifyWorkerRuntimeConfig, RuntimeProcessConfig
 from blackcell.kernel import ArtifactRef, ArtifactStore, EventStore
 from blackcell.orchestration.alpha_verify import AlphaVerificationStatus
@@ -37,6 +43,8 @@ from blackcell.runtime import RuntimeStorageQuota, StorageQuotaPort
 
 class AlphaVerifyWorkerProcessFailureCode(StrEnum):
     NOT_CONFIGURED = "alpha-verify-worker-not-configured"
+    ALREADY_RUNNING = "alpha-verify-worker-already-running"
+    LOCK_UNAVAILABLE = "alpha-verify-worker-lock-unavailable"
 
 
 class AlphaVerifyWorkerProcessError(RuntimeError):
@@ -208,18 +216,31 @@ class AlphaVerifyWorkerProcess:
 
     def serve(self, *, once: bool = False) -> int:
         alpha = _required_verify_config(self.config)
-        self.scheduler.reconcile(principal_id=alpha.worker.supervisor_id)
-        while not self.stop_event.is_set():
-            cycle = (
-                None
-                if self.storage_quota is not None and not self.storage_quota.has_mutation_capacity()
-                else self.coordinator.run_once()
+        try:
+            with worker_process_lock(
+                self.config.security.paths,
+                WorkerProcessRole.ALPHA_VERIFICATION,
+            ):
+                self.scheduler.reconcile(principal_id=alpha.worker.supervisor_id)
+                while not self.stop_event.is_set():
+                    cycle = (
+                        None
+                        if self.storage_quota is not None
+                        and not self.storage_quota.has_mutation_capacity()
+                        else self.coordinator.run_once()
+                    )
+                    if once:
+                        return 3 if cycle is None or cycle.status == "idle" else 0
+                    if cycle is None or cycle.status in {"idle", "claim-conflict"}:
+                        self.stop_event.wait(alpha.worker.poll_milliseconds / 1_000)
+                return 0
+        except WorkerProcessLockError as error:
+            code = (
+                AlphaVerifyWorkerProcessFailureCode.ALREADY_RUNNING
+                if error.code is WorkerProcessLockFailureCode.ALREADY_RUNNING
+                else AlphaVerifyWorkerProcessFailureCode.LOCK_UNAVAILABLE
             )
-            if once:
-                return 3 if cycle is None or cycle.status == "idle" else 0
-            if cycle is None or cycle.status in {"idle", "claim-conflict"}:
-                self.stop_event.wait(alpha.worker.poll_milliseconds / 1_000)
-        return 0
+            raise AlphaVerifyWorkerProcessError(code) from error
 
 
 def validate_alpha_verify_worker_runtime_config(config: RuntimeProcessConfig) -> None:

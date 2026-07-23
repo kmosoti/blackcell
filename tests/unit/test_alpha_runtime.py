@@ -7,6 +7,11 @@ from typing import Any, cast
 import msgspec
 import pytest
 
+from blackcell.adapters.execution.worktree import (
+    GitWorktreeLifecycle,
+    WorktreeFailureCode,
+    WorktreeLifecycleError,
+)
 from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
 from blackcell.bootstrap.runtime_api import RuntimeApiService
 from blackcell.interfaces.http import (
@@ -26,6 +31,17 @@ from blackcell.kernel import EventEnvelope, EventStore
 _CONFIGURATION_DIGEST = "sha256:" + ("a" * 64)
 _OTHER_CONFIGURATION_DIGEST = "sha256:" + ("b" * 64)
 _BASE_COMMIT = "b" * 40
+
+
+class RefusingPlanRetentionWorktrees(GitWorktreeLifecycle):
+    def retain_plan_base_commit(
+        self,
+        repository_root: Path,
+        *,
+        plan_id: str,
+        base_commit: str,
+    ) -> str:
+        raise WorktreeLifecycleError(WorktreeFailureCode.BASE_COMMIT_RETENTION_FAILED)
 
 
 def test_alpha_flow_is_idempotent_restart_safe_and_live_free(tmp_path: Path) -> None:
@@ -181,6 +197,59 @@ def test_alpha_plan_rejects_a_missing_base_commit_without_persisting(tmp_path: P
 
     assert missing.value.code is RuntimeApiFailureCode.INVALID_REQUEST
     assert events.read_stream("alpha:plan:plan-missing-base") == ()
+    assert len(events) == 2
+
+
+def test_alpha_plan_retains_an_unreachable_base_before_persisting(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    events = EventStore(tmp_path / "state.sqlite3")
+    service = AlphaRuntimeApiService(events, repository)
+    service.register_project(_project(repository), principal_id="operator")
+    service.accept_intent(_intent(), principal_id="operator")
+    tree = _git(repository, "rev-parse", "HEAD^{tree}").stdout.decode("ascii").strip()
+    orphan = (
+        _git(repository, "commit-tree", tree, "-m", "unreachable base")
+        .stdout.decode("ascii")
+        .strip()
+    )
+    request = msgspec.structs.replace(_plan(repository), base_commit=orphan)
+
+    accepted = service.accept_plan(request, principal_id="operator")
+    _git(repository, "reflog", "expire", "--expire=now", "--all")
+    _git(repository, "gc", "--prune=now")
+
+    retained = (
+        _git(
+            repository,
+            "for-each-ref",
+            "--format=%(objectname)",
+            "refs/blackcell/alpha/plans",
+        )
+        .stdout.decode("ascii")
+        .splitlines()
+    )
+    assert accepted.plan_id == request.plan_id
+    assert retained == [orphan]
+    assert _git(repository, "cat-file", "-e", f"{orphan}^{{commit}}").returncode == 0
+    assert service.accept_plan(request, principal_id="operator") == accepted
+
+
+def test_alpha_plan_retention_failure_precedes_the_accepted_event(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    events = EventStore(tmp_path / "state.sqlite3")
+    service = AlphaRuntimeApiService(
+        events,
+        repository,
+        worktrees=RefusingPlanRetentionWorktrees(),
+    )
+    service.register_project(_project(repository), principal_id="operator")
+    service.accept_intent(_intent(), principal_id="operator")
+
+    with pytest.raises(RuntimeApiError) as unavailable:
+        service.accept_plan(_plan(repository), principal_id="operator")
+
+    assert unavailable.value.code is RuntimeApiFailureCode.NOT_READY
+    assert events.read_stream("alpha:plan:plan-1") == ()
     assert len(events) == 2
 
 
