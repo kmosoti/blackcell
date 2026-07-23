@@ -223,8 +223,14 @@ class AlphaRuntimeWorker:
         ready = self.runtime.next_ready_node()
         if ready is None:
             return AlphaWorkerCycleResult(status="idle")
+        bounded_timeout_stages = len(ready.node.checks) + int(
+            "repository-write" in ready.node.effects
+        )
         expires_at = utc_now() + timedelta(
-            seconds=ready.node.budget.timeout_seconds + self.policy.lease_grace_seconds
+            seconds=(
+                ready.node.budget.timeout_seconds * bounded_timeout_stages
+                + self.policy.lease_grace_seconds
+            )
         )
         try:
             prepared = self.runtime.prepare_node(

@@ -96,6 +96,8 @@ def load_alpha_review_config(
             raise AlphaReviewConfigError
         provider = _provider(_mapping(payload, "provider"))
         worker = _worker(_mapping(payload, "worker"))
+        if worker.lease_seconds <= provider.timeout_ceiling_seconds:
+            raise AlphaReviewConfigError
         return AlphaReviewWorkerRuntimeConfig(source, provider, worker)
     except AlphaReviewConfigError:
         raise

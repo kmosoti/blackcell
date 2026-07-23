@@ -59,6 +59,11 @@ reviewer identity, supervisor identity, and REVIEW profile must differ from the 
 CODE profile. The model identifier may be the same when the operator deliberately wants that model,
 but routing and durable authority remain separate.
 
+`lease_seconds` must be strictly greater than `provider.timeout_ceiling_seconds`. BlackCell reserves
+their difference for post-provider artifact admission and terminal persistence. Time spent preparing
+the verified review context reduces the provider call's remaining latency budget so that the selected
+reserve is preserved; an exhausted provider window fails before durable provider dispatch.
+
 Add the path and any allowlisted provider variables to the owner-only daemon environment:
 
 ```text

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import fields
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -162,6 +162,69 @@ def test_review_worker_persists_context_dispatch_proposal_provider_and_admission
         RecordingReviewer(),
     )
     assert reopened.run_once().status == "idle"
+
+
+def test_review_worker_preserves_completion_reserve_in_provider_budget(tmp_path: Path) -> None:
+    execution, events, artifacts, _, _, _, _, _ = _completed_writer(tmp_path)
+    reviewer = RecordingReviewer()
+    times = iter((NOW, NOW + timedelta(seconds=15), NOW + timedelta(seconds=16)))
+    worker = AlphaReviewWorker(
+        execution=execution,
+        scheduler=AlphaReviewRuntimeService(events),
+        artifacts=artifacts,
+        reviewer=reviewer,
+        policy=AlphaReviewWorkerPolicy(
+            worker_id="reviewer-1",
+            budget=GatewayBudget(20_000, 2_000, 180_000, 10_000),
+            lease_seconds=210,
+        ),
+        clock=lambda: next(times),
+    )
+
+    result = worker.run_once()
+
+    assert result.status == "review-succeeded"
+    assert reviewer.calls[0].budget.max_latency_ms == 165_000
+    state = AlphaReviewRuntimeService(events).inspect("run-1")
+    assert state is not None
+    assert state.lease.expires_at == NOW + timedelta(seconds=210)
+    with pytest.raises(ValueError, match="invalid alpha review worker policy"):
+        AlphaReviewWorkerPolicy(
+            worker_id="reviewer-1",
+            budget=GatewayBudget(20_000, 2_000, 180_000, 10_000),
+            lease_seconds=180,
+        )
+
+
+def test_review_worker_fails_before_dispatch_when_provider_window_is_exhausted(
+    tmp_path: Path,
+) -> None:
+    execution, events, artifacts, _, _, _, _, _ = _completed_writer(tmp_path)
+    reviewer = RecordingReviewer()
+    times = iter((NOW, NOW + timedelta(seconds=181), NOW + timedelta(seconds=182)))
+    worker = AlphaReviewWorker(
+        execution=execution,
+        scheduler=AlphaReviewRuntimeService(events),
+        artifacts=artifacts,
+        reviewer=reviewer,
+        policy=AlphaReviewWorkerPolicy(
+            worker_id="reviewer-1",
+            budget=GatewayBudget(20_000, 2_000, 180_000, 10_000),
+            lease_seconds=210,
+        ),
+        clock=lambda: next(times),
+    )
+
+    result = worker.run_once()
+
+    assert result.status == "review-failed"
+    assert result.failure_code == "alpha-review-provider-failed"
+    assert reviewer.calls == []
+    event_types = tuple(
+        event.event_type for event in events.read_stream(alpha_review_stream("run-1"))
+    )
+    assert ALPHA_REVIEW_PROVIDER_DISPATCH_STARTED not in event_types
+    assert event_types[-1] == ALPHA_REVIEW_FAILED
 
 
 def test_review_worker_records_stable_preparation_provider_and_admission_failures(

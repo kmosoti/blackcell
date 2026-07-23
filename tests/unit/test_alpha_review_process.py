@@ -123,6 +123,29 @@ def test_alpha_review_process_validates_provider_environment_before_storage(
     assert not config.security.paths.database_path.exists()
 
 
+def test_alpha_review_process_rejects_invalid_deadline_relationship_before_storage(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    assert config.alpha_review_worker is not None
+    invalid = replace(
+        config,
+        alpha_review_worker=replace(
+            config.alpha_review_worker,
+            worker=replace(config.alpha_review_worker.worker, lease_seconds=180),
+        ),
+    )
+
+    try:
+        AlphaReviewWorkerProcess.from_config(invalid, environment={})
+    except ValueError as error:
+        assert str(error) == "invalid alpha review worker policy"
+    else:
+        raise AssertionError("review lease accepted the complete provider deadline")
+
+    assert not config.security.paths.database_path.exists()
+
+
 def test_alpha_review_process_loop_uses_review_polling_policy(tmp_path: Path) -> None:
     config = _config(tmp_path)
     assert config.alpha_review_worker is not None

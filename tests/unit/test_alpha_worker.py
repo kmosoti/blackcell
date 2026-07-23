@@ -3,9 +3,11 @@ from __future__ import annotations
 import os
 import subprocess
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
+
+import pytest
 
 from blackcell.adapters.execution.text_changes import TextChangeExecutor
 from blackcell.adapters.execution.worktree import (
@@ -284,6 +286,49 @@ def test_worker_executes_writer_then_check_from_persisted_artifact_chain(
     assert restarted.replay_run("run-1").run.status == "succeeded"
 
 
+def test_worker_lease_covers_provider_and_each_acceptance_deadline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime, events, artifacts, repository, _, base_commit = _runtime(tmp_path)
+    _submit(
+        runtime,
+        repository,
+        base_commit,
+        writer_only=True,
+        writer_check_ids=("write-check-1", "write-check-2"),
+    )
+    claimed_at = datetime.now(UTC)
+    monkeypatch.setattr("blackcell.bootstrap.alpha_worker.utc_now", lambda: claimed_at)
+    lifecycle = GitWorktreeLifecycle()
+    acceptance = RecordingAcceptance(lifecycle)
+    worker = AlphaRuntimeWorker(
+        runtime=runtime,
+        artifacts=artifacts,
+        provider=ReplacingProvider(),
+        change_executor=TextChangeExecutor(lifecycle),
+        acceptance=acceptance,
+        worktrees=lifecycle,
+        policy=AlphaWorkerPolicy("worker-1", lease_grace_seconds=17),
+    )
+
+    result = worker.run_once()
+
+    assert result.status == "node-succeeded"
+    claimed = next(
+        event
+        for event in events.read_stream("alpha:run:run-1")
+        if event.event_type == "alpha.node.claimed"
+    )
+    assert datetime.fromisoformat(cast("str", claimed.payload["expires_at"])) == (
+        claimed_at + timedelta(seconds=30 * 3 + 17)
+    )
+    assert tuple(command.check_id for command in acceptance.commands) == (
+        "write-check-1",
+        "write-check-2",
+    )
+
+
 def test_worker_records_content_free_provider_failure_and_retains_checkout(
     tmp_path: Path,
 ) -> None:
@@ -506,6 +551,7 @@ def _submit(
     base_commit: str,
     *,
     writer_only: bool = False,
+    writer_check_ids: tuple[str, ...] = ("write-check",),
 ) -> None:
     runtime.register_project(
         AlphaProjectRequest(
@@ -541,7 +587,10 @@ def _submit(
         budget=writer_budget,
         effects=("repository-read", "repository-write", "process"),
         allowed_paths=("src/value.py",),
-        checks=(AlphaAcceptanceCheck("write-check", ("python", "-m", "compileall", "src")),),
+        checks=tuple(
+            AlphaAcceptanceCheck(check_id, ("python", "-m", "compileall", "src"))
+            for check_id in writer_check_ids
+        ),
     )
     verify = AlphaPlanNode(
         node_id="verify",

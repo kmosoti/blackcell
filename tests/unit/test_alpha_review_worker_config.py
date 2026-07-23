@@ -57,6 +57,36 @@ def test_alpha_review_worker_config_loads_closed_owner_only_review_contract(
     assert load_alpha_review_config({}, repository_root=repository) is None
 
 
+def test_alpha_review_config_rejects_provider_deadline_without_lease_reserve(
+    tmp_path: Path,
+) -> None:
+    repository, _data_root, _isolation_root = _roots(tmp_path)
+    for lease_seconds in (179, 180):
+        payload = _review_payload()
+        cast("dict[str, object]", payload["worker"])["lease_seconds"] = lease_seconds
+        source = tmp_path / f"review-lease-{lease_seconds}.json"
+        _write_config(source, payload)
+
+        with pytest.raises(AlphaReviewConfigError) as caught:
+            load_alpha_review_config(
+                {ALPHA_REVIEW_CONFIG_FILE_ENV: str(source)},
+                repository_root=repository,
+            )
+
+        assert str(caught.value) == "invalid-alpha-review-config"
+
+    payload = _review_payload()
+    cast("dict[str, object]", payload["worker"])["lease_seconds"] = 181
+    source = tmp_path / "review-lease-181.json"
+    _write_config(source, payload)
+    config = load_alpha_review_config(
+        {ALPHA_REVIEW_CONFIG_FILE_ENV: str(source)},
+        repository_root=repository,
+    )
+    assert config is not None
+    assert config.worker.lease_seconds == 181
+
+
 def test_alpha_review_worker_config_rejects_unsafe_unknown_and_shared_authority(
     tmp_path: Path,
 ) -> None:

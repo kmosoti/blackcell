@@ -131,6 +131,7 @@ class AlphaReviewWorkerPolicy:
             or isinstance(self.lease_seconds, bool)
             or not isinstance(self.lease_seconds, int)
             or not 1 <= self.lease_seconds <= 86_400
+            or self.lease_seconds * 1_000 <= self.budget.max_latency_ms
         ):
             raise ValueError("invalid alpha review worker policy")
 
@@ -211,6 +212,7 @@ class AlphaReviewWorker:
             last_artifact_digest = context_ref.digest
             phase = "provider"
             dispatched_at = self.clock()
+            provider_budget = self._provider_budget(lease, dispatched_at)
             dispatch_event_id = self.scheduler.record_provider_dispatch(
                 lease,
                 acceptance_digest=context.acceptance.digest,
@@ -227,7 +229,7 @@ class AlphaReviewWorker:
                     context=context,
                     classification=self.policy.classification,
                     locality=self.policy.locality,
-                    budget=self.policy.budget,
+                    budget=provider_budget,
                     estimated_input_tokens=(
                         len(canonical_json_bytes(alpha_review_context_payload(context))) + 3
                     )
@@ -297,6 +299,23 @@ class AlphaReviewWorker:
                 review_id=candidate.review_id,
                 failure_code=failure_code,
             )
+
+    def _provider_budget(self, lease: AlphaReviewLease, dispatched_at: datetime) -> GatewayBudget:
+        configured = self.policy.budget
+        completion_reserve_ms = self.policy.lease_seconds * 1_000 - configured.max_latency_ms
+        remaining_lease_ms = int((lease.expires_at - dispatched_at).total_seconds() * 1_000)
+        provider_latency_ms = min(
+            configured.max_latency_ms,
+            remaining_lease_ms - completion_reserve_ms,
+        )
+        if provider_latency_ms < 1:
+            raise ValueError("alpha review lease has no safe provider window")
+        return GatewayBudget(
+            configured.max_input_tokens,
+            configured.max_output_tokens,
+            provider_latency_ms,
+            configured.max_cost_microusd,
+        )
 
     def _store_json(
         self,

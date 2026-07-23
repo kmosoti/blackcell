@@ -189,6 +189,7 @@ class AlphaReviewWorkerProcess:
     ) -> AlphaReviewWorkerProcess:
         alpha = _required_review_config(config)
         reviewer = _reviewer(alpha, environment=environment)
+        policy = _review_policy(alpha)
         database_path = config.security.paths.ensure_database_file()
         events = EventStore(database_path)
         artifacts = ArtifactStore(
@@ -204,24 +205,12 @@ class AlphaReviewWorkerProcess:
                 artifacts=artifacts,
             )
         )
-        provider = alpha.provider
         coordinator = AlphaReviewWorker(
             execution=execution,
             scheduler=_AlphaReviewWorkerScheduler(scheduler),
             artifacts=_AlphaReviewArtifactWriter(artifacts),
             reviewer=reviewer,
-            policy=AlphaReviewWorkerPolicy(
-                worker_id=alpha.worker.worker_id,
-                classification=provider.classification,
-                locality=provider.locality,
-                budget=GatewayBudget(
-                    provider.max_input_tokens,
-                    provider.max_output_tokens,
-                    provider.timeout_ceiling_seconds * 1_000,
-                    provider.max_cost_microusd,
-                ),
-                lease_seconds=alpha.worker.lease_seconds,
-            ),
+            policy=policy,
         )
         return cls(
             coordinator,
@@ -258,7 +247,9 @@ def validate_alpha_review_worker_runtime_config(
 ) -> None:
     """Resolve the explicit REVIEW route before daemon children start."""
 
-    _reviewer(_required_review_config(config), environment=environment)
+    alpha = _required_review_config(config)
+    _reviewer(alpha, environment=environment)
+    _review_policy(alpha)
 
 
 def _required_review_config(config: RuntimeProcessConfig) -> AlphaReviewWorkerRuntimeConfig:
@@ -300,6 +291,22 @@ def _reviewer(
         max_cost_microusd=provider.max_cost_microusd,
     )
     return GatewayAlphaReviewer(ModelGateway((profile,), {adapter.adapter_id: adapter}))
+
+
+def _review_policy(config: AlphaReviewWorkerRuntimeConfig) -> AlphaReviewWorkerPolicy:
+    provider = config.provider
+    return AlphaReviewWorkerPolicy(
+        worker_id=config.worker.worker_id,
+        classification=provider.classification,
+        locality=provider.locality,
+        budget=GatewayBudget(
+            provider.max_input_tokens,
+            provider.max_output_tokens,
+            provider.timeout_ceiling_seconds * 1_000,
+            provider.max_cost_microusd,
+        ),
+        lease_seconds=config.worker.lease_seconds,
+    )
 
 
 __all__ = [
