@@ -166,10 +166,39 @@ class SystemdUserServiceManager:
                 return _unavailable_status()
             raise SystemdServiceError(SystemdServiceFailureCode.INVALID_RESPONSE) from error
         if result.return_code != 0:
-            return _unavailable_status()
+            return self._status_after_failed_unit_show()
         if result.stderr.captured:
             raise SystemdServiceError(SystemdServiceFailureCode.INVALID_RESPONSE)
         return _parse_status(result.stdout.captured)
+
+    def _status_after_failed_unit_show(self) -> SystemdUnitStatus:
+        try:
+            result = self.runner.run(
+                (
+                    self.systemctl,
+                    "--user",
+                    "--no-pager",
+                    "show",
+                    "--property=Version",
+                ),
+                cwd=Path("/"),
+                timeout_seconds=_COMMAND_TIMEOUT_SECONDS,
+                stdout_limit_bytes=_COMMAND_STDOUT_LIMIT,
+                stderr_limit_bytes=_COMMAND_STDERR_LIMIT,
+            )
+        except BoundedProcessError as error:
+            if error.code in {
+                BoundedProcessFailureCode.SPAWN_FAILED,
+                BoundedProcessFailureCode.TIMED_OUT,
+            }:
+                return _unavailable_status()
+            raise SystemdServiceError(SystemdServiceFailureCode.INVALID_RESPONSE) from error
+        if result.return_code != 0:
+            return _unavailable_status()
+        if result.stderr.captured:
+            raise SystemdServiceError(SystemdServiceFailureCode.INVALID_RESPONSE)
+        _validate_manager_status(result.stdout.captured)
+        return _missing_status()
 
     def install(
         self,
@@ -412,6 +441,26 @@ def _parse_status(raw: bytes) -> SystemdUnitStatus:
     )
 
 
+def _validate_manager_status(raw: bytes) -> None:
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        raise SystemdServiceError(SystemdServiceFailureCode.INVALID_RESPONSE) from error
+    lines = text.splitlines()
+    if len(lines) != 1:
+        raise SystemdServiceError(SystemdServiceFailureCode.INVALID_RESPONSE)
+    key, separator, version = lines[0].partition("=")
+    if (
+        not separator
+        or key != "Version"
+        or not version
+        or version != version.strip()
+        or len(version) > 128
+        or not version.isprintable()
+    ):
+        raise SystemdServiceError(SystemdServiceFailureCode.INVALID_RESPONSE)
+
+
 def _parse_logs(raw: bytes) -> tuple[SystemdLogEntry, ...]:
     entries: list[SystemdLogEntry] = []
     for line in raw.splitlines():
@@ -561,6 +610,18 @@ def _unavailable_status() -> SystemdUnitStatus:
         enabled=False,
         active=False,
         substate="unavailable",
+        main_pid=None,
+        last_exit_status=None,
+    )
+
+
+def _missing_status() -> SystemdUnitStatus:
+    return SystemdUnitStatus(
+        available=True,
+        installed=False,
+        enabled=False,
+        active=False,
+        substate="not-found",
         main_pid=None,
         last_exit_status=None,
     )

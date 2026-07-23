@@ -112,6 +112,34 @@ def test_install_is_atomic_idempotent_and_enables_one_foreground_unit(tmp_path: 
     assert unit_path.read_text(encoding="utf-8") == content
 
 
+def test_first_install_distinguishes_a_missing_unit_from_an_unavailable_manager(
+    tmp_path: Path,
+) -> None:
+    unit_directory = tmp_path / "systemd/user"
+    runner = FakeRunner(
+        _result(b"", return_code=4),
+        _result(b"Version=255.4\n"),
+        _result(b""),
+        _result(b""),
+        _result(_status(unit_file="enabled")),
+    )
+    manager = SystemdUserServiceManager(runner=runner, unit_directory=unit_directory)
+
+    installed = manager.install(
+        environment_file=_environment_file(tmp_path),
+        runtime_executable=_runtime_executable(),
+    )
+
+    assert installed.outcome == "installed"
+    assert installed.service.available and installed.service.installed
+    assert runner.commands[0].argv[3:5] == ("show", SYSTEMD_UNIT_NAME)
+    assert runner.commands[1].argv[3:] == ("show", "--property=Version")
+    assert [command.argv[4] for command in runner.commands[2:4]] == [
+        "daemon-reload",
+        "enable",
+    ]
+
+
 def test_install_checks_manager_before_writing_and_rejects_conflicts(tmp_path: Path) -> None:
     environment_file = _environment_file(tmp_path)
     executable = _runtime_executable()
@@ -282,34 +310,50 @@ def test_status_rejects_untrusted_manager_responses() -> None:
 
     invalid_results = (
         BoundedProcessError(BoundedProcessFailureCode.OUTPUT_INCOMPLETE),
-        _result(b"", return_code=1),
         _result(_status(), stderr=b"unexpected"),
         _result(b"\xff"),
         _result(_status() + b"LoadState=loaded\n"),
         _result(b"LoadState=loaded\n"),
         _result(_status(pid=-1)),
     )
-    expected_codes = (
-        SystemdServiceFailureCode.INVALID_RESPONSE,
-        None,
-        SystemdServiceFailureCode.INVALID_RESPONSE,
-        SystemdServiceFailureCode.INVALID_RESPONSE,
-        SystemdServiceFailureCode.INVALID_RESPONSE,
-        SystemdServiceFailureCode.INVALID_RESPONSE,
-        SystemdServiceFailureCode.INVALID_RESPONSE,
-    )
-    for result, expected_code in zip(invalid_results, expected_codes, strict=True):
+    for result in invalid_results:
         manager = SystemdUserServiceManager(runner=FakeRunner(result))
-        if expected_code is None:
-            assert not manager.status().available
-        else:
-            with pytest.raises(SystemdServiceError) as caught:
-                manager.status()
-            assert caught.value.code is expected_code
+        with pytest.raises(SystemdServiceError) as caught:
+            manager.status()
+        assert caught.value.code is SystemdServiceFailureCode.INVALID_RESPONSE
+
+    for unavailable_probe in (
+        _result(b"", return_code=1),
+        BoundedProcessError(BoundedProcessFailureCode.SPAWN_FAILED),
+        BoundedProcessError(BoundedProcessFailureCode.TIMED_OUT),
+    ):
+        manager = SystemdUserServiceManager(
+            runner=FakeRunner(_result(b"", return_code=4), unavailable_probe)
+        )
+        assert not manager.status().available
+
+    for invalid_probe in (
+        BoundedProcessError(BoundedProcessFailureCode.OUTPUT_INCOMPLETE),
+        BoundedProcessError(BoundedProcessFailureCode.OUTPUT_TOO_LARGE),
+        _result(b"Version=255\n", stderr=b"unexpected"),
+        _result(b""),
+        _result(b"\xff"),
+        _result(b"Architecture=x86-64\n"),
+        _result(b"Version=\n"),
+        _result(b"Version=255\nVersion=256\n"),
+    ):
+        manager = SystemdUserServiceManager(
+            runner=FakeRunner(_result(b"", return_code=4), invalid_probe)
+        )
+        with pytest.raises(SystemdServiceError) as caught:
+            manager.status()
+        assert caught.value.code is SystemdServiceFailureCode.INVALID_RESPONSE
 
 
 def test_control_commands_map_process_failures_and_state_mismatches() -> None:
-    unavailable = SystemdUserServiceManager(runner=FakeRunner(_result(b"", return_code=1)))
+    unavailable = SystemdUserServiceManager(
+        runner=FakeRunner(_result(b"", return_code=1), _result(b"", return_code=1))
+    )
     with pytest.raises(SystemdServiceError) as unavailable_error:
         unavailable.start()
     assert unavailable_error.value.code is SystemdServiceFailureCode.MANAGER_UNAVAILABLE
@@ -387,7 +431,9 @@ def test_install_rolls_back_new_unit_on_control_or_postcondition_failure(tmp_pat
 
 
 def test_logs_reject_unavailable_malformed_and_unbounded_journal_data() -> None:
-    unavailable = SystemdUserServiceManager(runner=FakeRunner(_result(b"", return_code=1)))
+    unavailable = SystemdUserServiceManager(
+        runner=FakeRunner(_result(b"", return_code=1), _result(b"", return_code=1))
+    )
     with pytest.raises(SystemdServiceError) as unavailable_error:
         unavailable.logs(lines=1)
     assert unavailable_error.value.code is SystemdServiceFailureCode.MANAGER_UNAVAILABLE
