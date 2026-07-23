@@ -9,6 +9,7 @@ process boundary before any untrusted command receives mutation authority.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -26,7 +27,7 @@ from blackcell.adapters.bounded_process import (
     BoundedProcessRunner,
 )
 from blackcell.kernel import JsonInput
-from blackcell.kernel._json import json_digest
+from blackcell.kernel._json import bytes_digest, json_digest
 
 WORKTREE_LEASE_SCHEMA = "blackcell.worktree-lease/v1"
 WORKTREE_SPEC_SCHEMA = "blackcell.worktree-spec/v1"
@@ -39,13 +40,15 @@ _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _MAX_ALLOWED_PATHS = 256
 _MAX_CHANGED_PATHS = 10_000
 _MAX_REPOSITORY_PATH_CHARS = 4096
+_MAX_COMMIT_EFFECT_BYTES = 1024 * 1024
+_MAX_COMMIT_TOTAL_BYTES = 4 * 1024 * 1024
 GIT_WORKTREE_COMMAND_TIMEOUT_SECONDS = 120
 # create: repository validation (3), branch lookup (1), add (1), full inspection (10)
 MAX_GIT_WORKTREE_CREATE_COMMANDS = 15
 # inspect: repository validation (3), identity/fence checks (4), path-diff checks (3)
 MAX_GIT_WORKTREE_INSPECT_COMMANDS = 10
-# commit: inspection (10), stage/commit (2), terminal inspection (10)
-MAX_GIT_WORKTREE_COMMIT_COMMANDS = 22
+# commit: inspection (10), stage/index verification/commit (3), terminal inspection (10)
+MAX_GIT_WORKTREE_COMMIT_COMMANDS = 23
 _GIT_STDOUT_LIMIT_BYTES = 16 * 1024 * 1024
 _GIT_STDERR_LIMIT_BYTES = 64 * 1024
 _EXTERNAL_FILTER_PATTERN = r"^filter\..*\.(clean|smudge|process)$"
@@ -175,6 +178,20 @@ class WorktreeExecutionSpec:
     @property
     def branch_name(self) -> str:
         return f"blackcell/alpha-worktree/{self.digest.removeprefix('sha256:')}"
+
+
+@dataclass(frozen=True, slots=True)
+class WorktreeCommitEffect:
+    """Content-free authority for one exact path state admitted to a dirty commit."""
+
+    path: str
+    after_digest: str | None
+
+    def __post_init__(self) -> None:
+        path = _normalize_repository_path(self.path)
+        if self.after_digest is not None and _DIGEST.fullmatch(self.after_digest) is None:
+            raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_SPEC)
+        object.__setattr__(self, "path", path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -697,20 +714,58 @@ class GitWorktreeLifecycle:
 
         return self.inspect(spec)
 
-    def commit_changes(self, spec: WorktreeExecutionSpec) -> WorktreeInspection:
-        """Commit an admitted worktree with fixed host identity and no repository hooks."""
+    def commit_changes(
+        self,
+        spec: WorktreeExecutionSpec,
+        *,
+        effects: tuple[WorktreeCommitEffect, ...] = (),
+    ) -> WorktreeInspection:
+        """Commit exact admitted effects with fixed host identity and no repository hooks."""
 
+        _require_commit_effects(effects)
         before = self.inspect(spec)
         if not before.path_policy_compliant:
             raise WorktreeLifecycleError(WorktreeFailureCode.PATH_POLICY_VIOLATION)
         if before.clean:
+            if effects:
+                raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
             return before
+        effect_paths = tuple(effect.path for effect in effects)
+        if effect_paths != before.changed_paths or effect_paths != before.uncommitted_paths:
+            raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
+        expected_blobs = _expected_commit_blobs(spec.worktree_path, effects)
 
         staged = self._git(
             spec,
-            ("-C", str(spec.worktree_path), "add", "--all", "--", "."),
+            (
+                "-C",
+                str(spec.worktree_path),
+                "add",
+                "--force",
+                "--all",
+                "--",
+                *effect_paths,
+            ),
         )
         if staged.return_code != 0:
+            raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
+        index_entries = self._index_entries(
+            self._git(
+                spec,
+                (
+                    "-C",
+                    str(spec.worktree_path),
+                    "ls-files",
+                    "--stage",
+                    "-z",
+                    "--",
+                    *effect_paths,
+                ),
+            )
+        )
+        if set(index_entries) != set(expected_blobs) or any(
+            index_entries[path][1] != blob_id for path, blob_id in expected_blobs.items()
+        ):
             raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
         message = (
             f"BlackCell alpha {spec.lease.run_id}/{spec.lease.node_id} attempt {spec.lease.attempt}"
@@ -943,6 +998,36 @@ class GitWorktreeLifecycle:
         return tuple(paths)
 
     @staticmethod
+    def _index_entries(result: BoundedProcessResult) -> dict[str, tuple[str, str]]:
+        if result.return_code != 0:
+            raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
+        payload = result.stdout.captured
+        if not payload:
+            return {}
+        if not payload.endswith(b"\x00"):
+            raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
+        entries: dict[str, tuple[str, str]] = {}
+        for raw_entry in payload[:-1].split(b"\x00"):
+            try:
+                raw_metadata, raw_path = raw_entry.split(b"\t", 1)
+                raw_mode, raw_object_id, raw_stage = raw_metadata.split(b" ")
+                mode = raw_mode.decode("ascii")
+                object_id = raw_object_id.decode("ascii")
+                stage = raw_stage.decode("ascii")
+                path = _normalize_evidence_path(raw_path.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError, WorktreeLifecycleError) as error:
+                raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED) from error
+            if (
+                mode not in {"100644", "100755"}
+                or _COMMIT_ID.fullmatch(object_id) is None
+                or stage != "0"
+                or path in entries
+            ):
+                raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
+            entries[path] = (mode, object_id)
+        return entries
+
+    @staticmethod
     def _require_success(result: BoundedProcessResult) -> BoundedProcessResult:
         if result.return_code != 0:
             raise WorktreeLifecycleError(WorktreeFailureCode.GIT_COMMAND_FAILED)
@@ -952,6 +1037,116 @@ class GitWorktreeLifecycle:
 def _require_spec(spec: WorktreeExecutionSpec) -> None:
     if not isinstance(spec, WorktreeExecutionSpec):
         raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_SPEC)
+
+
+def _require_commit_effects(effects: tuple[WorktreeCommitEffect, ...]) -> None:
+    if (
+        not isinstance(effects, tuple)
+        or not all(isinstance(effect, WorktreeCommitEffect) for effect in effects)
+        or tuple(effect.path for effect in effects)
+        != tuple(sorted({effect.path for effect in effects}))
+    ):
+        raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_SPEC)
+
+
+def _expected_commit_blobs(
+    worktree_root: Path,
+    effects: tuple[WorktreeCommitEffect, ...],
+) -> dict[str, str]:
+    blobs: dict[str, str] = {}
+    total_bytes = 0
+    for effect in effects:
+        if effect.after_digest is None:
+            _require_commit_path_absent(worktree_root, effect.path)
+            continue
+        payload = _read_commit_path(worktree_root, effect.path)
+        total_bytes += len(payload)
+        if total_bytes > _MAX_COMMIT_TOTAL_BYTES or bytes_digest(payload) != effect.after_digest:
+            raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
+        # The spec admits 40-character Git object IDs; SHA-1 here is only the repository's
+        # blob identity. The independently checked SHA-256 digest above remains the evidence.
+        blob = hashlib.sha1(usedforsecurity=False)
+        blob.update(f"blob {len(payload)}\0".encode("ascii"))
+        blob.update(payload)
+        blobs[effect.path] = blob.hexdigest()
+    return blobs
+
+
+def _read_commit_path(worktree_root: Path, path: str) -> bytes:
+    parent_fd, name = _open_commit_parent(worktree_root, path)
+    file_fd: int | None = None
+    try:
+        file_fd = os.open(
+            name,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0),
+            dir_fd=parent_fd,
+        )
+        with os.fdopen(file_fd, "rb", closefd=True) as handle:
+            file_fd = None
+            before = os.fstat(handle.fileno())
+            if not stat.S_ISREG(before.st_mode) or before.st_size > _MAX_COMMIT_EFFECT_BYTES:
+                raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
+            payload = handle.read(_MAX_COMMIT_EFFECT_BYTES + 1)
+            after = os.fstat(handle.fileno())
+        if (
+            len(payload) != before.st_size
+            or len(payload) > _MAX_COMMIT_EFFECT_BYTES
+            or _file_identity(before) != _file_identity(after)
+        ):
+            raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
+        return payload
+    except OSError as error:
+        raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED) from error
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        os.close(parent_fd)
+
+
+def _require_commit_path_absent(worktree_root: Path, path: str) -> None:
+    parent_fd, name = _open_commit_parent(worktree_root, path)
+    try:
+        try:
+            os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        except OSError as error:
+            raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED) from error
+        raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
+    finally:
+        os.close(parent_fd)
+
+
+def _open_commit_parent(worktree_root: Path, path: str) -> tuple[int, str]:
+    parts = PurePosixPath(path).parts
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        current_fd = os.open(worktree_root, flags)
+        for part in parts[:-1]:
+            next_fd = os.open(part, flags, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = next_fd
+    except OSError as error:
+        if "current_fd" in locals():
+            os.close(current_fd)
+        raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED) from error
+    return current_fd, parts[-1]
+
+
+def _file_identity(metadata: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_mode,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
 
 
 def _canonical_repository_root(path: Path) -> Path:

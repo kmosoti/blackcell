@@ -10,6 +10,7 @@ import pytest
 
 from blackcell.adapters.execution.worktree import (
     GitWorktreeLifecycle,
+    WorktreeCommitEffect,
     WorktreeExecutionSpec,
     WorktreeRemoval,
 )
@@ -174,7 +175,10 @@ def test_success_records_retained_head_and_dependent_writer_inherits_it(
         )
     assert dirty_success.value.code is RuntimeApiFailureCode.CONFLICT
     assert service.inspect_run("run-1").status == "running"
-    first_commit = lifecycle.commit_changes(first.spec)
+    first_commit = lifecycle.commit_changes(
+        first.spec,
+        effects=(WorktreeCommitEffect("src/value.py", bytes_digest(b"VALUE = 2\n")),),
+    )
     queued = service.record_node_success(
         first.spec,
         result_digest=bytes_digest(b"first-result"),
@@ -199,7 +203,10 @@ def test_success_records_retained_head_and_dependent_writer_inherits_it(
     assert second.spec.base_commit == first_commit.head_commit
     assert (second.spec.worktree_path / "src" / "value.py").read_text() == "VALUE = 2\n"
     (second.spec.worktree_path / "src" / "next.py").write_text("NEXT = True\n")
-    second_commit = lifecycle.commit_changes(second.spec)
+    second_commit = lifecycle.commit_changes(
+        second.spec,
+        effects=(WorktreeCommitEffect("src/next.py", bytes_digest(b"NEXT = True\n")),),
+    )
     succeeded = service.record_node_success(
         second.spec,
         result_digest=bytes_digest(b"second-result"),

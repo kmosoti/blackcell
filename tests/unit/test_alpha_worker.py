@@ -323,8 +323,8 @@ def test_worker_lease_covers_worktrees_provider_and_each_acceptance_deadline(
         for event in events.read_stream("alpha:run:run-1")
         if event.event_type == "alpha.node.claimed"
     )
-    assert MAX_ALPHA_WORKER_READ_BASE_WORKTREE_SECONDS == 47 * 120
-    assert MAX_ALPHA_WORKER_WRITE_BASE_WORKTREE_SECONDS == 77 * 120
+    assert MAX_ALPHA_WORKER_READ_BASE_WORKTREE_SECONDS == 48 * 120
+    assert MAX_ALPHA_WORKER_WRITE_BASE_WORKTREE_SECONDS == 78 * 120
     assert MAX_ALPHA_WORKER_ACCEPTANCE_WORKTREE_SECONDS == 20 * 120
     assert datetime.fromisoformat(cast("str", claimed.payload["expires_at"])) == (
         claimed_at

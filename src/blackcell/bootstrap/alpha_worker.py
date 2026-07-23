@@ -25,6 +25,7 @@ from blackcell.adapters.execution.worktree import (
     MAX_GIT_WORKTREE_CREATE_COMMANDS,
     MAX_GIT_WORKTREE_INSPECT_COMMANDS,
     GitWorktreeLifecycle,
+    WorktreeCommitEffect,
     WorktreeExecutionSpec,
     WorktreeLifecycleError,
 )
@@ -288,6 +289,7 @@ class AlphaRuntimeWorker:
         stages = _StageArtifacts()
         spec = prepared.spec
         committed_head: str | None = None
+        commit_effects: tuple[WorktreeCommitEffect, ...] = ()
         phase = "execution"
         try:
             self._require_active(spec)
@@ -356,9 +358,16 @@ class AlphaRuntimeWorker:
                     ),
                 )
                 stages.effect = self._store_effect(effect_result)
+                commit_effects = tuple(
+                    WorktreeCommitEffect(
+                        path=effect.path,
+                        after_digest=effect.after_digest,
+                    )
+                    for effect in effect_result.effects
+                )
                 self._require_active(spec)
 
-            committed = self.worktrees.commit_changes(spec)
+            committed = self.worktrees.commit_changes(spec, effects=commit_effects)
             committed_head = committed.head_commit
             for check in prepared.node.checks:
                 command = AlphaAcceptanceCommand(

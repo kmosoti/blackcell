@@ -11,11 +11,13 @@ import pytest
 
 from blackcell.adapters.execution.worktree import (
     GitWorktreeLifecycle,
+    WorktreeCommitEffect,
     WorktreeExecutionSpec,
     WorktreeFailureCode,
     WorktreeLeaseIdentity,
     WorktreeLifecycleError,
 )
+from blackcell.kernel._json import bytes_digest
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,18 +244,28 @@ def test_remove_success_refuses_dirty_worktree(tmp_path: Path) -> None:
 
 def test_commit_changes_creates_clean_policy_bound_head(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
-    spec = _spec(repository, allowed_paths=("src",), max_changed_paths=2)
+    spec = _spec(repository, allowed_paths=("src",), max_changed_paths=3)
     lifecycle = GitWorktreeLifecycle()
     worktree = lifecycle.create(spec).worktree_path
-    (worktree / "src" / "value.py").write_text("VALUE = 2\n")
-    (worktree / "src" / "new.py").write_text("NEW = True\n")
+    value = b"VALUE = 2\n"
+    new = b"NEW = True\n"
+    (worktree / "src" / ".keep").unlink()
+    (worktree / "src" / "value.py").write_bytes(value)
+    (worktree / "src" / "new.py").write_bytes(new)
 
-    committed = lifecycle.commit_changes(spec)
+    committed = lifecycle.commit_changes(
+        spec,
+        effects=(
+            WorktreeCommitEffect("src/.keep", None),
+            WorktreeCommitEffect("src/new.py", bytes_digest(new)),
+            WorktreeCommitEffect("src/value.py", bytes_digest(value)),
+        ),
+    )
 
     assert committed.clean
     assert committed.path_policy_compliant
     assert committed.head_commit != repository.base_commit
-    assert committed.changed_paths == ("src/new.py", "src/value.py")
+    assert committed.changed_paths == ("src/.keep", "src/new.py", "src/value.py")
     assert committed.uncommitted_paths == ()
     assert _git_text(worktree, "show", "-s", "--format=%an <%ae>", "HEAD") == (
         "BlackCell <blackcell@example.invalid>"
@@ -262,6 +274,74 @@ def test_commit_changes_creates_clean_policy_bound_head(tmp_path: Path) -> None:
         "BlackCell alpha run-1/node-1 attempt 1"
     )
     assert lifecycle.commit_changes(spec) == committed
+
+
+def test_commit_changes_requires_exact_effect_evidence_before_staging(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    spec = _spec(repository)
+    lifecycle = GitWorktreeLifecycle()
+    worktree = lifecycle.create(spec).worktree_path
+    (worktree / "src" / "value.py").write_bytes(b"VALUE = 2\n")
+
+    with pytest.raises(WorktreeLifecycleError) as missing:
+        lifecycle.commit_changes(spec)
+    with pytest.raises(WorktreeLifecycleError) as wrong_digest:
+        lifecycle.commit_changes(
+            spec,
+            effects=(WorktreeCommitEffect("src/value.py", bytes_digest(b"VALUE = 3\n")),),
+        )
+
+    assert missing.value.code is WorktreeFailureCode.COMMIT_FAILED
+    assert wrong_digest.value.code is WorktreeFailureCode.COMMIT_FAILED
+    assert _git_text(worktree, "diff", "--cached", "--name-only") == ""
+    assert _git_text(worktree, "rev-parse", "HEAD") == repository.base_commit
+
+
+def test_commit_changes_force_stages_an_exact_ignored_effect(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    spec = _spec(repository, allowed_paths=("ignored",))
+    lifecycle = GitWorktreeLifecycle()
+    worktree = lifecycle.create(spec).worktree_path
+    target = worktree / "ignored" / "result.txt"
+    target.parent.mkdir()
+    content = b"admitted ignored output\n"
+    target.write_bytes(content)
+
+    committed = lifecycle.commit_changes(
+        spec,
+        effects=(WorktreeCommitEffect("ignored/result.txt", bytes_digest(content)),),
+    )
+
+    assert committed.clean
+    assert committed.changed_paths == ("ignored/result.txt",)
+    assert _git(worktree, "show", "HEAD:ignored/result.txt").stdout == content
+
+
+def test_commit_changes_rejects_git_attribute_blob_transformation(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    (repository.root / ".gitattributes").write_bytes(b"src/*.txt text eol=lf\n")
+    _git(repository.root, "add", ".gitattributes")
+    _git(repository.root, "commit", "-m", "add line-ending policy")
+    repository = GitRepository(
+        root=repository.root,
+        isolation_root=repository.isolation_root,
+        base_commit=_git_text(repository.root, "rev-parse", "HEAD"),
+    )
+    spec = _spec(repository)
+    lifecycle = GitWorktreeLifecycle()
+    worktree = lifecycle.create(spec).worktree_path
+    content = b"first\r\nsecond\r\n"
+    (worktree / "src" / "value.txt").write_bytes(content)
+
+    with pytest.raises(WorktreeLifecycleError) as caught:
+        lifecycle.commit_changes(
+            spec,
+            effects=(WorktreeCommitEffect("src/value.txt", bytes_digest(content)),),
+        )
+
+    assert caught.value.code is WorktreeFailureCode.COMMIT_FAILED
+    assert _git_text(worktree, "rev-parse", "HEAD") == repository.base_commit
+    assert _git(worktree, "show", ":src/value.txt").stdout == b"first\nsecond\n"
 
 
 def test_remove_success_refuses_committed_path_policy_violation(tmp_path: Path) -> None:
