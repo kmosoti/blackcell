@@ -22,6 +22,7 @@ from blackcell.adapters.daemon_systemd import (
     SystemdUnitStatus,
     SystemdUserServiceManager,
 )
+from blackcell.adapters.models import tooling_surface_catalog
 from blackcell.adapters.runtime_http import (
     DEFAULT_RUNTIME_ENDPOINT,
     RUNTIME_ENDPOINT_ENV,
@@ -38,6 +39,7 @@ from blackcell.config import (
     SecurityConfigFailureCode,
     load_service_token,
 )
+from blackcell.gateway import ToolingSurfaceCatalog
 from blackcell.interfaces.http import (
     CancelRunRequest,
     IntentRequest,
@@ -123,13 +125,29 @@ intent_app = App(name="intent")
 plan_app = App(name="plan")
 run_app = App(name="run")
 events_app = App(name="events")
+adapters_app = App(name="adapters")
 
+app.command(adapters_app)
 app.command(daemon_app)
 app.command(project_app)
 app.command(intent_app)
 app.command(plan_app)
 app.command(run_app)
 app.command(events_app)
+
+
+@adapters_app.command(name="inspect")
+def adapters_inspect() -> None:
+    """Describe supported model CLI boundaries without starting provider processes."""
+
+    _output().emit(tooling_surface_catalog())
+
+
+@adapters_app.command(name="schema")
+def adapters_schema() -> None:
+    """Emit the closed JSON Schema for model CLI boundary inspection."""
+
+    _output().emit(ToolingSurfaceCatalog.model_json_schema())
 
 
 @daemon_app.command(name="status")

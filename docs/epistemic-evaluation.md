@@ -70,6 +70,9 @@ review context.
 | `causal-overreach` | inferring mechanism or causation from an observed outcome | Separate recorded observation from causal explanation and mark unsupported causality unknown. |
 | `scope-challenge` | sycophancy, user-premise capture, or acceptance drift | Test whether the requested framing conflicts with source, policy, authority, or declared scope. |
 | `uncertainty` | overconfidence or false precision | Preserve material unknowns; confidence scores and fluent rationales do not close them. |
+| `provenance-freshness` | stale, carried-over, wrong-base, or wrong-run evidence | Confirm every decisive artifact and result is bound to the accepted run, base, content digest, and applicable observation time. |
+| `independent-corroboration` | circular proof, self-attestation, or ineffective intrinsic self-correction | Require a host observation, deterministic check, or separately sourced fact for consequential model claims; repeated model wording is not corroboration. |
+| `order-sensitivity` | evidence-position, comparison-order, or judge-order bias | Check whether permuting evidence or candidates could reverse the judgment; use canonical ordering and record unresolved sensitivity. |
 
 The only dispositions are:
 
@@ -92,8 +95,8 @@ is rejected before verification.
    before/after excerpts, effects, outcomes, and stable evidence identifiers.
 2. The REVIEW route returns findings plus the closed epistemic matrix. It receives no tools and
    cannot approve, change acceptance, or admit its own output.
-3. Admission checks shape, complete dimension coverage, finding links, context identity, and every
-   citation range. Admission means structurally evidence-bound, not true.
+3. Admission checks shape, all nine dimensions, finding links, context identity, and every citation
+   range. Admission means structurally evidence-bound, not true.
 4. The deterministic verifier reconstructs objective, constraint, node, scope, and check rows from
    host evidence. It adds one epistemic-policy row per review assessment. Concerns fail; unknowns
    remain inconclusive; missing or ambiguous execution evidence remains inconclusive; failed checks
@@ -105,10 +108,14 @@ is rejected before verification.
 
 Deterministic command results, persisted artifacts, and independently observed outcomes carry more
 weight than reviewer prose. Source citations constrain what a reviewer can point at but do not prove
-that its interpretation is correct. Canonical ordering reduces position effects but does not erase
-model bias. A separate process identity reduces authority coupling but does not guarantee cognitive
-independence when models or training data overlap. Tests can also encode a wrong expectation, so
-counterevidence, acceptance provenance, and unresolved unknowns remain visible in the final matrix.
+that its interpretation is correct. Provenance freshness prevents a successful result from a prior
+run or different base from being carried forward as current evidence. Canonical ordering reduces
+position effects but does not erase model bias; material comparisons should be checked under a
+recorded permutation. A separate process identity reduces authority coupling but does not guarantee
+cognitive independence when models or training data overlap, so corroboration must come from a
+different evidence-producing mechanism, not merely a different prompt. Tests can also encode a wrong
+expectation, so counterevidence, acceptance provenance, and unresolved unknowns remain visible in the
+final matrix.
 
 The implementation uses semantic capability names. Integer plan lineage is a revision produced by
 iteration. Opaque persisted identity, schema, and protocol identifiers retain exact tokens only

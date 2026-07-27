@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
+from pydantic import BaseModel, ConfigDict
+
 from blackcell.cli.output import OutputMode, OutputRenderer
 
 
@@ -15,6 +17,12 @@ class _ModernPayload:
     observed_at: datetime
     state: _State
     labels: frozenset[str]
+
+
+class _PydanticPayload(BaseModel):
+    model_config = ConfigDict(frozen=True, strict=True)
+
+    state: _State
 
 
 def test_output_renderer_serializes_runtime_types() -> None:
@@ -47,6 +55,14 @@ def test_output_renderer_jsonl_emits_one_record_per_line() -> None:
 
     rendered = [json.loads(line) for line in capture.get().splitlines()]
     assert [record["labels"] for record in rendered] == [["a"], ["b"]]
+
+
+def test_output_renderer_serializes_pydantic_models() -> None:
+    renderer = OutputRenderer(mode=OutputMode.JSON)
+    with renderer.console.capture() as capture:
+        renderer.emit(_PydanticPayload(state=_State.READY))
+
+    assert json.loads(capture.get()) == {"state": "ready"}
 
 
 def test_output_renderer_uses_supplied_rich_projection() -> None:

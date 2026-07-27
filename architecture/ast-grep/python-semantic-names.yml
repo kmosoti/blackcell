@@ -1,0 +1,38 @@
+id: python-generation-labelled-identifier
+language: Python
+severity: error
+message: Use a semantic capability name instead of an implementation generation label.
+files:
+  - src/**/*.py
+  - tests/**/*.py
+  - tools/**/*.py
+  - examples/**/*.py
+rule:
+  kind: identifier
+  regex: '(^|_)[vV][0-9]+(_|$)|[a-z][vV][0-9]+([A-Z_]|$)'
+---
+id: python-maturity-labelled-identifier
+language: Python
+severity: error
+message: Use a semantic capability name instead of a product maturity label.
+files:
+  - src/**/*.py
+  - tests/**/*.py
+  - tools/**/*.py
+  - examples/**/*.py
+rule:
+  kind: identifier
+  regex: '(?i)(^|_)(alpha|beta|preview)(_|$)'
+---
+id: python-retired-source-evidence-label
+language: Python
+severity: error
+message: Retired source-bound evidence automation must not return to executable code.
+files:
+  - src/**/*.py
+  - tests/**/*.py
+  - tools/**/*.py
+  - examples/**/*.py
+rule:
+  kind: string
+  regex: '(?i)release[-_]evidence'

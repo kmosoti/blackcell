@@ -15,6 +15,7 @@ dependencies = [
     "opentelemetry-api>=1.42.1,<2",
     "opentelemetry-exporter-otlp-proto-http>=1.42.1,<2",
     "opentelemetry-sdk>=1.42.1,<2",
+    "pydantic>=2.12.5,<3",
     "pyratatui>=0.2.9,<0.3",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
@@ -41,6 +42,7 @@ dev = [
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+filterwarnings = ["error::ResourceWarning"]
 
 [tool.mutmut]
 source_paths = ["src/blackcell"]

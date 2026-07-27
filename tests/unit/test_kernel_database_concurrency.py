@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 from threading import Barrier
 
@@ -75,7 +76,7 @@ def test_failed_kernel_migration_rolls_back_and_can_be_retried(
         with pytest.raises(sqlite3.OperationalError, match="missing_migration_table"):
             initialize_database(database)
 
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         assert connection.execute("pragma user_version").fetchone()[0] == 0
         assert (
             connection.execute(
@@ -95,7 +96,7 @@ def test_failed_kernel_migration_rolls_back_and_can_be_retried(
 
 def test_existing_incompatible_database_is_rejected_without_mutation(tmp_path: Path) -> None:
     database = tmp_path / "kernel.sqlite3"
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         connection.execute("create table former_runtime_state (value text not null)")
         connection.execute("insert into former_runtime_state(value) values ('preserve-me')")
         connection.execute("pragma user_version = 1")
@@ -106,7 +107,7 @@ def test_existing_incompatible_database_is_rejected_without_mutation(tmp_path: P
         initialize_database(database)
 
     assert database.read_bytes() == before
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection, connection:
         assert connection.execute("pragma user_version").fetchone()[0] == 1
         assert connection.execute("select value from former_runtime_state").fetchone()[0] == (
             "preserve-me"

@@ -11,7 +11,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from blackcell.gateway import AdapterResult, ModelCapability, ModelRequest
+from blackcell.gateway import (
+    AccountingSurface,
+    AdapterResult,
+    AuthoritySurface,
+    BudgetSurface,
+    CodexCliToolingSurface,
+    InvocationSurface,
+    ModelCapability,
+    ModelRequest,
+    PromptSurface,
+    SessionSurface,
+    StructuredOutputSurface,
+    VersionSurface,
+)
 from blackcell.kernel import JsonValue
 from blackcell.kernel._json import canonical_json_bytes
 
@@ -199,6 +212,79 @@ class CodexCliModelAdapter:
     @property
     def deterministic(self) -> bool:
         return False
+
+    @property
+    def tooling_surface(self) -> CodexCliToolingSurface:
+        """Describe the configured non-secret CLI boundary without starting Codex."""
+
+        argument_template = (
+            "<codex-executable>",
+            "--ask-for-approval",
+            "never",
+            "--sandbox",
+            "read-only",
+            "exec",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--json",
+            "--ephemeral",
+            "--cd",
+            "<temporary-git-repository>",
+            "--output-schema",
+            "<private-schema-file>",
+            "--output-last-message",
+            "<private-response-file>",
+            "--model",
+            "<model-id>",
+            *(token for feature in _DISABLED_TOOL_FEATURES for token in ("--disable", feature)),
+            "-",
+        )
+        return CodexCliToolingSurface(
+            capabilities=tuple(sorted(self.capabilities, key=lambda item: item.value)),
+            prompt=PromptSurface(
+                document="canonical-input-envelope",
+                includes_output_schema=False,
+            ),
+            invocation=InvocationSurface(
+                argument_template=argument_template,
+                noninteractive_mode="exec-with-stdin-marker",
+                model_selector="--model",
+                effort_selector=None,
+                provider_timeout_selector=None,
+            ),
+            authority=AuthoritySurface(
+                sandbox="read-only",
+                approval_policy="never",
+                tool_policy="explicit-feature-denylist-plus-host-no-tools-contract",
+                disabled_features=_DISABLED_TOOL_FEATURES,
+            ),
+            structured_output=StructuredOutputSurface(
+                schema_transport="private-file-via-output-schema-flag",
+                provider_schema_enforcement=True,
+                response_transport="private-file-via-output-last-message-flag",
+                process_stdout="jsonl-event-stream",
+            ),
+            accounting=AccountingSurface(
+                input_tokens="exact-provider-events",
+                output_tokens="exact-provider-events",
+            ),
+            session=SessionSurface(
+                persistence="disabled",
+                configuration="ignored-user-config-and-rules",
+            ),
+            version=VersionSurface(
+                preflight="none",
+                command_template=(),
+                required_version=None,
+            ),
+            budgets=BudgetSurface(
+                timeout_ceiling_seconds=self._timeout_ceiling_seconds,
+                max_input_bytes=self._max_input_bytes,
+                max_stdout_bytes=self._max_stdout_bytes,
+                max_stderr_bytes=self._max_stderr_bytes,
+                max_response_bytes=self._max_response_bytes,
+            ),
+        )
 
     def invoke(self, request: ModelRequest, *, model_id: str) -> AdapterResult:
         _validate_model_id(model_id)

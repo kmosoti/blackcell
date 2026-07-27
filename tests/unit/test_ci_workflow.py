@@ -10,6 +10,8 @@ ROOT = Path(__file__).parents[2]
 WORKFLOW_PATH = ROOT / ".github/workflows/ci.yml"
 CHECKOUT_ACTION = "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
 SETUP_UV_ACTION = "astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990"
+AST_GREP_ACTION = "ast-grep/action@d9518f632658f9c7c4b4dd4df22e98388a0d2c68"
+AST_GREP_RELEASE = "0.45.0"
 ARCHITECTURE_GATE = (
     "uv run python tools/run_pytest.py tests/architecture/test_dependencies.py "
     "-q --blackcell-require-all-pass"
@@ -25,6 +27,37 @@ sudo apparmor_parser --replace /usr/share/apparmor/extra-profiles/bwrap-userns-r
   --proc /proc \\
   --dev /dev \\
   /usr/bin/true
+"""
+STRUCTURAL_RULE_PROBES = """\
+probe_rule() {
+  expected_rule="$1"
+  probe="$2"
+  set +e
+  output="$(
+    printf '%s\\n' "$probe" \\
+      | ast-grep scan \\
+          --rule architecture/ast-grep/python-semantic-names.yml \\
+          --stdin \\
+          --json=compact \\
+          2>/dev/null
+  )"
+  status=$?
+  set -e
+  if [ "$status" -ne 1 ] \\
+    || ! grep -Fq "\\\"ruleId\\\":\\\"$expected_rule\\\"" <<<"$output"; then
+    exit 1
+  fi
+}
+
+probe_rule \\
+  python-maturity-labelled-identifier \\
+  "$(printf '%s%s_%s = 1' al pha review)"
+probe_rule \\
+  python-generation-labelled-identifier \\
+  "$(printf 'class Engine%s%s: pass' V 3)"
+probe_rule \\
+  python-retired-source-evidence-label \\
+  "$(printf 'marker = \\"%s_%s\\"' release evidence)"
 """
 
 
@@ -57,8 +90,12 @@ def test_ci_actions_are_pinned_to_immutable_node24_release_commits() -> None:
     setup_uv_references = {
         reference for reference in action_references if reference.startswith("astral-sh/setup-uv@")
     }
+    ast_grep_references = {
+        reference for reference in action_references if reference.startswith("ast-grep/action@")
+    }
     assert checkout_references == {CHECKOUT_ACTION}
     assert setup_uv_references == {SETUP_UV_ACTION}
+    assert ast_grep_references == {AST_GREP_ACTION}
     assert all(re.fullmatch(r"[^@]+@[0-9a-f]{40}", reference) for reference in action_references)
 
     workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -86,6 +123,30 @@ def test_quality_gate_uses_the_no_ignore_suite_without_release_history() -> None
     assert "if" not in full_suite
     assert "continue-on-error" not in full_suite
     assert "--ignore" not in full_suite["run"]
+
+
+def test_quality_gate_runs_pinned_rust_structural_naming_rules() -> None:
+    naming = next(step for step in _quality_steps() if step.get("name") == "Semantic naming")
+
+    assert naming == {
+        "name": "Semantic naming",
+        "uses": AST_GREP_ACTION,
+        "with": {
+            "version": AST_GREP_RELEASE,
+            "config": "sgconfig.yml",
+            "paths": "src tests tools examples .github/workflows/ci.yml",
+        },
+    }
+    assert "if" not in naming
+    assert "continue-on-error" not in naming
+
+    probes = next(step for step in _quality_steps() if step.get("name") == "Structural rule probes")
+    assert probes == {
+        "name": "Structural rule probes",
+        "shell": "bash",
+        "run": STRUCTURAL_RULE_PROBES,
+    }
+    assert "continue-on-error" not in probes
 
 
 def test_quality_runner_configures_bubblewrap_without_disabling_userns_policy() -> None:

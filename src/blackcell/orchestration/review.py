@@ -45,7 +45,6 @@ MAX_REVIEW_CONTEXT_BYTES = 3 * 1024 * 1024
 MAX_REVIEW_PROPOSAL_BYTES = 1024 * 1024
 _MAX_FINDINGS = 64
 _MAX_CITATIONS = 8
-_MAX_EPISTEMIC_ASSESSMENTS = 8
 _MAX_LINE = 10_000_000
 
 
@@ -97,6 +96,12 @@ class EpistemicDimension(StrEnum):
     CAUSAL_OVERREACH = "causal-overreach"
     SCOPE_CHALLENGE = "scope-challenge"
     UNCERTAINTY = "uncertainty"
+    PROVENANCE_FRESHNESS = "provenance-freshness"
+    INDEPENDENT_CORROBORATION = "independent-corroboration"
+    ORDER_SENSITIVITY = "order-sensitivity"
+
+
+_MAX_EPISTEMIC_ASSESSMENTS = len(EpistemicDimension)
 
 
 class EpistemicDisposition(StrEnum):

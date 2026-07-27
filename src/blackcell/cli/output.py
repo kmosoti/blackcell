@@ -6,6 +6,7 @@ from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
 from rich.console import Console
 
 from blackcell.interfaces.http import StrictStruct, contract_to_builtins
@@ -98,6 +99,9 @@ def _json(value: object, *, indent: int | None = None) -> str:
 
 
 def _jsonable(value: object) -> Any:
+    if isinstance(value, BaseModel):
+        return _jsonable(value.model_dump(mode="json"))
+
     if isinstance(value, StrictStruct):
         return _jsonable(contract_to_builtins(value))
 

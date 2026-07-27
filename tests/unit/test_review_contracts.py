@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -226,6 +226,11 @@ def test_review_proposal_parser_is_closed_bounded_and_cannot_self_admit() -> Non
 
     raw_properties = REVIEW_PROPOSAL_OUTPUT_SCHEMA["properties"]
     assert isinstance(raw_properties, dict)
+    assessments_schema = cast("dict[str, Any]", raw_properties["epistemic_assessments"])
+    assert assessments_schema["minItems"] == assessments_schema["maxItems"] == 9
+    assert set(assessments_schema["items"]["properties"]["dimension"]["enum"]) == {
+        item.value for item in EpistemicDimension
+    }
     assert "admitted" not in raw_properties
     assert "acceptance_digest" not in raw_properties
     assert "expected_exit_code" not in raw_properties
