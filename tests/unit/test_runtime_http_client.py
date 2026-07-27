@@ -18,21 +18,24 @@ from blackcell.adapters.runtime_http import (
     RuntimeServiceStatus,
     UrllibRuntimeTransport,
 )
-from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
+from blackcell.bootstrap.runtime_service import RuntimeService
 from blackcell.config import SecretValue
 from blackcell.interfaces.http import (
-    AlphaCancelRunRequest,
-    AlphaEventPageResponse,
-    AlphaEventResponse,
+    RUN_QUERY_MEDIA_TYPE,
+    RUN_QUERY_RESULT_MEDIA_TYPE,
+    CancelRunRequest,
     ErrorResponse,
     HealthResponse,
+    RunQueryRequest,
+    RuntimeEventPageResponse,
+    RuntimeEventResponse,
     encode_contract,
 )
 from blackcell.interfaces.http.contracts import MAX_REQUEST_BODY_BYTES
 from blackcell.kernel import EventStore
-from tests.unit.test_alpha_runtime import _intent, _plan, _project, _repository, _run
+from tests.unit.test_runtime_service import _intent, _plan, _project, _repository, _run
 
-_TOKEN = "Alpha-runtime-client-token.0123456789-ABCDEFG"
+_TOKEN = "Runtime-runtime-client-token.0123456789-ABCDEFG"
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,13 +187,13 @@ def test_stdlib_transport_bounds_responses_and_connection_failures(
     assert "sensitive host details" not in str(failed.value)
 
 
-def test_alpha_client_decodes_valid_service_response_larger_than_request_limit() -> None:
-    event = AlphaEventResponse(
+def test_runtime_client_decodes_valid_service_response_larger_than_request_limit() -> None:
+    event = RuntimeEventResponse(
         event_id="event-1",
         cursor=1,
-        stream_id="alpha:plan:plan-1",
+        stream_id="plan:plan-1",
         stream_sequence=1,
-        event_type="alpha.plan.accepted",
+        event_type="plan.accepted",
         event_schema_version=1,
         recorded_at="2026-07-23T12:00:00+00:00",
         correlation_id="correlation-1",
@@ -199,7 +202,7 @@ def test_alpha_client_decodes_valid_service_response_larger_than_request_limit()
         payload_digest="sha256:" + "a" * 64,
         payload={"accepted_plan": "x" * MAX_REQUEST_BODY_BYTES},
     )
-    page = AlphaEventPageResponse(
+    page = RuntimeEventPageResponse(
         after_cursor=0,
         limit=1,
         scanned_events=1,
@@ -215,21 +218,21 @@ def test_alpha_client_decodes_valid_service_response_larger_than_request_limit()
     client = RuntimeHttpClient(transport=transport, token=SecretValue(_TOKEN))
 
     assert len(body) > MAX_REQUEST_BODY_BYTES
-    assert client.list_alpha_events(limit=1) == page
+    assert client.list_events(limit=1) == page
     assert response.closed
 
 
-def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
+def test_runtime_client_sends_strict_authenticated_requests_and_decodes_contracts(
     tmp_path,
 ) -> None:
     repository = _repository(tmp_path)
-    service = AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
+    service = RuntimeService(EventStore(tmp_path / "state.sqlite3"), repository)
     project_request = _project(repository)
     intent_request = _intent()
     plan_request = _plan(repository)
     run_request = _run()
-    cancel_request = AlphaCancelRunRequest(
-        schema_version="alpha-cancel-run-request/v1",
+    cancel_request = CancelRunRequest(
+        schema_version="execution-cancel-run-request/v1",
         idempotency_key="cancel-run-1",
     )
     project = service.register_project(project_request, principal_id="client:test")
@@ -239,26 +242,33 @@ def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
     events = service.list_events(after_cursor=0, limit=20)
     replay = service.replay_run("run-1")
     canceled = service.cancel_run("run-1", cancel_request, principal_id="client:test")
+    query_request = RunQueryRequest(
+        schema_version="run-query-request/v1",
+        run_ids=("run-1",),
+    )
+    query = service.query_runs(query_request)
     transport = FakeTransport(
         _response(201, project),
         _response(201, intent),
         _response(201, plan),
         _response(202, run),
         _response(200, run),
+        _vendor_response(200, query, RUN_QUERY_RESULT_MEDIA_TYPE),
         _response(200, events),
         _response(200, replay),
         _response(202, canceled),
     )
     client = RuntimeHttpClient(transport=transport, token=SecretValue(_TOKEN))
 
-    assert client.register_alpha_project(project_request) == project
-    assert client.accept_alpha_intent(intent_request) == intent
-    assert client.accept_alpha_plan(plan_request) == plan
-    assert client.submit_alpha_run(run_request) == run
-    assert client.inspect_alpha_run("run-1") == run
-    assert client.list_alpha_events(after_cursor=0, limit=20) == events
-    assert client.replay_alpha_run("run-1") == replay
-    assert client.cancel_alpha_run("run-1", cancel_request) == canceled
+    assert client.register_project(project_request) == project
+    assert client.accept_intent(intent_request) == intent
+    assert client.accept_plan(plan_request) == plan
+    assert client.submit_run(run_request) == run
+    assert client.inspect_run("run-1") == run
+    assert client.query_runs(query_request) == query
+    assert client.list_events(after_cursor=0, limit=20) == events
+    assert client.replay_run("run-1") == replay
+    assert client.cancel_run("run-1", cancel_request) == canceled
 
     assert [item.method for item in transport.requests] == [
         "POST",
@@ -266,25 +276,31 @@ def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
         "POST",
         "POST",
         "GET",
+        "QUERY",
         "GET",
         "GET",
         "POST",
     ]
     assert [item.url for item in transport.requests] == [
-        "http://127.0.0.1:8080/api/alpha/v1/projects",
-        "http://127.0.0.1:8080/api/alpha/v1/intents",
-        "http://127.0.0.1:8080/api/alpha/v1/plans",
-        "http://127.0.0.1:8080/api/alpha/v1/runs",
-        "http://127.0.0.1:8080/api/alpha/v1/runs/run-1/status",
-        "http://127.0.0.1:8080/api/alpha/v1/events?after=0&limit=20",
-        "http://127.0.0.1:8080/api/alpha/v1/runs/run-1/replay",
-        "http://127.0.0.1:8080/api/alpha/v1/runs/run-1/cancel",
+        "http://127.0.0.1:8080/api/v1/projects",
+        "http://127.0.0.1:8080/api/v1/intents",
+        "http://127.0.0.1:8080/api/v1/plans",
+        "http://127.0.0.1:8080/api/v1/runs",
+        "http://127.0.0.1:8080/api/v1/runs/run-1/status",
+        "http://127.0.0.1:8080/api/v1/runs",
+        "http://127.0.0.1:8080/api/v1/events?after=0&limit=20",
+        "http://127.0.0.1:8080/api/v1/runs/run-1/replay",
+        "http://127.0.0.1:8080/api/v1/runs/run-1/cancel",
     ]
     assert all(item.headers["authorization"] == f"Bearer {_TOKEN}" for item in transport.requests)
     assert transport.requests[0].body == encode_contract(project_request)
     assert transport.requests[4].body is None
+    assert transport.requests[5].body == encode_contract(query_request)
+    assert transport.requests[5].headers["content-type"] == RUN_QUERY_MEDIA_TYPE
+    assert transport.requests[5].headers["accept"] == RUN_QUERY_RESULT_MEDIA_TYPE
     assert transport.requests[-1].body == encode_contract(cancel_request)
     assert [item.timeout_seconds for item in transport.requests] == [
+        5.0,
         5.0,
         5.0,
         5.0,
@@ -297,22 +313,22 @@ def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
     assert _TOKEN not in repr(client)
 
 
-def test_alpha_client_bounds_identifiers_pagination_auth_and_failures() -> None:
+def test_runtime_client_bounds_identifiers_pagination_auth_and_failures() -> None:
     transport = FakeTransport()
     unauthenticated = RuntimeHttpClient(transport=transport)
     with pytest.raises(RuntimeClientError) as missing:
-        unauthenticated.inspect_alpha_run("run-1")
+        unauthenticated.inspect_run("run-1")
     assert missing.value.code is RuntimeClientFailureCode.MISSING_AUTHENTICATION
     assert transport.requests == []
 
     client = RuntimeHttpClient(transport=transport, token=SecretValue(_TOKEN))
     for run_id in ("", "../run", "run/one", "run one", "x" * 121):
         with pytest.raises(RuntimeClientError) as invalid:
-            client.inspect_alpha_run(run_id)
+            client.inspect_run(run_id)
         assert invalid.value.code is RuntimeClientFailureCode.INVALID_REQUEST
     for after, limit in ((-1, 1), (True, 1), (0, 0), (0, 201)):
         with pytest.raises(RuntimeClientError) as invalid:
-            client.list_alpha_events(after_cursor=after, limit=limit)
+            client.list_events(after_cursor=after, limit=limit)
         assert invalid.value.code is RuntimeClientFailureCode.INVALID_REQUEST
     assert transport.requests == []
 
@@ -322,7 +338,7 @@ def test_alpha_client_bounds_identifiers_pagination_auth_and_failures() -> None:
         token=SecretValue(_TOKEN),
     )
     with pytest.raises(RuntimeClientError) as denied:
-        denied_client.inspect_alpha_run("run-1")
+        denied_client.inspect_run("run-1")
     assert denied.value.code is RuntimeClientFailureCode.REQUEST_REJECTED
     assert denied.value.cli_exit_code == 4
     assert _TOKEN not in str(denied.value)
@@ -368,5 +384,17 @@ def _response(
     return RuntimeHttpResponse(
         status_code=status_code,
         content_type="application/json; charset=utf-8",
+        body=encode_contract(contract),
+    )
+
+
+def _vendor_response(
+    status_code: int,
+    contract: msgspec.Struct,
+    media_type: str,
+) -> RuntimeHttpResponse:
+    return RuntimeHttpResponse(
+        status_code=status_code,
+        content_type=media_type,
         body=encode_contract(contract),
     )

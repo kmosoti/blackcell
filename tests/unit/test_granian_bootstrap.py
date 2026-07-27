@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
 from granian.constants import HTTPModes, Interfaces, Loops, RuntimeModes, TaskImpl
 from litestar import Litestar
 from litestar.testing import TestClient
@@ -22,7 +23,7 @@ from blackcell.config import (
     RuntimeProcessConfig,
 )
 
-TOKEN = "Runtime-v1_granian-token.0123456789-ABCDEFG"
+TOKEN = "runtime_granian-token.0123456789-ABCDEFG"
 
 
 class CapturingServer:
@@ -105,14 +106,20 @@ def test_runtime_command_is_json_first_and_does_not_echo_invalid_content(
     assert invalid not in captured.err
 
 
-def test_worker_once_uses_shared_storage_and_reports_idle(tmp_path: Path, monkeypatch: Any) -> None:
+def test_execution_worker_once_fails_closed_without_configuration(
+    tmp_path: Path,
+    monkeypatch: Any,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     for key, value in _environment(tmp_path).items():
         monkeypatch.setenv(key, value)
 
-    assert main(("worker", "--once")) == 3
+    assert main(("execution-worker", "--once")) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == '{"error": {"code": "execution-worker-not-configured"}}\n'
     database = tmp_path / "data" / "kernel.sqlite3"
-    assert database.is_file()
-    assert stat.S_IMODE(database.stat().st_mode) == 0o600
+    assert not database.exists()
 
 
 def _config(tmp_path: Path, *, port: str = "8080") -> RuntimeProcessConfig:

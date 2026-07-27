@@ -10,43 +10,44 @@ edges:
     - concepts/custom-agents
 ---
 
-# ADR 0009: Rebaseline BlackCell Around One Alpha Daemon
+# ADR 0009: Rebaseline BlackCell Around One Project Runtime
 
 - Status: Accepted
 - Date: 2026-07-22
+- Amended: 2026-07-27
 
 ## Context
 
-Runtime-v1 produced useful event, persistence, policy, scheduler, API, recovery, and replay
-contracts, but its `DailyOperatorV2Workflow` is not a reliable basis for the desired project-work
-product. A newly added daemon submission client would have reached that workflow through the
-synchronous legacy `/api/v1/runs` route and therefore exposed the wrong execution path.
+Runtime foundation produced useful event, persistence, policy, scheduler, API, recovery, and replay
+contracts. The later alpha program proved the daemon, client, worker, provider, review, and
+verification boundaries, but it also duplicated earlier runtime implementations and embedded
+maturity and generation labels in executable paths and symbols.
 
-Later planning attempts also conflicted with the current direction. One blocked all delivery behind
-a human-use study. Other open epics split observability and adaptive scaffolding into competing
-programs. GitHub epic 75 prescribed a greenfield Rust/PyO3 rewrite and repository-defined custom
-agents. None matches the repository-owner decision to push the existing project quickly toward an
-alpha with only `AGENTS.md` as repository contributor configuration.
+Source-bound release manifests, SBOMs, and verification bundles also made ordinary source and lock
+changes invalidate historical evidence. That coupled incremental development to reissuing release
+artifacts even when no release or persisted-contract decision existed.
 
-The reusable runtime and UI patterns are well established: a long-running daemon owns state behind
-a versioned client API; blocking work stays off an interactive UI thread; browser updates consume
-an ordered event channel; and an operating-system service manager supervises the foreground
-process. Kernform already exposes a closed agent-mode command envelope that lets BlackCell use its
-evolving Python/Rust implementation without coupling to those internals.
+The durable boundary is simpler: one long-running daemon owns state and orchestration; blocking work
+stays off interactive UI threads; browser updates consume an ordered event channel; and an
+operating-system service manager supervises the foreground process. Kernform exposes a closed
+command envelope that lets BlackCell use its evolving implementation without coupling to its
+internals.
 
 ## Decision
 
 ### Keep the Python modular monolith
 
 BlackCell extends the current Python runtime in bounded slices. Existing contracts are reused only
-after characterization; names or tests alone do not make legacy behavior part of the alpha.
-BlackCell does not add its own Rust workspace or PyO3 layer for project configuration.
+after characterization; names, files, and old tests alone do not make retired behavior part of the
+current runtime. BlackCell does not add its own Rust workspace or PyO3 layer for project
+configuration.
 
 ### Make one daemon authoritative
 
 One foreground daemon owns persisted state, scheduling, policy, provider dispatch, recovery, and
-the ordered event stream. The alpha contracts live under `/api/alpha/v1` so they cannot be confused
-with the legacy synchronous run route.
+the ordered event stream. Project, intent, plan, run, event, replay, and browser contracts share the
+public `/api/v1` boundary. Execution, review, and verification workers consume the same durable
+state through separately configured capabilities rather than parallel runtimes.
 
 On Linux, an optional systemd user service supervises the foreground process. Portable use starts
 the process directly. BlackCell does not implement double-fork daemonization, PID-file authority,
@@ -62,39 +63,40 @@ storage.
 
 ### Integrate Kernform through its public command contract
 
-The first boundary pins Kernform `0.1.0`, `kernform.command/v1`, and agent-mode JSON output. It
-executes argv without a shell, enforces timeout/output limits, validates the closed response, maps
-stable exit classes, and confines accepted artifacts to the requested project root. It initially
-supports `check` and `init`; large raw `inspect` inventories are not admitted.
+The boundary pins Kernform `0.2.0`, `kernform.command/v2`, and machine-readable output. It executes
+argv without a shell, enforces timeout/output limits, validates the closed response, maps stable
+exit classes, and confines accepted artifacts to the requested project root. It supports read-only
+`compile`, `check`, and effectful `init`; large raw `inspect` inventories are not admitted.
 
 The envelope's generic `result` slot is not treated as trusted merely because the outer schema is
-valid. BlackCell applies pinned command-specific contracts: `check` validates its exact conformance
-flags, catalog identity, mode, bounded file count, and deterministic requirement identifiers;
-`init` validates its plan identity and bounded operation count, then requires its state and evidence
-paths to match the canonical accepted artifacts. This keeps evolving Python/Rust implementation
+valid. BlackCell applies pinned command-specific contracts: `check` validates the documented
+source, managed, or explicit legacy-migration shape; `compile` validates the plan, catalog,
+signature closure, operation identities, and repository-relative paths; `init` validates its plan
+identity and bounded operation count, then requires its state path to match the canonical accepted
+artifact. This keeps evolving Python/Rust implementation
 details behind Kernform's public wire contract without turning an open JSON object into an implicit
 integration API.
 
 BlackCell never imports a sibling Kernform checkout or its Python/Rust internals. A later Kernform
 version requires an explicit compatibility decision and contract tests.
 
-### Retain V2 only as evidence
+### Retire generation-coupled executable surfaces
 
-`DailyOperatorV2Workflow` remains readable for migration, historical replay, and extraction of
-useful contracts. No new CLI, TUI, web, or daemon alpha command may invoke it. A03 defines a
-separate asynchronous `/api/alpha/v1` contract whose submission ends after durably recording
-`alpha.run.queued`; it never delegates to the synchronous legacy route. Provider dispatch and
-execution are deferred to A04.
+The feedback workflow, parallel alpha runtime, compatibility writers, and their generation-named
+packages are not part of the executable architecture. The retained project runtime uses semantic
+capability names and one event ledger. Historical ADRs, specifications, decisions, and experiments
+may retain the terminology needed to explain prior work, but they do not create imports, routes,
+writers, aliases, or compatibility authority.
 
-### Use one compact alpha program
+### Keep one active capability map
 
-`../../alpha.plan.yaml` is the single active program. A00 through A08 cover rebaseline, daemon and
-Kernform boundaries, alpha run contracts, isolated execution, review/verification, TUI, web, and
-real-project proof. The prior product-proof plan, scope-realignment plan, and GitHub epic 75 DAG are
-superseded.
+`../../blackcell.plan.yaml` is the active architecture, capability, and verification map. It names
+project, intent, plan, run, execution, review, verification, and replay as distinct authority
+boundaries without assigning a maturity or speculative generation to the implementation.
 
-Ordinary iteration uses exact pytest nodes and changed-path Ruff checks. A fast repository-wide
-Ruff check is the milestone gate; broad coverage and type checks remain CI or release gates.
+Ordinary iteration uses focused deterministic checks. Protected-branch CI runs formatting, lint,
+architecture fitness, the complete maintained suite with its coverage floor, and type checking.
+CI does not generate, compare, or require source-bound release evidence.
 
 ## Consequences
 
@@ -103,19 +105,21 @@ Ruff check is the milestone gate; broad coverage and type checks remain CI or re
 - Service lifecycle follows platform supervision rather than bespoke background-process code.
 - Kernform may evolve internally without creating a second configuration implementation in
   BlackCell.
-- Historical V2 data remains available, but passing its tests cannot promote its execution path.
-- The first alpha work is contract and lifecycle work, not a broad rewrite.
+- Historical documents remain available as context, but they cannot promote a deleted execution
+  path or require regenerated release artifacts.
+- Breaking persisted-state or external-protocol changes remain explicit operator decisions;
+  internal iteration does not acquire generation labels merely because it changes over time.
 
 ## Rejected alternatives
 
-- continue exposing `/api/v1/runs` as the alpha submission route;
-- repair or rename `DailyOperatorV2Workflow` and treat it as the new product;
+- preserve a parallel alpha route or runtime beside the project-work service;
+- repair or rename `DailyOperatorWorkflow` and treat it as the current product;
 - gate implementation behind the superseded product-proof study;
 - implement the GitHub epic 75 greenfield Rust/PyO3/custom-agent design;
 - embed independent schedulers or state stores in the CLI, TUI, or web UI;
 - implement custom double-fork or PID-file daemonization;
 - import Kernform's sibling source tree or parse its human-oriented output;
-- run full coverage on every local edit.
+- regenerate source-bound manifests, SBOMs, or verification bundles after ordinary source changes.
 
 ## Primary references
 

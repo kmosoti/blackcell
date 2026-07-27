@@ -4,8 +4,9 @@ import os
 import stat
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -14,8 +15,16 @@ from blackcell.adapters.execution.worktree import (
     WorktreeCommitEffect,
     WorktreeExecutionSpec,
     WorktreeFailureCode,
+    WorktreeInspection,
     WorktreeLeaseIdentity,
     WorktreeLifecycleError,
+    WorktreeRemoval,
+    worktree_execution_spec_from_mapping,
+    worktree_execution_spec_payload,
+    worktree_inspection_from_mapping,
+    worktree_inspection_payload,
+    worktree_removal_from_mapping,
+    worktree_removal_payload,
 )
 from blackcell.kernel._json import bytes_digest
 
@@ -158,7 +167,7 @@ def test_retain_plan_base_commit_creates_one_immutable_plan_ref(tmp_path: Path) 
         base_commit=orphan,
     )
 
-    assert reference.startswith("refs/blackcell/alpha/plans/")
+    assert reference.startswith("refs/blackcell/execution/plans/")
     assert _git_text(repository.root, "show-ref", "--verify", "--hash", reference) == orphan
     assert (
         lifecycle.retain_plan_base_commit(
@@ -305,7 +314,7 @@ def test_commit_changes_creates_clean_policy_bound_head(tmp_path: Path) -> None:
         "BlackCell <blackcell@example.invalid>"
     )
     assert _git_text(worktree, "show", "-s", "--format=%s", "HEAD") == (
-        "BlackCell alpha run-1/node-1 attempt 1"
+        "BlackCell execution run-1/node-1 attempt 1"
     )
     assert lifecycle.commit_changes(spec) == committed
 
@@ -474,6 +483,114 @@ def test_external_checkout_filters_are_refused_before_creation(tmp_path: Path) -
     assert caught.value.code is WorktreeFailureCode.UNSAFE_REPOSITORY_CONFIGURATION
     assert not repository.isolation_root.exists()
     assert _git_text(repository.root, "branch", "--list", "blackcell/*") == ""
+
+
+def test_persisted_worktree_contracts_round_trip_without_implicit_authority(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    spec = _spec(repository)
+    lifecycle = GitWorktreeLifecycle()
+    inspection = lifecycle.create(spec)
+
+    restored_spec = worktree_execution_spec_from_mapping(worktree_execution_spec_payload(spec))
+    restored_inspection = worktree_inspection_from_mapping(worktree_inspection_payload(inspection))
+    removal = lifecycle.remove_success(spec)
+    restored_removal = worktree_removal_from_mapping(worktree_removal_payload(removal))
+
+    assert restored_spec == spec
+    assert restored_inspection == inspection
+    assert restored_removal == removal
+
+
+def test_persisted_worktree_contracts_reject_ambiguous_or_substituted_evidence(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    spec = _spec(repository)
+    payload = worktree_execution_spec_payload(spec)
+    lease_payload = cast("dict[str, object]", payload["lease"])
+
+    invalid_payloads: tuple[object, ...] = (
+        {},
+        {**payload, "lease": ()},
+        {**payload, "allowed_paths": "src"},
+        {**payload, "schema_version": "unsupported"},
+        {**payload, "lease": {**lease_payload, "schema_version": "unsupported"}},
+        {**payload, "lease_digest": "sha256:" + "f" * 64},
+        {**payload, "max_changed_paths": True},
+    )
+    for invalid in invalid_payloads:
+        with pytest.raises(WorktreeLifecycleError) as caught:
+            worktree_execution_spec_from_mapping(cast("dict[str, object]", invalid))
+        assert caught.value.code is WorktreeFailureCode.INVALID_SPEC
+
+    lifecycle = GitWorktreeLifecycle()
+    inspection = lifecycle.create(spec)
+    invalid_inspections: tuple[dict[str, object], ...] = (
+        {"schema_version": "unsupported"},
+        {"spec_digest": "invalid"},
+        {"worktree_path": Path("relative")},
+        {"branch_name": "untrusted/branch"},
+        {"base_commit": "invalid"},
+        {"allowed_paths": ("src", "src")},
+        {"changed_paths": ("z.py", "a.py")},
+        {"changed_paths": ("../escape",)},
+        {"uncommitted_paths": ("../escape",)},
+        {"allowed_paths": (".git",)},
+        {"allowed_paths": ("src/",)},
+        {"max_changed_paths": True},
+        {"out_of_scope_paths": ("src/unexpected.py",)},
+        {"changed_path_limit_exceeded": True},
+    )
+    for updates in invalid_inspections:
+        with pytest.raises(WorktreeLifecycleError) as caught:
+            replace(inspection, **updates)
+        assert caught.value.code is WorktreeFailureCode.INVALID_GIT_OUTPUT
+
+    with pytest.raises(WorktreeLifecycleError) as invalid_lease_schema:
+        replace(spec.lease, schema_version="unsupported")
+    assert invalid_lease_schema.value.code is WorktreeFailureCode.INVALID_SPEC
+    with pytest.raises(WorktreeLifecycleError) as invalid_lease_id:
+        replace(spec.lease, worker_id="")
+    assert invalid_lease_id.value.code is WorktreeFailureCode.INVALID_SPEC
+    with pytest.raises(WorktreeLifecycleError) as invalid_fence:
+        replace(spec.lease, fencing_token=True)
+    assert invalid_fence.value.code is WorktreeFailureCode.INVALID_SPEC
+    with pytest.raises(WorktreeLifecycleError) as invalid_effect:
+        WorktreeCommitEffect("src/value.py", "invalid")
+    assert invalid_effect.value.code is WorktreeFailureCode.INVALID_SPEC
+
+    removal = lifecycle.remove_success(spec)
+    for updates in (
+        {"schema_version": "unsupported"},
+        {"disposition": "retained"},
+        {"retained_head_commit": "invalid"},
+    ):
+        with pytest.raises(WorktreeLifecycleError) as caught:
+            replace(removal, **updates)
+        assert caught.value.code is WorktreeFailureCode.INVALID_GIT_OUTPUT
+
+    for restore, invalid in (
+        (worktree_inspection_from_mapping, {}),
+        (
+            worktree_inspection_from_mapping,
+            {**worktree_inspection_payload(inspection), "schema_version": "unsupported"},
+        ),
+        (worktree_removal_from_mapping, {}),
+        (
+            worktree_removal_from_mapping,
+            {**worktree_removal_payload(removal), "disposition": "retained"},
+        ),
+    ):
+        with pytest.raises(WorktreeLifecycleError) as caught:
+            restore(invalid)
+        assert caught.value.code is WorktreeFailureCode.INVALID_GIT_OUTPUT
+
+    with pytest.raises(WorktreeLifecycleError):
+        worktree_inspection_payload(cast("WorktreeInspection", object()))
+    with pytest.raises(WorktreeLifecycleError):
+        worktree_removal_payload(cast("WorktreeRemoval", object()))
 
 
 def _repository(tmp_path: Path) -> GitRepository:

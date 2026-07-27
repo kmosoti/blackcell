@@ -27,10 +27,10 @@ from blackcell.adapters.execution.worktree import (
     WorktreeLeaseIdentity,
 )
 from blackcell.kernel._json import bytes_digest
-from blackcell.orchestration.alpha_acceptance import (
-    AlphaAcceptanceCommand,
-    AlphaAcceptanceError,
-    AlphaAcceptanceFailureCode,
+from blackcell.orchestration.acceptance import (
+    AcceptanceCommand,
+    AcceptanceError,
+    AcceptanceFailureCode,
 )
 
 _PYTHON = Path("/usr/bin/python3")
@@ -65,7 +65,7 @@ def test_isolated_command_returns_bounded_evidence_without_mutating_worktree(
 
     try:
         result = runner.run(command, spec)
-    except AlphaAcceptanceError as error:
+    except AcceptanceError as error:
         _assert_platform_failed_closed(error)
         return
 
@@ -142,7 +142,7 @@ print(json.dumps({
 
     try:
         result = runner.run(_command("isolation-observation", script), spec)
-    except AlphaAcceptanceError as error:
+    except AcceptanceError as error:
         _assert_platform_failed_closed(error)
         return
 
@@ -170,9 +170,9 @@ print(json.dumps({
 def test_isolation_rejects_invalid_authority_and_reports_typed_process_failures(
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(AlphaAcceptanceError) as invalid_executable:
+    with pytest.raises(AcceptanceError) as invalid_executable:
         BubblewrapExecutable("python", tmp_path / "missing-runtime")
-    assert invalid_executable.value.code is AlphaAcceptanceFailureCode.INVALID_POLICY
+    assert invalid_executable.value.code is AcceptanceFailureCode.INVALID_POLICY
 
     repository = _repository(tmp_path)
     spec = _spec(repository)
@@ -184,15 +184,15 @@ def test_isolation_rejects_invalid_authority_and_reports_typed_process_failures(
 
     no_status = NoStatusTransport()
     unavailable = BubblewrapAcceptanceRunner(policy, lifecycle, no_status)
-    with pytest.raises(AlphaAcceptanceError) as missing_status:
+    with pytest.raises(AcceptanceError) as missing_status:
         unavailable.run(_command("missing-status", "pass"), spec)
-    assert missing_status.value.code is AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE
+    assert missing_status.value.code is AcceptanceFailureCode.ISOLATION_UNAVAILABLE
     assert no_status.calls == 1
 
     runner = BubblewrapAcceptanceRunner(policy, lifecycle)
-    with pytest.raises(AlphaAcceptanceError) as disallowed:
+    with pytest.raises(AcceptanceError) as disallowed:
         runner.run(
-            AlphaAcceptanceCommand(
+            AcceptanceCommand(
                 check_id="disallowed",
                 argv=("not-allowed", "--version"),
                 expected_exit_code=0,
@@ -202,32 +202,32 @@ def test_isolation_rejects_invalid_authority_and_reports_typed_process_failures(
             ),
             spec,
         )
-    assert disallowed.value.code is AlphaAcceptanceFailureCode.EXECUTABLE_NOT_ALLOWED
+    assert disallowed.value.code is AcceptanceFailureCode.EXECUTABLE_NOT_ALLOWED
 
     try:
         runner.run(
             _command("timeout", "import time;time.sleep(30)", timeout_seconds=0.05),
             spec,
         )
-    except AlphaAcceptanceError as error:
-        if error.code is AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE:
+    except AcceptanceError as error:
+        if error.code is AcceptanceFailureCode.ISOLATION_UNAVAILABLE:
             return
-        assert error.code is AlphaAcceptanceFailureCode.TIMED_OUT
+        assert error.code is AcceptanceFailureCode.TIMED_OUT
     else:
         pytest.fail("an over-deadline command must fail")
 
-    with pytest.raises(AlphaAcceptanceError) as oversized:
+    with pytest.raises(AcceptanceError) as oversized:
         runner.run(
             _command("oversized", "print('123456789',end='')", stdout_limit_bytes=8),
             spec,
         )
-    assert oversized.value.code is AlphaAcceptanceFailureCode.OUTPUT_TOO_LARGE
+    assert oversized.value.code is AcceptanceFailureCode.OUTPUT_TOO_LARGE
 
     changed = MutatingStatusTransport(spec.worktree_path / "README.md")
     mutation_runner = BubblewrapAcceptanceRunner(policy, lifecycle, changed)
-    with pytest.raises(AlphaAcceptanceError) as worktree_changed:
+    with pytest.raises(AcceptanceError) as worktree_changed:
         mutation_runner.run(_command("changed", "pass"), spec)
-    assert worktree_changed.value.code is AlphaAcceptanceFailureCode.WORKTREE_CHANGED
+    assert worktree_changed.value.code is AcceptanceFailureCode.WORKTREE_CHANGED
     assert changed.calls == 2
 
 
@@ -252,7 +252,7 @@ def test_isolated_cancellation_terminates_namespaced_descendants(tmp_path: Path)
 
     try:
         runner.run(
-            AlphaAcceptanceCommand(
+            AcceptanceCommand(
                 check_id="cancel-tree",
                 argv=("python", "-c", script, marker),
                 expected_exit_code=0,
@@ -263,10 +263,10 @@ def test_isolated_cancellation_terminates_namespaced_descendants(tmp_path: Path)
             spec,
             cancel_requested=cancel_when_started,
         )
-    except AlphaAcceptanceError as error:
-        if error.code is AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE:
+    except AcceptanceError as error:
+        if error.code is AcceptanceFailureCode.ISOLATION_UNAVAILABLE:
             return
-        assert error.code is AlphaAcceptanceFailureCode.CANCELED
+        assert error.code is AcceptanceFailureCode.CANCELED
     else:
         pytest.fail("a cancellation request must stop the isolated command")
     deadline = time.monotonic() + 1.0
@@ -360,8 +360,8 @@ def _command(
     expected_exit_code: int = 0,
     timeout_seconds: float = 2.0,
     stdout_limit_bytes: int = 64 * 1024,
-) -> AlphaAcceptanceCommand:
-    return AlphaAcceptanceCommand(
+) -> AcceptanceCommand:
+    return AcceptanceCommand(
         check_id=check_id,
         argv=("python", "-c", script),
         expected_exit_code=expected_exit_code,
@@ -423,8 +423,8 @@ def _git_text(cwd: Path, *arguments: str) -> str:
     return _git(cwd, *arguments).stdout.decode().strip()
 
 
-def _assert_platform_failed_closed(error: AlphaAcceptanceError) -> None:
-    assert error.code is AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE
+def _assert_platform_failed_closed(error: AcceptanceError) -> None:
+    assert error.code is AcceptanceFailureCode.ISOLATION_UNAVAILABLE
 
 
 def _process_with_marker(marker: str) -> bool:

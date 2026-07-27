@@ -1,9 +1,14 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from blackcell.adapters.config import GatewayConfigurationError, load_gateway_config
-from blackcell.gateway import DataClassification, ModelCapability
+from blackcell.gateway import (
+    DataClassification,
+    GatewayConfiguration,
+    ModelCapability,
+)
 
 
 def test_local_first_example_loads_blackcell_owned_profiles() -> None:
@@ -43,3 +48,18 @@ def test_gateway_config_rejects_unsupported_versions(tmp_path: Path) -> None:
 
     with pytest.raises(GatewayConfigurationError, match="unsupported"):
         load_gateway_config(path)
+
+
+def test_gateway_capability_profiles_reject_ambiguous_authority() -> None:
+    loaded = load_gateway_config("examples/gateway/local-first.yaml")
+    profile = loaded.profiles[0]
+
+    with pytest.raises(ValueError, match="at least one profile"):
+        GatewayConfiguration(loaded.schema_version, ())
+    with pytest.raises(ValueError, match="must be unique"):
+        GatewayConfiguration(loaded.schema_version, (profile, profile))
+    for field in ("profile_id", "adapter_id", "model_id"):
+        with pytest.raises(ValueError, match=field):
+            replace(profile, **{field: " "})
+    with pytest.raises(ValueError, match="non-negative"):
+        replace(profile, max_input_tokens=-1)

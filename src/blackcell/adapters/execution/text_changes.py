@@ -1,8 +1,8 @@
-"""Host-owned UTF-8 file effects for inert alpha change proposals.
+"""Host-owned UTF-8 file effects for inert execution change proposals.
 
 No provider code or project command runs here. Every operation is preflighted against the exact
 fresh worktree before the first mutation, and each file effect is atomic. This is still not an
-operating-system process sandbox; acceptance commands require a separate A04 boundary.
+operating-system process sandbox; acceptance commands require a separate isolation boundary.
 """
 
 from __future__ import annotations
@@ -23,15 +23,15 @@ from blackcell.adapters.execution.worktree import (
 )
 from blackcell.kernel import JsonInput
 from blackcell.kernel._json import bytes_digest, canonical_json_bytes
-from blackcell.orchestration.alpha_changes import (
-    MAX_ALPHA_TEXT_CHANGE_RESULT_BYTES,
-    AlphaChangeProposal,
-    AlphaFileChange,
-    AlphaTextOperation,
+from blackcell.orchestration.changes import (
+    MAX_TEXT_CHANGE_RESULT_BYTES,
+    ChangeProposal,
+    FileChange,
+    TextOperation,
 )
 
-TEXT_CHANGE_ADMISSION_SCHEMA = "alpha-text-change-admission/v1"
-TEXT_CHANGE_RESULT_SCHEMA = "alpha-text-change-result/v1"
+TEXT_CHANGE_ADMISSION_SCHEMA = "execution-text-change-admission/v1"
+TEXT_CHANGE_RESULT_SCHEMA = "execution-text-change-result/v1"
 
 _MAX_FILE_BYTES = 1024 * 1024
 
@@ -80,7 +80,7 @@ class TextChangeAdmission:
 
 @dataclass(frozen=True, slots=True)
 class TextChangeEffect:
-    operation: AlphaTextOperation
+    operation: TextOperation
     path: str
     before_digest: str | None
     after_digest: str | None
@@ -120,7 +120,7 @@ class TextChangeExecutionResult:
         ):
             raise TextChangeExecutionError(TextChangeFailureCode.EFFECT_EVIDENCE_MISMATCH)
         payload = canonical_json_bytes(text_change_result_payload(self))
-        if len(payload) > MAX_ALPHA_TEXT_CHANGE_RESULT_BYTES:
+        if len(payload) > MAX_TEXT_CHANGE_RESULT_BYTES:
             raise TextChangeExecutionError(TextChangeFailureCode.EFFECT_EVIDENCE_MISMATCH)
         object.__setattr__(self, "result_digest", bytes_digest(payload))
 
@@ -162,7 +162,7 @@ class AtomicTextFileEffects:
 
 @dataclass(frozen=True, slots=True)
 class _PlannedEffect:
-    change: AlphaFileChange
+    change: FileChange
     target: Path
     before: bytes | None = field(repr=False)
     before_mode: int | None
@@ -177,7 +177,7 @@ class TextChangeExecutor:
     def execute(
         self,
         spec: WorktreeExecutionSpec,
-        proposal: AlphaChangeProposal,
+        proposal: ChangeProposal,
         admission: TextChangeAdmission,
     ) -> TextChangeExecutionResult:
         self._validate_binding(spec, proposal, admission)
@@ -236,12 +236,12 @@ class TextChangeExecutor:
     @staticmethod
     def _validate_binding(
         spec: WorktreeExecutionSpec,
-        proposal: AlphaChangeProposal,
+        proposal: ChangeProposal,
         admission: TextChangeAdmission,
     ) -> None:
         if (
             not isinstance(spec, WorktreeExecutionSpec)
-            or not isinstance(proposal, AlphaChangeProposal)
+            or not isinstance(proposal, ChangeProposal)
             or not isinstance(admission, TextChangeAdmission)
             or admission.worktree_spec_digest != spec.digest
             or admission.lease_digest != spec.lease.digest
@@ -253,7 +253,7 @@ class TextChangeExecutor:
     @staticmethod
     def _preflight(
         spec: WorktreeExecutionSpec,
-        proposal: AlphaChangeProposal,
+        proposal: ChangeProposal,
     ) -> tuple[_PlannedEffect, ...]:
         if len(proposal.operations) > spec.max_changed_paths:
             raise TextChangeExecutionError(TextChangeFailureCode.OPERATION_LIMIT_EXCEEDED)
@@ -264,7 +264,7 @@ class TextChangeExecutor:
             target = spec.worktree_path.joinpath(*change.path.split("/"))
             _require_existing_regular_parent(spec.worktree_path, target.parent)
             exists = _lexists(target)
-            if change.operation is AlphaTextOperation.CREATE:
+            if change.operation is TextOperation.CREATE:
                 if exists:
                     raise TextChangeExecutionError(TextChangeFailureCode.TARGET_CONFLICT)
                 before = None
@@ -280,11 +280,11 @@ class TextChangeExecutor:
         return tuple(plans)
 
     def _apply(self, plan: _PlannedEffect) -> None:
-        if plan.change.operation is AlphaTextOperation.CREATE:
+        if plan.change.operation is TextOperation.CREATE:
             if plan.after is None:  # pragma: no cover - proposal contract invariant
                 raise TextChangeExecutionError(TextChangeFailureCode.INVALID_ADMISSION)
             self.effects.create(plan.target, plan.after, mode=0o644)
-        elif plan.change.operation is AlphaTextOperation.REPLACE:
+        elif plan.change.operation is TextOperation.REPLACE:
             if plan.after is None or plan.before_mode is None:  # pragma: no cover
                 raise TextChangeExecutionError(TextChangeFailureCode.INVALID_ADMISSION)
             self.effects.replace(plan.target, plan.after, mode=plan.before_mode)
@@ -299,7 +299,7 @@ class TextChangeExecutor:
     ) -> bool:
         try:
             for plan in reversed(applied):
-                if plan.change.operation is AlphaTextOperation.CREATE:
+                if plan.change.operation is TextOperation.CREATE:
                     if _lexists(plan.target):
                         if plan.target.is_symlink() or not plan.target.is_file():
                             return False

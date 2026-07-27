@@ -1,0 +1,4 @@
+{
+  "idempotency_key": "run-cancel",
+  "schema_version": "execution-cancel-run-request/v1"
+}

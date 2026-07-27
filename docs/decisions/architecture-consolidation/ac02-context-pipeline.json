@@ -58,13 +58,13 @@
     "serialized ContextFrame bytes and frame IDs",
     "SignalPacket and EvidenceSelection schemas and identities",
     "retrieval ranking, required evidence, omissions, unknowns, conflicts, and freshness",
-    "DailyOperatorV2 event and artifact grammar"
+    "DailyOperator event and artifact grammar"
   ],
   "explicitly_changed": [
     "The internal blackcell.features.build_context.ports Like Protocol family is retired; build_context consumes the feature-owned EvidenceSelection directly."
   ],
   "verification": {
     "focused": "uv run pytest -q tests/unit/test_context_pipeline_features.py tests/unit/test_context_frame_store.py tests/unit/test_fts5_evidence_retriever.py tests/architecture/test_dependencies.py",
-    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing"
+    "full_gate": "uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing"
   }
 }

@@ -9,14 +9,13 @@
     "base_sha": "eb05e034f3e6bdcef83167df6dcfdc8a1eaf06f0",
     "runtime_behavior_changed": false,
     "persisted_schema_changed": false,
-    "dependency_closure_changed": false,
-    "historical_runtime_v1_evidence_changed": false
+    "dependency_closure_changed": false
   },
   "boundary_criteria": [
     {"id": "authority", "description": "crosses an authority or trust boundary"},
     {"id": "failure-recovery", "description": "owns independent failure or recovery semantics"},
     {"id": "multiple-implementations", "description": "has multiple demonstrated implementations"},
-    {"id": "persisted-versioned-contract", "description": "owns an externally persisted or versioned contract"},
+    {"id": "persisted-contract-identity", "description": "owns an externally persisted contract with an explicit identity"},
     {"id": "deployment-resource-profile", "description": "has an independent deployment, scaling, latency, or resource profile"},
     {"id": "ownership-release-cadence", "description": "changes under a materially different ownership or release cadence"},
     {"id": "product-use-case", "description": "is independently invoked as a product use case"},
@@ -228,7 +227,7 @@
           "preserved_invariants": ["single-authoritative-immutable-event-ledger", "model-free-side-effect-free-historical-replay", "explicit-persisted-event-and-artifact-versioning"],
           "reason": "The seams own complete event grammar, artifact ownership, idempotency, occurrence binding, and replay-verifiable acceptance.",
           "evidence": [
-            {"path": "src/blackcell/workflows/run_protocol_v2.py", "symbol": "class FeedbackRunRecorder", "test": "tests/unit/test_run_records_boundaries.py"},
+            {"path": "src/blackcell/workflows/feedback_run_protocol.py", "symbol": "class FeedbackRunRecorder", "test": "tests/unit/test_run_records_boundaries.py"},
             {"path": "src/blackcell/workflows/state_transition.py", "symbol": "def bind_and_accept_state_transition", "test": "tests/unit/test_state_transition_binding.py"}
           ]
         },
@@ -240,7 +239,7 @@
           "preserved_invariants": ["single-authoritative-immutable-event-ledger", "content-addressed-integrity-verified-artifacts", "model-free-side-effect-free-historical-replay"],
           "reason": "The concrete modules span many protocol phases; splitting private phase internals improves navigability without adding runtime seams.",
           "evidence": [
-            {"path": "src/blackcell/adapters/persistence/sqlite/run_records_v2.py", "symbol": "class KernelFeedbackRunRecorder", "test": "tests/unit/test_run_records_v2.py"},
+            {"path": "src/blackcell/adapters/persistence/sqlite/feedback_run_records.py", "symbol": "class KernelFeedbackRunRecorder", "test": "tests/unit/test_feedback_run_records.py"},
             {"path": "src/blackcell/workflows/state_transition.py", "symbol": "def _bind_command", "test": "tests/unit/test_state_transition_binding.py"}
           ]
         },
@@ -263,7 +262,7 @@
       "subject": "the SQLite boundary is described imprecisely",
       "decisions": [
         {
-          "boundary": "SQLite as the runtime-v1 trusted local kernel implementation",
+          "boundary": "SQLite as the runtime-foundation trusted local kernel implementation",
           "decision": "retain",
           "target_work_package": "AC06",
           "criteria": ["failure-recovery", "persisted-versioned-contract", "deployment-resource-profile"],
@@ -368,7 +367,7 @@
         {"path": "src/blackcell/features/retrieve_evidence/ports.py", "symbol": "SignalClaimLike", "bases": ["Protocol"], "declared_members": 16, "effective_members": 16},
         {"path": "src/blackcell/features/retrieve_evidence/ports.py", "symbol": "SignalPacketLike", "bases": ["Protocol"], "declared_members": 9, "effective_members": 9},
         {"path": "src/blackcell/interfaces/http/ports.py", "symbol": "RuntimeApiPort", "bases": ["Protocol"], "declared_members": 10, "effective_members": 10},
-        {"path": "src/blackcell/workflows/run_protocol_v2.py", "symbol": "FeedbackRunRecorder", "bases": ["Protocol"], "declared_members": 16, "effective_members": 16}
+        {"path": "src/blackcell/workflows/feedback_run_protocol.py", "symbol": "FeedbackRunRecorder", "bases": ["Protocol"], "declared_members": 16, "effective_members": 16}
       ]
     },
     "record_shape_clusters": [
@@ -414,12 +413,12 @@
       }
     ],
     "compatibility_paths": [
-      {"path": "src/blackcell/adapters/persistence/sqlite/run_replay.py", "symbol": "KernelRunReplayAdapter", "status": "retained historical v1 and current v2 version dispatch"},
+      {"path": "src/blackcell/adapters/persistence/sqlite/run_replay.py", "symbol": "KernelRunReplayAdapter", "status": "retained baseline and feedback protocol dispatch"},
       {"path": "src/blackcell/context", "symbol": "SignalPacket", "status": "legacy context vocabulary pending AC02 consumer characterization"},
       {"path": "architecture/dependency_rules.json", "symbol": "legacy-canonical", "status": "ambiguous classification to retire in AC03"}
     ],
     "protocol_hotspots": [
-      {"path": "src/blackcell/adapters/persistence/sqlite/run_records_v2.py", "symbol": "KernelFeedbackRunRecorder", "public_seam": "FeedbackRunRecorder", "decision": "retain seam and split private phases"},
+      {"path": "src/blackcell/adapters/persistence/sqlite/feedback_run_records.py", "symbol": "KernelFeedbackRunRecorder", "public_seam": "FeedbackRunRecorder", "decision": "retain seam and split private phases"},
       {"path": "src/blackcell/workflows/state_transition.py", "symbol": "bind_and_accept_state_transition", "public_seam": "binding and acceptance operation", "decision": "retain operation and split private verification phases"}
     ],
     "sqlite_commitments": [
@@ -429,7 +428,7 @@
     ],
     "public_schema_owners": [
       {"owner": "kernel event occurrence and envelope", "path": "src/blackcell/kernel/events.py", "symbol": "class EventEnvelope", "test": "tests/unit/test_kernel_events.py"},
-      {"owner": "daily-operator v1 and v2 event grammar and run trace", "path": "src/blackcell/workflows/run_protocol_v2.py", "symbol": "V2_EVENT_PAYLOAD_FIELDS", "test": "tests/unit/test_run_records_boundaries.py"},
+      {"owner": "baseline and feedback event grammar and run trace", "path": "src/blackcell/workflows/feedback_run_protocol.py", "symbol": "FEEDBACK_EVENT_PAYLOAD_FIELDS", "test": "tests/unit/test_run_records_boundaries.py"},
       {"owner": "operational state snapshot", "path": "src/blackcell/features/project_operational_state/artifacts.py", "symbol": "OPERATIONAL_STATE_SNAPSHOT_MEDIA_TYPE", "test": "tests/unit/test_operational_state_artifacts.py"},
       {"owner": "ContextFrame", "path": "src/blackcell/features/build_context/artifacts.py", "symbol": "CONTEXT_FRAME_MEDIA_TYPE", "test": "tests/unit/test_context_frame_store.py"},
       {"owner": "decision request, route, attempt, response, failure, usage, and proposal", "path": "src/blackcell/features/request_decision/artifacts.py", "symbol": "DECISION_REQUEST_MEDIA_TYPE", "test": "tests/unit/test_request_decision_feature.py"},
@@ -501,30 +500,16 @@
     "rejected_hard_metrics": ["class count", "line count", "module count", "import count", "similarity threshold"]
   },
   "evidence_policy": {
-    "runtime_v1": {
-      "status": "historical-read-only",
-      "candidate_id": "sha256:eadfb26dccbb252ff03845fc4d732cac2e455ecb3593b7bdd3106f4e48a13d4d",
-      "manifest": "release/runtime-v1/verification-manifest.json",
-      "allowed_reuse": "foundation facts and historical test context only",
-      "forbidden_reuse": "verification claim for architecture-consolidation source"
+    "incremental_development": {
+      "status": "ordinary-ci-only",
+      "release_bundle_required": false,
+      "source_bound_candidate_required": false,
+      "rationale": "A repository-wide evidence bundle couples unrelated incremental changes to stale candidate hashes without an independent release boundary."
     },
-    "architecture_consolidation": {
-      "status": "candidate-scheme-ratified-not-issued",
-      "issuer_work_package": "AC07",
-      "manifest": "release/architecture-consolidation/verification-manifest.json",
-      "candidate_id_format": "sha256:<canonical-source-materials-digest>",
-      "material_selection": "all git ls-tree -r -z --full-tree <source_sha> entries whose object type is blob, except excluded_outputs",
-      "material_fields": ["path", "mode", "size", "sha256"],
-      "material_order": "normalized repository-relative path ascending by UTF-8 bytes",
-      "canonical_document": {"schema_version": "architecture-consolidation-materials/v1", "materials": "<path-sorted material records>"},
-      "canonical_encoding": "Python json.dumps(document, ensure_ascii=True, sort_keys=True, separators=(',', ':')) plus one LF, encoded as UTF-8",
-      "digest_rule": "candidate_id is sha256: plus the lowercase SHA-256 hex digest of the canonical encoded document",
-      "excluded_outputs": [
-        "release/architecture-consolidation/verification-manifest.json",
-        "docs/decisions/architecture-consolidation/ac07-final-evidence.json",
-        "release/architecture-consolidation/blackcell-architecture-consolidation.cdx.json"
-      ],
-      "sbom_policy": "record unchanged production dependency closure without generating a new SBOM; regenerate only when the production closure changes"
+    "future_release": {
+      "status": "requires-explicit-authorization",
+      "reuse_prior_bundle": false,
+      "contract_rule": "Define evidence only for the concrete release, publication, deployment, persisted-format, or recovery boundary being accepted."
     }
   },
   "downstream_entry_criteria": {
@@ -533,8 +518,8 @@
     "AC03": ["produce a concept ownership matrix", "retain durable attempt and authority semantics", "isolate current, historical, and experimental paths"],
     "AC04": ["convert only the three approved stateless candidates", "retain time, strategy, resource, journal, checkpoint, and recovery owners"],
     "AC05": ["retain one recorder and one transition-binding seam", "preserve exact event grammar, artifact ownership, and replay interpretation"],
-    "AC06": ["document SQLite as the trusted runtime-v1 kernel implementation", "add no alternate backend hierarchy without a separate requirement"],
-    "AC07": ["enforce only binary architecture rules", "publish advisory before-and-after evidence", "issue the new source candidate and SBOM decision"]
+    "AC06": ["document SQLite as the trusted runtime-foundation kernel implementation", "add no alternate backend hierarchy without a separate requirement"],
+    "AC07": ["enforce only binary architecture rules", "publish advisory before-and-after evidence", "retire source-bound candidate and SBOM ceremony"]
   },
   "verification": {
     "status": "pass",
@@ -555,13 +540,12 @@
       "result": "pass"
     },
     "interim_full_gate": {
-      "command": "uv run pytest --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing",
+      "command": "uv run pytest --cov=blackcell --cov-report=term-missing",
       "result": "1282 passed, 1 skipped, 14 warnings",
       "coverage": "86.55%",
       "coverage_floor": "86.0%",
       "skip": "rootless Podman acceptance requires BLACKCELL_RUN_PODMAN_TESTS=1",
       "warnings": "existing unclosed SQLite connection ResourceWarning observations outside the AC00 documentation-only scope"
-    },
-    "historical_runtime_v1_gate": "expected-drift-and-not-rerun"
+    }
   }
 }

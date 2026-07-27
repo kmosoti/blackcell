@@ -3,32 +3,21 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Protocol
 
-from blackcell.interfaces.http.alpha_contracts import (
-    AlphaCancelRunRequest,
-    AlphaEventPageResponse,
-    AlphaIntentRequest,
-    AlphaIntentResponse,
-    AlphaPlanRequest,
-    AlphaPlanResponse,
-    AlphaProjectRequest,
-    AlphaProjectResponse,
-    AlphaReplayResponse,
-    AlphaRunRequest,
-    AlphaRunResponse,
-)
 from blackcell.interfaces.http.contracts import (
-    ApprovalRequest,
-    ContextResponse,
-    EvaluationResponse,
-    EventPageResponse,
+    CancelRunRequest,
     HealthResponse,
-    ObservationIngestRequest,
-    ObservationIngestResponse,
-    OrchestrationApprovalResponse,
-    OrchestrationRunResponse,
+    IntentRequest,
+    IntentResponse,
+    PlanRequest,
+    PlanResponse,
+    ProjectRequest,
+    ProjectResponse,
     ReplayResponse,
+    RunQueryRequest,
+    RunQueryResponse,
+    RunRequest,
     RunResponse,
-    RunSubmissionRequest,
+    RuntimeEventPageResponse,
 )
 
 
@@ -49,94 +38,54 @@ class RuntimeApiError(RuntimeError):
 class RuntimeApiPort(Protocol):
     def readiness(self) -> HealthResponse: ...
 
-    def ingest_observations(
+    def register_project(
         self,
-        request: ObservationIngestRequest,
+        request: ProjectRequest,
         *,
         principal_id: str,
-    ) -> ObservationIngestResponse: ...
+    ) -> ProjectResponse: ...
+
+    def accept_intent(
+        self,
+        request: IntentRequest,
+        *,
+        principal_id: str,
+    ) -> IntentResponse: ...
+
+    def accept_plan(
+        self,
+        request: PlanRequest,
+        *,
+        principal_id: str,
+    ) -> PlanResponse: ...
 
     def submit_run(
         self,
-        request: RunSubmissionRequest,
+        request: RunRequest,
         *,
         principal_id: str,
     ) -> RunResponse: ...
 
     def inspect_run(self, run_id: str) -> RunResponse: ...
 
-    def inspect_context(self, run_id: str) -> ContextResponse: ...
+    def query_runs(self, request: RunQueryRequest) -> RunQueryResponse: ...
 
-    def replay_run(self, run_id: str) -> ReplayResponse: ...
-
-    def inspect_evaluation(self, run_id: str) -> EvaluationResponse: ...
-
-    def list_events(self, *, after_position: int, limit: int) -> EventPageResponse: ...
-
-    def inspect_orchestration(self, run_id: str) -> OrchestrationRunResponse: ...
-
-    def record_orchestration_approval(
+    def cancel_run(
         self,
         run_id: str,
-        node_id: str,
-        request: ApprovalRequest,
+        request: CancelRunRequest,
         *,
         principal_id: str,
-    ) -> OrchestrationApprovalResponse: ...
+    ) -> RunResponse: ...
 
-
-class AlphaRuntimeApiPort(Protocol):
-    def register_alpha_project(
-        self,
-        request: AlphaProjectRequest,
-        *,
-        principal_id: str,
-    ) -> AlphaProjectResponse: ...
-
-    def accept_alpha_intent(
-        self,
-        request: AlphaIntentRequest,
-        *,
-        principal_id: str,
-    ) -> AlphaIntentResponse: ...
-
-    def accept_alpha_plan(
-        self,
-        request: AlphaPlanRequest,
-        *,
-        principal_id: str,
-    ) -> AlphaPlanResponse: ...
-
-    def submit_alpha_run(
-        self,
-        request: AlphaRunRequest,
-        *,
-        principal_id: str,
-    ) -> AlphaRunResponse: ...
-
-    def inspect_alpha_run(self, run_id: str) -> AlphaRunResponse: ...
-
-    def cancel_alpha_run(
-        self,
-        run_id: str,
-        request: AlphaCancelRunRequest,
-        *,
-        principal_id: str,
-    ) -> AlphaRunResponse: ...
-
-    def list_alpha_events(
+    def list_events(
         self,
         *,
         after_cursor: int,
         limit: int,
-    ) -> AlphaEventPageResponse: ...
+    ) -> RuntimeEventPageResponse: ...
 
-    def replay_alpha_run(self, run_id: str) -> AlphaReplayResponse: ...
+    def replay_run(self, run_id: str) -> ReplayResponse: ...
 
 
-__all__ = [
-    "AlphaRuntimeApiPort",
-    "RuntimeApiError",
-    "RuntimeApiFailureCode",
-    "RuntimeApiPort",
-]
+__all__ = ["RuntimeApiError", "RuntimeApiFailureCode", "RuntimeApiPort"]

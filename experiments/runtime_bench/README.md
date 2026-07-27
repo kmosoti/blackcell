@@ -1,6 +1,6 @@
 # RuntimeBench
 
-RuntimeBench is the WP25 reproducible acceptance profile for the implemented runtime-v1
+RuntimeBench is the WP25 reproducible acceptance profile for the implemented runtime-foundation
 surfaces. It invokes the existing public and integration tests as six independently timed probes:
 
 1. authenticated API and live-free replay;

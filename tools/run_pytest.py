@@ -11,11 +11,17 @@ REQUIRE_ALL_PASS_OPTION = "blackcell_require_all_pass"
 
 
 class RequireAllPassPlugin:
-    """Require an exact set of selected nodes to collect and pass."""
+    """Require an explicit pytest selection to collect and pass without soft outcomes."""
 
-    def __init__(self, required_node_ids: frozenset[str] = frozenset()) -> None:
+    def __init__(
+        self,
+        required_node_ids: frozenset[str] = frozenset(),
+        *,
+        selection_declared: bool = False,
+    ) -> None:
         self._enabled = False
         self._required_node_ids = required_node_ids
+        self._selection_declared = selection_declared
         self._invalid_outcomes: list[str] = []
 
     def pytest_addoption(self, parser: pytest.Parser) -> None:
@@ -25,8 +31,8 @@ class RequireAllPassPlugin:
             dest=REQUIRE_ALL_PASS_OPTION,
             default=False,
             help=(
-                "Require explicitly requested pytest node IDs to collect exactly and pass without "
-                "skip or xfail outcomes."
+                "Require an explicitly requested pytest file or exact node selection to collect "
+                "and pass without skip or xfail outcomes."
             ),
         )
 
@@ -40,8 +46,10 @@ class RequireAllPassPlugin:
     def pytest_collection_finish(self, session: pytest.Session) -> None:
         if not self._enabled:
             return
+        if not self._selection_declared:
+            self._invalid_outcomes.append("no required pytest selector declared")
+            return
         if not self._required_node_ids:
-            self._invalid_outcomes.append("no exact required node IDs declared")
             return
 
         collected_node_ids = {item.nodeid for item in session.items}
@@ -80,17 +88,25 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     arguments = list(sys.argv[1:] if argv is None else argv)
     require_all_pass = "--blackcell-require-all-pass" in arguments
-    required_node_ids = frozenset(
+    required_selectors = frozenset(
         argument
         for argument in arguments
-        if require_all_pass and "::" in argument and not argument.startswith("-")
+        if require_all_pass
+        and not argument.startswith("-")
+        and (argument.endswith(".py") or "::" in argument)
     )
+    required_node_ids = frozenset(argument for argument in required_selectors if "::" in argument)
     previous_umask = os.umask(SECURE_TEST_UMASK)
     try:
         return int(
             pytest.main(
                 arguments,
-                plugins=[RequireAllPassPlugin(required_node_ids)],
+                plugins=[
+                    RequireAllPassPlugin(
+                        required_node_ids,
+                        selection_declared=bool(required_selectors),
+                    )
+                ],
             )
         )
     finally:

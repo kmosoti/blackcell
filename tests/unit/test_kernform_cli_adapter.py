@@ -102,31 +102,28 @@ def test_check_probes_version_invokes_agent_json_and_retains_evidence(tmp_path: 
     assert result.artifacts == ()
     assert result.argv_digest.startswith("sha256:") and len(result.argv_digest) == 71
     assert result.result_digest.startswith("sha256:") and len(result.result_digest) == 71
-    assert result.schema_version == "kernform-invocation/v1"
+    assert result.schema_version == "kernform-invocation/v2"
     assert not hasattr(result, "stdout")
 
 
 def test_init_builds_exact_argv_and_canonicalizes_in_root_artifacts(tmp_path: Path) -> None:
     destination = tmp_path / "new-project"
     state_path = destination / ".kernform/state.json"
-    evidence_path = destination / ".kernform/evidence/apply.json"
     init_document = _envelope(
         command="init",
         status="success",
         exit_code=0,
         result=_init_result(destination, operation_count=7),
-        artifacts=[
-            {"kind": "managed-state", "path": ".kernform/state.json", "hash": None},
-            {"kind": "apply-evidence", "path": str(evidence_path), "hash": "a" * 64},
-        ],
+        artifacts=[{"kind": "managed-state", "path": ".kernform/state.json", "hash": None}],
     )
     transport = FakeTransport(_process(_version_envelope()), _process(init_document))
     client = KernformCliClient(executable="kernform-recorded", transport=transport)
 
     result = client.init(
-        name="alpha-tool",
+        name="execution-tool",
         destination=destination,
-        profile="cli",
+        signatures=("sdk", "cli"),
+        default_signature="cli",
         capabilities=("lint", "test"),
         no_git=True,
     )
@@ -139,10 +136,14 @@ def test_init_builds_exact_argv_and_canonicalizes_in_root_artifacts(tmp_path: Pa
             "--format",
             "json",
             "init",
-            "alpha-tool",
+            "execution-tool",
             "--destination",
             str(destination),
-            "--profile",
+            "--signature",
+            "sdk",
+            "--signature",
+            "cli",
+            "--default-signature",
             "cli",
             "--with",
             "lint",
@@ -152,14 +153,43 @@ def test_init_builds_exact_argv_and_canonicalizes_in_root_artifacts(tmp_path: Pa
         ),
     ]
     assert all(call.cwd == tmp_path for call in transport.calls)
-    assert tuple(item.path for item in result.artifacts) == (str(state_path), str(evidence_path))
-    assert result.artifacts[1].hash == "a" * 64
+    assert tuple(item.path for item in result.artifacts) == (str(state_path),)
     assert result.result == {
-        "evidence_path": str(evidence_path),
         "operation_count": 7,
         "plan_id": "b" * 64,
         "state_path": str(state_path),
     }
+
+
+def test_compile_invokes_current_read_only_contract_and_validates_plan(tmp_path: Path) -> None:
+    form = tmp_path / "project-form.json"
+    form.write_text("{}", encoding="utf-8")
+    transport = FakeTransport(
+        _process(_version_envelope()),
+        _process(_envelope(command="compile", result=_compile_result())),
+    )
+
+    result = KernformCliClient(
+        executable="kernform-recorded",
+        transport=transport,
+    ).compile(form)
+
+    assert [call.argv for call in transport.calls] == [
+        ("kernform-recorded", "--agent", "--version"),
+        (
+            "kernform-recorded",
+            "--agent",
+            "--format",
+            "json",
+            "compile",
+            "--form",
+            str(form),
+        ),
+    ]
+    assert result.command == "compile"
+    assert result.result is not None
+    assert result.result["schema"] == "kernform.plan/v2"
+    assert result.result["plan_id"] == "c" * 64
 
 
 def test_client_rejects_open_or_semantically_invalid_command_results(tmp_path: Path) -> None:
@@ -229,10 +259,7 @@ def test_client_rejects_open_or_semantically_invalid_command_results(tmp_path: P
         {**_check_result(), "unexpected": True},
         {**_check_result(), "catalog_hash": "not-a-catalog-hash"},
         {**_check_result(), "conformant": False},
-        {
-            **_check_result(),
-            "requirements": {"conformance": ["KF-ARCH-001"], "tests": ["fast", "fast"]},
-        },
+        {**_check_result(), "files_checked": -1},
     )
     for invalid_result in invalid_check_results:
         transport = FakeTransport(
@@ -245,10 +272,8 @@ def test_client_rejects_open_or_semantically_invalid_command_results(tmp_path: P
 
     destination = tmp_path / "new-project"
     state_path = destination / ".kernform/state.json"
-    evidence_path = destination / ".kernform/evidence/apply.json"
     artifacts: list[dict[str, object]] = [
         {"kind": "managed-state", "path": str(state_path), "hash": None},
-        {"kind": "apply-evidence", "path": str(evidence_path), "hash": None},
     ]
     invalid_init_results = (
         {**_init_result(destination), "unexpected": True},
@@ -262,7 +287,7 @@ def test_client_rejects_open_or_semantically_invalid_command_results(tmp_path: P
         )
         with pytest.raises(KernformClientError) as invalid_init:
             KernformCliClient(transport=transport).init(
-                name="alpha-tool",
+                name="execution-tool",
                 destination=destination,
                 no_git=True,
             )
@@ -270,7 +295,7 @@ def test_client_rejects_open_or_semantically_invalid_command_results(tmp_path: P
 
     escaped_result = {
         **_init_result(destination),
-        "evidence_path": str(tmp_path.parent / "escaped-evidence.json"),
+        "state_path": str(tmp_path.parent / "escaped-state.json"),
     }
     escaped_transport = FakeTransport(
         _process(_version_envelope()),
@@ -278,7 +303,7 @@ def test_client_rejects_open_or_semantically_invalid_command_results(tmp_path: P
     )
     with pytest.raises(KernformClientError) as escaped:
         KernformCliClient(transport=escaped_transport).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=destination,
             no_git=True,
         )
@@ -289,7 +314,7 @@ def test_client_rejects_unsupported_version_closed_envelope_and_exit_mismatch(
     tmp_path: Path,
 ) -> None:
     unsupported = FakeTransport(
-        _process(_envelope(command="version", result="0.2.0")),
+        _process(_envelope(command="version", result="0.1.0")),
     )
     with pytest.raises(KernformClientError) as wrong_version:
         KernformCliClient(transport=unsupported).check(tmp_path)
@@ -357,7 +382,7 @@ def test_client_rejects_artifact_escape_and_invalid_init_inputs(tmp_path: Path) 
     )
     with pytest.raises(KernformClientError) as outside:
         KernformCliClient(transport=escaped).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=tmp_path / "project",
             no_git=True,
         )
@@ -365,7 +390,7 @@ def test_client_rejects_artifact_escape_and_invalid_init_inputs(tmp_path: Path) 
 
     with pytest.raises(KernformClientError) as conflicting_git:
         KernformCliClient(transport=FakeTransport()).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=tmp_path / "project",
             no_git=True,
             initial_commit=True,
@@ -374,18 +399,26 @@ def test_client_rejects_artifact_escape_and_invalid_init_inputs(tmp_path: Path) 
 
     with pytest.raises(KernformClientError) as missing_parent:
         KernformCliClient(transport=FakeTransport()).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=tmp_path / "missing" / "project",
         )
     assert missing_parent.value.code is KernformClientFailureCode.INVALID_PROJECT_ROOT
 
     with pytest.raises(KernformClientError) as string_capabilities:
         KernformCliClient(transport=FakeTransport()).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=tmp_path / "project",
             capabilities="lint",
         )
     assert string_capabilities.value.code is KernformClientFailureCode.INVALID_ARGUMENT
+
+    with pytest.raises(KernformClientError) as invalid_signatures:
+        KernformCliClient(transport=FakeTransport()).init(
+            name="execution-tool",
+            destination=tmp_path / "project",
+            signatures=("cli", "cli"),
+        )
+    assert invalid_signatures.value.code is KernformClientFailureCode.INVALID_ARGUMENT
 
     with pytest.raises(KernformClientError) as non_path:
         KernformCliClient(transport=FakeTransport()).check(cast(Path, "not-a-path"))
@@ -445,33 +478,40 @@ def _version_envelope() -> dict[str, object]:
 
 
 def _check_result() -> dict[str, object]:
-    return {
-        "catalog_hash": "a" * 64,
-        "checks": {
-            "architecture": True,
-            "boundary": True,
-            "environment": True,
-            "git": True,
-            "state": True,
-            "testing": True,
-            "versions": True,
-        },
-        "conformant": True,
-        "files_checked": 39,
-        "mode": "managed-project",
-        "requirements": {
-            "conformance": ["KF-ARCH-001", "KF-BOUNDARY-001"],
-            "tests": ["fast", "python-unit"],
-        },
-    }
+    return {"conformant": True, "files_checked": 39}
 
 
 def _init_result(destination: Path, *, operation_count: int = 64) -> dict[str, object]:
     return {
-        "evidence_path": str(destination / ".kernform/evidence/apply.json"),
         "operation_count": operation_count,
         "plan_id": "b" * 64,
         "state_path": str(destination / ".kernform/state.json"),
+    }
+
+
+def _compile_result() -> dict[str, object]:
+    return {
+        "schema": "kernform.plan/v2",
+        "plan_id": "c" * 64,
+        "generator_version": SUPPORTED_KERNFORM_VERSION,
+        "intent": {
+            "name": "execution-tool",
+            "requested_signatures": ["sdk", "cli"],
+            "resolved_signatures": ["sdk", "cli"],
+            "default_signature": "cli",
+            "capabilities": ["python-package", "testing"],
+            "git": True,
+        },
+        "catalog": {
+            "id": "stable-test",
+            "hash": "d" * 64,
+            "resolved_at": "2026-07-26T00:00:00Z",
+            "source": "https://example.invalid/catalog.json",
+            "versions": {"python": "3.14.6"},
+            "images": {},
+        },
+        "operations": [{"id": "directory:python", "kind": "create_directory", "path": "python"}],
+        "diagnostics": [],
     }
 
 

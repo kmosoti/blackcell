@@ -5,10 +5,8 @@ from contextlib import suppress
 from opentelemetry.sdk.resources import Resource
 
 from blackcell.adapters.telemetry.otel import OpenTelemetrySpanExporter
-from blackcell.adapters.telemetry.workflow import TraceWorkflowTelemetry
 from blackcell.config import RuntimeProcessConfig
 from blackcell.telemetry import ContentPolicy, TraceRecorder
-from blackcell.workflows.telemetry import NullWorkflowTelemetry, WorkflowTelemetry
 
 
 class RuntimeTelemetry:
@@ -16,12 +14,12 @@ class RuntimeTelemetry:
 
     def __init__(
         self,
-        workflow: WorkflowTelemetry,
         *,
+        recorder: TraceRecorder | None = None,
         exporter: OpenTelemetrySpanExporter | None = None,
         flush_timeout_millis: int = 10_000,
     ) -> None:
-        self.workflow = workflow
+        self.recorder = recorder
         self._exporter = exporter
         self._flush_timeout_millis = flush_timeout_millis
 
@@ -34,7 +32,7 @@ class RuntimeTelemetry:
     ) -> RuntimeTelemetry:
         telemetry = config.telemetry
         if not telemetry.enabled:
-            return cls(NullWorkflowTelemetry())
+            return cls()
         if telemetry.endpoint is None:  # pragma: no cover - configuration invariant
             raise ValueError("enabled telemetry requires an endpoint")
         policy = content_policy or config.security.telemetry_policy()
@@ -42,7 +40,7 @@ class RuntimeTelemetry:
             {
                 "service.name": "blackcell-runtime",
                 "service.version": "0.2.0",
-                "service.instance.id": policy.sanitize_text(config.worker_id),
+                "service.instance.id": policy.sanitize_text(config.security.principal.principal_id),
             }
         )
         exporter = OpenTelemetrySpanExporter.otlp_http(
@@ -59,7 +57,7 @@ class RuntimeTelemetry:
             max_records=0,
         )
         return cls(
-            TraceWorkflowTelemetry(recorder),
+            recorder=recorder,
             exporter=exporter,
             flush_timeout_millis=telemetry.timeout_seconds * 1_000,
         )

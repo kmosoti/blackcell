@@ -1,285 +1,138 @@
-version: 4
 project:
   key: BCP
-  name: Blackcell
-  description: Verifier-driven, project-scoped control runtime for evidence-grounded software work.
+  name: BlackCell
+  description: Evidence-grounded, project-scoped software execution with durable assurance.
 
 principles:
-  - Keep one immutable evidence ledger and domain-scoped state projectors.
+  - Keep one immutable event ledger and content-addressed artifact store.
   - Treat models as replaceable proposal mechanisms without ambient tool authority.
-  - Separate occurrence identity, idempotency, correlation, and causation.
-  - Preserve conflicts, unknowns, effective time, and source provenance.
-  - Make ContextFrame selections and omissions independently inspectable.
-  - Gate every action through typed developer-authored policy.
-  - Distinguish historical replay from counterfactual reruns.
-  - Promote scientific claims only after held-out comparison with simple baselines.
-  - Keep intent, prediction, review, verification, and human acceptance as distinct roles.
-  - Extend the accepted runtime only when direct product evidence identifies a missing contract.
+  - Keep project, intent, plan, run, execution, review, verification, and replay distinct.
+  - Preserve conflicts, counterevidence, unknowns, effective time, and provenance.
+  - Gate every effect through typed host-owned policy and acceptance commands.
+  - Distinguish historical replay from any operation that can repeat a side effect.
+  - Fail closed on incompatible persisted state without automatic migration or deletion.
+  - Use capability names for executable architecture; revisions belong only to real boundaries.
 
-phase_1:
-  product_slice: repository-operator
-  research_surface: operator-bench
-  specifications:
-    - BCP-0028
-    - BCP-0029
-    - BCP-0030
-    - BCP-0031
-    - BCP-0032
-    - BCP-0033
-    - BCP-0034
-
-runtime_v1:
-  status: evidence-complete
-  branch: agent/runtime-v1
-  note: Runtime-v1 is the delivered foundation for current runtime surfaces; architecture consolidation is a separate Blackcell project program.
-  delivery:
-    pull_requests: 1
-    publish_each_node: true
-    allow_force_push: false
-    confidence_review: independent-subagent
-  critical_path:
-    - protocol-v2
-    - gateway-decision
-    - outcome-evaluation
-    - transition-commit
-    - closed-loop-integration
-    - live-free-replay
-    - product-delegation
-    - durable-dag
-    - operator-platform
-    - release-evidence
-  remaining_dag:
-    selected_next: null
-    satisfied_dependencies:
-      - WP09b
-      - WP10
-      - WP11-decision
-      - WP12
-      - WP17
-      - WP19-role-dag
-      - WP20
-      - WP22b
-      - WP23a
-      - WP23
-      - WP24
-      - WP25
-      - WP26
-      - WP27
-    nodes: []
-  release_evidence:
-    status: complete-unpublished
-    config: release/runtime-v1/release.toml
-    guide: docs/guides/runtime-v1-release.md
-    examples: examples/runtime-v1
-    sbom: release/runtime-v1/blackcell-runtime-v1.cdx.json
-    verification_manifest: release/runtime-v1/verification-manifest.json
-    publication_performed: false
-
-active_surfaces:
-  cli:
-    - blackcell operator run --model recorded --repo .
-    - blackcell operator state
-    - blackcell operator context
-    - blackcell operator replay
-    - blackcell events list
-    - blackcell bench list
-    - blackcell bench run --condition structured --trials 1
-    - blackcell bench compare --model recorded
-    - blackcell bench predict
-    - blackcell bench runtime --repo-root .
-  packages:
-    - blackcell.kernel
-    - blackcell.domains.repository
-    - blackcell.context
-    - blackcell.control
-    - blackcell.models
-    - blackcell.operator
-    - blackcell.evaluation
-    - blackcell.telemetry
-    - blackcell.features.ingest_observation
-    - blackcell.features.project_operational_state
-    - blackcell.features.derive_signal_packet
-    - blackcell.features.retrieve_evidence
-    - blackcell.features.build_context
-    - blackcell.features.solve_constraints
-    - blackcell.features.authorize_action
-    - blackcell.features.execute_affordance
-    - blackcell.features.predict_transition
-    - blackcell.gateway
-    - blackcell.workflows
-    - blackcell.orchestration
-    - blackcell.runtime
-    - blackcell.interfaces
-    - blackcell.bootstrap
-    - blackcell.adapters.persistence.sqlite
-    - blackcell.adapters.reasoning
-    - blackcell.adapters.retrieval
-    - blackcell.adapters.execution.local_process
-    - blackcell.adapters.telemetry
-    - blackcell.adapters.recovery
-    - blackcell.config
-
-retired_surfaces:
-  work_package: WP26
-  packages:
-    - blackcell.world
-    - blackcell.nesy
-    - blackcell.harness
-    - blackcell.latent
-    - blackcell.agents
-    - blackcell.ledger
-  commands:
-    - blackcell world
-    - blackcell nesy
-    - blackcell harness
-    - blackcell latent
-    - blackcell ledger
-    - blackcell adapters
-    - blackcell agents
-    - blackcell doctor
-  retained_history:
-    - daily-operator/v1 read-only replay
-  note: No package, command, writer, generated artifact, alias, or dual store remains for these prototype surfaces.
-
-architecture_consolidation:
-  status: merged-complete
-  branch: refactor/consolidation
-  superseded_branch: refactor/architecture-consolidation
-  base_ref: origin/main
-  implementation_base_sha: 1a249d8aaa1f5f230c8492ab249ea06d255f24ee
-  plan: refactor-consolidation.plan.yaml
-  parent_epic: "Epic: Consolidate Blackcell architecture without weakening trust, replay, or durability boundaries"
-  merge:
-    pull_request: 72
-    base_branch: main
-    merge_commit: ff1e6be69da3135d35411ae10f63208da278c4bf
-    merged_at: "2026-07-17T00:53:01Z"
-  delivery_metadata:
-    assignee: kmosoti
-    labels:
-      default:
-        - enhancement
-      documentation:
-        - AC00
-        - AC06
+capability_graph:
+  entry: project
+  terminal: verification
+  nodes:
     project:
-      title: BlackCell
-      status:
-        epic: Done
-        completed:
-          AC00: Done
-          AC01: Done
-          AC02: Done
-          AC03: Done
-          AC04: Done
-          AC05: Done
-          AC06: Done
-          AC07: Done
-        active: {}
-        queued: null
-      type: refactor
-    development_branch: refactor/consolidation
-  verification_policy:
-    runtime_v1_evidence: historical-read-only
-    baseline: docs/decisions/architecture-consolidation/ac00-baseline.json
-    architecture_fitness_decision: docs/decisions/architecture-consolidation/ac07-architecture-fitness.json
-    source_bound_candidate: retired
-    retirement_reason: Project-wide source binding forced evidence reissuance after every ordinary change without an independent release or persisted-contract boundary.
-    ongoing_gate: Protected-branch CI enforces binary architecture rules and the complete maintained quality suite.
-    dependency_closure: Python lock and runtime-v1 SBOM are unchanged by GitHub Actions dependency updates.
-  verification:
-    architecture_fitness_gate: >-
-      uv run python tools/run_pytest.py
-      tests/architecture/test_dependencies.py::test_concrete_runtime_construction_stays_at_approved_sites
-      tests/architecture/test_dependencies.py::test_production_runtime_does_not_import_compatibility_or_experiments
-      tests/architecture/test_dependencies.py::test_repository_runtime_composition_is_owned_by_bootstrap
-      tests/architecture/test_dependencies.py::test_replay_slice_cannot_reach_live_models_or_actions
-      -q --blackcell-require-all-pass
-    final_full_gate: uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing
-    historical_runtime_v1_gate: uv run python tools/run_pytest.py tests/unit/test_release_evidence.py -q
-  planning_model:
-    - strategic
-    - logistics
-    - human
-    - risk
-    - assessment
-  work_packages:
-    - AC00
-    - AC01
-    - AC02
-    - AC03
-    - AC04
-    - AC05
-    - AC06
-    - AC07
-  historical_context:
-    - Runtime-v1 release artifacts are frozen historical foundation evidence, not architecture-consolidation acceptance evidence.
-    - AC00 remains the historical source-bound baseline for the decisions that started the program.
-    - ADR 0008 supersedes the AC00 candidate scheme and retires AC07 source-bound evidence while retaining binary architecture fitness rules.
+      owns: canonical repository identity and configuration binding
+    intent:
+      owns: objective, constraints, assumptions, and unresolved questions
+    plan:
+      owns: dependency graph, budgets, effects, paths, and acceptance commands
+    run:
+      owns: asynchronous submission, cancellation, status, and event identity
+    execution:
+      owns: fenced claims, isolated worktrees, provider dispatch, checks, and cleanup
+    review:
+      owns: independent defect search and epistemic findings
+    verification:
+      owns: deterministic acceptance and epistemic evidence matrix
+    replay:
+      owns: live-free reconstruction and artifact-integrity checks
+  edges:
+    - [project, intent]
+    - [intent, plan]
+    - [plan, run]
+    - [run, execution]
+    - [execution, review]
+    - [review, verification]
+    - [run, replay]
+    - [execution, replay]
+    - [review, replay]
+    - [verification, replay]
 
-alpha:
-  status: in-progress
-  accepted_on: "2026-07-22"
-  branch: feature/repository-review-alpha
-  base_revision: f2965ab3d1fe18357aae58042345a6a22e171203
-  plan: alpha.plan.yaml
-  decision: docs/adr/0009-project-runtime-scope.md
-  scope: docs/scope.md
-  target: CLI-first project-scoped agentic framework with one authoritative daemon.
-  active_work_package: A08
-  daemon:
-    process_model: foreground
-    authority: state, scheduling, policy, providers, recovery, and ordered events
-    supervision: operating-system service manager
-  clients:
+runtime:
+  composition_root: blackcell-runtime
+  foreground_components:
+    - api
+    - execution-worker
+    - review-worker
+    - verification-worker
+  client_surfaces:
     - JSON-first CLI
-    - PyRatatui TUI
-    - Litestar web UI
+    - PyRatatui terminal UI
+    - Litestar browser UI
+  cli_commands:
+    - blackcell project register
+    - blackcell intent accept
+    - blackcell plan accept
+    - blackcell run submit
+    - blackcell run status
+    - blackcell run query
+    - blackcell run cancel
+    - blackcell run replay
+    - blackcell events list
+    - blackcell tui
+  http_contract:
+    routes:
+      - /api/v1/projects
+      - /api/v1/intents
+      - /api/v1/plans
+      - /api/v1/runs
+      - /api/v1/events
+      - /api/v1/ui
+    browser: /ui
+  optional_configuration:
+    execution: BLACKCELL_EXECUTION_CONFIG_FILE
+    review: BLACKCELL_REVIEW_CONFIG_FILE
+    verification: BLACKCELL_VERIFICATION_CONFIG_FILE
   project_configuration:
     provider: Kernform
-    supported_version: "0.1.0"
-    wire_schema: kernform.command/v1
+    supported_package_version: "0.2.0"
+    wire_schema: kernform.command/v2
     transport: argv-only subprocess
-  legacy_runtime:
-    component: DailyOperatorV2Workflow
-    disposition: migration-and-replay-evidence-only
-    new_alpha_invocation_allowed: false
-  github_reconciliation:
-    superseded_epics: [44, 54, 75]
-    superseded_standalone_issues: [42, 43]
-    replacement_epic: 91
-    replacement_issues: {A00: 92, A01: 93, A02: 94, A03: 95, A04: 96, A05: 97, A06: 98, A07: 99, A08: 100}
-    status: complete
-  non_goals:
-    - Greenfield Python, Rust, or PyO3 rewrite.
-    - Repository-local named-agent or Codex orchestration configuration.
-    - Client-owned schedulers or persistence.
-    - Distributed deployment or online self-modification.
-  verification:
-    focused_gate: >-
-      uv run python tools/run_pytest.py
-      tests/unit/test_alpha_plan.py::test_alpha_program_is_the_single_active_delivery_authority
-      tests/unit/test_alpha_plan.py::test_alpha_architecture_has_one_daemon_and_explicit_client_boundaries
-      tests/unit/test_alpha_plan.py::test_alpha_work_package_dag_is_acyclic_and_has_one_active_node
-      tests/unit/test_alpha_plan.py::test_alpha_plan_enforces_the_fast_development_loop
-      tests/unit/test_alpha_plan.py::test_canonical_files_reference_alpha_and_remove_stale_delivery_programs
-      tests/unit/test_docs_graph.py::test_docs_graph_entrypoints_exist
-      tests/unit/test_docs_graph.py::test_docs_graph_nodes_have_frontmatter
-      tests/unit/test_docs_graph.py::test_docs_graph_map_links_canonical_nodes
-      tests/unit/test_docs_graph.py::test_decision_atlas_records_every_adr_node
-      tests/unit/test_docs_graph.py::test_readme_local_links_and_recorded_quickstart_are_maintained
-      tests/unit/test_refactor_consolidation_plan.py::test_blackcell_plan_declares_the_project_program_and_historical_context
-      tests/unit/test_daemon_cli.py::test_daemon_status_reports_runtime_readiness
-      tests/unit/test_daemon_cli.py::test_daemon_status_uses_environment_endpoint_and_fails_when_not_ready
-      tests/unit/test_daemon_cli.py::test_daemon_help_exposes_status_without_legacy_submission
-      tests/unit/test_runtime_http_client.py::test_status_decodes_public_health_contracts_and_not_ready_state
-      tests/unit/test_runtime_http_client.py::test_client_rejects_malformed_or_remote_plaintext_endpoints
-      tests/unit/test_runtime_http_client.py::test_client_accepts_remote_https_and_loopback_http
-      tests/unit/test_runtime_http_client.py::test_client_failures_are_typed_bounded_and_content_free
-      tests/unit/test_runtime_http_client.py::test_stdlib_transport_bounds_responses_and_connection_failures
-      -q --blackcell-require-all-pass
-    project_gate: uv run ruff check .
+
+epistemic_guard:
+  review_dimensions:
+    - acceptance-coverage
+    - evidence-grounding
+    - counterevidence
+    - causal-overreach
+    - scope-challenge
+    - uncertainty
+  verification_outcomes:
+    - pass
+    - fail
+    - inconclusive
+  rules:
+    - Every finding cites admitted evidence.
+    - Every declared acceptance criterion has a verification row.
+    - Missing evidence remains unknown and cannot be promoted to pass.
+    - Human acceptance remains separate from model review and deterministic verification.
+
+architecture_policy:
+  retired_runtime_roots: architecture/dependency_rules.json
+  executable_names:
+    maturity_labels: forbidden
+    speculative_generation_labels: forbidden
+  compatibility:
+    old_routes: forbidden
+    old_environment_variables: forbidden
+    import_reexports: forbidden
+    automatic_database_migration: forbidden
+    automatic_database_deletion: forbidden
+  genuine_revision_boundaries:
+    - public HTTP contracts
+    - persisted schemas and events
+    - package and dependency metadata
+    - isolated third-party adapters
 
 verification:
-  - uv run python tools/run_pytest.py tests/unit/test_alpha_plan.py::test_canonical_files_reference_alpha_and_remove_stale_delivery_programs tests/unit/test_docs_graph.py::test_readme_local_links_and_recorded_quickstart_are_maintained -q --blackcell-require-all-pass
-  - uv run ruff check .
+  architecture_gate: >-
+    uv run python tools/run_pytest.py
+    tests/architecture/test_dependencies.py
+    -q --blackcell-require-all-pass
+  format_gate: uv run ruff format --check .
+  lint_gate: uv run ruff check .
+  type_gate: uv run ty check
+  full_gate: uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing
+
+historical_context:
+  - docs/adr
+  - docs/decisions
+  - docs/spec
+  - experiments

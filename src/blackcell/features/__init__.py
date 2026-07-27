@@ -1,1 +1,0 @@
-"""Vertical application feature slices."""

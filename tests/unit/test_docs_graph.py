@@ -18,13 +18,14 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/scope.md",
         "docs/architecture.md",
         "docs/scientific-basis.md",
+        "docs/epistemic-evaluation.md",
         "docs/evaluation-methodology.md",
         "docs/adr/0001-event-sourced-kernel.md",
         "docs/adr/0002-domain-scoped-state.md",
         "docs/adr/0003-model-execution-boundary.md",
         "docs/adr/0004-evolutionary-runtime-architecture.md",
         "docs/adr/0005-durable-run-and-execution-protocol.md",
-        "docs/adr/0006-versioned-run-feedback-protocol.md",
+        "docs/adr/0006-run-feedback-protocol-evolution.md",
         "docs/adr/0007-runtime-security-boundary.md",
         "docs/adr/0008-architecture-consolidation.md",
         "docs/adr/0009-project-runtime-scope.md",
@@ -36,11 +37,11 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/spec/bcp-0032-repository-operator.md",
         "docs/spec/bcp-0033-operator-bench.md",
         "docs/spec/bcp-0034-evolutionary-runtime.md",
-        "docs/guides/runtime-v1-release.md",
-        "docs/guides/alpha-operator-quickstart.md",
-        "docs/guides/alpha-worker-configuration.md",
-        "docs/guides/alpha-review-configuration.md",
-        "docs/guides/alpha-verify-configuration.md",
+        "docs/guides/runtime-quickstart.md",
+        "docs/guides/execution.md",
+        "docs/guides/execution-worker-configuration.md",
+        "docs/guides/review-configuration.md",
+        "docs/guides/verification-configuration.md",
     }
 
     assert all(Path(path).exists() for path in expected)
@@ -92,9 +93,9 @@ def test_readme_local_links_and_recorded_quickstart_are_maintained() -> None:
         assert path.exists(), f"missing README link target: {target}"
 
     assert "uv sync --locked --all-groups" in text
-    assert "bash examples/runtime-v1/recorded-operator.sh" in text
-    assert "docs/guides/alpha-operator-quickstart.md" in local_targets
-    assert '"schema_version": "runtime-v1-recorded-example/v1"' in text
+    assert "bash examples/runtime/validate-contracts.sh" in text
+    assert "docs/guides/runtime-quickstart.md" in local_targets
+    assert '"schema_version": "runtime-contract-example"' in text
 
 
 def _frontmatter(path: Path) -> dict[str, object]:

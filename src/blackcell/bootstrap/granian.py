@@ -8,7 +8,7 @@ from granian.constants import HTTPModes, Interfaces, Loops, RuntimeModes, TaskIm
 from litestar import Litestar
 
 from blackcell.adapters.telemetry import RuntimeTelemetry
-from blackcell.bootstrap.runtime_api import RuntimeApiService
+from blackcell.bootstrap.runtime_service import RuntimeService
 from blackcell.config import RuntimeProcessConfig
 from blackcell.interfaces.http import SlidingWindowRequestQuota, create_http_app
 from blackcell.runtime import RuntimeStorageQuota
@@ -22,13 +22,12 @@ def create_granian_app() -> Litestar:
     config = RuntimeProcessConfig.from_environment()
     telemetry = RuntimeTelemetry.from_config(config)
     try:
-        service = RuntimeApiService.from_config(
+        service = RuntimeService.from_config(
             config.security,
             repository_root=config.repository_root,
-            workflow_telemetry=telemetry.workflow,
             artifact_max_total_bytes=config.quota.artifact_max_total_bytes,
-            alpha_isolation_root=(
-                None if config.alpha_worker is None else config.alpha_worker.isolation.root
+            isolation_root=(
+                None if config.execution_worker is None else config.execution_worker.isolation.root
             ),
             storage_quota=RuntimeStorageQuota(
                 config.security.paths,
@@ -50,7 +49,7 @@ def create_granian_app() -> Litestar:
 
 
 class GranianServer:
-    """Production-shaped, single-worker ASGI lifecycle for runtime-v1."""
+    """Production-shaped, single-worker ASGI lifecycle for the runtime."""
 
     def __init__(
         self,

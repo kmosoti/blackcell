@@ -15,10 +15,10 @@ edges:
 Status: active — WP06f, WP09b-WP09c, and WP17-WP22 compose the public Repository Operator, bounded
 host-model, scoped state/context, gateway, artifact-first execution, independent outcome
 evaluation, transition, and live-free replay around one canonical `daily-operator/v2` application
-workflow. Runtime-v1 continues as one dependency DAG on one integration branch and one pull
+workflow. Runtime foundation continues as one dependency DAG on one integration branch and one pull
 request.
 
-`DailyOperatorV2Workflow` now records one create-only causal run from immutable request and
+`DailyOperatorWorkflow` now records one create-only causal run from immutable request and
 evaluation policy through gateway decision, symbolic authorization, journaled execution,
 independent outcome observation, deterministic evaluation, evidence-scoped transition acceptance,
 verified trace, and terminal result. Duplicate delivery is rejected before live work, unresolved
@@ -28,10 +28,10 @@ rather than discarded.
 `ReplayRunHandler` now dispatches recorded `daily-operator/v1` and `daily-operator/v2` histories
 through history-reader, protocol-decoder, artifact-verifier, and projection-verifier ports only.
 It distinguishes completed, failed, interrupted, and corrupt history from the material run
-outcome, verifies exact v2 journal and state evidence, reports absent v1 state snapshots as not
+outcome, verifies exact feedback journal and state evidence, reports absent baseline state snapshots as not
 recorded, and performs no write or live call. This establishes an integrated closed loop and
 historical replay contract. WP09b now joins it to the public Repository Operator and CLI: live runs
-are composed once through the v2 workflow, and replay remains a separate read-only capability.
+are composed once through the feedback workflow, and replay remains a separate read-only capability.
 
 `CodexCliModelAdapter` supplies the bounded host-model edge for that join. It receives the exact
 gateway-selected model and admitted deadline, writes only canonical input and schema documents to
@@ -87,7 +87,7 @@ src/blackcell/
 │   └── telemetry/otel/
 ├── interfaces/
 │   ├── http/contracts/
-│   ├── http/v1/
+│   ├── http/
 │   └── cli/
 └── bootstrap/              # CLI, worker, HTTP composition roots
 ```
@@ -208,8 +208,8 @@ production RTO/RPO, or default-change trigger.
 
 WP26 records the 106-test predecessor characterization before removing the prototype world, NeSy,
 harness, latent, generic-ledger, generated-agent, and runtime-discovery packages and commands. It
-also removes the predecessor Repository Operator and Daily Operator v1 public writers. The kernel
-database is the sole runtime write authority; immutable v1 histories remain available only to the
+also removes the predecessor Repository Operator and Daily Operator baseline public writers. The kernel
+database is the sole runtime write authority; immutable baseline histories remain available only to the
 read-only replay decoder and verifier. Architecture debt is empty, and no alias or tombstone
 command preserves the removed surfaces.
 
@@ -299,7 +299,7 @@ claim per-client, filesystem, distributed, encrypted, or automatic-cutover behav
 | 15 | simulation and boundary review | failure matrix, token/latency/cost report |
 | 16 | outcome evaluation slice | goal, evidence, policy, transition measures |
 | 17 | replay and counterfactual separation | proof that replay has no live dependency path |
-| 18 | Litestar/msgspec API | versioned contracts and API tests |
+| 18 | Litestar/msgspec API | explicit contracts and API tests |
 | 19 | Granian bootstrap | lifecycle, graceful shutdown, worker/API modes |
 | 20 | Podman image and compose contract | rootless, health, volume, read-only tests |
 | 21 | OpenTelemetry adapter | stable spans, redaction, trace correlation |
@@ -308,9 +308,8 @@ claim per-client, filesystem, distributed, encrypted, or automatic-cutover behav
 | 24 | prediction/NeSy experiments | calibration and hybrid-vs-neural baseline |
 | 25 | performance and reliability benchmark | profiling before optimization |
 | 26 | legacy retirement | no dual stores or obsolete coordination paths |
-| 27 | release evidence | docs, examples, SBOM, reproducible verification |
 
-## Runtime-v1 continuous execution DAG
+## Runtime foundation continuous execution DAG
 
 Work-package identifiers remain stable. Lettered suffixes split broad packages into reviewable
 commits without inventing new product taxonomies. Dependencies control execution; joins trigger
@@ -318,7 +317,7 @@ automated verification and independent review, not a user approval pause.
 
 ```mermaid
 flowchart TD
-    M[PR 40 foundation] --> P[protocol-v2]
+    M[PR 40 foundation] --> P[feedback protocol]
     M --> S04a[WP04c corrections and effective time]
     S04a --> S04b[WP04d expiry unknowns checkpoints]
     S04b --> S05[WP05c context parity and inspection]
@@ -372,25 +371,22 @@ flowchart TD
     R17 --> RET26
     X23 --> RET26
     X24 --> RET26
-    REC22 --> REL27[WP27 runtime-v1 release evidence]
-    PERF25 --> REL27
-    RET26 --> REL27
 ```
 
 For remaining dependency calculation, WP11 is satisfied by its recorded defer decision rather
 than a speculative adapter. The reviewed Daily Operator role DAG identified as `D16` above is
 landed WP19 evidence.
 
-### Runtime-v1 completion DAG
+### Runtime foundation completion DAG
 
 WP24 is satisfied by the bounded defer record in
-[`wp24-prediction-experiments.json`](../decisions/runtime-v1/wp24-prediction-experiments.json):
+[`wp24-prediction-experiments.json`](../decisions/runtime-foundation/wp24-prediction-experiments.json):
 matched deterministic measurements are retained, while local-neural and hybrid-neural-symbolic
 candidates remain unavailable. WP23 is already satisfied by its bounded revise record. WP25 is
 satisfied by the complete retained baseline in
-[`wp25-runtime-benchmark.json`](../decisions/runtime-v1/wp25-runtime-benchmark.json). WP26 is
+[`wp25-runtime-benchmark.json`](../decisions/runtime-foundation/wp25-runtime-benchmark.json). WP26 is
 satisfied by the source-only retirement evidence in
-[`wp26-legacy-retirement.json`](../decisions/runtime-v1/wp26-legacy-retirement.json).
+[`wp26-legacy-retirement.json`](../decisions/runtime-foundation/wp26-legacy-retirement.json).
 
 ```mermaid
 flowchart LR
@@ -409,36 +405,22 @@ flowchart LR
     X23 --> RET26
     X24 --> RET26
 
-    REC22[WP22b satisfied] --> REL27[WP27 runtime-v1 release evidence]
-    PERF25 --> REL27
-    RET26 --> REL27
-
     classDef satisfied fill:#d9e8fb,stroke:#4f6f8f,color:#111
     classDef ready fill:#fff1b8,stroke:#9a6b00,color:#111
     classDef selected fill:#c9efcf,stroke:#27753a,stroke-width:3px,color:#111
     classDef waiting fill:#eeeeee,stroke:#777,color:#111
-    class C09,F23,X23,T10,T11,N12,X24,D19,P20,R17,REC22,PERF25,RET26,REL27 satisfied
+    class C09,F23,X23,T10,T11,N12,X24,D19,P20,R17,REC22,PERF25,RET26 satisfied
 ```
 
-### Completed bounded nodes
-
-| Node | Deliverable | Acceptance evidence |
-| --- | --- | --- |
-| WP27 | runtime-v1 release evidence | maintained documentation and isolated examples, deterministic CycloneDX 1.7 Python-runtime SBOM, and a hash-bound reproducible verification manifest |
-
-WP27 is satisfied and no bounded runtime-v1 DAG node remains. Its evidence is deliberately
-unpublished: completion does not authorize or imply a package/image build, tag, release, signature,
-provenance attestation, vulnerability result, commit, push, or parallel writers on shared state.
-
-The landed dependency join includes protocol-v2, WP04c-WP05c, WP06c-WP06f, WP08b, WP09b-WP09c,
-WP10, WP12-WP15, WP16a-WP16c, WP17-WP22, WP23a, WP23, WP24, WP25, WP26, and WP27. WP09b is the product-accepted
+The landed dependency join includes the feedback protocol, WP04c-WP05c, WP06c-WP06f, WP08b,
+WP09b-WP09c, WP10, WP12-WP15, WP16a-WP16c, WP17-WP22, WP23a, WP23, WP24, WP25, and WP26. WP09b is the product-accepted
 public composition over those integrated contracts; WP10 consumes its recorded initial/outcome
 state and action identities without entering the product control path, while WP12 remains an
 explicitly injected policy-edge adapter.
 
 ## Delivery and review protocol
 
-- Use `agent/runtime-v1` and one draft PR based directly on merged `main`. Keep each bounded node
+- Use `agent/runtime-foundation` and one draft PR based directly on merged `main`. Keep each bounded node
   or review repair as a logically isolated commit; do not create stacked branches or PRs.
 - Publish every completed node. Never rebase or force-push the published integration branch.
 - The root integrator alone owns commits and shared hotspots. Parallel executors receive disjoint
@@ -467,7 +449,7 @@ explicitly injected policy-edge adapter.
 - human correction appends evidence instead of rewriting history;
 - expected and independently observed effects produce a typed evaluation.
 
-## Runtime-v1 program acceptance
+## Runtime foundation program acceptance
 
 - model selection is gateway policy rather than agent-owned configuration;
 - a multi-agent DAG survives worker restart without duplicate committed effects;

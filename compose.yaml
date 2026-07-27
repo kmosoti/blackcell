@@ -1,5 +1,5 @@
 x-blackcell-runtime: &blackcell-runtime
-  image: "${BLACKCELL_RUNTIME_IMAGE:-blackcell-runtime:0.2.0}"
+  image: "${BLACKCELL_RUNTIME_IMAGE:-blackcell-runtime:local}"
   build:
     context: .
     dockerfile: Containerfile
@@ -20,7 +20,6 @@ x-blackcell-runtime: &blackcell-runtime
     BLACKCELL_GRACEFUL_TIMEOUT_SECONDS: "30"
     BLACKCELL_REPOSITORY_ROOT: /workspace/repository
     BLACKCELL_TRUSTED_PROXY_HOPS: "0"
-    BLACKCELL_WORKER_ID: worker:compose:1
   volumes:
     - type: volume
       source: blackcell-data
@@ -44,21 +43,5 @@ services:
         published: "${BLACKCELL_PUBLISHED_PORT:-8080}"
         host_ip: 127.0.0.1
         protocol: tcp
-  blackcell-worker:
-    <<: *blackcell-runtime
-    command:
-      - worker
-    depends_on:
-      blackcell-api:
-        condition: service_healthy
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - python -c 'import os; os.kill(1, 0)'
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
-
 volumes:
   blackcell-data:

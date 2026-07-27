@@ -13,7 +13,7 @@ edges:
 
 # Runtime Recovery and Quotas
 
-Runtime-v1 has one local recovery format for the canonical SQLite database and immutable artifact
+Runtime foundation has one local recovery format for the canonical SQLite database and immutable artifact
 blobs. A bundle is a mode-`0700` directory containing a consistent SQLite online snapshot, the
 exact artifact inventory visible in that snapshot, and a canonical mode-`0600` manifest written
 last. The manifest records the database hash, schema version, event high-water position, and every

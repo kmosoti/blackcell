@@ -17,13 +17,13 @@ from blackcell.config import (
     API_TOKEN_ENV,
     DATA_DIR_ENV,
     REPOSITORY_ROOT_ENV,
-    AlphaReviewWorkerRuntimeConfig,
-    AlphaVerifyWorkerRuntimeConfig,
-    AlphaWorkerRuntimeConfig,
+    ExecutionWorkerRuntimeConfig,
+    ReviewWorkerRuntimeConfig,
     RuntimeProcessConfig,
+    VerificationWorkerRuntimeConfig,
 )
 
-TOKEN = "Alpha-daemon_test-token.0123456789-ABCDEFG"
+TOKEN = "Runtime-daemon_test-token.0123456789-ABCDEFG"
 
 
 class FakeProcess:
@@ -72,7 +72,7 @@ class FakeFactory:
         return process
 
 
-def test_daemon_starts_api_only_without_alpha_configuration(
+def test_daemon_starts_api_only_without_runtime_configuration(
     tmp_path: Path,
 ) -> None:
     stop_event = Event()
@@ -102,14 +102,14 @@ def test_daemon_starts_api_only_without_alpha_configuration(
     assert api.terminated and not api.killed
 
 
-def test_daemon_adds_alpha_worker_but_never_legacy_worker_when_configured(
+def test_daemon_adds_only_the_configured_execution_worker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path)
     configured = replace(
         config,
-        alpha_worker=cast("AlphaWorkerRuntimeConfig", object()),
+        execution_worker=cast("ExecutionWorkerRuntimeConfig", object()),
     )
     validated: list[RuntimeProcessConfig] = []
 
@@ -122,14 +122,14 @@ def test_daemon_adds_alpha_worker_but_never_legacy_worker_when_configured(
         validated.append(value)
 
     monkeypatch.setattr(
-        "blackcell.bootstrap.daemon.validate_alpha_worker_runtime_config",
+        "blackcell.bootstrap.daemon.validate_execution_worker_runtime_config",
         validate,
     )
     stop_event = Event()
     stop_event.set()
     api = FakeProcess()
-    alpha_worker = FakeProcess()
-    factory = FakeFactory(api, alpha_worker)
+    execution_worker = FakeProcess()
+    factory = FakeFactory(api, execution_worker)
 
     daemon = RuntimeDaemon.from_config(
         configured,
@@ -143,21 +143,21 @@ def test_daemon_adds_alpha_worker_but_never_legacy_worker_when_configured(
     assert validated == [configured]
     assert [record.argv for record in factory.records] == [
         ("runtime", "api"),
-        ("runtime", "alpha-worker"),
+        ("runtime", "execution-worker"),
     ]
     assert all("worker" not in record.argv for record in factory.records)
-    assert api.terminated and alpha_worker.terminated
+    assert api.terminated and execution_worker.terminated
 
 
-def test_daemon_composes_explicit_alpha_execution_and_review_children(
+def test_daemon_composes_explicit_runtime_execution_and_review_children(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path)
     configured = replace(
         config,
-        alpha_worker=cast("AlphaWorkerRuntimeConfig", object()),
-        alpha_review_worker=cast("AlphaReviewWorkerRuntimeConfig", object()),
+        execution_worker=cast("ExecutionWorkerRuntimeConfig", object()),
+        review_worker=cast("ReviewWorkerRuntimeConfig", object()),
     )
     execution_validated: list[RuntimeProcessConfig] = []
     review_validated: list[RuntimeProcessConfig] = []
@@ -179,11 +179,11 @@ def test_daemon_composes_explicit_alpha_execution_and_review_children(
         review_validated.append(value)
 
     monkeypatch.setattr(
-        "blackcell.bootstrap.daemon.validate_alpha_worker_runtime_config",
+        "blackcell.bootstrap.daemon.validate_execution_worker_runtime_config",
         validate_execution,
     )
     monkeypatch.setattr(
-        "blackcell.bootstrap.daemon.validate_alpha_review_worker_runtime_config",
+        "blackcell.bootstrap.daemon.validate_review_worker_runtime_config",
         validate_review,
     )
     stop_event = Event()
@@ -206,13 +206,13 @@ def test_daemon_composes_explicit_alpha_execution_and_review_children(
     assert review_validated == [configured]
     assert [record.argv for record in factory.records] == [
         ("runtime", "api"),
-        ("runtime", "alpha-worker"),
-        ("runtime", "alpha-review-worker"),
+        ("runtime", "execution-worker"),
+        ("runtime", "review-worker"),
     ]
     assert all(record.argv[-1] != "worker" for record in factory.records)
     assert api.terminated and execution.terminated and review.terminated
 
-    review_only = replace(config, alpha_review_worker=configured.alpha_review_worker)
+    review_only = replace(config, review_worker=configured.review_worker)
     review_validated.clear()
     stop_event = Event()
     stop_event.set()
@@ -231,18 +231,18 @@ def test_daemon_composes_explicit_alpha_execution_and_review_children(
     assert review_validated == [review_only]
     assert [record.argv for record in factory.records] == [
         ("runtime", "api"),
-        ("runtime", "alpha-review-worker"),
+        ("runtime", "review-worker"),
     ]
 
 
-def test_daemon_composes_explicit_alpha_verification_child(
+def test_daemon_composes_explicit_verification_child(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config = _config(tmp_path)
     configured = replace(
         config,
-        alpha_verify_worker=cast("AlphaVerifyWorkerRuntimeConfig", object()),
+        verification_worker=cast("VerificationWorkerRuntimeConfig", object()),
     )
     validated: list[RuntimeProcessConfig] = []
 
@@ -250,7 +250,7 @@ def test_daemon_composes_explicit_alpha_verification_child(
         validated.append(value)
 
     monkeypatch.setattr(
-        "blackcell.bootstrap.daemon.validate_alpha_verify_worker_runtime_config",
+        "blackcell.bootstrap.daemon.validate_verification_worker_runtime_config",
         validate,
     )
     stop_event = Event()
@@ -271,7 +271,7 @@ def test_daemon_composes_explicit_alpha_verification_child(
     assert validated == [configured]
     assert [record.argv for record in factory.records] == [
         ("runtime", "api"),
-        ("runtime", "alpha-verify-worker"),
+        ("runtime", "verification-worker"),
     ]
     assert all(record.argv[-1] != "worker" for record in factory.records)
     assert api.terminated and verifier.terminated
@@ -285,7 +285,7 @@ def test_daemon_stops_sibling_when_a_component_exits(tmp_path: Path) -> None:
         graceful_timeout_seconds=1,
         process_factory=FakeFactory(api, worker),
         command_prefix=("runtime",),
-        components=("api", "alpha-worker"),
+        components=("api", "execution-worker"),
         environment={},
     )
 
@@ -301,7 +301,7 @@ def test_daemon_stops_sibling_when_a_component_exits(tmp_path: Path) -> None:
             graceful_timeout_seconds=1,
             process_factory=failing_factory,
             command_prefix=("runtime",),
-            components=("api", "alpha-worker"),
+            components=("api", "execution-worker"),
             environment={},
         ).serve()
     assert "sensitive" not in str(startup.value)
@@ -319,7 +319,7 @@ def test_daemon_forces_a_stale_child_after_the_grace_period(tmp_path: Path) -> N
         stop_event=stop_event,
         process_factory=FakeFactory(stale, worker),
         command_prefix=("runtime",),
-        components=("api", "alpha-worker"),
+        components=("api", "execution-worker"),
         environment={},
     )
 

@@ -36,12 +36,12 @@
       "module_size": {
         "after": {
           "module_count": 218,
-          "run_records_v2_lines": 2019,
+          "feedback_run_records_lines": 2019,
           "state_transition_lines": 1516
         },
         "before": {
           "module_count": 211,
-          "run_records_v2_lines": 2690,
+          "feedback_run_records_lines": 2690,
           "state_transition_lines": 1855
         },
         "conclusion": "The two ratified protocol hotspots became smaller while phase modules increased the total module count; neither count is a gate.",
@@ -159,7 +159,7 @@
     "CLI and HTTP behavior",
     "database schema and scheduler behavior",
     "authority, replay, durability, and recovery semantics",
-    "runtime-v1 historical evidence"
+    "runtime-foundation historical evidence"
   ],
   "issue_number": 71,
   "preserved_invariants": [
@@ -170,7 +170,7 @@
     "journaled-execution-and-reconciliation",
     "scheduler-fencing-and-recovery",
     "fail-closed-evidence-semantics",
-    "runtime-v1-historical-evidence-immutability"
+    "runtime-foundation-historical-evidence-immutability"
   ],
   "schema_version": "architecture-consolidation-fitness-decision/v1",
   "source_bound_candidate": {
@@ -178,7 +178,6 @@
     "replacement": "required status checks with non-skippable binary architecture tests and the complete maintained quality suite",
     "retired": true,
     "retired_paths": [
-      "release/architecture-consolidation/verification-manifest.json",
       "tools/architecture_consolidation_evidence.py",
       "tests/unit/test_architecture_consolidation_evidence.py",
       "docs/decisions/architecture-consolidation/ac07-final-evidence.json"

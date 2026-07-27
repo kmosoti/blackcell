@@ -1,4 +1,4 @@
-"""Lease-bound Git worktree lifecycle for recoverable alpha execution.
+"""Lease-bound Git worktree lifecycle for recoverable execution execution.
 
 This adapter gives an execution attempt a deterministic checkout and local branch. It detects
 repository path-budget violations and preserves work on failure, but it is not an operating-system
@@ -179,7 +179,7 @@ class WorktreeExecutionSpec:
 
     @property
     def branch_name(self) -> str:
-        return f"blackcell/alpha-worktree/{self.digest.removeprefix('sha256:')}"
+        return f"blackcell/execution-worktree/{self.digest.removeprefix('sha256:')}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,7 +219,7 @@ class WorktreeInspection:
             or _DIGEST.fullmatch(self.lease_digest) is None
             or not isinstance(self.worktree_path, Path)
             or not self.worktree_path.is_absolute()
-            or not self.branch_name.startswith("blackcell/alpha-worktree/")
+            or not self.branch_name.startswith("blackcell/execution-worktree/")
             or _COMMIT_ID.fullmatch(self.base_commit) is None
             or _COMMIT_ID.fullmatch(self.head_commit) is None
         ):
@@ -286,7 +286,7 @@ class WorktreeRemoval:
             or _DIGEST.fullmatch(self.lease_digest) is None
             or not isinstance(self.worktree_path, Path)
             or not self.worktree_path.is_absolute()
-            or not self.branch_name.startswith("blackcell/alpha-worktree/")
+            or not self.branch_name.startswith("blackcell/execution-worktree/")
             or _COMMIT_ID.fullmatch(self.retained_head_commit) is None
         ):
             raise WorktreeLifecycleError(WorktreeFailureCode.INVALID_GIT_OUTPUT)
@@ -577,7 +577,7 @@ class GitWorktreeLifecycle:
         root = _canonical_repository_root(repository_root)
         self.validate_base_commit(root, base_commit)
         plan_key = hashlib.sha256(plan_id.encode("utf-8")).hexdigest()
-        reference = f"refs/blackcell/alpha/plans/{plan_key}"
+        reference = f"refs/blackcell/execution/plans/{plan_key}"
         created = self._git_at(
             root,
             ("update-ref", reference, base_commit, "0" * 40),
@@ -805,7 +805,8 @@ class GitWorktreeLifecycle:
         ):
             raise WorktreeLifecycleError(WorktreeFailureCode.COMMIT_FAILED)
         message = (
-            f"BlackCell alpha {spec.lease.run_id}/{spec.lease.node_id} attempt {spec.lease.attempt}"
+            f"BlackCell execution {spec.lease.run_id}/{spec.lease.node_id} "
+            f"attempt {spec.lease.attempt}"
         )
         committed = self._git(
             spec,

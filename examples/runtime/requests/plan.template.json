@@ -1,0 +1,49 @@
+{
+  "allowed_effects": [
+    "repository-read",
+    "repository-write",
+    "process"
+  ],
+  "base_commit": "0000000000000000000000000000000000000000",
+  "idempotency_key": "plan-accept",
+  "intent_id": "intent",
+  "nodes": [
+    {
+      "allowed_paths": [
+        "src/example.py"
+      ],
+      "budget": {
+        "max_changed_files": 1,
+        "max_cost_microusd": 1000000,
+        "max_input_tokens": 32000,
+        "max_output_tokens": 4096,
+        "timeout_seconds": 120
+      },
+      "checks": [
+        {
+          "argv": [
+            "python",
+            "-m",
+            "pytest",
+            "tests/unit/test_example.py",
+            "-q"
+          ],
+          "check_id": "bounded-project-check",
+          "expected_exit_code": 0
+        }
+      ],
+      "depends_on": [],
+      "effects": [
+        "repository-read",
+        "repository-write",
+        "process"
+      ],
+      "node_id": "bounded-change",
+      "objective": "Replace this node objective and paths with the admitted project change."
+    }
+  ],
+  "planning_mode": "generated",
+  "plan_id": "plan",
+  "project_id": "project",
+  "schema_version": "plan-request/v1"
+}

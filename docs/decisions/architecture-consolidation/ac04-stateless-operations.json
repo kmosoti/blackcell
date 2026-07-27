@@ -102,9 +102,9 @@
   ],
   "compatibility_decision": "The retired classes were internal stateless feature service shapes, not CLI or HTTP contracts. Permanent construct-then-handle aliases would preserve the false object boundary AC04 removes and are therefore rejected by the program delivery rules.",
   "verification": {
-    "focused": "uv run python tools/run_pytest.py tests/unit/test_derive_signal_packet_feature.py tests/unit/test_context_pipeline_features.py tests/unit/test_context_frame_store.py tests/unit/test_fts5_evidence_retriever.py tests/unit/test_action_authorization_feature.py tests/unit/test_evaluate_outcome_feature.py tests/unit/test_run_records_v2.py tests/unit/test_state_transition_binding.py",
+    "focused": "uv run python tools/run_pytest.py tests/unit/test_derive_signal_packet_feature.py tests/unit/test_context_pipeline_features.py tests/unit/test_context_frame_store.py tests/unit/test_fts5_evidence_retriever.py tests/unit/test_action_authorization_feature.py tests/unit/test_evaluate_outcome_feature.py tests/unit/test_feedback_run_records.py tests/unit/test_state_transition_binding.py",
     "focused_result": "251 passed",
-    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing",
+    "full_gate": "uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing",
     "full_gate_result": "1293 passed, 1 rootless-Podman gate skipped, 86.58 percent coverage",
     "rootless_podman_gate": "BLACKCELL_RUN_PODMAN_TESTS=1 uv run python tools/run_pytest.py tests/integration/test_podman_runtime.py",
     "rootless_podman_result": "1 passed in 44.19 seconds"

@@ -118,7 +118,7 @@ class RuntimeSecurityConfig:
         bind_host = _bind_host(values.get(BIND_HOST_ENV, "127.0.0.1"))
         bind_port = _bind_port(values.get(BIND_PORT_ENV, "8080"))
         trusted_proxy_hops = _trusted_proxy_hops(values.get(TRUSTED_PROXY_HOPS_ENV, "0"))
-        principal = ServicePrincipal("service:runtime-v1", ALL_SERVICE_SCOPES)
+        principal = ServicePrincipal("service:runtime", ALL_SERVICE_SCOPES)
         return cls(paths, bind_host, bind_port, trusted_proxy_hops, principal, token)
 
     def authenticator(self) -> BearerAuthenticator:

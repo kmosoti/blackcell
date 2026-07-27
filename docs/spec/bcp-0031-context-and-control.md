@@ -23,7 +23,7 @@ Acceptance:
   unsafe proposals;
 - read-only execution is path-bounded and command-whitelisted.
 
-ContextFrame v3 separates its bounded model-facing JSONL evidence payload from audit-only omission
+The `context-frame/v3` compatibility schema separates its bounded model-facing JSONL evidence payload from audit-only omission
 bodies. Required gaps, retrieval omissions, and context-budget omissions are typed and
 content-addressed; their composite claim identities form a complete, disjoint partition of the
 source SignalPacket. The canonical frame encoding is stored once in the kernel ArtifactStore, with

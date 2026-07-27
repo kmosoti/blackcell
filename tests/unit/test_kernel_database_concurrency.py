@@ -8,7 +8,7 @@ from threading import Barrier
 import pytest
 
 import blackcell.kernel.database as kernel_database
-from blackcell.kernel import ArtifactStore, EventStore
+from blackcell.kernel import ArtifactStore, EventStore, SchemaVersionError
 from blackcell.kernel.database import SCHEMA_VERSION, connect, initialize_database
 
 
@@ -44,7 +44,7 @@ def test_concurrent_first_open_applies_kernel_migration_once(
             for row in connection.execute(
                 "select version from kernel_schema_migrations order by version"
             ).fetchall()
-        ) == (1,)
+        ) == (SCHEMA_VERSION,)
         tables = {
             str(row[0])
             for row in connection.execute(
@@ -71,7 +71,7 @@ def test_failed_kernel_migration_rolls_back_and_can_be_retried(
     """
 
     with monkeypatch.context() as patch:
-        patch.setattr(kernel_database, "_SCHEMA_V1", broken_schema)
+        patch.setattr(kernel_database, "_INITIAL_SCHEMA", broken_schema)
         with pytest.raises(sqlite3.OperationalError, match="missing_migration_table"):
             initialize_database(database)
 
@@ -87,4 +87,27 @@ def test_failed_kernel_migration_rolls_back_and_can_be_retried(
     initialize_database(database)
     with connect(database) as connection:
         assert connection.execute("pragma user_version").fetchone()[0] == SCHEMA_VERSION
-        assert connection.execute("select version from kernel_schema_migrations").fetchone()[0] == 1
+        assert (
+            connection.execute("select version from kernel_schema_migrations").fetchone()[0]
+            == SCHEMA_VERSION
+        )
+
+
+def test_existing_incompatible_database_is_rejected_without_mutation(tmp_path: Path) -> None:
+    database = tmp_path / "kernel.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute("create table former_runtime_state (value text not null)")
+        connection.execute("insert into former_runtime_state(value) values ('preserve-me')")
+        connection.execute("pragma user_version = 1")
+
+    before = database.read_bytes()
+
+    with pytest.raises(SchemaVersionError, match="incompatible"):
+        initialize_database(database)
+
+    assert database.read_bytes() == before
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("pragma user_version").fetchone()[0] == 1
+        assert connection.execute("select value from former_runtime_state").fetchone()[0] == (
+            "preserve-me"
+        )

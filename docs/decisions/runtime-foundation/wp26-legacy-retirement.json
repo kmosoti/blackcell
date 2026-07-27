@@ -1,0 +1,119 @@
+{
+  "schema_version": "runtime-foundation-decision",
+  "work_package": "WP26",
+  "decision": "retire",
+  "recorded_on": "2026-07-14",
+  "subject": "prototype packages, dual stores, predecessor writers, and obsolete public commands",
+  "evidence": {
+    "characterization": {
+      "path": "experiments/legacy_retirement/wp26-characterization.json",
+      "schema_version": "legacy-retirement-characterization/v1",
+      "tests_passed": 106
+    },
+    "retirement": {
+      "path": "experiments/legacy_retirement/wp26-retirement.json",
+      "schema_version": "legacy-retirement-report/v1",
+      "focused_tests_passed": 118
+    }
+  },
+  "retired": {
+    "package_roots": [
+      "blackcell.agents",
+      "blackcell.harness",
+      "blackcell.latent",
+      "blackcell.ledger",
+      "blackcell.nesy",
+      "blackcell.world"
+    ],
+    "partial_modules": [
+      "blackcell.runtime.models",
+      "blackcell.runtime.service"
+    ],
+    "predecessor_writers": [
+      "blackcell.operator.service.RepositoryOperator",
+      "blackcell.workflows.daily_operator.DailyOperatorWorkflow"
+    ],
+    "top_level_cli_surfaces": [
+      "adapters",
+      "agents",
+      "doctor",
+      "harness",
+      "latent",
+      "ledger",
+      "nesy",
+      "world"
+    ],
+    "independent_sqlite_defaults": [
+      ".blackcell/latent.sqlite3",
+      ".blackcell/ledger.sqlite3"
+    ],
+    "tracked_generated_opencode_files": 10
+  },
+  "retained": {
+    "canonical_cli_surfaces": [
+      "bench",
+      "events",
+      "operator"
+    ],
+    "canonical_write_authority": "blackcell.kernel",
+    "runtime_quota_contracts": [
+      "RuntimeStorageQuota",
+      "StorageQuotaPort"
+    ],
+    "daily_operator_baseline": "read-only historical decoder and verifier",
+    "daily_operator": "canonical execution and replay"
+  },
+  "replay_evidence": {
+    "baseline_completed_history": "verified with artifacts and not-recorded state findings",
+    "feedback_completed_history": "verified exact initial and outcome projections without writes",
+    "live_model_allowed": false,
+    "live_action_allowed": false,
+    "historical_events_rewritten": false
+  },
+  "retirement_boundary": {
+    "legacy_root_count": 0,
+    "allowed_import_violation_count": 0,
+    "aliases_or_tombstone_commands_added": false,
+    "tracked_or_external_user_data_migrated": false,
+    "runtime_default_changed": false,
+    "release_or_publication_performed": false
+  },
+  "reason": "The accepted runtime-foundation replacements cover state, policy, prediction, durable role orchestration, execution, API/process deployment, recovery, evaluation, and replay. A passing pre-deletion characterization and post-deletion baseline/feedback live-free replay show that the prototype packages and writers no longer own required behavior. Retaining their public commands, generated coordination files, or independent SQLite defaults would preserve dual authority without a compatibility need.",
+  "verification": {
+    "focused_tests": [
+      "tests/unit/test_legacy_retirement.py",
+      "tests/architecture/test_dependencies.py",
+      "tests/unit/test_cli_output.py",
+      "tests/unit/test_operator_facade.py",
+      "tests/unit/test_operator_cli.py",
+      "tests/unit/test_run_replay.py",
+      "tests/unit/test_runtime_quotas.py",
+      "tests/unit/test_runtime_cli.py",
+      "tests/unit/test_daily_operator.py",
+      "tests/unit/test_daily_operator_request.py",
+      "tests/unit/test_runtime_decisions.py",
+      "tests/unit/test_runtime_plan.py"
+    ],
+    "policy_cases": [
+      "characterize-before-delete",
+      "no-dual-store-defaults",
+      "no-retired-production-imports",
+      "no-obsolete-public-commands",
+      "no-generated-opencode-coordination",
+      "baseline-replay-only",
+      "feedback-product-run-and-no-write-replay",
+      "quota-contract-retained",
+      "no-user-data-migration",
+      "no-release-publication"
+    ],
+    "full_gate": {
+      "tests_passed": 1263,
+      "tests_skipped": 1,
+      "coverage_percent": 86.58,
+      "ruff_format": "pass",
+      "ruff_check": "pass",
+      "ty": "pass"
+    },
+    "status": "pass"
+  }
+}

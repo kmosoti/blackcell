@@ -1,8 +1,8 @@
-"""Fail-closed Linux isolation for alpha acceptance commands.
+"""Fail-closed Linux isolation for execution acceptance commands.
 
 This boundary provides fresh namespaces, a read-only project checkout, a cleared environment, no
 host network namespace, capability removal, and POSIX resource limits. It does not claim a complete
-hostile-code boundary: the initial alpha policy has no syscall filter or cgroup-v2 controller.
+hostile-code boundary: the initial execution policy has no syscall filter or cgroup-v2 controller.
 """
 
 from __future__ import annotations
@@ -33,12 +33,12 @@ from blackcell.adapters.execution.worktree import (
     worktree_inspection_payload,
 )
 from blackcell.kernel._json import json_digest
-from blackcell.orchestration.alpha_acceptance import (
-    AlphaAcceptanceCommand,
-    AlphaAcceptanceError,
-    AlphaAcceptanceFailureCode,
-    AlphaAcceptanceResult,
-    AlphaAcceptanceStream,
+from blackcell.orchestration.acceptance import (
+    AcceptanceCommand,
+    AcceptanceError,
+    AcceptanceFailureCode,
+    AcceptanceResult,
+    AcceptanceStream,
 )
 
 BUBBLEWRAP_ISOLATION_POLICY_SCHEMA = "blackcell.bubblewrap-isolation-policy/v1"
@@ -73,7 +73,7 @@ class BubblewrapExecutable:
 
     def __post_init__(self) -> None:
         if not isinstance(self.alias, str) or _ALIAS.fullmatch(self.alias) is None:
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+            raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
         path, metadata = _canonical_executable(self.path)
         object.__setattr__(self, "path", path)
         object.__setattr__(self, "device", metadata.st_dev)
@@ -102,7 +102,7 @@ class BubblewrapExecutable:
             metadata.st_size,
             metadata.st_mtime_ns,
         ) != (self.device, self.inode, self.size_bytes, self.modified_ns):
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+            raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,7 +131,7 @@ class BubblewrapIsolationPolicy:
             or not isinstance(self.runtime_roots, tuple)
             or len(self.runtime_roots) > 32
         ):
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+            raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
 
         roots = tuple(
             sorted((_canonical_runtime_root(path) for path in self.runtime_roots), key=str)
@@ -141,7 +141,7 @@ class BubblewrapIsolationPolicy:
             for index, left in enumerate(roots)
             for right in roots[index + 1 :]
         ):
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+            raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
         object.__setattr__(self, "runtime_roots", roots)
 
         limits = (
@@ -156,14 +156,14 @@ class BubblewrapIsolationPolicy:
             isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum
             for value, minimum, maximum in limits
         ):
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+            raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
 
         visible_roots = (*_SYSTEM_ROOTS, *roots)
         if any(
             not any(item.path.is_relative_to(root) for root in visible_roots)
             for item in self.executables
         ):
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+            raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
 
     @property
     def digest(self) -> str:
@@ -194,7 +194,7 @@ class BubblewrapIsolationPolicy:
         for executable in self.executables:
             if executable.alias == alias:
                 return executable
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.EXECUTABLE_NOT_ALLOWED)
+        raise AcceptanceError(AcceptanceFailureCode.EXECUTABLE_NOT_ALLOWED)
 
 
 class BubblewrapProcessTransport(Protocol):
@@ -223,54 +223,54 @@ class BubblewrapAcceptanceRunner:
 
     def __post_init__(self) -> None:
         if sys.platform != "linux":
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.UNSUPPORTED_PLATFORM)
+            raise AcceptanceError(AcceptanceFailureCode.UNSUPPORTED_PLATFORM)
         if not isinstance(self.policy, BubblewrapIsolationPolicy):
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+            raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
         for attribute in ("bubblewrap_executable", "prlimit_executable", "probe_executable"):
             path, _ = _canonical_executable(getattr(self, attribute))
             if not any(path.is_relative_to(root) for root in _SYSTEM_ROOTS):
-                raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+                raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
             object.__setattr__(self, attribute, path)
 
     def run(
         self,
-        command: AlphaAcceptanceCommand,
+        command: AcceptanceCommand,
         spec: WorktreeExecutionSpec,
         *,
         cancel_requested: Callable[[], bool] | None = None,
-    ) -> AlphaAcceptanceResult:
-        if not isinstance(command, AlphaAcceptanceCommand) or not isinstance(
+    ) -> AcceptanceResult:
+        if not isinstance(command, AcceptanceCommand) or not isinstance(
             spec, WorktreeExecutionSpec
         ):
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_COMMAND)
+            raise AcceptanceError(AcceptanceFailureCode.INVALID_COMMAND)
         executable = self.policy.executable(command.argv[0])
         executable.verify()
         self._validate_mount_authority(spec)
         before = self._inspect(spec)
         if not before.path_policy_compliant:
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.WORKTREE_POLICY_VIOLATION)
+            raise AcceptanceError(AcceptanceFailureCode.WORKTREE_POLICY_VIOLATION)
 
         self._probe()
-        process_error: AlphaAcceptanceError | None = None
+        process_error: AcceptanceError | None = None
         execution: tuple[BoundedProcessResult, int] | None = None
         try:
             execution = self._run_isolated(command, spec, executable, cancel_requested)
-        except AlphaAcceptanceError as error:
+        except AcceptanceError as error:
             process_error = error
 
         after = self._inspect(spec)
         if after != before:
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.WORKTREE_CHANGED)
+            raise AcceptanceError(AcceptanceFailureCode.WORKTREE_CHANGED)
         if process_error is not None:
             raise process_error
         if execution is None:  # pragma: no cover - control-flow invariant
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.OUTPUT_INCOMPLETE)
+            raise AcceptanceError(AcceptanceFailureCode.OUTPUT_INCOMPLETE)
 
         process_result, container_exit_code = execution
         stdout = _complete_stream(process_result, "stdout")
         stderr = _complete_stream(process_result, "stderr")
         inspection_digest = json_digest(worktree_inspection_payload(before))
-        return AlphaAcceptanceResult(
+        return AcceptanceResult(
             check_id=command.check_id,
             command_digest=command.digest,
             worktree_spec_digest=spec.digest,
@@ -291,13 +291,13 @@ class BubblewrapAcceptanceRunner:
             for runtime_root in self.policy.runtime_roots
             for protected_root in protected
         ):
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+            raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
 
     def _inspect(self, spec: WorktreeExecutionSpec) -> WorktreeInspection:
         try:
             return self.worktrees.inspect(spec)
         except WorktreeLifecycleError as error:
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.WORKTREE_UNAVAILABLE) from error
+            raise AcceptanceError(AcceptanceFailureCode.WORKTREE_UNAVAILABLE) from error
 
     def _probe(self) -> None:
         def argv_builder(status_fd: int) -> tuple[str, ...]:
@@ -317,14 +317,14 @@ class BubblewrapAcceptanceRunner:
                 stderr_limit_bytes=16 * 1024,
                 cancel_requested=None,
             )
-        except AlphaAcceptanceError as error:
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE) from error
+        except AcceptanceError as error:
+            raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE) from error
         if result.return_code != 0 or exit_code != 0:
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE)
+            raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE)
 
     def _run_isolated(
         self,
-        command: AlphaAcceptanceCommand,
+        command: AcceptanceCommand,
         spec: WorktreeExecutionSpec,
         executable: BubblewrapExecutable,
         cancel_requested: Callable[[], bool] | None,
@@ -382,7 +382,7 @@ class BubblewrapAcceptanceRunner:
             "--cap-drop",
             "ALL",
             "--hostname",
-            "blackcell-alpha",
+            "blackcell-execution",
             *mounts,
             "--dev",
             "/dev",
@@ -451,45 +451,45 @@ class BubblewrapAcceptanceRunner:
                     pass_fds=(status_fd,),
                 )
             except BoundedProcessError as error:
-                raise AlphaAcceptanceError(_map_process_failure(error.code)) from error
+                raise AcceptanceError(_map_process_failure(error.code)) from error
             status_stream.seek(0, os.SEEK_END)
             if status_stream.tell() > _STATUS_LIMIT_BYTES:
-                raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE)
+                raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE)
             status_stream.seek(0)
             status = status_stream.read()
 
         exit_code = _validate_status(status)
         if result.return_code != exit_code:
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE)
+            raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE)
         return result, exit_code
 
 
 def _canonical_executable(value: Path) -> tuple[Path, os.stat_result]:
     if not isinstance(value, Path) or not value.is_absolute():
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+        raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
     try:
         path = value.resolve(strict=True)
         metadata = path.stat(follow_symlinks=False)
     except (OSError, RuntimeError) as error:
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY) from error
+        raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY) from error
     if not stat.S_ISREG(metadata.st_mode) or not os.access(path, os.X_OK):
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+        raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
     return path, metadata
 
 
 def _canonical_runtime_root(value: Path) -> Path:
     if not isinstance(value, Path) or not value.is_absolute():
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+        raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
     try:
         path = value.resolve(strict=True)
     except (OSError, RuntimeError) as error:
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY) from error
+        raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY) from error
     if (
         not path.is_dir()
         or path == Path("/")
         or any(_paths_overlap(path, reserved) for reserved in (*_SYSTEM_ROOTS, *_VIRTUAL_ROOTS))
     ):
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.INVALID_POLICY)
+        raise AcceptanceError(AcceptanceFailureCode.INVALID_POLICY)
     return path
 
 
@@ -510,7 +510,7 @@ def _runtime_mount_parents(roots: tuple[Path, ...]) -> tuple[Path, ...]:
 
 def _validate_status(value: bytes) -> int:
     if not isinstance(value, bytes) or not value or len(value) > _STATUS_LIMIT_BYTES:
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE)
+        raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE)
     try:
         text = value.decode("utf-8")
         decoder = json.JSONDecoder()
@@ -524,7 +524,7 @@ def _validate_status(value: bytes) -> int:
             document, index = decoder.raw_decode(text, index)
             documents.append(document)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE) from error
+        raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE) from error
 
     if (
         len(documents) != 2
@@ -535,47 +535,47 @@ def _validate_status(value: bytes) -> int:
         or "exit-code" not in documents[1]
         or "child-pid" in documents[1]
     ):
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE)
+        raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE)
     child = documents[0]
     exit_status = documents[1]
     child_pid = child.get("child-pid")
     if isinstance(child_pid, bool) or not isinstance(child_pid, int) or child_pid < 1:
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE)
+        raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE)
     for status_key, namespace in _NAMESPACE_STATUS_KEYS.items():
         observed = child.get(status_key)
         try:
             host_namespace = os.stat(f"/proc/self/ns/{namespace}").st_ino
         except OSError as error:
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE) from error
+            raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE) from error
         if (
             isinstance(observed, bool)
             or not isinstance(observed, int)
             or observed == host_namespace
         ):
-            raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE)
+            raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE)
     exit_code = exit_status.get("exit-code")
     if isinstance(exit_code, bool) or not isinstance(exit_code, int) or not 0 <= exit_code <= 255:
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.ISOLATION_UNAVAILABLE)
+        raise AcceptanceError(AcceptanceFailureCode.ISOLATION_UNAVAILABLE)
     return exit_code
 
 
 def _complete_stream(
     result: BoundedProcessResult, name: Literal["stdout", "stderr"]
-) -> AlphaAcceptanceStream:
+) -> AcceptanceStream:
     stream = getattr(result, name)
     if not stream.complete or stream.total_bytes != len(stream.captured):
-        raise AlphaAcceptanceError(AlphaAcceptanceFailureCode.OUTPUT_INCOMPLETE)
-    return AlphaAcceptanceStream(stream.captured)
+        raise AcceptanceError(AcceptanceFailureCode.OUTPUT_INCOMPLETE)
+    return AcceptanceStream(stream.captured)
 
 
-def _map_process_failure(code: BoundedProcessFailureCode) -> AlphaAcceptanceFailureCode:
+def _map_process_failure(code: BoundedProcessFailureCode) -> AcceptanceFailureCode:
     return {
-        BoundedProcessFailureCode.INVALID_INVOCATION: AlphaAcceptanceFailureCode.INVALID_POLICY,
-        BoundedProcessFailureCode.SPAWN_FAILED: AlphaAcceptanceFailureCode.SPAWN_FAILED,
-        BoundedProcessFailureCode.CANCELED: AlphaAcceptanceFailureCode.CANCELED,
-        BoundedProcessFailureCode.TIMED_OUT: AlphaAcceptanceFailureCode.TIMED_OUT,
-        BoundedProcessFailureCode.OUTPUT_TOO_LARGE: AlphaAcceptanceFailureCode.OUTPUT_TOO_LARGE,
-        BoundedProcessFailureCode.OUTPUT_INCOMPLETE: AlphaAcceptanceFailureCode.OUTPUT_INCOMPLETE,
+        BoundedProcessFailureCode.INVALID_INVOCATION: AcceptanceFailureCode.INVALID_POLICY,
+        BoundedProcessFailureCode.SPAWN_FAILED: AcceptanceFailureCode.SPAWN_FAILED,
+        BoundedProcessFailureCode.CANCELED: AcceptanceFailureCode.CANCELED,
+        BoundedProcessFailureCode.TIMED_OUT: AcceptanceFailureCode.TIMED_OUT,
+        BoundedProcessFailureCode.OUTPUT_TOO_LARGE: AcceptanceFailureCode.OUTPUT_TOO_LARGE,
+        BoundedProcessFailureCode.OUTPUT_INCOMPLETE: AcceptanceFailureCode.OUTPUT_INCOMPLETE,
     }[code]
 
 

@@ -10,11 +10,11 @@ edges:
 
 # BCP-0027: Latent Transition Capsules
 
-Status: retired by runtime-v1 WP26 after supersession by BCP-0028 through BCP-0033
+Status: retired by runtime-foundation WP26 after supersession by BCP-0028 through BCP-0033
 
 This page records the historical prototype contract. It is not an executable guide: WP26 removed
 the latent package, its independent SQLite store, and the latent and harness CLI surfaces. The
-canonical runtime is the Repository Operator and Daily Operator v2 path described by BCP-0032 and
+canonical runtime is the Repository Operator and Daily Operator feedback path described by BCP-0032 and
 BCP-0034. Historical protocol decoding remains read-only where replay requires it.
 
 Goal: make BlackCell capable of encoding state, predicting next state, measuring

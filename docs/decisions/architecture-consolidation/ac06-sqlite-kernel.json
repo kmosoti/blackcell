@@ -4,7 +4,7 @@
   "issue_number": 70,
   "base_sha": "1a249d8aaa1f5f230c8492ab249ea06d255f24ee",
   "decision": "accept",
-  "boundary": "SQLite as the trusted local runtime-v1 kernel implementation",
+  "boundary": "SQLite as the trusted local runtime-foundation kernel implementation",
   "preserved_invariants": [
     "single-authoritative-immutable-event-ledger",
     "content-addressed-integrity-verified-artifacts",
@@ -35,6 +35,6 @@
   ],
   "verification": {
     "focused": "uv run pytest -q tests/unit/test_docs_graph.py tests/unit/test_kernel_database_concurrency.py tests/unit/test_kernel_events.py tests/unit/test_kernel_artifacts.py",
-    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing"
+    "full_gate": "uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing"
   }
 }
