@@ -27,8 +27,19 @@ from blackcell.gateway import (
     ModelResponse,
     RoutingDecision,
 )
-from blackcell.interfaces.http import CancelRunRequest, RunQueryRequest
-from blackcell.kernel import CheckpointStore, EventEnvelope, EventStore, JsonValue
+from blackcell.interfaces.http import (
+    CancelRunRequest,
+    RunQueryRequest,
+    RuntimeApiError,
+    RuntimeApiFailureCode,
+)
+from blackcell.kernel import (
+    CheckpointStore,
+    EventEnvelope,
+    EventStore,
+    JsonValue,
+    ProjectionCheckpoint,
+)
 from blackcell.kernel._json import json_digest, thaw_json
 from blackcell.orchestration.execution_plan import (
     EXECUTION_ATTEMPT_EVIDENCE_SCHEMA,
@@ -44,6 +55,7 @@ from blackcell.orchestration.execution_plan import (
     EXECUTION_TASK_VERIFYING,
     AttemptEvidence,
     AttemptRoute,
+    ExecutionAuthority,
     ExecutionPolicyKernel,
     FailureClass,
     GoalSpec,
@@ -59,6 +71,7 @@ from blackcell.orchestration.execution_plan import (
     ToolActionRequest,
     VerificationCheck,
     compile_plan,
+    goal_from_payload,
     goal_payload,
     plan_payload,
 )
@@ -144,6 +157,26 @@ def test_plan_compiler_is_deterministic_compositional_and_schema_bound() -> None
     assert revised.plan_id != first.plan_id
 
 
+def test_goal_payload_remains_replay_compatible() -> None:
+    goal = _goal()
+    payload = goal_payload(goal)
+
+    assert set(payload) == {
+        "schema_version",
+        "goal_id",
+        "project_id",
+        "intent_id",
+        "objective",
+        "base_commit",
+        "constraints",
+        "allowed_paths",
+        "verification_checks",
+        "max_attempts",
+        "same_error_limit",
+    }
+    assert goal_from_payload(payload) == goal
+
+
 def test_plan_compiler_rejects_provider_scope_escalation_cycles_and_parallel_writers() -> None:
     goal = _goal(allowed_paths=("src", "tests"))
     with pytest.raises(PlanContractError, match="plan-path-outside-goal"):
@@ -152,6 +185,18 @@ def test_plan_compiler_rejects_provider_scope_escalation_cycles_and_parallel_wri
     untrusted_check["checks"] = ["provider-command"]
     with pytest.raises(PlanContractError, match="plan-check-outside-goal"):
         compile_plan(goal, _draft(tasks=(untrusted_check,)))
+    multi_check_goal = replace(
+        goal,
+        verification_checks=(
+            *goal.verification_checks,
+            VerificationCheck("check-second", ("pytest", "tests", "-q")),
+        ),
+    )
+    with pytest.raises(PlanContractError, match="plan-check-coverage-incomplete"):
+        compile_plan(
+            multi_check_goal,
+            _draft(tasks=(_task("incomplete-checks", allowed_paths=()),)),
+        )
 
     cyclic = _draft(
         tasks=(
@@ -212,6 +257,9 @@ def test_runtime_executes_one_bounded_repair_then_succeeds_from_snapshot_tail(
                 artifact_digests=(DIGEST,),
                 progress_digests=(DIGEST,),
                 head_commit=FAILED_HEAD,
+                input_tokens=0,
+                output_tokens=0,
+                cost_microusd=0,
             ),
             _success(),
         )
@@ -239,11 +287,12 @@ def test_runtime_executes_one_bounded_repair_then_succeeds_from_snapshot_tail(
     assert state.task("implement").status is TaskLifecycleStatus.SUCCEEDED
     assert state.task("implement").attempts == 2
     assert state.task("implement").head_commit == SUCCESS_HEAD
+    assert state.task("implement").retained_workspace_id is not None
     assert state.input_tokens == 0
-    assert state.input_tokens_complete is False
-    assert state.cost_microusd_complete is False
+    assert state.input_tokens_complete is True
+    assert state.cost_microusd_complete is True
     assert len(set(executor.workspaces)) == 2
-    assert executor.base_commits == [BASE_COMMIT, FAILED_HEAD]
+    assert executor.base_commits == [BASE_COMMIT, BASE_COMMIT]
     assert executor.decisions and all(item.allowed for item in executor.decisions)
     events = journal.events("run-repair-success")
     policy_positions = [
@@ -349,16 +398,28 @@ def test_existing_public_daemon_admits_and_processes_generated_plan(tmp_path: Pa
         run_id=run.run_id,
     )
     task = _task("verify", allowed_paths=())
-    task["checks"] = ["verify-pass"]
+    task["checks"] = ["inspect-pass", "verify-pass"]
+    provider = _Provider(_draft(tasks=(task,)))
     kernel = ProductionExecution(
         ExecutionCoordinator(
             EventBackedExecutionRunJournal(events, CheckpointStore(database)),
-            _Provider(_draft(tasks=(task,))),
+            provider,
             _Executor((_success(),)),
             ExecutionPolicyKernel(),
-        )
+        ),
+        authority_for_run=runtime.generated_execution_authority,
+        goal_for_run=runtime.generated_execution_goal,
     )
 
+    with pytest.raises(ExecutionRuntimeError, match="execution-run-binding-mismatch"):
+        kernel.process(
+            replace(
+                request,
+                goal=replace(request.goal, objective="Substitute a different execution goal."),
+            ),
+            actor="daemon:worker",
+        )
+    assert provider.calls == 0
     state = kernel.process(request, actor="daemon:worker")
     query = runtime.query_runs(
         RunQueryRequest(
@@ -371,12 +432,311 @@ def test_existing_public_daemon_admits_and_processes_generated_plan(tmp_path: Pa
     assert runtime.next_generated_run() is None
     assert runtime.inspect_run(run.run_id).status == "succeeded"
     assert query.runs[0].usage is not None
-    assert query.runs[0].usage.input_tokens_complete is False
-    assert query.runs[0].usage.max_input_tokens == request.budget.max_input_tokens
+    assert query.runs[0].usage.input_tokens_complete is True
+    assert query.runs[0].usage.max_input_tokens == generated.authority.budget.max_input_tokens
     assert query.runs[0].nodes[0].max_attempts == request.goal.max_attempts
     assert {event.stream_id for event in events.read_stream(f"run:{run.run_id}")} == {
         f"run:{run.run_id}"
     }
+
+
+def test_generated_runtime_rejects_successful_substituted_kernel_goal(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    database = tmp_path / "public-generated-substitution.sqlite3"
+    events = EventStore(database)
+    runtime = RuntimeService(events, repository)
+    intent = msgspec.structs.replace(_intent(), unresolved_questions=())
+    bounds = msgspec.structs.replace(_plan(repository), planning_mode="generated")
+    run = _run()
+    runtime.register_project(_project(repository), principal_id="client:test")
+    runtime.accept_intent(intent, principal_id="client:test")
+    runtime.accept_plan(bounds, principal_id="client:test")
+    runtime.submit_run(run, principal_id="client:test")
+    generated = runtime.next_generated_run()
+    assert generated is not None
+    task = _task("verify", allowed_paths=())
+    task["checks"] = ["inspect-pass", "verify-pass"]
+    request = PlanningRequest(
+        goal=replace(generated.goal, objective="Substitute a different execution goal."),
+        classification=DataClassification.PRIVATE,
+        locality=LocalityPolicy.REMOTE_ALLOWED,
+        budget=generated.authority.budget,
+        estimated_input_tokens=1_000,
+        correlation_id=run.run_id,
+        run_id=run.run_id,
+    )
+    kernel = ProductionExecution(
+        ExecutionCoordinator(
+            EventBackedExecutionRunJournal(events, CheckpointStore(database)),
+            _Provider(_draft(tasks=(task,))),
+            _Executor((_success(),)),
+            ExecutionPolicyKernel(),
+        )
+    )
+
+    assert kernel.process(request, actor="daemon:worker").status is RunLifecycleStatus.SUCCEEDED
+    with pytest.raises(RuntimeApiError) as caught:
+        runtime.inspect_run(run.run_id)
+    assert caught.value.code is RuntimeApiFailureCode.CONFLICT
+
+
+def test_generated_runtime_rejects_substituted_kernel_check_definition(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    database = tmp_path / "public-generated-check-substitution.sqlite3"
+    events = EventStore(database)
+    runtime = RuntimeService(events, repository)
+    intent = msgspec.structs.replace(_intent(), unresolved_questions=())
+    bounds = msgspec.structs.replace(_plan(repository), planning_mode="generated")
+    run = _run()
+    runtime.register_project(_project(repository), principal_id="client:test")
+    runtime.accept_intent(intent, principal_id="client:test")
+    runtime.accept_plan(bounds, principal_id="client:test")
+    runtime.submit_run(run, principal_id="client:test")
+    generated = runtime.next_generated_run()
+    assert generated is not None
+
+    task = _task("verify", allowed_paths=())
+    task["checks"] = ["inspect-pass", "verify-pass"]
+    draft = _draft(tasks=(task,))
+    admitted = compile_plan(generated.goal, draft)
+    canonical_check = admitted.tasks[0].checks[0]
+    substituted_check = replace(
+        canonical_check,
+        argv=("python", "-c", "raise SystemExit(0)"),
+    )
+    substituted_plan = replace(
+        admitted,
+        tasks=(
+            replace(
+                admitted.tasks[0],
+                checks=(substituted_check, *admitted.tasks[0].checks[1:]),
+            ),
+        ),
+    )
+    journal = EventBackedExecutionRunJournal(events, CheckpointStore(database))
+    budget = generated.authority.budget
+    journal.append(
+        run.run_id,
+        EXECUTION_GOAL_ADMITTED,
+        {
+            "goal_id": generated.goal.goal_id,
+            "goal_digest": generated.goal.digest,
+            "goal": goal_payload(generated.goal),
+            "classification": DataClassification.PRIVATE.value,
+            "locality": LocalityPolicy.REMOTE_ALLOWED.value,
+            "budget": {
+                "max_input_tokens": budget.max_input_tokens,
+                "max_output_tokens": budget.max_output_tokens,
+                "max_latency_ms": budget.max_latency_ms,
+                "max_cost_microusd": budget.max_cost_microusd,
+            },
+        },
+        actor="daemon:planner",
+    )
+    draft_digest = json_digest(cast("dict[str, JsonValue]", draft))
+    journal.append(
+        run.run_id,
+        EXECUTION_PLAN_DRAFT_RECEIVED,
+        {
+            "draft_digest": draft_digest,
+            "provider_output_digest": draft_digest,
+            "profile_id": "recorded-plan",
+            "adapter_id": "recorded-plan",
+            "model_id": "recorded-plan",
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "latency_ms": 1,
+            "cost_microusd": 0,
+        },
+        actor="daemon:planner",
+    )
+    journal.append(
+        run.run_id,
+        EXECUTION_PLAN_ADMITTED,
+        {
+            "plan_id": substituted_plan.plan_id,
+            "plan_digest": substituted_plan.plan_digest,
+            "plan_version": substituted_plan.plan_revision,
+            "supersedes_plan_id": substituted_plan.supersedes_plan_id,
+            "plan": plan_payload(substituted_plan),
+        },
+        actor="daemon:planner",
+    )
+
+    with pytest.raises(RuntimeApiError) as caught:
+        runtime.inspect_run(run.run_id)
+    assert caught.value.code is RuntimeApiFailureCode.CONFLICT
+
+
+@pytest.mark.parametrize("after_draft", [False, True])
+def test_generated_runtime_recovers_interrupted_initial_planning(
+    tmp_path: Path,
+    *,
+    after_draft: bool,
+) -> None:
+    repository = _repository(tmp_path)
+    database = tmp_path / f"public-generated-interrupted-{after_draft}.sqlite3"
+    events = EventStore(database)
+    runtime = RuntimeService(events, repository)
+    intent = msgspec.structs.replace(_intent(), unresolved_questions=())
+    bounds = msgspec.structs.replace(_plan(repository), planning_mode="generated")
+    run = _run()
+    runtime.register_project(_project(repository), principal_id="client:test")
+    runtime.accept_intent(intent, principal_id="client:test")
+    runtime.accept_plan(bounds, principal_id="client:test")
+    runtime.submit_run(run, principal_id="client:test")
+    generated = runtime.next_generated_run()
+    assert generated is not None
+
+    task = _task("verify", allowed_paths=())
+    task["checks"] = ["inspect-pass", "verify-pass"]
+    draft = _draft(tasks=(task,))
+    journal = EventBackedExecutionRunJournal(events, CheckpointStore(database))
+    _append_execution_goal(
+        journal,
+        run_id=run.run_id,
+        goal=generated.goal,
+        budget=generated.authority.budget,
+    )
+    if after_draft:
+        _append_execution_draft(journal, run_id=run.run_id, draft=draft)
+
+    selected = runtime.next_generated_run()
+    assert selected is not None
+    assert selected.run_id == run.run_id
+    provider = _Provider(draft)
+    kernel = ProductionExecution(
+        ExecutionCoordinator(
+            journal,
+            provider,
+            _Executor((_success(),)),
+            ExecutionPolicyKernel(),
+        ),
+        authority_for_run=runtime.generated_execution_authority,
+        goal_for_run=runtime.generated_execution_goal,
+    )
+    request = PlanningRequest(
+        goal=selected.goal,
+        classification=DataClassification.PRIVATE,
+        locality=LocalityPolicy.REMOTE_ALLOWED,
+        budget=selected.authority.budget,
+        estimated_input_tokens=1_000,
+        correlation_id=run.run_id,
+        run_id=run.run_id,
+    )
+
+    state = kernel.process(request, actor="daemon:worker")
+
+    assert state.status is RunLifecycleStatus.ESCALATED
+    assert provider.calls == 0
+    assert runtime.inspect_run(run.run_id).status == "reconciliation-required"
+    terminal = journal.events(run.run_id)[-1]
+    assert terminal.event_type == EXECUTION_RUN_TERMINATED
+    assert terminal.payload["reason"] == "ambiguous-planning-dispatch"
+
+
+@pytest.mark.parametrize("substitution", ["coverage", "definition"])
+def test_generated_runtime_rejects_substitution_in_any_plan_revision(
+    tmp_path: Path,
+    *,
+    substitution: str,
+) -> None:
+    repository = _repository(tmp_path)
+    database = tmp_path / f"public-generated-revision-substitution-{substitution}.sqlite3"
+    events = EventStore(database)
+    runtime = RuntimeService(events, repository)
+    intent = msgspec.structs.replace(_intent(), unresolved_questions=())
+    bounds = msgspec.structs.replace(_plan(repository), planning_mode="generated")
+    run = _run()
+    runtime.register_project(_project(repository), principal_id="client:test")
+    runtime.accept_intent(intent, principal_id="client:test")
+    runtime.accept_plan(bounds, principal_id="client:test")
+    runtime.submit_run(run, principal_id="client:test")
+    generated = runtime.next_generated_run()
+    assert generated is not None
+
+    task = _task("verify", allowed_paths=())
+    task["checks"] = ["inspect-pass", "verify-pass"]
+    draft = _draft(tasks=(task,))
+    canonical = compile_plan(generated.goal, draft)
+    checks = canonical.tasks[0].checks
+    if substitution == "coverage":
+        substituted_checks = checks[:1]
+    else:
+        substituted_checks = (
+            replace(checks[0], argv=("python", "-c", "raise SystemExit(0)")),
+            *checks[1:],
+        )
+    substituted_plan = replace(
+        canonical,
+        tasks=(replace(canonical.tasks[0], checks=substituted_checks),),
+    )
+    journal = EventBackedExecutionRunJournal(events, CheckpointStore(database))
+    _append_execution_goal(
+        journal,
+        run_id=run.run_id,
+        goal=generated.goal,
+        budget=generated.authority.budget,
+    )
+    _append_execution_draft(journal, run_id=run.run_id, draft=draft)
+    _append_execution_plan(journal, run_id=run.run_id, plan=substituted_plan)
+    failure = AttemptEvidence(
+        workspace_clean=True,
+        verifier_exit_code=1,
+        required_checks_passed=False,
+        failure_class=FailureClass.INVALID_ASSUMPTION,
+        failure_summary="the admitted assumption is invalid",
+        artifact_digests=(DIGEST,),
+        progress_digests=(DIGEST,),
+        head_commit=FAILED_HEAD,
+        input_tokens=0,
+        output_tokens=0,
+        latency_ms=1,
+        cost_microusd=0,
+    )
+    coordinator = ExecutionCoordinator(
+        journal,
+        _Provider(draft),
+        _SequentialExecutor((failure, _success())),
+        ExecutionPolicyKernel(),
+    )
+    request = PlanningRequest(
+        goal=generated.goal,
+        classification=DataClassification.PRIVATE,
+        locality=LocalityPolicy.REMOTE_ALLOWED,
+        budget=generated.authority.budget,
+        estimated_input_tokens=1_000,
+        correlation_id=run.run_id,
+        run_id=run.run_id,
+    )
+
+    first = coordinator.execute(
+        run.run_id,
+        request,
+        substituted_plan,
+        actor="daemon:worker",
+    )
+    assert first.status is RunLifecycleStatus.REPLAN_REQUIRED
+    canonical_successor, _ = coordinator.compile_and_admit(
+        run.run_id,
+        request,
+        previous=substituted_plan,
+        actor="daemon:planner",
+    )
+    final = coordinator.execute(
+        run.run_id,
+        request,
+        canonical_successor,
+        actor="daemon:worker",
+    )
+    assert final.status is RunLifecycleStatus.SUCCEEDED
+
+    with pytest.raises(RuntimeApiError) as caught:
+        runtime.inspect_run(run.run_id)
+    assert caught.value.code is RuntimeApiFailureCode.CONFLICT
+    with pytest.raises(RuntimeApiError) as discovery:
+        runtime.review_run_ids()
+    assert discovery.value.code is RuntimeApiFailureCode.CONFLICT
 
 
 def test_public_cancellation_during_attempt_stops_verification_and_terminates(
@@ -740,6 +1100,15 @@ def test_projection_rejects_malformed_checkpoint_fields_and_task_state(
     def add_unknown_field(payload: dict[str, object]) -> None:
         payload["unknown"] = True
 
+    def remove_retained_workspace_history(payload: dict[str, object]) -> None:
+        payload.pop("retained_workspace_ids")
+
+    def remove_current_task_state_fields(payload: dict[str, object]) -> None:
+        tasks = cast("list[object]", payload["tasks"])
+        task = cast("dict[str, object]", tasks[0])
+        task.pop("retained_workspace_id")
+        task.pop("blocked_reason")
+
     def partial_pending_policy(payload: dict[str, object]) -> None:
         tasks = cast("list[object]", payload["tasks"])
         cast("dict[str, object]", tasks[0])["pending_policy_decision_id"] = DIGEST
@@ -755,6 +1124,8 @@ def test_projection_rejects_malformed_checkpoint_fields_and_task_state(
     mutations = (
         remove_run_id,
         add_unknown_field,
+        remove_retained_workspace_history,
+        remove_current_task_state_fields,
         top_level("run_id", ""),
         top_level("goal_digest", "bad"),
         top_level("goal_base_commit", "bad"),
@@ -773,6 +1144,8 @@ def test_projection_rejects_malformed_checkpoint_fields_and_task_state(
         task_level("last_artifact_digests", "not-a-list"),
         task_level("last_artifact_digests", [DIGEST, DIGEST]),
         task_level("head_commit", "bad"),
+        task_level("retained_workspace_id", ""),
+        task_level("blocked_reason", "unexpected-policy-state"),
         task_level("pending_policy_allowed", "true"),
         partial_pending_policy,
         misplaced_pending_policy,
@@ -1415,6 +1788,9 @@ def test_no_progress_breaker_escalates_and_emits_typed_praxis_candidate(
         artifact_digests=(DIGEST,),
         progress_digests=(DIGEST,),
         head_commit=FAILED_HEAD,
+        input_tokens=0,
+        output_tokens=0,
+        cost_microusd=0,
     )
     provider = _Provider(_draft(tasks=(_task("implement", allowed_paths=("src",)),)))
     executor = _Executor((failure, failure, _success()))
@@ -1519,15 +1895,29 @@ def test_replan_creates_one_immutable_successor_then_executes(tmp_path: Path) ->
     )
     executor = _SequentialExecutor((first_failure, _success()))
     journal = _journal(tmp_path)
+    durable_budget = GatewayBudget(10, 10, 1_000, 10)
+    authority_budget = GatewayBudget(100, 100, 10_000, 100)
     kernel = ProductionExecution(
-        ExecutionCoordinator(journal, provider, executor, ExecutionPolicyKernel())
+        ExecutionCoordinator(journal, provider, executor, ExecutionPolicyKernel()),
+        authority_for_run=lambda run_id: _journal_authority(
+            journal,
+            run_id,
+            authority_budget,
+        ),
     )
-    request = _planning_request("run-replan")
+    request = replace(
+        _planning_request("run-replan"),
+        budget=durable_budget,
+    )
 
     first = kernel.process(request, actor="daemon:worker")
     first_plan = journal.plan("run-replan")
     second = kernel.process(request, actor="daemon:worker")
     second_plan = journal.plan("run-replan")
+    restarted = EventBackedExecutionRunJournal(
+        EventStore(tmp_path / "kernel.sqlite3"),
+        CheckpointStore(tmp_path / "kernel.sqlite3"),
+    ).rehydrate("run-replan")
 
     assert first.status is RunLifecycleStatus.REPLAN_REQUIRED
     assert second.status is RunLifecycleStatus.SUCCEEDED
@@ -1535,10 +1925,206 @@ def test_replan_creates_one_immutable_successor_then_executes(tmp_path: Path) ->
     assert second_plan.plan_revision == 2
     assert second_plan.supersedes_plan_id == first_plan.plan_id
     assert second_plan.plan_id != first_plan.plan_id
+    assert first.retained_workspace_ids == (executor.workspaces[0],)
+    assert second.retained_workspace_ids == first.retained_workspace_ids
+    assert restarted.retained_workspace_ids == first.retained_workspace_ids
     assert provider.calls == 2
+    assert provider.budgets == [
+        durable_budget,
+        GatewayBudget(8, 8, 998, 10),
+    ]
     assert executor.calls == 2
     assert kernel.process(request, actor="daemon:worker") == second
     assert provider.calls == 2
+
+
+def test_direct_process_replan_uses_durable_remainder_without_public_authority(
+    tmp_path: Path,
+) -> None:
+    first_failure = AttemptEvidence(
+        workspace_clean=True,
+        verifier_exit_code=1,
+        required_checks_passed=False,
+        failure_class=FailureClass.INVALID_ASSUMPTION,
+        failure_summary="the admitted assumption is invalid",
+        artifact_digests=(DIGEST,),
+        progress_digests=(DIGEST,),
+        head_commit=FAILED_HEAD,
+        input_tokens=2,
+        output_tokens=1,
+        latency_ms=1,
+        cost_microusd=0,
+    )
+    provider = _SequenceProvider(
+        (
+            _draft(tasks=(_task("discover", allowed_paths=("src",)),)),
+            _draft(tasks=(_task("implement", allowed_paths=("src",)),)),
+        )
+    )
+    journal = _named_journal(tmp_path, "direct-process-remainder")
+    kernel = ProductionExecution(
+        ExecutionCoordinator(
+            journal,
+            provider,
+            _SequentialExecutor((first_failure, _success())),
+            ExecutionPolicyKernel(),
+        )
+    )
+    request = replace(
+        _planning_request("run-direct-process-remainder"),
+        budget=GatewayBudget(10, 10, 1_000, 10),
+    )
+
+    first = kernel.process(request, actor="daemon:worker")
+    second = kernel.process(request, actor="daemon:worker")
+
+    assert first.status is RunLifecycleStatus.REPLAN_REQUIRED
+    assert second.status is RunLifecycleStatus.SUCCEEDED
+    assert provider.budgets == [
+        request.budget,
+        GatewayBudget(7, 8, 998, 10),
+    ]
+
+
+def test_direct_run_replan_uses_durable_remainder_without_public_authority(
+    tmp_path: Path,
+) -> None:
+    failure = AttemptEvidence(
+        workspace_clean=True,
+        verifier_exit_code=1,
+        required_checks_passed=False,
+        failure_class=FailureClass.INVALID_ASSUMPTION,
+        failure_summary="the admitted assumption is invalid",
+        artifact_digests=(DIGEST,),
+        progress_digests=(DIGEST,),
+        head_commit=FAILED_HEAD,
+        input_tokens=1,
+        output_tokens=1,
+        latency_ms=1,
+        cost_microusd=0,
+    )
+    provider = _SequenceProvider(
+        (
+            _draft(tasks=(_task("discover", allowed_paths=("src",)),)),
+            _draft(tasks=(_task("implement", allowed_paths=("src",)),)),
+        )
+    )
+    kernel = ProductionExecution(
+        ExecutionCoordinator(
+            _named_journal(tmp_path, "direct-run-remainder"),
+            provider,
+            _SequentialExecutor((failure, _success())),
+            ExecutionPolicyKernel(),
+        )
+    )
+    request = replace(
+        _planning_request("run-direct-run-remainder"),
+        budget=GatewayBudget(10, 10, 1_000, 10),
+    )
+
+    first = kernel.run(request, actor="daemon:worker")
+    second = kernel.run(request, actor="daemon:worker", previous=first.plan)
+
+    assert first.state.status is RunLifecycleStatus.REPLAN_REQUIRED
+    assert second.state.status is RunLifecycleStatus.SUCCEEDED
+    assert provider.budgets == [
+        request.budget,
+        GatewayBudget(8, 8, 998, 10),
+    ]
+
+
+@pytest.mark.parametrize("incomplete", ("input", "output", "cost"))
+def test_direct_replan_stops_before_provider_when_usage_is_incomplete(
+    tmp_path: Path,
+    incomplete: str,
+) -> None:
+    failure = AttemptEvidence(
+        workspace_clean=True,
+        verifier_exit_code=1,
+        required_checks_passed=False,
+        failure_class=FailureClass.INVALID_ASSUMPTION,
+        failure_summary="the admitted assumption is invalid",
+        artifact_digests=(DIGEST,),
+        progress_digests=(DIGEST,),
+        head_commit=FAILED_HEAD,
+        input_tokens=None if incomplete == "input" else 0,
+        output_tokens=None if incomplete == "output" else 0,
+        latency_ms=1,
+        cost_microusd=None if incomplete == "cost" else 0,
+    )
+    provider = _Provider(
+        _draft(tasks=(_task("discover", allowed_paths=("src",)),)),
+        input_tokens=0,
+        output_tokens=0,
+        cost_microusd=0,
+    )
+    kernel = ProductionExecution(
+        ExecutionCoordinator(
+            _named_journal(tmp_path, f"direct-incomplete-{incomplete}"),
+            provider,
+            _SequentialExecutor((failure,)),
+            ExecutionPolicyKernel(),
+        )
+    )
+    request = replace(
+        _planning_request(f"run-direct-incomplete-{incomplete}"),
+        budget=GatewayBudget(10, 10, 1_000, 10),
+    )
+
+    first = kernel.process(request, actor="daemon:worker")
+    second = kernel.process(request, actor="daemon:worker")
+
+    assert first.status is RunLifecycleStatus.REPLAN_REQUIRED
+    assert second.status is RunLifecycleStatus.ESCALATED
+    assert provider.calls == 1
+
+
+def test_replan_stops_before_provider_when_durable_usage_is_incomplete(
+    tmp_path: Path,
+) -> None:
+    first_failure = AttemptEvidence(
+        workspace_clean=True,
+        verifier_exit_code=1,
+        required_checks_passed=False,
+        failure_class=FailureClass.INVALID_ASSUMPTION,
+        failure_summary="the admitted assumption is invalid",
+        artifact_digests=(DIGEST,),
+        progress_digests=(DIGEST,),
+        head_commit=FAILED_HEAD,
+        input_tokens=None,
+        output_tokens=1,
+        latency_ms=1,
+        cost_microusd=0,
+    )
+    provider = _Provider(_draft(tasks=(_task("discover", allowed_paths=("src",)),)))
+    executor = _SequentialExecutor((first_failure,))
+    journal = _journal(tmp_path)
+    total_budget = GatewayBudget(10, 10, 1_000, 10)
+    kernel = ProductionExecution(
+        ExecutionCoordinator(journal, provider, executor, ExecutionPolicyKernel()),
+        authority_for_run=lambda run_id: _journal_authority(
+            journal,
+            run_id,
+            total_budget,
+        ),
+    )
+    request = replace(
+        _planning_request("run-incomplete-replan"),
+        budget=total_budget,
+    )
+
+    first = kernel.process(request, actor="daemon:worker")
+    second = kernel.process(request, actor="daemon:worker")
+    terminal_payload = cast(
+        "dict[str, JsonValue]",
+        thaw_json(journal.events(request.run_id)[-1].payload),
+    )
+
+    assert first.status is RunLifecycleStatus.REPLAN_REQUIRED
+    assert second.status is RunLifecycleStatus.ESCALATED
+    assert terminal_payload["reason"] == "cumulative-budget-exhausted"
+    assert provider.calls == 1
+    assert executor.calls == 1
 
 
 def test_second_replan_request_exhausts_budget_without_another_provider_call(
@@ -1802,10 +2388,12 @@ def test_event_journal_exports_run_plan_task_and_attempt_correlations(tmp_path: 
     planning = next(
         item for item in records if item.attributes["event.type"] == EXECUTION_PLAN_DRAFT_RECEIVED
     )
-    assert planning.attributes["usage.input_tokens.known"] is False
-    assert planning.attributes["usage.output_tokens.known"] is False
-    assert planning.attributes["usage.cost_microusd.known"] is False
-    assert "usage.input_tokens" not in planning.attributes
+    assert planning.attributes["usage.input_tokens.known"] is True
+    assert planning.attributes["usage.output_tokens.known"] is True
+    assert planning.attributes["usage.cost_microusd.known"] is True
+    assert planning.attributes["usage.input_tokens"] == 0
+    assert planning.attributes["usage.output_tokens"] == 0
+    assert planning.attributes["usage.cost_microusd"] == 0
     verified = next(
         item for item in records if item.attributes["event.type"] == EXECUTION_TASK_VERIFIED
     )
@@ -1878,6 +2466,27 @@ def test_execution_contracts_reject_malformed_identity_scope_and_evidence() -> N
         lambda: replace(goal, same_error_limit=3),
     )
     for construct in invalid_goals:
+        with pytest.raises(PlanContractError):
+            construct()
+
+    invalid_authorities = (
+        lambda: ExecutionAuthority(cast("GatewayBudget", object()), 30, 1),
+        lambda: ExecutionAuthority(GatewayBudget(1, 1, 1, 0), 0, 1),
+        lambda: ExecutionAuthority(GatewayBudget(1, 1, 1, 0), 30, -1),
+        lambda: ExecutionAuthority(
+            GatewayBudget(1, 1, 1, 0),
+            30,
+            1,
+            GatewayBudget(2, 1, 1, 0),
+        ),
+        lambda: ExecutionAuthority(
+            GatewayBudget(1, 1, 1, 0),
+            30,
+            1,
+            input_tokens_complete=cast("bool", 1),
+        ),
+    )
+    for construct in invalid_authorities:
         with pytest.raises(PlanContractError):
             construct()
 
@@ -2122,15 +2731,190 @@ class _Gateway:
         )
 
 
+def test_runtime_resumes_legacy_durable_policy_fence_without_reauthorizing(
+    tmp_path: Path,
+) -> None:
+    request = _planning_request("run-policy-resume")
+    journal = _named_journal(tmp_path, "policy-resume")
+    provider = _Provider(
+        _draft(tasks=(_task("implement", allowed_paths=("src",)),)),
+        input_tokens=1,
+        output_tokens=1,
+        cost_microusd=0,
+    )
+    executor = _Executor((_success(),))
+    admitting = ExecutionCoordinator(journal, provider, executor, ExecutionPolicyKernel())
+    plan, _ = admitting.compile_and_admit("run-policy-resume", request, actor="daemon:planner")
+    journal.append(
+        "run-policy-resume",
+        EXECUTION_TASK_READY,
+        {"task_id": "implement", "attempt": 1},
+        actor="daemon:worker",
+    )
+    task = plan.tasks[0]
+    action = ToolActionRequest(
+        run_id="run-policy-resume",
+        plan_id=plan.plan_id,
+        task_id=task.task_id,
+        attempt=1,
+        capability="repository-task",
+        allowed_paths=task.allowed_paths,
+    )
+    decision = ExecutionPolicyKernel().authorize(request.goal, plan, task, action)
+    journal.append(
+        "run-policy-resume",
+        EXECUTION_POLICY_DECIDED,
+        {
+            "task_id": task.task_id,
+            "attempt": 1,
+            "allowed": decision.allowed,
+            "reason": decision.reason,
+            "action_digest": decision.action_digest,
+            "decision_id": decision.decision_id,
+        },
+        actor="daemon:worker",
+    )
+    resumed = ExecutionCoordinator(journal, provider, executor, _NeverAuthorizePolicy())
+    narrower_budget = GatewayBudget(1_000, 1_000, 1_000, 0)
+    kernel = ProductionExecution(
+        resumed,
+        authority_for_run=lambda _: ExecutionAuthority(narrower_budget, 1, 1),
+    )
+
+    state = kernel.process(
+        replace(request, budget=narrower_budget),
+        actor="daemon:worker",
+    )
+
+    assert state.status is RunLifecycleStatus.SUCCEEDED
+    assert state.budget == request.budget
+    assert executor.decisions == [decision]
+    assert (
+        sum(
+            event.event_type == EXECUTION_POLICY_DECIDED
+            for event in journal.events("run-policy-resume")
+        )
+        == 1
+    )
+
+
+def test_runtime_completes_denied_task_termination_after_blocked_event_restart(
+    tmp_path: Path,
+) -> None:
+    request = _planning_request("run-policy-blocked-resume")
+    journal = _named_journal(tmp_path, "policy-blocked-resume")
+    policy = _DenyPolicy()
+    coordinator = ExecutionCoordinator(
+        journal,
+        _Provider(_draft(tasks=(_task("implement", allowed_paths=("src",)),))),
+        _Executor((_success(),)),
+        policy,
+    )
+    plan, _ = coordinator.compile_and_admit(
+        request.run_id,
+        request,
+        actor="daemon:planner",
+    )
+    journal.append(
+        request.run_id,
+        EXECUTION_TASK_READY,
+        {"task_id": "implement", "attempt": 1},
+        actor="daemon:worker",
+    )
+    task = plan.tasks[0]
+    action = ToolActionRequest(
+        run_id=request.run_id,
+        plan_id=plan.plan_id,
+        task_id=task.task_id,
+        attempt=1,
+        capability="repository-task",
+        allowed_paths=task.allowed_paths,
+    )
+    decision = policy.authorize(request.goal, plan, task, action)
+    journal.append(
+        request.run_id,
+        EXECUTION_POLICY_DECIDED,
+        {
+            "task_id": task.task_id,
+            "attempt": 1,
+            "allowed": decision.allowed,
+            "reason": decision.reason,
+            "action_digest": decision.action_digest,
+            "decision_id": decision.decision_id,
+        },
+        actor="daemon:worker",
+    )
+    journal.append(
+        request.run_id,
+        EXECUTION_TASK_BLOCKED,
+        {"task_id": task.task_id, "reason": decision.reason},
+        actor="daemon:worker",
+    )
+    projection = ExecutionRunProjection()
+    current = journal.rehydrate(request.run_id)
+    old_payload = deepcopy(cast("dict[str, object]", projection.dump_state(current)))
+    old_payload.pop("retained_workspace_ids")
+    old_tasks = cast("list[object]", old_payload["tasks"])
+    for old_task in old_tasks:
+        old_state = cast("dict[str, object]", old_task)
+        old_state.pop("retained_workspace_id")
+        old_state.pop("blocked_reason")
+    blocked_event = journal.events(request.run_id)[-1]
+    assert blocked_event.global_position is not None
+    checkpoints = CheckpointStore(tmp_path / "policy-blocked-resume.sqlite3")
+    checkpoints.save(
+        ProjectionCheckpoint.create(
+            projection_name=projection.name,
+            projection_version=5,
+            stream_id=f"run:{request.run_id}",
+            last_global_position=blocked_event.global_position,
+            last_stream_sequence=blocked_event.stream_sequence,
+            state=cast("dict[str, JsonValue]", old_payload),
+        )
+    )
+    assert checkpoints.load(projection.name, 5, stream_id=f"run:{request.run_id}") is not None
+    assert (
+        checkpoints.load(projection.name, projection.version, stream_id=f"run:{request.run_id}")
+        is None
+    )
+    stranded = journal.rehydrate(request.run_id)
+    resumed = ExecutionCoordinator(
+        journal,
+        _Provider(_draft(tasks=(_task("implement", allowed_paths=("src",)),))),
+        _Executor((_success(),)),
+        _NeverAuthorizePolicy(),
+    )
+
+    state = resumed.execute(request.run_id, request, plan, actor="daemon:worker")
+
+    assert stranded.status is RunLifecycleStatus.RUNNING
+    assert stranded.task(task.task_id).blocked_reason == decision.reason
+    assert state.status is RunLifecycleStatus.BLOCKED
+    assert state.task(task.task_id).status is TaskLifecycleStatus.BLOCKED
+    assert (
+        sum(
+            event.event_type == EXECUTION_POLICY_DECIDED for event in journal.events(request.run_id)
+        )
+        == 1
+    )
+    terminal = journal.events(request.run_id)[-1]
+    assert terminal.event_type == EXECUTION_RUN_TERMINATED
+    terminal_payload = cast("dict[str, JsonValue]", thaw_json(terminal.payload))
+    assert terminal_payload["reason"] == decision.reason
+
+
 @dataclass
 class _Provider:
     draft: dict[str, object]
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-    cost_microusd: int | None = None
+    input_tokens: int | None = 0
+    output_tokens: int | None = 0
+    cost_microusd: int | None = 0
+    calls: int = 0
+    budgets: list[GatewayBudget] = field(default_factory=list)
 
     def propose_plan(self, request: PlanningRequest) -> PlanningResult:
-        del request
+        self.calls += 1
+        self.budgets.append(request.budget)
         return PlanningResult(
             draft=cast("dict[str, JsonValue]", self.draft),
             provider_output_digest=json_digest(cast("dict[str, JsonValue]", self.draft)),
@@ -2148,9 +2932,10 @@ class _Provider:
 class _SequenceProvider:
     drafts: tuple[dict[str, object], ...]
     calls: int = 0
+    budgets: list[GatewayBudget] = field(default_factory=list)
 
     def propose_plan(self, request: PlanningRequest) -> PlanningResult:
-        del request
+        self.budgets.append(request.budget)
         draft = self.drafts[self.calls]
         self.calls += 1
         return PlanningResult(
@@ -2201,6 +2986,7 @@ class _Executor:
 class _SequentialExecutor:
     outcomes: tuple[AttemptEvidence, ...]
     calls: int = 0
+    workspaces: list[str] = field(default_factory=list)
 
     def execute(
         self,
@@ -2217,13 +3003,13 @@ class _SequentialExecutor:
         policy_decision: PolicyDecision,
         remaining_budget: GatewayBudget,
     ) -> AttemptEvidence:
+        self.workspaces.append(workspace_id)
         del (
             run_id,
             goal,
             plan,
             task,
             attempt,
-            workspace_id,
             base_commit,
             prior_failure_class,
             prior_failure_summary,
@@ -2324,6 +3110,18 @@ class _DenyPolicy(ExecutionPolicyKernel):
         return PolicyDecision(False, "test-policy-denial", request.digest)
 
 
+class _NeverAuthorizePolicy(ExecutionPolicyKernel):
+    def authorize(
+        self,
+        goal: GoalSpec,
+        plan: Plan,
+        task: TaskSpec,
+        request: ToolActionRequest,
+    ) -> PolicyDecision:
+        del goal, plan, task, request
+        raise AssertionError("a durable policy fence must not be reauthorized")
+
+
 class _RaisingExecutor:
     def execute(
         self,
@@ -2366,6 +3164,33 @@ def _named_journal(tmp_path: Path, name: str) -> EventBackedExecutionRunJournal:
     return EventBackedExecutionRunJournal(EventStore(path), CheckpointStore(path))
 
 
+def _journal_authority(
+    journal: EventBackedExecutionRunJournal,
+    run_id: str,
+    total: GatewayBudget,
+) -> ExecutionAuthority:
+    try:
+        state = journal.rehydrate(run_id)
+    except ExecutionRuntimeError as error:
+        if error.code != "execution-run-not-found":
+            raise
+        return ExecutionAuthority(total, 30, 1)
+    return ExecutionAuthority(
+        budget=total,
+        check_timeout_seconds=30,
+        max_changed_paths=1,
+        consumed_budget=GatewayBudget(
+            (state.input_tokens if state.input_tokens_complete else total.max_input_tokens),
+            (state.output_tokens if state.output_tokens_complete else total.max_output_tokens),
+            state.latency_ms,
+            (state.cost_microusd if state.cost_microusd_complete else total.max_cost_microusd),
+        ),
+        input_tokens_complete=state.input_tokens_complete,
+        output_tokens_complete=state.output_tokens_complete,
+        cost_microusd_complete=state.cost_microusd_complete,
+    )
+
+
 def _planning_request(run_id: str) -> PlanningRequest:
     return PlanningRequest(
         goal=_goal(),
@@ -2375,6 +3200,78 @@ def _planning_request(run_id: str) -> PlanningRequest:
         estimated_input_tokens=1_000,
         correlation_id=run_id,
         run_id=run_id,
+    )
+
+
+def _append_execution_goal(
+    journal: EventBackedExecutionRunJournal,
+    *,
+    run_id: str,
+    goal: GoalSpec,
+    budget: GatewayBudget,
+) -> None:
+    journal.append(
+        run_id,
+        EXECUTION_GOAL_ADMITTED,
+        {
+            "goal_id": goal.goal_id,
+            "goal_digest": goal.digest,
+            "goal": goal_payload(goal),
+            "classification": DataClassification.PRIVATE.value,
+            "locality": LocalityPolicy.REMOTE_ALLOWED.value,
+            "budget": {
+                "max_input_tokens": budget.max_input_tokens,
+                "max_output_tokens": budget.max_output_tokens,
+                "max_latency_ms": budget.max_latency_ms,
+                "max_cost_microusd": budget.max_cost_microusd,
+            },
+        },
+        actor="daemon:planner",
+    )
+
+
+def _append_execution_draft(
+    journal: EventBackedExecutionRunJournal,
+    *,
+    run_id: str,
+    draft: dict[str, object],
+) -> None:
+    draft_digest = json_digest(cast("dict[str, JsonValue]", draft))
+    journal.append(
+        run_id,
+        EXECUTION_PLAN_DRAFT_RECEIVED,
+        {
+            "draft_digest": draft_digest,
+            "provider_output_digest": draft_digest,
+            "profile_id": "recorded-plan",
+            "adapter_id": "recorded-plan",
+            "model_id": "recorded-plan",
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "latency_ms": 1,
+            "cost_microusd": 0,
+        },
+        actor="daemon:planner",
+    )
+
+
+def _append_execution_plan(
+    journal: EventBackedExecutionRunJournal,
+    *,
+    run_id: str,
+    plan: Plan,
+) -> None:
+    journal.append(
+        run_id,
+        EXECUTION_PLAN_ADMITTED,
+        {
+            "plan_id": plan.plan_id,
+            "plan_digest": plan.plan_digest,
+            "plan_version": plan.plan_revision,
+            "supersedes_plan_id": plan.supersedes_plan_id,
+            "plan": plan_payload(plan),
+        },
+        actor="daemon:planner",
     )
 
 
@@ -2420,4 +3317,7 @@ def _success() -> AttemptEvidence:
         artifact_digests=(DIGEST,),
         progress_digests=(DIGEST,),
         head_commit=SUCCESS_HEAD,
+        input_tokens=0,
+        output_tokens=0,
+        cost_microusd=0,
     )

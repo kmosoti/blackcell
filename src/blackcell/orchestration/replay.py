@@ -151,7 +151,7 @@ class ReplayCheckExpectation:
     check_id: str
     argv: tuple[str, ...]
     expected_exit_code: int
-    timeout_seconds: int
+    timeout_seconds: int | float
 
 
 @dataclass(frozen=True, slots=True)
@@ -582,6 +582,7 @@ def build_review_context_from_artifacts(
     base_commit: str,
     state_digest: str,
     nodes: tuple[ReplayNodeExpectation, ...],
+    require_exact_constraints: bool = True,
 ) -> ReviewContext:
     """Construct complete review input only from a replay-verified artifact graph."""
 
@@ -591,7 +592,7 @@ def build_review_context_from_artifacts(
     if (
         len(materials) != len(nodes)
         or any(node.status != "succeeded" for node in nodes)
-        or any(node.constraints != constraints for node in nodes)
+        or (require_exact_constraints and any(node.constraints != constraints for node in nodes))
         or any(node.repository_write != ("repository-write" in node.effects) for node in nodes)
         or any(not node.depends_on and node.base_commit != base_commit for node in nodes)
         or any(not material.checks for material in materials)

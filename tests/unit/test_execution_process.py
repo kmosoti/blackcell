@@ -6,7 +6,7 @@ import signal
 import stat
 import subprocess
 from collections.abc import Callable, Iterable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Event
 from types import FrameType
@@ -26,6 +26,7 @@ from blackcell.bootstrap.execution_process import (
 from blackcell.bootstrap.execution_worker import ExecutionWorker, ExecutionWorkerCycleResult
 from blackcell.bootstrap.process import main
 from blackcell.bootstrap.runtime_service import (
+    GeneratedRun,
     RuntimeService,
     WorktreeMaintenanceReport,
 )
@@ -39,6 +40,7 @@ from blackcell.config import (
     ExecutionProviderAdapter,
     RuntimeProcessConfig,
 )
+from blackcell.gateway import GatewayBudget
 from blackcell.interfaces.http import (
     AcceptanceCheck,
     IntentRequest,
@@ -52,6 +54,13 @@ from blackcell.kernel import ArtifactStore, EventStore
 from blackcell.orchestration.changes import (
     MAX_CHANGE_CONTEXT_BYTES,
     MAX_CHANGE_PROPOSAL_BYTES,
+)
+from blackcell.orchestration.execution_plan import (
+    ExecutionAuthority,
+    GoalSpec,
+    PlanningRequest,
+    RunLifecycleStatus,
+    VerificationCheck,
 )
 
 TOKEN = "Runtime-worker_process-token.0123456789-ABCDEFG"
@@ -79,8 +88,16 @@ class RecordingRuntime:
     def __init__(self, order: list[str]) -> None:
         self.order = order
 
-    def next_generated_run(self) -> None:
+    def next_generated_run(self) -> GeneratedRun | None:
         return None
+
+    def generated_execution_authority(self, run_id: str) -> ExecutionAuthority:
+        del run_id
+        raise AssertionError("no generated execution authority is available")
+
+    def generated_execution_goal(self, run_id: str) -> GoalSpec:
+        del run_id
+        raise AssertionError("no generated execution goal is available")
 
     def should_cancel_generated_run(self, run_id: str) -> bool:
         return False
@@ -120,6 +137,26 @@ class FixedQuota:
         return self.available
 
 
+@dataclass
+class CapturingGeneratedExecution:
+    request: PlanningRequest | None = None
+
+    def process(self, request: PlanningRequest, *, actor: str) -> object:
+        assert actor == "execution-worker.test"
+        self.request = request
+        return type("GeneratedState", (), {"status": RunLifecycleStatus.SUCCEEDED})()
+
+
+class OneGeneratedRuntime(RecordingRuntime):
+    def __init__(self, generated: GeneratedRun) -> None:
+        super().__init__([])
+        self.generated = generated
+
+    def next_generated_run(self) -> GeneratedRun | None:
+        generated, self.generated = self.generated, None
+        return generated
+
+
 def test_execution_process_reconciles_then_runs_once_against_shared_storage(tmp_path: Path) -> None:
     config = _config(tmp_path)
 
@@ -129,6 +166,48 @@ def test_execution_process_reconciles_then_runs_once_against_shared_storage(tmp_
     assert config.security.paths.database_path.is_file()
     assert stat.S_IMODE(config.security.paths.database_path.stat().st_mode) == 0o600
     assert config.security.paths.artifact_root.is_dir()
+
+
+def test_generated_execution_intersects_admitted_and_worker_budgets(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    assert config.execution_worker is not None
+    goal = GoalSpec(
+        goal_id="goal-bounded",
+        project_id="project-bounded",
+        intent_id="intent-bounded",
+        objective="Exercise admitted generated-run bounds.",
+        base_commit="a" * 40,
+        constraints=(),
+        allowed_paths=("value.txt",),
+        verification_checks=(VerificationCheck("check", ("true",)),),
+    )
+    generated = GeneratedRun(
+        "run-bounded",
+        goal,
+        ExecutionAuthority(
+            budget=GatewayBudget(1_000, 500, 3_000, 0),
+            check_timeout_seconds=3,
+            max_changed_paths=1,
+        ),
+    )
+    execution = CapturingGeneratedExecution()
+    process = ExecutionWorkerProcess(
+        RecordingCoordinator(("idle",)),
+        OneGeneratedRuntime(generated),
+        config,
+        execution=cast("Any", execution),
+    )
+
+    result = process._run_generated_once(
+        config.execution_worker,
+        actor="execution-worker.test",
+    )
+
+    assert result is not None
+    assert result.status == "node-succeeded"
+    assert execution.request is not None
+    assert execution.request.goal == goal
+    assert execution.request.budget == generated.authority.budget
 
 
 def test_execution_process_composes_codex_caps_from_change_wire_contracts(

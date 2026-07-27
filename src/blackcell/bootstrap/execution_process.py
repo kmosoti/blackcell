@@ -62,7 +62,9 @@ from blackcell.orchestration.changes import (
     MAX_CHANGE_PROPOSAL_BYTES,
 )
 from blackcell.orchestration.execution_plan import (
+    ExecutionAuthority,
     ExecutionPolicyKernel,
+    GoalSpec,
     PlanningRequest,
     RunLifecycleStatus,
     planning_payload,
@@ -100,6 +102,10 @@ class ExecutionCycleRunner(Protocol):
 
 class ExecutionReconciliationPort(Protocol):
     def next_generated_run(self) -> GeneratedRun | None: ...
+
+    def generated_execution_goal(self, run_id: str) -> GoalSpec: ...
+
+    def generated_execution_authority(self, run_id: str) -> ExecutionAuthority: ...
 
     def should_cancel_generated_run(self, run_id: str) -> bool: ...
 
@@ -202,6 +208,7 @@ class ExecutionWorkerProcess:
                 evidence=ExecutionEvidenceCollector(boundaries.worktrees),
                 changes=TextChangeExecutor(boundaries.worktrees),
                 cancel_requested=runtime.should_cancel_generated_run,
+                authority_for_run=runtime.generated_execution_authority,
             )
             observer = (
                 None if telemetry.recorder is None else ExecutionTraceObserver(telemetry.recorder)
@@ -216,7 +223,9 @@ class ExecutionWorkerProcess:
                     boundaries.planner,
                     execution_executor,
                     ExecutionPolicyKernel(),
-                )
+                ),
+                authority_for_run=runtime.generated_execution_authority,
+                goal_for_run=runtime.generated_execution_goal,
             )
         except Exception:
             telemetry.shutdown()
@@ -253,11 +262,14 @@ class ExecutionWorkerProcess:
         generated = self.runtime.next_generated_run()
         if generated is None:
             return None
-        budget = GatewayBudget(
-            config.provider.max_input_tokens,
-            config.provider.max_output_tokens,
-            config.provider.timeout_ceiling_seconds * 1_000,
-            config.provider.max_cost_microusd,
+        budget = _intersect_budget(
+            GatewayBudget(
+                config.provider.max_input_tokens,
+                config.provider.max_output_tokens,
+                config.provider.timeout_ceiling_seconds * 1_000,
+                config.provider.max_cost_microusd,
+            ),
+            generated.authority.budget,
         )
         payload_size = len(canonical_json_bytes(planning_payload(generated.goal)))
         request = PlanningRequest(
@@ -334,6 +346,15 @@ class ExecutionWorkerProcess:
             raise ExecutionWorkerProcessError(code) from error
         finally:
             self.shutdown()
+
+
+def _intersect_budget(left: GatewayBudget, right: GatewayBudget) -> GatewayBudget:
+    return GatewayBudget(
+        min(left.max_input_tokens, right.max_input_tokens),
+        min(left.max_output_tokens, right.max_output_tokens),
+        min(left.max_latency_ms, right.max_latency_ms),
+        min(left.max_cost_microusd, right.max_cost_microusd),
+    )
 
 
 def validate_execution_worker_runtime_config(
