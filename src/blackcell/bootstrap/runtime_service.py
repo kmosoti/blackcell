@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from pathlib import Path
 from typing import cast
 
@@ -23,6 +24,7 @@ from blackcell.adapters.execution.worktree import (
     worktree_removal_payload,
 )
 from blackcell.config import RuntimeSecurityConfig
+from blackcell.gateway import GatewayBudget
 from blackcell.interfaces.http.contracts import (
     MAX_RUN_QUERY_SCAN_EVENTS,
     MAX_RUNTIME_EVENT_PAGE_SIZE,
@@ -68,12 +70,20 @@ from blackcell.kernel import (
     utc_now,
 )
 from blackcell.kernel._json import JsonInput, bytes_digest, json_digest, thaw_json
+from blackcell.orchestration.execution_artifacts import (
+    OUTCOME_MEDIA_TYPE,
+    NodeOutcomeManifest,
+    node_outcome_from_mapping,
+)
 from blackcell.orchestration.execution_plan import (
+    EXECUTION_GOAL_ADMITTED,
     EXECUTION_PLAN_ADMITTED,
     EXECUTION_TASK_VERIFIED,
+    ExecutionAuthority,
     GoalSpec,
     Plan,
     VerificationCheck,
+    goal_from_payload,
     plan_from_payload,
 )
 from blackcell.orchestration.execution_plan import (
@@ -86,6 +96,7 @@ from blackcell.orchestration.execution_runtime import (
     ExecutionRunProjection,
     ExecutionRunState,
     ExecutionRuntimeError,
+    ExecutionTaskState,
 )
 from blackcell.orchestration.replay import (
     ExecutionArtifactReaderPort,
@@ -182,6 +193,7 @@ class GeneratedRun:
 
     run_id: str
     goal: GoalSpec
+    authority: ExecutionAuthority
 
 
 @dataclass(frozen=True, slots=True)
@@ -535,8 +547,53 @@ class RuntimeService:
                 or (kernel is not None and kernel.status in _EXECUTION_TERMINAL_STATUSES)
             ):
                 continue
-            return GeneratedRun(run_id, _generated_goal(loaded))
+            return GeneratedRun(run_id, _generated_goal(loaded), _generated_authority(loaded.plan))
         return None
+
+    def generated_execution_authority(self, run_id: str) -> ExecutionAuthority:
+        """Re-read the immutable public-plan bounds for one generated execution attempt."""
+
+        loaded = self._load_run(run_id)
+        if loaded.plan.planning_mode != "generated":
+            raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+        authority = _generated_authority(loaded.plan)
+        kernel = loaded.kernel_state
+        if kernel is None:
+            return authority
+        return ExecutionAuthority(
+            budget=authority.budget,
+            check_timeout_seconds=authority.check_timeout_seconds,
+            max_changed_paths=authority.max_changed_paths,
+            consumed_budget=GatewayBudget(
+                (
+                    kernel.input_tokens
+                    if kernel.input_tokens_complete
+                    else authority.budget.max_input_tokens
+                ),
+                (
+                    kernel.output_tokens
+                    if kernel.output_tokens_complete
+                    else authority.budget.max_output_tokens
+                ),
+                kernel.latency_ms,
+                (
+                    kernel.cost_microusd
+                    if kernel.cost_microusd_complete
+                    else authority.budget.max_cost_microusd
+                ),
+            ),
+            input_tokens_complete=kernel.input_tokens_complete,
+            output_tokens_complete=kernel.output_tokens_complete,
+            cost_microusd_complete=kernel.cost_microusd_complete,
+        )
+
+    def generated_execution_goal(self, run_id: str) -> GoalSpec:
+        """Re-read the canonical goal derived from one accepted generated plan."""
+
+        loaded = self._load_run(run_id)
+        if loaded.plan.planning_mode != "generated":
+            raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+        return _generated_goal(loaded)
 
     def should_cancel_node(self, spec: WorktreeExecutionSpec) -> bool:
         """Return true when cancellation or fencing requires an active worker to stop."""
@@ -1354,7 +1411,7 @@ class RuntimeService:
         run_ids: list[str] = []
         for run_id in self._run_ids():
             loaded = self._load_run(run_id)
-            if loaded.state.status is RunLifecycleStatus.SUCCEEDED:
+            if _effective_run_status(loaded) == "succeeded":
                 run_ids.append(run_id)
         return tuple(run_ids)
 
@@ -1363,7 +1420,7 @@ class RuntimeService:
 
         _identifier(run_id)
         loaded = self._load_run(run_id)
-        if loaded.state.status is not RunLifecycleStatus.SUCCEEDED:
+        if _effective_run_status(loaded) != "succeeded":
             raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
         return self._review_candidate(loaded)
 
@@ -1374,10 +1431,16 @@ class RuntimeService:
             raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST)
         loaded = self._load_run(candidate.run_id)
         if (
-            loaded.state.status is not RunLifecycleStatus.SUCCEEDED
+            _effective_run_status(loaded) != "succeeded"
             or self._review_candidate(loaded) != candidate
         ):
             raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+        expectations = self._review_artifact_expectations(loaded)
+        review_constraints = (
+            loaded.intent.constraints
+            if loaded.kernel_state is None
+            else _kernel_goal(loaded).constraints
+        )
         return build_review_context_from_artifacts(
             self._artifacts,
             run_id=candidate.run_id,
@@ -1385,21 +1448,15 @@ class RuntimeService:
             intent_id=loaded.request.intent_id,
             plan_id=loaded.request.plan_id,
             objective=loaded.intent.objective,
-            constraints=loaded.intent.constraints,
+            constraints=review_constraints,
             base_commit=loaded.plan.base_commit,
             state_digest=candidate.state_digest,
-            nodes=_artifact_expectations(loaded),
+            nodes=expectations,
+            require_exact_constraints=loaded.kernel_state is None,
         )
 
     def _review_candidate(self, loaded: _LoadedRun) -> ReviewCandidate:
-        terminal_index = next(
-            (
-                index
-                for index, event in reversed(tuple(enumerate(loaded.events)))
-                if event.event_type == RUN_SUCCEEDED
-            ),
-            None,
-        )
+        terminal_index = _review_terminal_index(loaded)
         if terminal_index is None:
             raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
         terminal = loaded.events[terminal_index]
@@ -1420,19 +1477,34 @@ class RuntimeService:
             _plan_stream(loaded.request.plan_id),
             _PLAN_ACCEPTED,
         )
-        state_digest = json_digest(
-            {
-                "project": _request_value(project_event),
-                "intent": _request_value(intent_event),
-                "plan": _request_value(plan_event),
-                "run": _request_value(loaded.state.queued_event),
-                "lifecycle": run_lifecycle_payload(terminal_state),
-            }
-        )
+        state_payload: dict[str, object] = {
+            "project": _request_value(project_event),
+            "intent": _request_value(intent_event),
+            "plan": _request_value(plan_event),
+            "run": _request_value(loaded.state.queued_event),
+            "lifecycle": run_lifecycle_payload(terminal_state),
+        }
+        if loaded.kernel_state is not None:
+            terminal_kernel = (
+                ProjectionRunner()
+                .replay(
+                    ExecutionRunProjection(),
+                    loaded.events[: terminal_index + 1],
+                )
+                .state
+            )
+            if (
+                terminal_kernel is None
+                or terminal_kernel.status is not ExecutionRunStatus.SUCCEEDED
+            ):
+                raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+            state_payload["kernel"] = ExecutionRunProjection().dump_state(terminal_kernel)
+        state_digest = json_digest(cast("Mapping[str, JsonInput]", state_payload))
+        expectations = self._review_artifact_expectations(loaded)
         artifact_report = verify_run_artifacts(
             self._artifacts,
             run_id=loaded.request.run_id,
-            nodes=_artifact_expectations(loaded),
+            nodes=expectations,
         )
         return ReviewCandidate(
             run_id=loaded.request.run_id,
@@ -1443,6 +1515,105 @@ class RuntimeService:
             state_digest=state_digest,
             artifact_evidence_digest=artifact_report.evidence_digest,
         )
+
+    def _review_artifact_expectations(
+        self,
+        loaded: _LoadedRun,
+    ) -> tuple[ReplayNodeExpectation, ...]:
+        if loaded.kernel_state is None:
+            return _artifact_expectations(loaded)
+        if self._artifacts is None:
+            raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+        plan = _kernel_plan(loaded)
+        goal = _kernel_goal(loaded)
+        states = {item.task_id: item for item in loaded.kernel_state.tasks}
+        authority = _generated_authority(loaded.plan)
+        expectations: list[ReplayNodeExpectation] = []
+        for task in plan.tasks:
+            state = states.get(task.task_id)
+            if state is None:
+                raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+            outcome_digest, outcome = _kernel_outcome(
+                self._artifacts,
+                state.last_artifact_digests,
+            )
+            if (
+                state.status is not ExecutionTaskStatus.SUCCEEDED
+                or outcome.run_id != loaded.request.run_id
+                or outcome.node_id != task.task_id
+                or outcome.attempt != state.attempts
+                or outcome.status != "succeeded"
+            ):
+                raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+            base_commit = _kernel_task_base_commit(
+                plan,
+                states,
+                task.task_id,
+            )
+            constraints = goal.constraints
+            max_changed_paths = 0
+            provider_context_digest = None
+            if task.allowed_paths:
+                context = outcome.context_artifact
+                if context is None:
+                    raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+                raw_context = _artifact_mapping(self._artifacts, context.digest)
+                constraints = _kernel_context_constraints(
+                    raw_context,
+                    accepted=goal.constraints,
+                )
+                max_changed_paths = _artifact_integer(raw_context, "max_changed_paths")
+                if max_changed_paths > authority.max_changed_paths:
+                    raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+                provider_context_digest = context.digest
+            recorded_checks = {item.check_id: item for item in outcome.checks}
+            checks: list[ReplayCheckExpectation] = []
+            for check in task.checks:
+                recorded = recorded_checks.get(check.check_id)
+                if recorded is None:
+                    raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+                command = _artifact_mapping(self._artifacts, recorded.command.digest)
+                timeout_seconds = _artifact_number(command, "timeout_seconds")
+                if timeout_seconds > authority.check_timeout_seconds:
+                    raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+                checks.append(
+                    ReplayCheckExpectation(
+                        check.check_id,
+                        check.argv,
+                        check.expected_exit_code,
+                        timeout_seconds,
+                    )
+                )
+            expectations.append(
+                ReplayNodeExpectation(
+                    node_id=task.task_id,
+                    objective=task.objective,
+                    constraints=constraints,
+                    depends_on=task.depends_on,
+                    repository_write=bool(task.allowed_paths),
+                    effects=(
+                        ("repository-read", "repository-write", "process")
+                        if task.allowed_paths
+                        else ("repository-read", "process")
+                    ),
+                    allowed_paths=task.allowed_paths,
+                    max_changed_paths=max_changed_paths,
+                    checks=tuple(checks),
+                    status=state.status.value,
+                    attempt=state.attempts,
+                    fencing_token=state.attempts,
+                    lease_digest=outcome.lease_digest,
+                    worktree_spec_digest=outcome.worktree_spec_digest,
+                    base_commit=base_commit,
+                    head_commit=state.head_commit,
+                    failure_code=(
+                        None if state.last_failure_class is None else state.last_failure_class.value
+                    ),
+                    result_digest=outcome_digest,
+                    provider_context_digest=provider_context_digest,
+                )
+            )
+        return tuple(expectations)
 
     def _record_run_queued(
         self,
@@ -1522,7 +1693,7 @@ class RuntimeService:
         except ExecutionRuntimeError as error:
             raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from error
         self._validate_worktree_evidence(events, plan)
-        return _LoadedRun(
+        loaded = _LoadedRun(
             request=request,
             intent=intent,
             plan=plan,
@@ -1530,6 +1701,9 @@ class RuntimeService:
             state=state,
             kernel_state=kernel_state,
         )
+        if plan.planning_mode == "generated" and kernel_state is not None:
+            _require_generated_kernel_binding(loaded)
+        return loaded
 
     def _validate_worktree_evidence(
         self,
@@ -2385,7 +2559,16 @@ def _run_response(loaded: _LoadedRun) -> RunResponse:
         ),
         attempt=max(max(node.attempts for node in state.nodes), kernel_attempt),
         fencing_token=max(node.fencing_token for node in state.nodes),
-        retained_worktree=any(node.retained_worktree for node in state.nodes),
+        retained_worktree=(
+            any(node.retained_worktree for node in state.nodes)
+            or (
+                kernel is not None
+                and (
+                    bool(kernel.retained_workspace_ids)
+                    or any(node.retained_workspace_id is not None for node in kernel.tasks)
+                )
+            )
+        ),
         principal_id=_event_principal(state.queued_event),
         event_id=event.event_id,
         cursor=_global_position(event),
@@ -2471,7 +2654,7 @@ def _run_query_item(loaded: _LoadedRun) -> RunQueryItem:
                 failure_code=(
                     None if node.last_failure_class is None else node.last_failure_class.value
                 ),
-                retained_worktree=node.active_workspace_id is not None,
+                retained_worktree=node.retained_workspace_id is not None,
                 head_commit=node.head_commit,
                 depends_on=tasks[node.task_id].depends_on,
                 max_attempts=tasks[node.task_id].max_attempts,
@@ -2500,23 +2683,72 @@ def _run_query_item(loaded: _LoadedRun) -> RunQueryItem:
 
 
 def _kernel_plan(loaded: _LoadedRun) -> Plan:
+    plans = _kernel_plans(loaded)
+    if not plans:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    return plans[-1]
+
+
+def _kernel_plans(loaded: _LoadedRun) -> tuple[Plan, ...]:
+    plans: list[Plan] = []
+    for event in loaded.events:
+        if event.event_type != EXECUTION_PLAN_ADMITTED:
+            continue
+        try:
+            plans.append(plan_from_payload(_thawed_mapping(event.payload).get("plan")))
+        except (LifecycleError, TypeError, ValueError) as error:
+            raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from error
+    kernel = loaded.kernel_state
+    if kernel is None:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    if not plans:
+        if any(
+            value is not None
+            for value in (kernel.plan_id, kernel.plan_digest, kernel.plan_revision)
+        ):
+            raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+        return ()
+    plan = plans[-1]
+    if (
+        plan.plan_id != kernel.plan_id
+        or plan.plan_digest != kernel.plan_digest
+        or plan.plan_revision != kernel.plan_revision
+    ):
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    return tuple(plans)
+
+
+def _kernel_goal(loaded: _LoadedRun) -> GoalSpec:
     event = next(
-        (item for item in reversed(loaded.events) if item.event_type == EXECUTION_PLAN_ADMITTED),
+        (item for item in loaded.events if item.event_type == EXECUTION_GOAL_ADMITTED),
         None,
     )
     if event is None:
         raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
     try:
-        plan = plan_from_payload(_thawed_mapping(event.payload).get("plan"))
+        goal = goal_from_payload(_thawed_mapping(event.payload).get("goal"))
     except (LifecycleError, TypeError, ValueError) as error:
         raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from error
     if (
         loaded.kernel_state is None
-        or plan.plan_id != loaded.kernel_state.plan_id
-        or plan.plan_digest != loaded.kernel_state.plan_digest
+        or goal.goal_id != loaded.kernel_state.goal_id
+        or goal.digest != loaded.kernel_state.goal_digest
     ):
         raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
-    return plan
+    return goal
+
+
+def _require_generated_kernel_binding(loaded: _LoadedRun) -> None:
+    goal = _kernel_goal(loaded)
+    required_checks = {check.check_id: check for check in goal.verification_checks}
+    if goal != _generated_goal(loaded):
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    for plan in _kernel_plans(loaded):
+        internal_checks = tuple(check for task in plan.tasks for check in task.checks)
+        if {check.check_id for check in internal_checks} != set(required_checks) or any(
+            required_checks.get(check.check_id) != check for check in internal_checks
+        ):
+            raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
 
 
 def _effective_run_status(loaded: _LoadedRun) -> RunStatus:
@@ -2535,6 +2767,122 @@ def _effective_run_status(loaded: _LoadedRun) -> RunStatus:
         ExecutionRunStatus.TERMINAL_FAILURE: "failed",
     }
     return statuses[kernel.status]
+
+
+def _review_terminal_index(loaded: _LoadedRun) -> int | None:
+    kernel = loaded.kernel_state
+    if kernel is not None:
+        if kernel.status is not ExecutionRunStatus.SUCCEEDED:
+            return None
+        return next(
+            (
+                index
+                for index, event in reversed(tuple(enumerate(loaded.events)))
+                if event.event_id == kernel.latest_event_id
+            ),
+            None,
+        )
+    return next(
+        (
+            index
+            for index, event in reversed(tuple(enumerate(loaded.events)))
+            if event.event_type == RUN_SUCCEEDED
+        ),
+        None,
+    )
+
+
+def _kernel_outcome(
+    artifacts: ExecutionArtifactReaderPort,
+    digests: tuple[str, ...],
+) -> tuple[str, NodeOutcomeManifest]:
+    try:
+        candidates = tuple(
+            digest for digest in digests if artifacts.stat(digest).media_type == OUTCOME_MEDIA_TYPE
+        )
+        if len(candidates) != 1:
+            raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+        digest = candidates[0]
+        outcome = node_outcome_from_mapping(_artifact_mapping(artifacts, digest))
+    except RuntimeApiError:
+        raise
+    except Exception as error:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from error
+    if outcome.digest != digest:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    return digest, outcome
+
+
+def _artifact_mapping(
+    artifacts: ExecutionArtifactReaderPort,
+    digest: str,
+) -> Mapping[str, object]:
+    try:
+        value = msgspec.json.decode(artifacts.get_bytes(digest, verify=True))
+    except Exception as error:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from error
+    if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    return cast("Mapping[str, object]", value)
+
+
+def _artifact_integer(value: Mapping[str, object], field: str) -> int:
+    item = value.get(field)
+    if isinstance(item, bool) or not isinstance(item, int) or item < 0:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    return item
+
+
+def _artifact_number(value: Mapping[str, object], field: str) -> int | float:
+    item = value.get(field)
+    if (
+        isinstance(item, bool)
+        or not isinstance(item, int | float)
+        or not isfinite(item)
+        or item <= 0
+    ):
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    return item
+
+
+def _kernel_context_constraints(
+    value: Mapping[str, object],
+    *,
+    accepted: tuple[str, ...],
+) -> tuple[str, ...]:
+    raw = value.get("constraints")
+    if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    constraints = tuple(cast("list[str]", raw))
+    if (
+        constraints[: len(accepted)] != accepted
+        or len(constraints) not in {len(accepted), len(accepted) + 1}
+        or (
+            len(constraints) == len(accepted) + 1
+            and (
+                not constraints[-1].startswith("prior-attempt:")
+                or len(constraints[-1].encode("utf-8")) > 2 * 1024
+            )
+        )
+    ):
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    return constraints
+
+
+def _kernel_task_base_commit(
+    plan: Plan,
+    states: Mapping[str, ExecutionTaskState],
+    task_id: str,
+) -> str:
+    task = next((item for item in plan.tasks if item.task_id == task_id), None)
+    if task is None:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    if not task.depends_on:
+        return plan.base_commit
+    heads = {states[dependency].head_commit for dependency in task.depends_on}
+    if None in heads or len(heads) != 1:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    return cast("str", next(iter(heads)))
 
 
 def _kernel_latest_event(loaded: _LoadedRun, state: ExecutionRunState) -> EventEnvelope:
@@ -2838,6 +3186,22 @@ def _generated_goal(loaded: _LoadedRun) -> GoalSpec:
         verification_checks=_generated_checks(loaded.plan),
         max_attempts=3,
         same_error_limit=2,
+    )
+
+
+def _generated_authority(plan: PlanRequest) -> ExecutionAuthority:
+    return ExecutionAuthority(
+        budget=GatewayBudget(
+            sum(node.budget.max_input_tokens for node in plan.nodes),
+            sum(node.budget.max_output_tokens for node in plan.nodes),
+            sum(node.budget.timeout_seconds for node in plan.nodes) * 1_000,
+            sum(node.budget.max_cost_microusd for node in plan.nodes),
+        ),
+        check_timeout_seconds=min(node.budget.timeout_seconds for node in plan.nodes),
+        max_changed_paths=min(
+            10_000,
+            sum(node.budget.max_changed_files for node in plan.nodes),
+        ),
     )
 
 

@@ -115,6 +115,39 @@ class RunLifecycleStatus(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class ExecutionAuthority:
+    budget: GatewayBudget
+    check_timeout_seconds: int
+    max_changed_paths: int
+    consumed_budget: GatewayBudget = field(
+        default_factory=lambda: GatewayBudget(0, 0, 0, 0),
+    )
+    input_tokens_complete: bool = True
+    output_tokens_complete: bool = True
+    cost_microusd_complete: bool = True
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.budget, GatewayBudget)
+            or not isinstance(self.consumed_budget, GatewayBudget)
+            or self.consumed_budget.max_input_tokens > self.budget.max_input_tokens
+            or self.consumed_budget.max_output_tokens > self.budget.max_output_tokens
+            or self.consumed_budget.max_latency_ms > self.budget.max_latency_ms
+            or self.consumed_budget.max_cost_microusd > self.budget.max_cost_microusd
+            or not isinstance(self.input_tokens_complete, bool)
+            or not isinstance(self.output_tokens_complete, bool)
+            or not isinstance(self.cost_microusd_complete, bool)
+            or isinstance(self.check_timeout_seconds, bool)
+            or not isinstance(self.check_timeout_seconds, int)
+            or not 1 <= self.check_timeout_seconds <= 600
+            or isinstance(self.max_changed_paths, bool)
+            or not isinstance(self.max_changed_paths, int)
+            or not 0 <= self.max_changed_paths <= 10_000
+        ):
+            raise PlanContractError()
+
+
+@dataclass(frozen=True, slots=True)
 class GoalSpec:
     goal_id: str
     project_id: str
@@ -628,6 +661,10 @@ def compile_plan(
     if not 1 <= len(raw_tasks) <= _MAX_TASKS:
         raise PlanContractError()
     tasks = tuple(_compile_task(goal, raw) for raw in raw_tasks)
+    covered_checks = {check.check_id for task in tasks for check in task.checks}
+    required_checks = {check.check_id for check in goal.verification_checks}
+    if covered_checks != required_checks:
+        raise PlanContractError("plan-check-coverage-incomplete")
     draft_digest = json_digest(cast("Mapping[str, JsonInput]", draft))
     if previous is None:
         revision = 1
@@ -1001,6 +1038,7 @@ __all__ = [
     "PLAN_DRAFT_OUTPUT_SCHEMA",
     "AttemptEvidence",
     "AttemptRoute",
+    "ExecutionAuthority",
     "ExecutionPolicyKernel",
     "FailureClass",
     "GoalSpec",

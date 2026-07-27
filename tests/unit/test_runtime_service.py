@@ -13,6 +13,7 @@ from blackcell.adapters.execution.worktree import (
     WorktreeLifecycleError,
 )
 from blackcell.bootstrap.runtime_service import RuntimeService
+from blackcell.gateway import DataClassification, GatewayBudget, LocalityPolicy
 from blackcell.interfaces.http import (
     AcceptanceCheck,
     CancelRunRequest,
@@ -26,7 +27,18 @@ from blackcell.interfaces.http import (
     RuntimeApiError,
     RuntimeApiFailureCode,
 )
-from blackcell.kernel import ArtifactStore, EventEnvelope, EventStore
+from blackcell.kernel import ArtifactStore, CheckpointStore, EventEnvelope, EventStore, JsonValue
+from blackcell.orchestration.execution_plan import (
+    EXECUTION_PLAN_DRAFT_SCHEMA,
+    ExecutionPolicyKernel,
+    PlanningRequest,
+    PlanningResult,
+    TaskAttemptExecutor,
+)
+from blackcell.orchestration.execution_runtime import (
+    EventBackedExecutionRunJournal,
+    ExecutionCoordinator,
+)
 
 _CONFIGURATION_DIGEST = "sha256:" + ("a" * 64)
 _OTHER_CONFIGURATION_DIGEST = "sha256:" + ("b" * 64)
@@ -42,6 +54,34 @@ class RefusingPlanRetentionWorktrees(GitWorktreeLifecycle):
         base_commit: str,
     ) -> str:
         raise WorktreeLifecycleError(WorktreeFailureCode.BASE_COMMIT_RETENTION_FAILED)
+
+
+class UnknownUsagePlanner:
+    def propose_plan(self, request: PlanningRequest) -> PlanningResult:
+        del request
+        draft = {
+            "schema_version": EXECUTION_PLAN_DRAFT_SCHEMA,
+            "tasks": [
+                {
+                    "task_id": "verify",
+                    "objective": "Run the admitted verification checks.",
+                    "depends_on": [],
+                    "allowed_paths": [],
+                    "checks": ["inspect-pass", "verify-pass"],
+                }
+            ],
+        }
+        return PlanningResult(
+            draft=cast("dict[str, JsonValue]", draft),
+            provider_output_digest=_CONFIGURATION_DIGEST,
+            profile_id="unknown-usage-planner",
+            adapter_id="recorded-test",
+            model_id="recorded-test",
+            input_tokens=None,
+            output_tokens=None,
+            latency_ms=7,
+            cost_microusd=None,
+        )
 
 
 def test_runtime_flow_is_idempotent_restart_safe_and_live_free(tmp_path: Path) -> None:
@@ -83,7 +123,8 @@ def test_generated_plan_run_uses_asynchronous_execution_selection(
     tmp_path: Path,
 ) -> None:
     repository = _repository(tmp_path)
-    service = RuntimeService(EventStore(tmp_path / "generated.sqlite3"), repository)
+    events = EventStore(tmp_path / "generated.sqlite3")
+    service = RuntimeService(events, repository)
     service.register_project(_project(repository), principal_id="operator")
     intent = IntentRequest(
         schema_version="intent-request/v1",
@@ -104,7 +145,18 @@ def test_generated_plan_run_uses_asynchronous_execution_selection(
         intent_id=declared.intent_id,
         base_commit=declared.base_commit,
         allowed_effects=declared.allowed_effects,
-        nodes=declared.nodes,
+        nodes=tuple(
+            PlanNode(
+                node_id=node.node_id,
+                objective=node.objective,
+                depends_on=node.depends_on,
+                budget=NodeBudget(1_000, 1_000, 30, 50, 0),
+                effects=node.effects,
+                allowed_paths=node.allowed_paths,
+                checks=node.checks,
+            )
+            for node in declared.nodes
+        ),
         idempotency_key=declared.idempotency_key,
         planning_mode="generated",
     )
@@ -118,10 +170,44 @@ def test_generated_plan_run_uses_asynchronous_execution_selection(
     assert selected.run_id == "run-1"
     assert selected.goal.objective == intent.objective
     assert selected.goal.base_commit == generated.base_commit
+    assert selected.authority.check_timeout_seconds == 30
+    assert selected.authority.max_changed_paths == 0
+    assert selected.authority.budget.max_input_tokens == 2_000
+    assert selected.authority.budget.max_output_tokens == 2_000
+    assert selected.authority.budget.max_latency_ms == 60_000
+    assert selected.authority.budget.max_cost_microusd == 100
+    assert service.generated_execution_authority(selected.run_id) == selected.authority
     assert tuple(item.check_id for item in selected.goal.verification_checks) == (
         "inspect-pass",
         "verify-pass",
     )
+
+    coordinator = ExecutionCoordinator(
+        EventBackedExecutionRunJournal(events, CheckpointStore(events.path)),
+        UnknownUsagePlanner(),
+        cast("TaskAttemptExecutor", object()),
+        ExecutionPolicyKernel(),
+    )
+    coordinator.compile_and_admit(
+        selected.run_id,
+        PlanningRequest(
+            goal=selected.goal,
+            classification=DataClassification.PRIVATE,
+            locality=LocalityPolicy.REMOTE_ALLOWED,
+            budget=selected.authority.budget,
+            estimated_input_tokens=1,
+            correlation_id=selected.run_id,
+            run_id=selected.run_id,
+        ),
+        actor="test:planner",
+    )
+
+    resumed = service.generated_execution_authority(selected.run_id)
+
+    assert resumed.consumed_budget == GatewayBudget(2_000, 2_000, 7, 100)
+    assert not resumed.input_tokens_complete
+    assert not resumed.output_tokens_complete
+    assert not resumed.cost_microusd_complete
 
 
 def test_runtime_submission_rejects_mismatched_references_and_conflicts(tmp_path: Path) -> None:

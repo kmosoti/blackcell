@@ -563,6 +563,40 @@ class GitWorktreeLifecycle:
         if commit.return_code != 0:
             raise WorktreeLifecycleError(WorktreeFailureCode.BASE_COMMIT_NOT_FOUND)
 
+    def changed_paths_between(
+        self,
+        repository_root: Path,
+        *,
+        base_commit: str,
+        head_commit: str,
+    ) -> tuple[str, ...]:
+        """Return normalized cumulative path effects for one admitted commit range."""
+
+        root = _canonical_repository_root(repository_root)
+        self.validate_base_commit(root, base_commit)
+        self.validate_base_commit(root, head_commit)
+        ancestor = self._git_at(
+            root,
+            ("merge-base", "--is-ancestor", base_commit, head_commit),
+        )
+        if ancestor.return_code != 0:
+            raise WorktreeLifecycleError(WorktreeFailureCode.WORKTREE_CONFLICT)
+        changed = self._require_success(
+            self._git_at(
+                root,
+                (
+                    "diff",
+                    "--name-only",
+                    "--no-renames",
+                    "-z",
+                    base_commit,
+                    head_commit,
+                    "--",
+                ),
+            )
+        )
+        return self._path_output(changed)
+
     def retain_plan_base_commit(
         self,
         repository_root: Path,

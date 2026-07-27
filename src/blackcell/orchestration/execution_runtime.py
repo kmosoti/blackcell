@@ -186,6 +186,8 @@ class ExecutionTaskState:
     last_error_signature: str | None = None
     same_error_count: int = 0
     active_workspace_id: str | None = None
+    retained_workspace_id: str | None = None
+    blocked_reason: str | None = None
     evidence_event_ids: tuple[str, ...] = ()
     last_failure_class: FailureClass | None = None
     last_failure_summary: str | None = None
@@ -214,6 +216,7 @@ class ExecutionRunState:
     plan_revision: int | None
     status: RunLifecycleStatus
     tasks: tuple[ExecutionTaskState, ...]
+    retained_workspace_ids: tuple[str, ...]
     latest_event_id: str
     last_stream_sequence: int
     input_tokens: int = 0
@@ -238,7 +241,7 @@ class ExecutionEventObserver(Protocol):
 
 class ExecutionRunProjection:
     name = "run-kernel"
-    version = 5
+    version = 6
 
     def initial_state(self) -> ExecutionRunState | None:
         return None
@@ -333,6 +336,7 @@ class ExecutionRunProjection:
                 plan_revision=None,
                 status=RunLifecycleStatus.ADMITTED,
                 tasks=(),
+                retained_workspace_ids=(),
                 latest_event_id=event.event_id,
                 last_stream_sequence=event.stream_sequence,
             )
@@ -616,6 +620,11 @@ class ExecutionRunProjection:
                     last_error_signature=signature,
                     same_error_count=same_error_count,
                     active_workspace_id=None,
+                    retained_workspace_id=(
+                        task.retained_workspace_id
+                        if route is AttemptRoute.SUCCEEDED
+                        else task.active_workspace_id
+                    ),
                     evidence_event_ids=(*task.evidence_event_ids, event.event_id),
                     last_failure_class=failure_class,
                     last_failure_summary=failure_summary,
@@ -624,8 +633,16 @@ class ExecutionRunProjection:
                     head_commit=evidence.head_commit,
                 ),
             )
+            retained_workspace_ids = updated.retained_workspace_ids
+            if (
+                route is not AttemptRoute.SUCCEEDED
+                and task.active_workspace_id is not None
+                and task.active_workspace_id not in retained_workspace_ids
+            ):
+                retained_workspace_ids = (*retained_workspace_ids, task.active_workspace_id)
             updated = replace(
                 updated,
+                retained_workspace_ids=retained_workspace_ids,
                 input_tokens=updated.input_tokens + (input_tokens or 0),
                 input_tokens_complete=(updated.input_tokens_complete and input_tokens is not None),
                 output_tokens=updated.output_tokens + (output_tokens or 0),
@@ -652,6 +669,7 @@ class ExecutionRunProjection:
                 replace(
                     task,
                     status=TaskLifecycleStatus.BLOCKED,
+                    blocked_reason=reason,
                     pending_policy_decision_id=None,
                     pending_policy_action_digest=None,
                     pending_policy_allowed=None,
@@ -692,6 +710,7 @@ class ExecutionRunProjection:
             "plan_digest": state.plan_digest,
             "plan_version": state.plan_revision,
             "status": state.status.value,
+            "retained_workspace_ids": list(state.retained_workspace_ids),
             "tasks": [
                 {
                     "task_id": item.task_id,
@@ -703,6 +722,8 @@ class ExecutionRunProjection:
                     "last_error_signature": item.last_error_signature,
                     "same_error_count": item.same_error_count,
                     "active_workspace_id": item.active_workspace_id,
+                    "retained_workspace_id": item.retained_workspace_id,
+                    "blocked_reason": item.blocked_reason,
                     "evidence_event_ids": list(item.evidence_event_ids),
                     "last_failure_class": (
                         None if item.last_failure_class is None else item.last_failure_class.value
@@ -750,6 +771,7 @@ class ExecutionRunProjection:
                 "plan_digest",
                 "plan_version",
                 "status",
+                "retained_workspace_ids",
                 "tasks",
                 "latest_event_id",
                 "last_stream_sequence",
@@ -773,6 +795,9 @@ class ExecutionRunProjection:
             isinstance(plan_revision_value, bool) or not isinstance(plan_revision_value, int)
         ):
             raise ExecutionRuntimeError("invalid-execution-checkpoint")
+        retained_workspace_ids = _text_tuple(raw, "retained_workspace_ids")
+        if len(set(retained_workspace_ids)) != len(retained_workspace_ids):
+            raise ExecutionRuntimeError("invalid-execution-checkpoint")
         return ExecutionRunState(
             run_id=_text(raw, "run_id"),
             goal_id=_text(raw, "goal_id"),
@@ -787,6 +812,7 @@ class ExecutionRunProjection:
             plan_digest=_optional_digest(raw, "plan_digest"),
             plan_revision=cast("int | None", plan_revision_value),
             status=RunLifecycleStatus(_text(raw, "status")),
+            retained_workspace_ids=retained_workspace_ids,
             tasks=tasks,
             latest_event_id=_text(raw, "latest_event_id"),
             last_stream_sequence=_integer(raw, "last_stream_sequence"),
@@ -1061,6 +1087,19 @@ class ExecutionCoordinator:
             reason="replan-budget-exhausted",
         )
 
+    def exhaust_provider_budget(self, run_id: str, *, actor: str) -> ExecutionRunState:
+        """Terminate a replan before redispatch when canonical provider authority is spent."""
+
+        state = self.journal.rehydrate(run_id)
+        if state.status is not RunLifecycleStatus.REPLAN_REQUIRED:
+            raise ExecutionRuntimeError("execution-replan-not-required")
+        return self._terminate(
+            run_id,
+            RunLifecycleStatus.ESCALATED,
+            actor=actor,
+            reason="cumulative-budget-exhausted",
+        )
+
     def compile_and_admit(
         self,
         run_id: str,
@@ -1068,9 +1107,12 @@ class ExecutionCoordinator:
         *,
         actor: str,
         previous: Plan | None = None,
+        provider_budget: GatewayBudget | None = None,
     ) -> tuple[Plan, PlanningResult]:
         if request.run_id != run_id:
             raise ExecutionRuntimeError("execution-run-binding-mismatch")
+        if provider_budget is not None and not _budget_within(provider_budget, request.budget):
+            raise ExecutionRuntimeError("execution-provider-budget-invalid")
         goal = request.goal
         if previous is None:
             self.journal.append(
@@ -1109,7 +1151,10 @@ class ExecutionCoordinator:
                 },
                 actor=actor,
             )
-        result = self.provider.propose_plan(request)
+        provider_request = (
+            request if provider_budget is None else replace(request, budget=provider_budget)
+        )
+        result = self.provider.propose_plan(provider_request)
         plan = compile_plan(
             goal,
             cast("Mapping[str, object]", result.draft),
@@ -1168,6 +1213,19 @@ class ExecutionCoordinator:
             raise ExecutionRuntimeError("execution-run-binding-mismatch")
         if state.status in _RUN_OUTCOME_STATUSES:
             return state
+        blocked = next(
+            (item for item in state.tasks if item.status is TaskLifecycleStatus.BLOCKED),
+            None,
+        )
+        if blocked is not None:
+            if blocked.blocked_reason is None:
+                raise ExecutionRuntimeError("execution-blocked-task-invalid")
+            return self._terminate(
+                run_id,
+                RunLifecycleStatus.BLOCKED,
+                actor=actor,
+                reason=blocked.blocked_reason,
+            )
         active = next((item for item in state.tasks if item.active_workspace_id is not None), None)
         if active is not None:
             return self._terminate(
@@ -1222,7 +1280,10 @@ class ExecutionCoordinator:
                     )
                 state = self.journal.rehydrate(run_id)
                 remaining_budget = _remaining_budget(request.budget, state)
-                if task.allowed_paths and _provider_budget_exhausted(remaining_budget):
+                if task.allowed_paths and (
+                    _provider_usage_incomplete(state)
+                    or _provider_budget_exhausted(remaining_budget)
+                ):
                     return self._terminate(
                         run_id,
                         RunLifecycleStatus.ESCALATED,
@@ -1237,8 +1298,10 @@ class ExecutionCoordinator:
                     capability="repository-task",
                     allowed_paths=task.allowed_paths,
                 )
-                decision = self.policy.authorize(goal, plan, task, action)
-                self._record_policy(run_id, task_id, attempt, decision, actor=actor)
+                decision = _pending_policy_decision(task_state, action)
+                if decision is None:
+                    decision = self.policy.authorize(goal, plan, task, action)
+                    self._record_policy(run_id, task_id, attempt, decision, actor=actor)
                 if not decision.allowed:
                     self.journal.append(
                         run_id,
@@ -1446,8 +1509,6 @@ def _workspace_id_from_ids(plan_id: str, task_id: str, attempt: int) -> str:
 
 
 def _expected_base_commit(state: ExecutionRunState, task: ExecutionTaskState) -> str:
-    if task.head_commit is not None:
-        return task.head_commit
     if not task.depends_on:
         return state.goal_base_commit
     dependency_heads = tuple(state.task(item).head_commit for item in task.depends_on)
@@ -1475,9 +1536,47 @@ def _remaining_budget(budget: GatewayBudget, state: ExecutionRunState) -> Gatewa
     )
 
 
+def _budget_within(candidate: GatewayBudget, maximum: GatewayBudget) -> bool:
+    return (
+        candidate.max_input_tokens <= maximum.max_input_tokens
+        and candidate.max_output_tokens <= maximum.max_output_tokens
+        and candidate.max_latency_ms <= maximum.max_latency_ms
+        and candidate.max_cost_microusd <= maximum.max_cost_microusd
+    )
+
+
+def _pending_policy_decision(
+    task: ExecutionTaskState,
+    action: ToolActionRequest,
+) -> PolicyDecision | None:
+    decision_id = task.pending_policy_decision_id
+    if decision_id is None:
+        return None
+    action_digest = task.pending_policy_action_digest
+    allowed = task.pending_policy_allowed
+    reason = task.pending_policy_reason
+    if action_digest is None or allowed is None or reason is None:
+        raise ExecutionRuntimeError("execution-pending-policy-invalid")
+    try:
+        decision = PolicyDecision(allowed, reason, action_digest)
+    except (TypeError, ValueError) as error:
+        raise ExecutionRuntimeError("execution-pending-policy-invalid") from error
+    if decision.action_digest != action.digest or decision.decision_id != decision_id:
+        raise ExecutionRuntimeError("execution-pending-policy-invalid")
+    return decision
+
+
 def _provider_budget_exhausted(budget: GatewayBudget) -> bool:
     return (
         budget.max_input_tokens == 0 or budget.max_output_tokens == 0 or budget.max_latency_ms == 0
+    )
+
+
+def _provider_usage_incomplete(state: ExecutionRunState) -> bool:
+    return (
+        not state.input_tokens_complete
+        or not state.output_tokens_complete
+        or not state.cost_microusd_complete
     )
 
 
@@ -1532,31 +1631,30 @@ def _require_fields(value: Mapping[str, object], expected: set[str], error_code:
 
 def _task_state_from_checkpoint(value: object) -> ExecutionTaskState:
     raw = _mapping(value)
-    _require_fields(
-        raw,
-        {
-            "task_id",
-            "status",
-            "depends_on",
-            "allowed_paths",
-            "max_attempts",
-            "attempts",
-            "last_error_signature",
-            "same_error_count",
-            "active_workspace_id",
-            "evidence_event_ids",
-            "last_failure_class",
-            "last_failure_summary",
-            "last_artifact_digests",
-            "last_progress_digests",
-            "head_commit",
-            "pending_policy_decision_id",
-            "pending_policy_action_digest",
-            "pending_policy_allowed",
-            "pending_policy_reason",
-        },
-        "invalid-execution-checkpoint",
-    )
+    fields = {
+        "task_id",
+        "status",
+        "depends_on",
+        "allowed_paths",
+        "max_attempts",
+        "attempts",
+        "last_error_signature",
+        "same_error_count",
+        "active_workspace_id",
+        "retained_workspace_id",
+        "blocked_reason",
+        "evidence_event_ids",
+        "last_failure_class",
+        "last_failure_summary",
+        "last_artifact_digests",
+        "last_progress_digests",
+        "head_commit",
+        "pending_policy_decision_id",
+        "pending_policy_action_digest",
+        "pending_policy_allowed",
+        "pending_policy_reason",
+    }
+    _require_fields(raw, fields, "invalid-execution-checkpoint")
     task = ExecutionTaskState(
         task_id=_text(raw, "task_id"),
         status=TaskLifecycleStatus(_text(raw, "status")),
@@ -1567,6 +1665,8 @@ def _task_state_from_checkpoint(value: object) -> ExecutionTaskState:
         last_error_signature=_optional_digest(raw, "last_error_signature"),
         same_error_count=_integer(raw, "same_error_count"),
         active_workspace_id=_optional_text(raw, "active_workspace_id"),
+        retained_workspace_id=_optional_text(raw, "retained_workspace_id"),
+        blocked_reason=_optional_text(raw, "blocked_reason"),
         evidence_event_ids=_text_tuple(raw, "evidence_event_ids"),
         last_failure_class=(
             None
@@ -1591,6 +1691,8 @@ def _task_state_from_checkpoint(value: object) -> ExecutionTaskState:
     if (any(item is None for item in pending) and any(item is not None for item in pending)) or (
         any(item is not None for item in pending) and task.status is not TaskLifecycleStatus.READY
     ):
+        raise ExecutionRuntimeError("invalid-execution-checkpoint")
+    if (task.status is TaskLifecycleStatus.BLOCKED) != (task.blocked_reason is not None):
         raise ExecutionRuntimeError("invalid-execution-checkpoint")
     if (
         not 1 <= task.max_attempts <= 3
