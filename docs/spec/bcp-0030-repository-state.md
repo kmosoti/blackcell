@@ -26,7 +26,7 @@ Acceptance:
 - SignalPackets remain provenance-linked and distinct from ContextFrames.
 
 The target slice now preserves immutable claim/event identity, domain and stream scope, global and
-stream cutoffs, freshness, and source-aware conflicts through SignalPacket v2. Its characterized
+stream cutoffs, freshness, and source-aware conflicts through the `signal-packet/v2` compatibility schema. Its characterized
 overlap with `RepositoryProjector` covers current observed facts, claim identity, and stream cutoff.
 Corrections, expiry, epistemic unknowns, and an independent effective-time cutoff remain on the
 legacy path until their replacement contracts and replay tests exist.

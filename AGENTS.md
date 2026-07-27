@@ -8,7 +8,7 @@ outcomes. Preserve the existing Python runtime and its event, replay, recovery, 
 worker contracts unless an accepted project decision changes them.
 
 Keep business rules behind typed application and domain boundaries. The CLI, future TUI, and web
-client are projections over the same versioned service contracts; they do not own orchestration or
+client are projections over the same public service contracts; they do not own orchestration or
 persistence rules. CLI output is JSON by default. Model providers are replaceable adapters without
 ambient repository or publication authority.
 
@@ -51,11 +51,10 @@ Optimize the local loop for fast feedback:
    ```text
    uv run python tools/run_pytest.py \
      tests/unit/test_cli_output.py::test_output_renderer_serializes_runtime_types \
-     tests/unit/test_cli_output.py::test_bench_list_jsonl_outputs_one_record_per_line \
-     tests/unit/test_cli_output.py::test_bench_list_renders_rich_when_requested \
-     tests/unit/test_run_grammar_v2.py::test_run_start_requires_typed_protocol_version \
-     tests/unit/test_orchestration_scheduler.py::test_submit_is_content_idempotent_and_reconstructs_after_restart \
-     tests/unit/test_http_api.py::test_health_routes_are_public_and_openapi_is_not_exposed \
+     tests/unit/test_cli_output.py::test_output_renderer_jsonl_emits_one_record_per_line \
+     tests/unit/test_cli_output.py::test_output_renderer_uses_supplied_rich_projection \
+     tests/unit/test_runtime_service.py::test_runtime_flow_is_idempotent_restart_safe_and_live_free \
+     tests/unit/test_runtime_http_api.py::test_runtime_routes_are_authenticated_typed_and_async \
      tests/unit/test_service_auth.py::test_bearer_authentication_returns_one_typed_principal \
      -q --blackcell-require-all-pass
    ```

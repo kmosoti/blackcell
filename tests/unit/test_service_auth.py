@@ -14,7 +14,7 @@ from blackcell.interfaces import (
     ServiceScope,
 )
 
-TOKEN = "Runtime-v1_opaque-token.0123456789-ABCDEFG"
+TOKEN = "runtime_opaque-token.0123456789-ABCDEFG"
 
 
 def test_bearer_authentication_returns_one_typed_principal() -> None:

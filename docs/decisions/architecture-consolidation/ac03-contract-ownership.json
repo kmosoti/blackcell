@@ -65,6 +65,6 @@
   ],
   "verification": {
     "focused": "uv run pytest -q tests/architecture/test_dependencies.py tests/unit/test_gateway_decision_adapter.py tests/unit/test_telemetry_recorder.py tests/unit/test_otel_telemetry.py",
-    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing"
+    "full_gate": "uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing"
   }
 }

@@ -13,6 +13,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from blackcell.kernel import (
+    SCHEMA_VERSION,
     ConcurrencyError,
     EventConflictError,
     EventEnvelope,
@@ -51,15 +52,13 @@ def event(
     )
 
 
-def test_envelope_is_deeply_immutable_and_exposes_compatibility_aliases() -> None:
+def test_envelope_is_deeply_immutable() -> None:
     source: dict[str, JsonInput] = {"nested": {"values": [1, 2]}}
     envelope = event(1, payload=source)
     source["nested"] = "changed"
 
     assert envelope.payload["nested"] == {"values": (1, 2)}
-    assert envelope.sequence == envelope.stream_sequence == 1
-    assert envelope.kind == envelope.event_type
-    assert envelope.occurred_at == envelope.recorded_at
+    assert envelope.stream_sequence == 1
     actor_field = "actor"
     with pytest.raises(FrozenInstanceError):
         setattr(envelope, actor_field, "changed")
@@ -242,7 +241,7 @@ def test_database_reopens_with_wal_and_persisted_events(tmp_path: Path) -> None:
 
     assert second_store.read_stream("task:1") == (stored,)
     with sqlite3.connect(path) as connection:
-        assert connection.execute("pragma user_version").fetchone()[0] == 1
+        assert connection.execute("pragma user_version").fetchone()[0] == SCHEMA_VERSION
         assert connection.execute("pragma journal_mode").fetchone()[0] == "wal"
 
 
@@ -265,7 +264,7 @@ def test_newer_database_schema_is_rejected(tmp_path: Path) -> None:
     with sqlite3.connect(path) as connection:
         connection.execute("pragma user_version = 999")
 
-    with pytest.raises(SchemaVersionError, match="newer"):
+    with pytest.raises(SchemaVersionError, match="incompatible"):
         EventStore(path)
 
 

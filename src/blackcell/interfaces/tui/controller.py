@@ -8,55 +8,55 @@ from itertools import pairwise
 from typing import Literal, Protocol
 
 from blackcell.interfaces.http import (
-    MAX_ALPHA_EVENT_PAGE_SIZE,
-    MAX_ALPHA_RUN_QUERY_SCAN_EVENTS,
-    AlphaCancelRunRequest,
-    AlphaEventPageResponse,
-    AlphaEventResponse,
-    AlphaIntentRequest,
-    AlphaIntentResponse,
-    AlphaPlanRequest,
-    AlphaPlanResponse,
-    AlphaProjectRequest,
-    AlphaProjectResponse,
-    AlphaReplayResponse,
-    AlphaRunQueryItem,
-    AlphaRunQueryRequest,
-    AlphaRunQueryResponse,
-    AlphaRunRequest,
-    AlphaRunResponse,
-    alpha_plan_topological_order,
+    MAX_RUN_QUERY_SCAN_EVENTS,
+    MAX_RUNTIME_EVENT_PAGE_SIZE,
+    CancelRunRequest,
+    IntentRequest,
+    IntentResponse,
+    PlanRequest,
+    PlanResponse,
+    ProjectRequest,
+    ProjectResponse,
+    ReplayResponse,
+    RunQueryItem,
+    RunQueryRequest,
+    RunQueryResponse,
+    RunRequest,
+    RunResponse,
+    RuntimeEventPageResponse,
+    RuntimeEventResponse,
+    plan_topological_order,
 )
 from blackcell.interfaces.tui.cursor import (
-    AlphaTuiCursorCheckpoint,
-    AlphaTuiCursorStore,
-    AlphaTuiCursorWitness,
-    alpha_tui_endpoint_id,
+    TuiCursorCheckpoint,
+    TuiCursorStore,
+    TuiCursorWitness,
+    tui_endpoint_id,
 )
 
 MAX_TUI_RETAINED_EVENTS = 500
 
 
-class AlphaTuiFailureCode(StrEnum):
-    INVALID_CURSOR = "alpha-tui-invalid-cursor"
-    INVALID_EVENT_LIMIT = "alpha-tui-invalid-event-limit"
-    INVALID_EVENT_PAGE = "alpha-tui-invalid-event-page"
-    INVALID_CURSOR_CHECKPOINT = "alpha-tui-invalid-cursor-checkpoint"
-    INVALID_WORKFLOW_REQUEST = "alpha-tui-invalid-workflow-request"
-    CURSOR_STORE_NOT_CONNECTED = "alpha-tui-cursor-store-not-connected"
-    RESPONSE_BINDING_MISMATCH = "alpha-tui-response-binding-mismatch"
-    INVALID_RUN_QUERY = "alpha-tui-invalid-run-query"
+class TuiFailureCode(StrEnum):
+    INVALID_CURSOR = "tui-invalid-cursor"
+    INVALID_EVENT_LIMIT = "tui-invalid-event-limit"
+    INVALID_EVENT_PAGE = "tui-invalid-event-page"
+    INVALID_CURSOR_CHECKPOINT = "tui-invalid-cursor-checkpoint"
+    INVALID_WORKFLOW_REQUEST = "tui-invalid-workflow-request"
+    CURSOR_STORE_NOT_CONNECTED = "tui-cursor-store-not-connected"
+    RESPONSE_BINDING_MISMATCH = "tui-response-binding-mismatch"
+    INVALID_RUN_QUERY = "tui-invalid-run-query"
 
 
-class AlphaTuiError(RuntimeError):
+class TuiError(RuntimeError):
     """A content-free local projection failure."""
 
-    def __init__(self, code: AlphaTuiFailureCode) -> None:
+    def __init__(self, code: TuiFailureCode) -> None:
         self.code = code
         super().__init__(code.value)
 
 
-class AlphaServiceStatus(Protocol):
+class ServiceStatus(Protocol):
     @property
     def endpoint(self) -> str: ...
 
@@ -67,40 +67,40 @@ class AlphaServiceStatus(Protocol):
     def ready(self) -> bool: ...
 
 
-class AlphaTuiClient(Protocol):
+class TuiClient(Protocol):
     """The complete authority-free client surface consumed by an interactive projection."""
 
-    def status(self) -> AlphaServiceStatus: ...
+    def status(self) -> ServiceStatus: ...
 
-    def register_alpha_project(self, request: AlphaProjectRequest) -> AlphaProjectResponse: ...
+    def register_project(self, request: ProjectRequest) -> ProjectResponse: ...
 
-    def accept_alpha_intent(self, request: AlphaIntentRequest) -> AlphaIntentResponse: ...
+    def accept_intent(self, request: IntentRequest) -> IntentResponse: ...
 
-    def accept_alpha_plan(self, request: AlphaPlanRequest) -> AlphaPlanResponse: ...
+    def accept_plan(self, request: PlanRequest) -> PlanResponse: ...
 
-    def submit_alpha_run(self, request: AlphaRunRequest) -> AlphaRunResponse: ...
+    def submit_run(self, request: RunRequest) -> RunResponse: ...
 
-    def inspect_alpha_run(self, run_id: str) -> AlphaRunResponse: ...
+    def inspect_run(self, run_id: str) -> RunResponse: ...
 
-    def query_alpha_runs(self, request: AlphaRunQueryRequest) -> AlphaRunQueryResponse: ...
+    def query_runs(self, request: RunQueryRequest) -> RunQueryResponse: ...
 
-    def cancel_alpha_run(
+    def cancel_run(
         self,
         run_id: str,
-        request: AlphaCancelRunRequest,
-    ) -> AlphaRunResponse: ...
+        request: CancelRunRequest,
+    ) -> RunResponse: ...
 
-    def replay_alpha_run(self, run_id: str) -> AlphaReplayResponse: ...
+    def replay_run(self, run_id: str) -> ReplayResponse: ...
 
-    def list_alpha_events(
+    def list_events(
         self,
         *,
         after_cursor: int = 0,
         limit: int = 100,
-    ) -> AlphaEventPageResponse: ...
+    ) -> RuntimeEventPageResponse: ...
 
 
-AlphaTuiOperation = Literal[
+TuiOperation = Literal[
     "connect",
     "project-register",
     "intent-accept",
@@ -114,68 +114,68 @@ AlphaTuiOperation = Literal[
 
 
 @dataclass(frozen=True, slots=True)
-class AlphaTuiProjection:
+class TuiProjection:
     connected: bool = False
     ready: bool = False
     endpoint: str | None = None
     cursor: int = 0
-    events: tuple[AlphaEventResponse, ...] = ()
-    runs: tuple[AlphaRunQueryItem, ...] = ()
-    project: AlphaProjectResponse | None = None
-    intent: AlphaIntentResponse | None = None
-    plan: AlphaPlanResponse | None = None
-    run: AlphaRunResponse | None = None
-    replay: AlphaReplayResponse | None = None
-    last_operation: AlphaTuiOperation | None = None
+    events: tuple[RuntimeEventResponse, ...] = ()
+    runs: tuple[RunQueryItem, ...] = ()
+    project: ProjectResponse | None = None
+    intent: IntentResponse | None = None
+    plan: PlanResponse | None = None
+    run: RunResponse | None = None
+    replay: ReplayResponse | None = None
+    last_operation: TuiOperation | None = None
     revision: int = 0
-    schema_version: Literal["alpha-tui-projection/v1"] = "alpha-tui-projection/v1"
+    schema_version: Literal["tui-projection/v1"] = "tui-projection/v1"
 
 
-class AlphaTuiController:
+class TuiController:
     """Async projection controller over the synchronous shared daemon client."""
 
     def __init__(
         self,
-        client: AlphaTuiClient,
+        client: TuiClient,
         *,
         initial_cursor: int = 0,
         max_retained_events: int = MAX_TUI_RETAINED_EVENTS,
-        cursor_store: AlphaTuiCursorStore | None = None,
+        cursor_store: TuiCursorStore | None = None,
     ) -> None:
         _validate_cursor(initial_cursor)
         if cursor_store is not None and initial_cursor != 0:
-            raise AlphaTuiError(AlphaTuiFailureCode.INVALID_CURSOR_CHECKPOINT)
+            raise TuiError(TuiFailureCode.INVALID_CURSOR_CHECKPOINT)
         if (
             isinstance(max_retained_events, bool)
             or not isinstance(max_retained_events, int)
             or not 1 <= max_retained_events <= MAX_TUI_RETAINED_EVENTS
         ):
-            raise AlphaTuiError(AlphaTuiFailureCode.INVALID_EVENT_LIMIT)
+            raise TuiError(TuiFailureCode.INVALID_EVENT_LIMIT)
         self._client = client
-        self._state = AlphaTuiProjection(cursor=initial_cursor)
+        self._state = TuiProjection(cursor=initial_cursor)
         self._max_retained_events = max_retained_events
         self._cursor_store = cursor_store
         self._command_lock = asyncio.Lock()
         self._event_lock = asyncio.Lock()
 
     @property
-    def state(self) -> AlphaTuiProjection:
+    def state(self) -> TuiProjection:
         return self._state
 
-    async def connect(self) -> AlphaTuiProjection:
+    async def connect(self) -> TuiProjection:
         async with self._command_lock:
             status = await _offload(self._client.status)
-            query_request = AlphaRunQueryRequest(
-                schema_version="alpha-run-query-request/v1",
+            query_request = RunQueryRequest(
+                schema_version="run-query-request/v1",
                 limit=50,
             )
-            query = await _offload(self._client.query_alpha_runs, query_request)
+            query = await _offload(self._client.query_runs, query_request)
             _validate_run_query(query, query_request)
             async with self._event_lock:
                 cursor = self._state.cursor
                 events = self._state.events
                 if self._cursor_store is not None:
-                    endpoint_id = alpha_tui_endpoint_id(status.endpoint)
+                    endpoint_id = tui_endpoint_id(status.endpoint)
                     checkpoint = await _offload(self._cursor_store.load, endpoint_id)
                     events = await self._verify_cursor_checkpoint(checkpoint)
                     cursor = checkpoint.cursor
@@ -192,9 +192,9 @@ class AlphaTuiController:
                 )
                 return self._state
 
-    async def register_project(self, request: AlphaProjectRequest) -> AlphaTuiProjection:
+    async def register_project(self, request: ProjectRequest) -> TuiProjection:
         async with self._command_lock:
-            response = await _offload(self._client.register_alpha_project, request)
+            response = await _offload(self._client.register_project, request)
             _require_project_binding(response, request)
             self._state = replace(
                 self._state,
@@ -208,9 +208,9 @@ class AlphaTuiController:
             )
             return self._state
 
-    async def accept_intent(self, request: AlphaIntentRequest) -> AlphaTuiProjection:
+    async def accept_intent(self, request: IntentRequest) -> TuiProjection:
         async with self._command_lock:
-            response = await _offload(self._client.accept_alpha_intent, request)
+            response = await _offload(self._client.accept_intent, request)
             _require_intent_binding(response, request)
             self._state = replace(
                 self._state,
@@ -224,9 +224,9 @@ class AlphaTuiController:
             )
             return self._state
 
-    async def accept_plan(self, request: AlphaPlanRequest) -> AlphaTuiProjection:
+    async def accept_plan(self, request: PlanRequest) -> TuiProjection:
         async with self._command_lock:
-            response = await _offload(self._client.accept_alpha_plan, request)
+            response = await _offload(self._client.accept_plan, request)
             _require_plan_binding(response, request)
             self._state = replace(
                 self._state,
@@ -244,9 +244,9 @@ class AlphaTuiController:
             )
             return self._state
 
-    async def submit_run(self, request: AlphaRunRequest) -> AlphaTuiProjection:
+    async def submit_run(self, request: RunRequest) -> TuiProjection:
         async with self._command_lock:
-            response = await _offload(self._client.submit_alpha_run, request)
+            response = await _offload(self._client.submit_run, request)
             _require_run_binding(response, request)
             self._state = replace(
                 self._state,
@@ -269,9 +269,9 @@ class AlphaTuiController:
             )
             return self._state
 
-    async def inspect_run(self, run_id: str) -> AlphaTuiProjection:
+    async def inspect_run(self, run_id: str) -> TuiProjection:
         async with self._command_lock:
-            response = await _offload(self._client.inspect_alpha_run, run_id)
+            response = await _offload(self._client.inspect_run, run_id)
             _require_run_id(response.run_id, run_id)
             self._state = replace(
                 self._state,
@@ -297,10 +297,10 @@ class AlphaTuiController:
     async def cancel_run(
         self,
         run_id: str,
-        request: AlphaCancelRunRequest,
-    ) -> AlphaTuiProjection:
+        request: CancelRunRequest,
+    ) -> TuiProjection:
         async with self._command_lock:
-            response = await _offload(self._client.cancel_alpha_run, run_id, request)
+            response = await _offload(self._client.cancel_run, run_id, request)
             _require_run_id(response.run_id, run_id)
             self._state = replace(
                 self._state,
@@ -323,9 +323,9 @@ class AlphaTuiController:
             )
             return self._state
 
-    async def replay_run(self, run_id: str) -> AlphaTuiProjection:
+    async def replay_run(self, run_id: str) -> TuiProjection:
         async with self._command_lock:
-            response = await _offload(self._client.replay_alpha_run, run_id)
+            response = await _offload(self._client.replay_run, run_id)
             _require_replay_binding(response, run_id)
             self._state = replace(
                 self._state,
@@ -339,19 +339,19 @@ class AlphaTuiController:
             )
             return self._state
 
-    async def refresh_events(self, *, limit: int = 100) -> AlphaTuiProjection:
+    async def refresh_events(self, *, limit: int = 100) -> TuiProjection:
         if (
             isinstance(limit, bool)
             or not isinstance(limit, int)
-            or not 1 <= limit <= MAX_ALPHA_EVENT_PAGE_SIZE
+            or not 1 <= limit <= MAX_RUNTIME_EVENT_PAGE_SIZE
         ):
-            raise AlphaTuiError(AlphaTuiFailureCode.INVALID_EVENT_LIMIT)
+            raise TuiError(TuiFailureCode.INVALID_EVENT_LIMIT)
         async with self._event_lock:
             if self._cursor_store is not None and self._state.endpoint is None:
-                raise AlphaTuiError(AlphaTuiFailureCode.CURSOR_STORE_NOT_CONNECTED)
+                raise TuiError(TuiFailureCode.CURSOR_STORE_NOT_CONNECTED)
             after_cursor = self._state.cursor
             page = await _offload(
-                self._client.list_alpha_events,
+                self._client.list_events,
                 after_cursor=after_cursor,
                 limit=limit,
             )
@@ -376,16 +376,16 @@ class AlphaTuiController:
 
     async def _verify_cursor_checkpoint(
         self,
-        checkpoint: AlphaTuiCursorCheckpoint,
-    ) -> tuple[AlphaEventResponse, ...]:
+        checkpoint: TuiCursorCheckpoint,
+    ) -> tuple[RuntimeEventResponse, ...]:
         if checkpoint.cursor == 0:
             return ()
         position_page = await self._checkpoint_probe(checkpoint.cursor)
         if position_page.scanned_events != 1 or position_page.next_cursor != checkpoint.cursor:
-            raise AlphaTuiError(AlphaTuiFailureCode.INVALID_CURSOR_CHECKPOINT)
+            raise TuiError(TuiFailureCode.INVALID_CURSOR_CHECKPOINT)
         if checkpoint.witness is None:
             if position_page.events:
-                raise AlphaTuiError(AlphaTuiFailureCode.INVALID_CURSOR_CHECKPOINT)
+                raise TuiError(TuiFailureCode.INVALID_CURSOR_CHECKPOINT)
             return ()
         witness_page = (
             position_page
@@ -397,26 +397,26 @@ class AlphaTuiController:
             or witness_page.next_cursor != checkpoint.witness.cursor
             or len(witness_page.events) != 1
         ):
-            raise AlphaTuiError(AlphaTuiFailureCode.INVALID_CURSOR_CHECKPOINT)
+            raise TuiError(TuiFailureCode.INVALID_CURSOR_CHECKPOINT)
         event = witness_page.events[0]
         if (
             event.cursor != checkpoint.witness.cursor
             or event.event_id != checkpoint.witness.event_id
             or event.payload_digest != checkpoint.witness.payload_digest
         ):
-            raise AlphaTuiError(AlphaTuiFailureCode.INVALID_CURSOR_CHECKPOINT)
+            raise TuiError(TuiFailureCode.INVALID_CURSOR_CHECKPOINT)
         return (event,)
 
-    async def _checkpoint_probe(self, cursor: int) -> AlphaEventPageResponse:
+    async def _checkpoint_probe(self, cursor: int) -> RuntimeEventPageResponse:
         page = await _offload(
-            self._client.list_alpha_events,
+            self._client.list_events,
             after_cursor=cursor - 1,
             limit=1,
         )
         try:
             _validate_event_page(page, after_cursor=cursor - 1, limit=1)
-        except AlphaTuiError as error:
-            raise AlphaTuiError(AlphaTuiFailureCode.INVALID_CURSOR_CHECKPOINT) from error
+        except TuiError as error:
+            raise TuiError(TuiFailureCode.INVALID_CURSOR_CHECKPOINT) from error
         return page
 
 
@@ -430,12 +430,12 @@ async def _offload[**Parameters, ResultT](
 
 def _require_run_id(actual: str, expected: str) -> None:
     if actual != expected:
-        raise AlphaTuiError(AlphaTuiFailureCode.RESPONSE_BINDING_MISMATCH)
+        raise TuiError(TuiFailureCode.RESPONSE_BINDING_MISMATCH)
 
 
 def _require_project_binding(
-    response: AlphaProjectResponse,
-    request: AlphaProjectRequest,
+    response: ProjectResponse,
+    request: ProjectRequest,
 ) -> None:
     if (
         response.project_id,
@@ -450,12 +450,12 @@ def _require_project_binding(
         request.configuration_version,
         request.configuration_digest,
     ):
-        raise AlphaTuiError(AlphaTuiFailureCode.RESPONSE_BINDING_MISMATCH)
+        raise TuiError(TuiFailureCode.RESPONSE_BINDING_MISMATCH)
 
 
 def _require_intent_binding(
-    response: AlphaIntentResponse,
-    request: AlphaIntentRequest,
+    response: IntentResponse,
+    request: IntentRequest,
 ) -> None:
     if (
         response.intent_id,
@@ -472,10 +472,10 @@ def _require_intent_binding(
         request.assumptions,
         request.unresolved_questions,
     ):
-        raise AlphaTuiError(AlphaTuiFailureCode.RESPONSE_BINDING_MISMATCH)
+        raise TuiError(TuiFailureCode.RESPONSE_BINDING_MISMATCH)
 
 
-def _require_plan_binding(response: AlphaPlanResponse, request: AlphaPlanRequest) -> None:
+def _require_plan_binding(response: PlanResponse, request: PlanRequest) -> None:
     if (
         response.plan_id,
         response.project_id,
@@ -491,12 +491,12 @@ def _require_plan_binding(response: AlphaPlanResponse, request: AlphaPlanRequest
         request.base_commit,
         request.allowed_effects,
         request.nodes,
-        alpha_plan_topological_order(request.nodes),
+        plan_topological_order(request.nodes),
     ):
-        raise AlphaTuiError(AlphaTuiFailureCode.RESPONSE_BINDING_MISMATCH)
+        raise TuiError(TuiFailureCode.RESPONSE_BINDING_MISMATCH)
 
 
-def _require_run_binding(response: AlphaRunResponse, request: AlphaRunRequest) -> None:
+def _require_run_binding(response: RunResponse, request: RunRequest) -> None:
     if (
         response.run_id,
         response.project_id,
@@ -508,10 +508,10 @@ def _require_run_binding(response: AlphaRunResponse, request: AlphaRunRequest) -
         request.intent_id,
         request.plan_id,
     ):
-        raise AlphaTuiError(AlphaTuiFailureCode.RESPONSE_BINDING_MISMATCH)
+        raise TuiError(TuiFailureCode.RESPONSE_BINDING_MISMATCH)
 
 
-def _require_replay_binding(response: AlphaReplayResponse, expected_run_id: str) -> None:
+def _require_replay_binding(response: ReplayResponse, expected_run_id: str) -> None:
     project = response.project
     intent = response.intent
     plan = response.plan
@@ -525,15 +525,15 @@ def _require_replay_binding(response: AlphaReplayResponse, expected_run_id: str)
         or run.project_id != project.project_id
         or run.intent_id != intent.intent_id
         or run.plan_id != plan.plan_id
-        or plan.topological_order != alpha_plan_topological_order(plan.nodes)
+        or plan.topological_order != plan_topological_order(plan.nodes)
     ):
-        raise AlphaTuiError(AlphaTuiFailureCode.RESPONSE_BINDING_MISMATCH)
+        raise TuiError(TuiFailureCode.RESPONSE_BINDING_MISMATCH)
 
 
 def _matching_project(
-    state: AlphaTuiProjection,
+    state: TuiProjection,
     project_id: str,
-) -> AlphaProjectResponse | None:
+) -> ProjectResponse | None:
     return (
         state.project
         if state.project is not None and state.project.project_id == project_id
@@ -542,11 +542,11 @@ def _matching_project(
 
 
 def _matching_intent(
-    state: AlphaTuiProjection,
+    state: TuiProjection,
     *,
     project_id: str,
     intent_id: str,
-) -> AlphaIntentResponse | None:
+) -> IntentResponse | None:
     intent = state.intent
     if intent is not None and (intent.project_id, intent.intent_id) == (project_id, intent_id):
         return intent
@@ -554,12 +554,12 @@ def _matching_intent(
 
 
 def _matching_plan(
-    state: AlphaTuiProjection,
+    state: TuiProjection,
     *,
     project_id: str,
     intent_id: str,
     plan_id: str,
-) -> AlphaPlanResponse | None:
+) -> PlanResponse | None:
     plan = state.plan
     if plan is not None and (plan.project_id, plan.intent_id, plan.plan_id) == (
         project_id,
@@ -574,18 +574,18 @@ def _cursor_checkpoint(
     *,
     endpoint: str,
     cursor: int,
-    events: tuple[AlphaEventResponse, ...],
-) -> AlphaTuiCursorCheckpoint:
+    events: tuple[RuntimeEventResponse, ...],
+) -> TuiCursorCheckpoint:
     witness = None
     if events:
         event = events[-1]
-        witness = AlphaTuiCursorWitness(
+        witness = TuiCursorWitness(
             cursor=event.cursor,
             event_id=event.event_id,
             payload_digest=event.payload_digest,
         )
-    return AlphaTuiCursorCheckpoint(
-        endpoint_id=alpha_tui_endpoint_id(endpoint),
+    return TuiCursorCheckpoint(
+        endpoint_id=tui_endpoint_id(endpoint),
         cursor=cursor,
         witness=witness,
     )
@@ -593,11 +593,11 @@ def _cursor_checkpoint(
 
 def _validate_cursor(value: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**63 - 1:
-        raise AlphaTuiError(AlphaTuiFailureCode.INVALID_CURSOR)
+        raise TuiError(TuiFailureCode.INVALID_CURSOR)
 
 
 def _validate_event_page(
-    page: AlphaEventPageResponse,
+    page: RuntimeEventPageResponse,
     *,
     after_cursor: int,
     limit: int,
@@ -627,21 +627,21 @@ def _validate_event_page(
         or any(previous >= current for previous, current in pairwise(cursors))
         or len({event.event_id for event in page.events}) != len(page.events)
     ):
-        raise AlphaTuiError(AlphaTuiFailureCode.INVALID_EVENT_PAGE)
+        raise TuiError(TuiFailureCode.INVALID_EVENT_PAGE)
 
 
 def _validate_run_query(
-    response: AlphaRunQueryResponse,
-    request: AlphaRunQueryRequest,
+    response: RunQueryResponse,
+    request: RunQueryRequest,
 ) -> None:
     queued_cursors = tuple(item.queued_cursor for item in response.runs)
     run_ids = tuple(item.run.run_id for item in response.runs)
     if (
-        not isinstance(response, AlphaRunQueryResponse)
+        not isinstance(response, RunQueryResponse)
         or response.query != request
         or isinstance(response.scanned_events, bool)
         or not isinstance(response.scanned_events, int)
-        or not 0 <= response.scanned_events <= MAX_ALPHA_RUN_QUERY_SCAN_EVENTS
+        or not 0 <= response.scanned_events <= MAX_RUN_QUERY_SCAN_EVENTS
         or len(response.runs) > request.limit
         or len(response.runs) > response.scanned_events
         or isinstance(response.next_cursor, bool)
@@ -653,7 +653,7 @@ def _validate_run_query(
         or (response.has_more and response.next_cursor == request.after_cursor)
         or (
             response.has_more
-            and response.scanned_events < MAX_ALPHA_RUN_QUERY_SCAN_EVENTS
+            and response.scanned_events < MAX_RUN_QUERY_SCAN_EVENTS
             and len(response.runs) < request.limit
         )
         or any(
@@ -666,12 +666,12 @@ def _validate_run_query(
         or len(run_ids) != len(set(run_ids))
         or any(not _run_query_item_matches(item, request) for item in response.runs)
     ):
-        raise AlphaTuiError(AlphaTuiFailureCode.INVALID_RUN_QUERY)
+        raise TuiError(TuiFailureCode.INVALID_RUN_QUERY)
 
 
 def _run_query_item_matches(
-    item: AlphaRunQueryItem,
-    request: AlphaRunQueryRequest,
+    item: RunQueryItem,
+    request: RunQueryRequest,
 ) -> bool:
     run = item.run
     node_ids = tuple(node.node_id for node in item.nodes)
@@ -698,11 +698,11 @@ def _run_query_item_matches(
 
 __all__ = [
     "MAX_TUI_RETAINED_EVENTS",
-    "AlphaServiceStatus",
-    "AlphaTuiClient",
-    "AlphaTuiController",
-    "AlphaTuiError",
-    "AlphaTuiFailureCode",
-    "AlphaTuiOperation",
-    "AlphaTuiProjection",
+    "ServiceStatus",
+    "TuiClient",
+    "TuiController",
+    "TuiError",
+    "TuiFailureCode",
+    "TuiOperation",
+    "TuiProjection",
 ]

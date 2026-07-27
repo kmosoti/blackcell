@@ -63,7 +63,7 @@ class ModelGateway:
         self._clock = clock
 
     def invoke(self, request: ModelRequest) -> GatewayResult:
-        """Compatibility entry point for one-shot callers."""
+        """Prepare and invoke one admitted model request."""
 
         return self.invoke_prepared(self.prepare(request))
 

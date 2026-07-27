@@ -59,8 +59,8 @@
       "StorageQuotaPort"
     ],
     "canonical_write_authority": "blackcell.kernel",
-    "daily_operator_v1": "read-only historical decoder and verifier",
-    "daily_operator_v2": "canonical execution and replay"
+    "daily_operator_baseline": "read-only historical decoder and verifier",
+    "daily_operator": "canonical execution and replay"
   },
   "focused_verification": {
     "tests_passed": 118,
@@ -73,7 +73,7 @@
       "daily-operator/v1 completed live-free replay",
       "daily-operator/v2 exact-state no-write replay",
       "runtime quotas and benchmark CLI",
-      "Daily Operator v2 workflow and request identity"
+      "Daily Operator feedback workflow and request identity"
     ],
     "ruff": "pass",
     "ty": "pass"

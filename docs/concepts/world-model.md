@@ -52,5 +52,5 @@ capsule, predicts next latent state for candidate actions using transition
 memory, then compares the prediction with the next observed capsule. The error
 becomes surprise, revision, and self-supervision evidence.
 
-This is intended product behavior, but V0 is non-training-first and does not
+This is intended product behavior, but the prototype is non-training-first and does not
 claim to be a true trained JEPA.

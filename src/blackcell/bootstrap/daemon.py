@@ -13,12 +13,12 @@ from pathlib import Path
 from threading import Event
 from typing import Protocol
 
-from blackcell.bootstrap.alpha_process import validate_alpha_worker_runtime_config
-from blackcell.bootstrap.alpha_review_process import (
-    validate_alpha_review_worker_runtime_config,
+from blackcell.bootstrap.execution_process import validate_execution_worker_runtime_config
+from blackcell.bootstrap.review_process import (
+    validate_review_worker_runtime_config,
 )
-from blackcell.bootstrap.alpha_verify_process import (
-    validate_alpha_verify_worker_runtime_config,
+from blackcell.bootstrap.verification_process import (
+    validate_verification_worker_runtime_config,
 )
 from blackcell.config import RuntimeProcessConfig
 
@@ -42,7 +42,7 @@ RuntimeProcessFactory = Callable[..., ManagedRuntimeProcess]
 
 
 class RuntimeDaemon:
-    """Keep the API and optional alpha worker in one foreground lifecycle."""
+    """Keep the API and optional execution worker in one foreground lifecycle."""
 
     def __init__(
         self,
@@ -86,9 +86,9 @@ class RuntimeDaemon:
                 item
                 not in {
                     "api",
-                    "alpha-worker",
-                    "alpha-review-worker",
-                    "alpha-verify-worker",
+                    "execution-worker",
+                    "review-worker",
+                    "verification-worker",
                 }
                 for item in component_names
             )
@@ -128,15 +128,15 @@ class RuntimeDaemon:
     ) -> RuntimeDaemon:
         values = dict(os.environ if environment is None else environment)
         components = ["api"]
-        if config.alpha_worker is not None:
-            validate_alpha_worker_runtime_config(config, environment=values)
-            components.append("alpha-worker")
-        if config.alpha_review_worker is not None:
-            validate_alpha_review_worker_runtime_config(config, environment=values)
-            components.append("alpha-review-worker")
-        if config.alpha_verify_worker is not None:
-            validate_alpha_verify_worker_runtime_config(config)
-            components.append("alpha-verify-worker")
+        if config.execution_worker is not None:
+            validate_execution_worker_runtime_config(config, environment=values)
+            components.append("execution-worker")
+        if config.review_worker is not None:
+            validate_review_worker_runtime_config(config, environment=values)
+            components.append("review-worker")
+        if config.verification_worker is not None:
+            validate_verification_worker_runtime_config(config)
+            components.append("verification-worker")
         return cls(
             config.repository_root,
             graceful_timeout_seconds=config.graceful_timeout_seconds,

@@ -29,16 +29,16 @@ raw evidence
   -> surprise / revision / self-supervision sample
 ```
 
-## V0 Contract
+## Prototype Contract
 
-V0 is JEPA-inspired, not a true trained JEPA. It must:
+The prototype is JEPA-inspired, not a true trained JEPA. It must:
 
 - encode inspectable channels rather than collapse everything into one opaque
   vector;
 - use deterministic/frozen feature extraction;
 - predict with non-parametric transition memory and explicit confidence;
 - persist enough transition samples to support future training decisions;
-- store V0 transition samples in a local SQLite ledger before any remote or
+- store prototype transition samples in a local SQLite ledger before any remote or
   trainable pipeline exists;
 - hydrate the non-parametric predictor from local ledger transitions when a
   ledger path is supplied;
@@ -71,4 +71,4 @@ V0 is JEPA-inspired, not a true trained JEPA. It must:
 
 I-JEPA, V-JEPA, V-JEPA 2, AMI world-model framing, Graph-JEPA, time-series JEPA,
 and related work justify prediction in latent representation space. They do not
-mean BlackCell V0 embeds any external checkpoint or implements a trained JEPA.
+mean the BlackCell prototype embeds any external checkpoint or implements a trained JEPA.

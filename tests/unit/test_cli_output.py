@@ -3,11 +3,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from blackcell.cli.app import app
 from blackcell.cli.output import OutputMode, OutputRenderer
-from tests.cli_runner import CycloptsCliRunner
-
-runner = CycloptsCliRunner()
 
 
 class _State(StrEnum):
@@ -40,17 +36,22 @@ def test_output_renderer_serializes_runtime_types() -> None:
     }
 
 
-def test_bench_list_jsonl_outputs_one_record_per_line() -> None:
-    result = runner.invoke(app, ["--jsonl", "bench", "list"], catch_exceptions=False)
+def test_output_renderer_jsonl_emits_one_record_per_line() -> None:
+    renderer = OutputRenderer(mode=OutputMode.JSONL)
+    records = (
+        _ModernPayload(datetime(2026, 7, 9, 12, tzinfo=UTC), _State.READY, frozenset({"a"})),
+        _ModernPayload(datetime(2026, 7, 9, 13, tzinfo=UTC), _State.READY, frozenset({"b"})),
+    )
+    with renderer.console.capture() as capture:
+        renderer.emit_collection("events", records)
 
-    assert result.exit_code == 0
-    records = [json.loads(line) for line in result.stdout.splitlines()]
-    assert records
-    assert records[0]["scenarios"][0]["scenario_id"] == "dependencies-before-change"
+    rendered = [json.loads(line) for line in capture.get().splitlines()]
+    assert [record["labels"] for record in rendered] == [["a"], ["b"]]
 
 
-def test_bench_list_renders_rich_when_requested() -> None:
-    result = runner.invoke(app, ["--rich", "bench", "list"], catch_exceptions=False)
+def test_output_renderer_uses_supplied_rich_projection() -> None:
+    renderer = OutputRenderer(mode=OutputMode.RICH)
+    with renderer.console.capture() as capture:
+        renderer.emit_collection("events", (), rich="Execution events")
 
-    assert result.exit_code == 0
-    assert "OperatorBench Scenarios" in result.stdout
+    assert capture.get().strip() == "Execution events"

@@ -8,7 +8,6 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "clingo>=5.8.0,<6",
     "cyclopts>=4.20.0",
     "granian[pname]>=2.7.9,<3",
     "litestar>=2.24.0,<3",
@@ -45,8 +44,8 @@ testpaths = ["tests"]
 
 [tool.mutmut]
 source_paths = ["src/blackcell"]
-only_mutate = ["src/blackcell/adapters/telemetry/alpha_v2.py"]
-pytest_add_cli_args_test_selection = ["tests/unit/test_alpha_v2_kernel.py"]
+only_mutate = ["src/blackcell/adapters/telemetry/execution_plan.py"]
+pytest_add_cli_args_test_selection = ["tests/integration/test_execution_runtime_production.py"]
 
 [tool.ruff]
 line-length = 100

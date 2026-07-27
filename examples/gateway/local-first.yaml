@@ -3,7 +3,7 @@ profiles:
   - profile_id: recorded-reason-ci
     capability: reason
     adapter_id: recorded
-    model_id: reason-fixture-v1
+    model_id: reason-fixture
     priority: 0
     local: true
     deterministic: true

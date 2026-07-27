@@ -1,0 +1,13 @@
+{
+  "assumptions": [],
+  "constraints": [
+    "Change only the paths admitted by the accepted plan.",
+    "Do not publish or deploy."
+  ],
+  "idempotency_key": "intent-accept",
+  "intent_id": "intent",
+  "objective": "Replace this objective with one bounded, testable project change.",
+  "project_id": "project",
+  "schema_version": "intent-request/v1",
+  "unresolved_questions": []
+}

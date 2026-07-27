@@ -1,0 +1,9 @@
+{
+  "configuration_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "configuration_provider": "kernform",
+  "configuration_version": "0.2.0",
+  "idempotency_key": "project-register",
+  "project_id": "project",
+  "root": "/ABSOLUTE/PATH/TO/PROJECT",
+  "schema_version": "project-request/v1"
+}

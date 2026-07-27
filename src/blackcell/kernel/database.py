@@ -9,11 +9,11 @@ from time import monotonic, sleep
 
 from blackcell.kernel.errors import SchemaVersionError
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _BUSY_TIMEOUT_MILLISECONDS = 30_000
 _WAL_RETRY_INTERVAL_SECONDS = 0.01
 
-_SCHEMA_V1 = """
+_INITIAL_SCHEMA = """
 create table if not exists kernel_schema_migrations (
     version integer primary key,
     applied_at text not null
@@ -80,6 +80,7 @@ create table if not exists projection_checkpoints (
 
 def initialize_database(path: Path) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _reject_incompatible_existing_schema(path)
     with connect(path) as connection:
         connection.execute("begin immediate")
         try:
@@ -88,23 +89,35 @@ def initialize_database(path: Path) -> None:
             # point; the lock holder initializes it and later callers then see
             # the committed version instead of replaying migration 1.
             current = int(connection.execute("pragma user_version").fetchone()[0])
-            if current > SCHEMA_VERSION:
+            if current not in {0, SCHEMA_VERSION}:
                 raise SchemaVersionError(
-                    f"kernel database schema {current} is newer than supported schema "
-                    f"{SCHEMA_VERSION}"
+                    f"kernel database schema {current} is incompatible with schema {SCHEMA_VERSION}"
                 )
-            if current < 1:
-                _execute_schema(connection, _SCHEMA_V1)
+            if current == 0:
+                _execute_schema(connection, _INITIAL_SCHEMA)
                 connection.execute(
                     "insert into kernel_schema_migrations(version, applied_at) "
-                    "values (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+                    f"values ({SCHEMA_VERSION}, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
                 )
-                connection.execute("pragma user_version = 1")
+                connection.execute(f"pragma user_version = {SCHEMA_VERSION}")
             connection.commit()
         except Exception:
             connection.rollback()
             raise
     _owner_only_file(path)
+
+
+def _reject_incompatible_existing_schema(path: Path) -> None:
+    """Reject old persisted state before opening it through the mutating runtime connection."""
+
+    if not path.is_file() or path.stat().st_size == 0:
+        return
+    with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as connection:
+        current = int(connection.execute("pragma user_version").fetchone()[0])
+    if current not in {0, SCHEMA_VERSION}:
+        raise SchemaVersionError(
+            f"kernel database schema {current} is incompatible with schema {SCHEMA_VERSION}"
+        )
 
 
 def _execute_schema(connection: sqlite3.Connection, script: str) -> None:

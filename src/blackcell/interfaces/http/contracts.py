@@ -1,24 +1,157 @@
 from __future__ import annotations
 
-import math
-from datetime import datetime
+from collections.abc import Iterable
+from itertools import pairwise
+from pathlib import PurePosixPath
 from typing import Literal
 
 import msgspec
 
+from blackcell.orchestration.acceptance import (
+    MAX_ACCEPTANCE_TIMEOUT_SECONDS,
+    is_acceptance_check_id,
+    is_acceptance_executable_alias,
+)
+
 MAX_REQUEST_BODY_BYTES = 1_048_576
 MAX_RESPONSE_BODY_BYTES = 256 * MAX_REQUEST_BODY_BYTES
-MAX_EVENT_PAGE_SIZE = 200
-MAX_REPLAY_EVENTS = 256
-_MAX_ID_CHARS = 200
-_MAX_TEXT_CHARS = 1_000
-_MAX_OBJECTIVE_CHARS = 4_000
-_MAX_CONTEXT_CHARS = 65_536
-_MAX_OBSERVATIONS = 64
-_MAX_CLAIMS = 128
-_MAX_EVIDENCE = 64
+MAX_RUNTIME_EVENT_PAGE_SIZE = 200
+MAX_RUN_QUERY_PAGE_SIZE = 100
+MAX_RUN_QUERY_SCAN_EVENTS = 1_000
+RUN_QUERY_MEDIA_TYPE = "application/vnd.blackcell.run-query+json"
+RUN_QUERY_RESULT_MEDIA_TYPE = "application/vnd.blackcell.run-query-result+json"
+_MAX_ID_CHARS = 120
+_MAX_ROOT_CHARS = 4_096
+_MAX_OBJECTIVE_CHARS = 8_000
+_MAX_TEXT_CHARS = 2_000
+_MAX_COLLECTION_ITEMS = 64
+_MAX_PLAN_NODES = 64
+_MAX_CHECK_ARGV = 32
+_MAX_ARG_CHARS = 2_048
 
-JsonScalar = None | bool | int | float | str
+PlanEffect = Literal["repository-read", "repository-write", "process", "network"]
+RuntimeEventType = Literal[
+    "project.registered",
+    "intent.accepted",
+    "plan.accepted",
+    "run.queued",
+    "node.claimed",
+    "node.worktree-prepared",
+    "node.provider-dispatch-started",
+    "run.cancel-requested",
+    "node.succeeded",
+    "node.failed",
+    "node.requeued",
+    "node.canceled",
+    "node.reconciliation-required",
+    "node.worktree-cleanup-requested",
+    "node.worktree-cleaned",
+    "node.worktree-cleanup-failed",
+    "run.succeeded",
+    "run.failed",
+    "run.canceled",
+    "run.reconciliation-required",
+    "review.claimed",
+    "review.lease-renewed",
+    "review.provider-dispatch-started",
+    "review.succeeded",
+    "review.failed",
+    "review.requeued",
+    "review.reconciliation-required",
+    "verification.claimed",
+    "verification.completed",
+    "verification.failed",
+    "verification.requeued",
+]
+RunStatus = Literal[
+    "queued",
+    "running",
+    "canceling",
+    "canceled",
+    "succeeded",
+    "failed",
+    "reconciliation-required",
+]
+_RUN_STATUSES = frozenset(
+    {
+        "queued",
+        "running",
+        "canceling",
+        "canceled",
+        "succeeded",
+        "failed",
+        "reconciliation-required",
+    }
+)
+RunNodeStatus = Literal[
+    "pending",
+    "ready",
+    "claimed",
+    "running",
+    "verifying",
+    "succeeded",
+    "repairable",
+    "replan-required",
+    "blocked",
+    "escalated",
+    "terminal-failure",
+    "failed",
+    "canceled",
+    "reconciliation-required",
+]
+ReplayArtifactIntegrity = Literal[
+    "not-applicable",
+    "verified",
+    "inconclusive",
+    "failed",
+]
+ReplayArtifactRole = Literal[
+    "outcome",
+    "context",
+    "proposal",
+    "provider",
+    "effect",
+    "check-command",
+    "check-result",
+    "check-stdout",
+    "check-stderr",
+]
+ReplayFindingCode = Literal[
+    "replay-artifact-store-unavailable",
+    "replay-outcome-reference-absent",
+    "replay-artifact-missing",
+    "replay-artifact-integrity-failed",
+    "replay-artifact-metadata-mismatch",
+    "replay-artifact-read-unavailable",
+    "replay-artifact-budget-exceeded",
+    "replay-artifact-json-invalid",
+    "replay-artifact-noncanonical",
+    "replay-outcome-schema-unsupported",
+    "replay-outcome-invalid",
+    "replay-artifact-binding-mismatch",
+]
+VerificationReplayLifecycle = Literal[
+    "not-started",
+    "claimed",
+    "requeued",
+    "completed",
+    "verifier-error",
+]
+VerificationVerdict = Literal["pass", "fail", "inconclusive"]
+VerificationReplayFindingCode = Literal[
+    "verification-replay-event-store-unavailable",
+    "verification-replay-lifecycle-invalid",
+    "verification-replay-source-binding-mismatch",
+    "verification-replay-artifact-store-unavailable",
+    "verification-replay-report-missing",
+    "verification-replay-report-integrity-failed",
+    "verification-replay-report-metadata-mismatch",
+    "verification-replay-report-read-unavailable",
+    "verification-replay-report-json-invalid",
+    "verification-replay-report-noncanonical",
+    "verification-replay-report-invalid",
+    "verification-replay-report-binding-mismatch",
+]
 
 
 class WireContractError(ValueError):
@@ -38,276 +171,428 @@ class StrictStruct(
     pass
 
 
-class RunSubmissionRequest(StrictStruct, frozen=True):
-    schema_version: Literal["run-submission-request/v1"]
-    objective: str
-    approval_granted: bool = False
-    token_budget: int = 2_000
-    character_budget: int = 8_000
-
-    def __post_init__(self) -> None:
-        _bounded_text(self.objective, "objective", maximum=_MAX_OBJECTIVE_CHARS)
-        _bounded_integer(self.token_budget, "token_budget", minimum=1, maximum=100_000)
-        _bounded_integer(
-            self.character_budget,
-            "character_budget",
-            minimum=1,
-            maximum=_MAX_CONTEXT_CHARS,
-        )
-
-
-class EvidenceRequest(StrictStruct, frozen=True):
-    locator: str | None = None
-    artifact_id: str | None = None
-    digest: str | None = None
-
-    def __post_init__(self) -> None:
-        values = (self.locator, self.artifact_id, self.digest)
-        if not any(value is not None for value in values):
-            raise WireContractError()
-        for value in values:
-            if value is not None:
-                _bounded_text(value, "evidence", maximum=_MAX_TEXT_CHARS)
-
-
-class ClaimRequest(StrictStruct, frozen=True):
-    claim_id: str
-    subject: str
-    predicate: str
-    value: JsonScalar
-    confidence: float = 1.0
-    expires_at: datetime | None = None
-
-    def __post_init__(self) -> None:
-        _identifier(self.claim_id, "claim_id")
-        _bounded_text(self.subject, "subject", maximum=_MAX_TEXT_CHARS)
-        _bounded_text(self.predicate, "predicate", maximum=_MAX_ID_CHARS)
-        if isinstance(self.value, float) and not math.isfinite(self.value):
-            raise WireContractError()
-        if isinstance(self.confidence, bool) or not math.isfinite(self.confidence):
-            raise WireContractError()
-        if not 0.0 <= self.confidence <= 1.0:
-            raise WireContractError()
-        if self.expires_at is not None:
-            _aware(self.expires_at)
-
-
-class ObservationRequest(StrictStruct, frozen=True):
-    observation_id: str
-    effective_at: datetime
-    claims: tuple[ClaimRequest, ...]
-    evidence: tuple[EvidenceRequest, ...]
-    idempotency_key: str | None = None
-
-    def __post_init__(self) -> None:
-        _identifier(self.observation_id, "observation_id")
-        _aware(self.effective_at)
-        _bounded_collection(self.claims, maximum=_MAX_CLAIMS)
-        _bounded_collection(self.evidence, maximum=_MAX_EVIDENCE)
-        identifiers = tuple(item.claim_id for item in self.claims)
-        if len(identifiers) != len(set(identifiers)):
-            raise WireContractError()
-        if any(
-            claim.expires_at is not None and claim.expires_at < self.effective_at
-            for claim in self.claims
-        ):
-            raise WireContractError()
-        if self.idempotency_key is not None:
-            _identifier(self.idempotency_key, "idempotency_key")
-
-
-class ObservationIngestRequest(StrictStruct, frozen=True):
-    schema_version: Literal["observation-ingest-request/v1"]
-    stream_id: str
-    expected_sequence: int
-    source: str
-    correlation_id: str
-    observations: tuple[ObservationRequest, ...]
-    causation_id: str | None = None
-    domain: str = "repository"
-
-    def __post_init__(self) -> None:
-        _identifier(self.stream_id, "stream_id")
-        if not self.stream_id.startswith(("repository:", "observation:")):
-            raise WireContractError()
-        _bounded_integer(
-            self.expected_sequence,
-            "expected_sequence",
-            minimum=0,
-            maximum=2**63 - 1,
-        )
-        _bounded_text(self.source, "source", maximum=_MAX_ID_CHARS)
-        _identifier(self.correlation_id, "correlation_id")
-        _bounded_collection(self.observations, maximum=_MAX_OBSERVATIONS)
-        keys = tuple(item.idempotency_key or item.observation_id for item in self.observations)
-        if len(keys) != len(set(keys)):
-            raise WireContractError()
-        if self.causation_id is not None:
-            _identifier(self.causation_id, "causation_id")
-        _bounded_text(self.domain, "domain", maximum=_MAX_ID_CHARS)
-
-
-class ApprovalRequest(StrictStruct, frozen=True):
-    schema_version: Literal["orchestration-approval-request/v1"]
-    role: Literal["reviewer", "verifier"]
-    approved: bool
-
-
 class HealthResponse(StrictStruct, frozen=True):
     status: Literal["live", "ready", "not-ready"]
     schema_version: Literal["health/v1"] = "health/v1"
 
 
+class ErrorResponse(StrictStruct, frozen=True):
+    error: str
+    schema_version: Literal["error/v1"] = "error/v1"
+
+
+class ProjectRequest(StrictStruct, frozen=True):
+    schema_version: Literal["project-request/v1"]
+    project_id: str
+    root: str
+    configuration_provider: Literal["kernform"]
+    configuration_version: Literal["0.2.0"]
+    configuration_digest: str
+    idempotency_key: str
+
+    def __post_init__(self) -> None:
+        _identifier(self.project_id)
+        _bounded_text(self.root, maximum=_MAX_ROOT_CHARS)
+        _digest(self.configuration_digest)
+        _identifier(self.idempotency_key)
+
+
+class IntentRequest(StrictStruct, frozen=True):
+    schema_version: Literal["intent-request/v1"]
+    intent_id: str
+    project_id: str
+    objective: str
+    constraints: tuple[str, ...]
+    assumptions: tuple[str, ...]
+    unresolved_questions: tuple[str, ...]
+    idempotency_key: str
+
+    def __post_init__(self) -> None:
+        _identifier(self.intent_id)
+        _identifier(self.project_id)
+        _bounded_text(self.objective, maximum=_MAX_OBJECTIVE_CHARS)
+        _bounded_text_collection(self.constraints)
+        _bounded_text_collection(self.assumptions)
+        _bounded_text_collection(self.unresolved_questions)
+        _identifier(self.idempotency_key)
+
+
+class NodeBudget(StrictStruct, frozen=True):
+    max_input_tokens: int
+    max_output_tokens: int
+    timeout_seconds: int
+    max_cost_microusd: int
+    max_changed_files: int
+
+    def __post_init__(self) -> None:
+        _bounded_integer(self.max_input_tokens, minimum=0, maximum=1_000_000)
+        _bounded_integer(self.max_output_tokens, minimum=0, maximum=1_000_000)
+        _bounded_integer(
+            self.timeout_seconds,
+            minimum=1,
+            maximum=MAX_ACCEPTANCE_TIMEOUT_SECONDS,
+        )
+        _bounded_integer(self.max_cost_microusd, minimum=0, maximum=10_000_000_000)
+        _bounded_integer(self.max_changed_files, minimum=0, maximum=10_000)
+
+
+class AcceptanceCheck(StrictStruct, frozen=True):
+    check_id: str
+    argv: tuple[str, ...]
+    expected_exit_code: int = 0
+
+    def __post_init__(self) -> None:
+        if not is_acceptance_check_id(self.check_id):
+            raise WireContractError()
+        if not self.argv or len(self.argv) > _MAX_CHECK_ARGV:
+            raise WireContractError()
+        for token in self.argv:
+            _bounded_token(token)
+        if not is_acceptance_executable_alias(self.argv[0]):
+            raise WireContractError()
+        _bounded_integer(self.expected_exit_code, minimum=0, maximum=255)
+
+
+class PlanNode(StrictStruct, frozen=True):
+    node_id: str
+    objective: str
+    depends_on: tuple[str, ...]
+    budget: NodeBudget
+    effects: tuple[PlanEffect, ...]
+    allowed_paths: tuple[str, ...]
+    checks: tuple[AcceptanceCheck, ...]
+
+    def __post_init__(self) -> None:
+        _identifier(self.node_id)
+        _bounded_text(self.objective, maximum=_MAX_TEXT_CHARS)
+        _unique_identifiers(self.depends_on, maximum=_MAX_PLAN_NODES)
+        if self.node_id in self.depends_on:
+            raise WireContractError()
+        _unique_values(self.effects, maximum=4)
+        if not {"repository-read", "process"}.issubset(self.effects):
+            raise WireContractError()
+        _unique_repository_paths(self.allowed_paths)
+        if "repository-write" in self.effects:
+            if (
+                not self.allowed_paths
+                or self.budget.max_changed_files < 1
+                or self.budget.max_input_tokens < 1
+                or self.budget.max_output_tokens < 1
+            ):
+                raise WireContractError()
+        elif self.allowed_paths or self.budget.max_changed_files != 0:
+            raise WireContractError()
+        if not self.checks or len(self.checks) > _MAX_COLLECTION_ITEMS:
+            raise WireContractError()
+        check_ids = tuple(check.check_id for check in self.checks)
+        if len(check_ids) != len(set(check_ids)):
+            raise WireContractError()
+
+
+class PlanRequest(StrictStruct, frozen=True):
+    schema_version: Literal["plan-request/v1"]
+    plan_id: str
+    project_id: str
+    intent_id: str
+    base_commit: str
+    allowed_effects: tuple[PlanEffect, ...]
+    nodes: tuple[PlanNode, ...]
+    idempotency_key: str
+    planning_mode: Literal["declared", "generated"] = "declared"
+
+    def __post_init__(self) -> None:
+        _identifier(self.plan_id)
+        _identifier(self.project_id)
+        _identifier(self.intent_id)
+        _commit(self.base_commit)
+        _identifier(self.idempotency_key)
+        _unique_values(self.allowed_effects, maximum=4)
+        if not self.nodes or len(self.nodes) > _MAX_PLAN_NODES:
+            raise WireContractError()
+        node_ids = tuple(node.node_id for node in self.nodes)
+        if len(node_ids) != len(set(node_ids)):
+            raise WireContractError()
+        known = set(node_ids)
+        allowed = set(self.allowed_effects)
+        for node in self.nodes:
+            if any(dependency not in known for dependency in node.depends_on):
+                raise WireContractError()
+            if not set(node.effects).issubset(allowed):
+                raise WireContractError()
+        order = plan_topological_order(self.nodes)
+        by_id = {node.node_id: node for node in self.nodes}
+        ancestors: dict[str, set[str]] = {}
+        for node_id in order:
+            dependencies = by_id[node_id].depends_on
+            ancestors[node_id] = set(dependencies).union(
+                *(ancestors[dependency] for dependency in dependencies)
+            )
+        writers = [node_id for node_id in order if "repository-write" in by_id[node_id].effects]
+        if any(previous not in ancestors[current] for previous, current in pairwise(writers)):
+            raise WireContractError()
+
+
+class RunRequest(StrictStruct, frozen=True):
+    schema_version: Literal["run-request/v1"]
+    run_id: str
+    project_id: str
+    intent_id: str
+    plan_id: str
+    idempotency_key: str
+
+    def __post_init__(self) -> None:
+        _identifier(self.run_id)
+        _identifier(self.project_id)
+        _identifier(self.intent_id)
+        _identifier(self.plan_id)
+        _identifier(self.idempotency_key)
+
+
+class CancelRunRequest(StrictStruct, frozen=True):
+    schema_version: Literal["execution-cancel-run-request/v1"]
+    idempotency_key: str
+
+    def __post_init__(self) -> None:
+        _identifier(self.idempotency_key)
+
+
+class ProjectResponse(StrictStruct, frozen=True):
+    project_id: str
+    root: str
+    configuration_provider: Literal["kernform"]
+    configuration_version: Literal["0.2.0"]
+    configuration_digest: str
+    principal_id: str
+    event_id: str
+    cursor: int
+    event_digest: str
+    schema_version: Literal["project/v1"] = "project/v1"
+
+
+class IntentResponse(StrictStruct, frozen=True):
+    intent_id: str
+    project_id: str
+    objective: str
+    constraints: tuple[str, ...]
+    assumptions: tuple[str, ...]
+    unresolved_questions: tuple[str, ...]
+    principal_id: str
+    event_id: str
+    cursor: int
+    event_digest: str
+    schema_version: Literal["intent/v1"] = "intent/v1"
+
+
+class PlanResponse(StrictStruct, frozen=True):
+    plan_id: str
+    project_id: str
+    intent_id: str
+    base_commit: str
+    allowed_effects: tuple[PlanEffect, ...]
+    nodes: tuple[PlanNode, ...]
+    topological_order: tuple[str, ...]
+    principal_id: str
+    event_id: str
+    cursor: int
+    event_digest: str
+    schema_version: Literal["plan/v1"] = "plan/v1"
+
+
 class RunResponse(StrictStruct, frozen=True):
     run_id: str
-    status: str
-    outcome: str | None
-    workflow_version: str | None
-    repository_stream_id: str
-    run_stream_id: str
-    context_frame_id: str | None
-    authorization_outcome: str | None
-    execution_status: str | None
-    evaluation_verdict: str | None
-    transition_recorded: bool
-    run_event_count: int
-    artifact_count: int
-    schema_version: Literal["runtime-run/v1"] = "runtime-run/v1"
-
-
-class ObservationIngestResponse(StrictStruct, frozen=True):
-    stream_id: str
-    event_ids: tuple[str, ...]
-    first_sequence: int
-    last_sequence: int
-    schema_version: Literal["observation-ingest/v1"] = "observation-ingest/v1"
-
-
-class ContextResponse(StrictStruct, frozen=True):
-    run_id: str
-    frame_id: str
-    artifact_digest: str
-    payload: dict[str, object]
-    schema_version: Literal["runtime-context/v1"] = "runtime-context/v1"
-
-
-class EventResponse(StrictStruct, frozen=True):
+    project_id: str
+    intent_id: str
+    plan_id: str
+    status: RunStatus
+    cancellation_requested: bool
+    active_node_id: str | None
+    attempt: int
+    fencing_token: int
+    retained_worktree: bool
+    principal_id: str
     event_id: str
-    global_position: int
+    cursor: int
+    event_digest: str
+    schema_version: Literal["run/v1"] = "run/v1"
+
+
+class RunQueryRequest(StrictStruct, frozen=True):
+    """Closed RFC 10008 content for bounded, read-only run discovery."""
+
+    schema_version: Literal["run-query-request/v1"]
+    statuses: tuple[RunStatus, ...] = ()
+    project_ids: tuple[str, ...] = ()
+    intent_ids: tuple[str, ...] = ()
+    plan_ids: tuple[str, ...] = ()
+    run_ids: tuple[str, ...] = ()
+    after_cursor: int = 0
+    limit: int = 50
+
+    def __post_init__(self) -> None:
+        statuses = tuple(sorted(self.statuses))
+        if len(statuses) > len(_RUN_STATUSES) or len(statuses) != len(set(statuses)):
+            raise WireContractError()
+        for value in statuses:
+            if value not in _RUN_STATUSES:
+                raise WireContractError()
+        object.__setattr__(self, "statuses", statuses)
+        for field_name in ("project_ids", "intent_ids", "plan_ids", "run_ids"):
+            values = tuple(sorted(getattr(self, field_name)))
+            _unique_identifiers(values, maximum=_MAX_COLLECTION_ITEMS)
+            object.__setattr__(self, field_name, values)
+        _bounded_integer(self.after_cursor, minimum=0, maximum=2**63 - 1)
+        _bounded_integer(self.limit, minimum=1, maximum=MAX_RUN_QUERY_PAGE_SIZE)
+
+
+class RunNodeQueryResponse(StrictStruct, frozen=True):
+    node_id: str
+    status: RunNodeStatus
+    attempts: int
+    fencing_token: int
+    failure_code: str | None
+    retained_worktree: bool
+    head_commit: str | None
+    depends_on: tuple[str, ...] = ()
+    max_attempts: int | None = None
+
+    def __post_init__(self) -> None:
+        _identifier(self.node_id)
+        _unique_identifiers(self.depends_on, maximum=_MAX_PLAN_NODES)
+        if self.max_attempts is not None:
+            _bounded_integer(self.max_attempts, minimum=1, maximum=3)
+
+
+class RunBudgetUsageResponse(StrictStruct, frozen=True):
+    input_tokens: int
+    input_tokens_complete: bool
+    max_input_tokens: int
+    output_tokens: int
+    output_tokens_complete: bool
+    max_output_tokens: int
+    latency_ms: int
+    max_latency_ms: int
+    cost_microusd: int
+    cost_microusd_complete: bool
+    max_cost_microusd: int
+
+    def __post_init__(self) -> None:
+        for value in (
+            self.input_tokens,
+            self.max_input_tokens,
+            self.output_tokens,
+            self.max_output_tokens,
+            self.latency_ms,
+            self.max_latency_ms,
+            self.cost_microusd,
+            self.max_cost_microusd,
+        ):
+            _bounded_integer(value, minimum=0, maximum=2**63 - 1)
+        if not all(
+            isinstance(value, bool)
+            for value in (
+                self.input_tokens_complete,
+                self.output_tokens_complete,
+                self.cost_microusd_complete,
+            )
+        ):
+            raise WireContractError()
+
+
+class RunQueryItem(StrictStruct, frozen=True):
+    queued_cursor: int
+    run: RunResponse
+    nodes: tuple[RunNodeQueryResponse, ...]
+    usage: RunBudgetUsageResponse | None = None
+
+
+class RunQueryResponse(StrictStruct, frozen=True):
+    query: RunQueryRequest
+    scanned_events: int
+    runs: tuple[RunQueryItem, ...]
+    next_cursor: int
+    has_more: bool
+    schema_version: Literal["run-query/v1"] = "run-query/v1"
+
+
+class RuntimeEventResponse(StrictStruct, frozen=True):
+    event_id: str
+    cursor: int
     stream_id: str
     stream_sequence: int
-    event_type: str
-    schema_version: int
+    event_type: RuntimeEventType
+    event_schema_version: Literal[1]
     recorded_at: str
-    effective_at: str
-    actor: str
-    source: str
-    correlation_id: str | None
+    correlation_id: str
     causation_id: str | None
-    idempotency_key: str | None
-    payload_hash: str
+    actor: str
+    payload_digest: str
     payload: dict[str, object]
+    schema_version: Literal["event/v1"] = "event/v1"
 
 
-class EventPageResponse(StrictStruct, frozen=True):
-    after_position: int
+class RuntimeEventPageResponse(StrictStruct, frozen=True):
+    after_cursor: int
     limit: int
-    events: tuple[EventResponse, ...]
-    next_after_position: int
+    scanned_events: int
+    events: tuple[RuntimeEventResponse, ...]
+    next_cursor: int
+    has_more: bool
     schema_version: Literal["event-page/v1"] = "event-page/v1"
 
 
 class ReplayArtifactResponse(StrictStruct, frozen=True):
-    event_id: str
-    event_type: str
-    stream_sequence: int
-    field: str
+    node_id: str
+    role: ReplayArtifactRole
+    check_id: str | None
     digest: str
+    size_bytes: int
+    media_type: str
+    encoding: str | None
     verified: bool
 
 
-class ReplayProjectionResponse(StrictStruct, frozen=True):
-    stage: str
-    status: str
-    snapshot_digest: str | None
-    cutoff_global_position: int | None
-    effective_time_cutoff: str | None
-
-
 class ReplayFindingResponse(StrictStruct, frozen=True):
-    stage: str
-    code: str
-    message: str
+    code: ReplayFindingCode
+    node_id: str | None
+    role: ReplayArtifactRole | None
+    check_id: str | None
+    artifact_digest: str | None
+
+
+class VerificationReplayResponse(StrictStruct, frozen=True):
+    lifecycle_status: VerificationReplayLifecycle
+    verification_id: str | None
+    review_id: str | None
+    attempt: int | None
+    fencing_token: int | None
+    verdict: VerificationVerdict | None
+    failure_code: str | None
+    report_artifact_digest: str | None
+    report_size_bytes: int | None
+    report_media_type: str | None
+    report_encoding: str | None
+    matrix_digest: str | None
+    artifact_integrity: ReplayArtifactIntegrity
+    finding_code: VerificationReplayFindingCode | None
+    processed_events: int
+    evidence_digest: str
+    schema_version: Literal["verification-replay/v1"] = "verification-replay/v1"
 
 
 class ReplayResponse(StrictStruct, frozen=True):
     run_id: str
-    run_stream_id: str
-    protocol_version: str | None
-    classification: str
-    outcome: str | None
-    events: tuple[EventResponse, ...]
+    project: ProjectResponse
+    intent: IntentResponse
+    plan: PlanResponse
+    run: RunResponse
+    processed_events: int
+    state_digest: str
+    artifact_integrity: ReplayArtifactIntegrity
     artifacts: tuple[ReplayArtifactResponse, ...]
-    projections: tuple[ReplayProjectionResponse, ...]
-    finding: ReplayFindingResponse | None
-    schema_version: Literal["runtime-replay/v1"] = "runtime-replay/v1"
-
-    def __post_init__(self) -> None:
-        if len(self.events) > MAX_REPLAY_EVENTS:
-            raise ValueError("runtime replay response exceeds its event bound")
-
-
-class EvaluationResponse(StrictStruct, frozen=True):
-    run_id: str
-    evaluation_id: str
-    evaluation_spec_id: str
-    verdict: str
-    artifact_digest: str
-    schema_version: Literal["runtime-evaluation/v1"] = "runtime-evaluation/v1"
-
-
-class OrchestrationNodeResponse(StrictStruct, frozen=True):
-    node_id: str
-    status: str
-    attempts: int
-    fencing_token: int
-    available_at: str
-    lease_worker_id: str | None
-    lease_expires_at: str | None
-    result_digest: str | None
-    failure_code: str | None
-    input_tokens: int
-    output_tokens: int
-    latency_ms: int
-    cost_microusd: int
-
-
-class OrchestrationApprovalResponse(StrictStruct, frozen=True):
-    node_id: str
-    role: str
-    principal_id: str
-    approved: bool
-    decided_at: str
-    decision_digest: str
-    schema_version: Literal["orchestration-approval/v1"] = "orchestration-approval/v1"
-
-
-class OrchestrationRunResponse(StrictStruct, frozen=True):
-    run_id: str
-    dag_id: str
-    dag_digest: str
-    status: str
-    submitted_by: str
-    submitted_at: str
-    updated_at: str
-    nodes: tuple[OrchestrationNodeResponse, ...]
-    approvals: tuple[OrchestrationApprovalResponse, ...]
-    schema_version: Literal["orchestration-run/v1"] = "orchestration-run/v1"
-
-
-class ErrorResponse(StrictStruct, frozen=True):
-    error: str
-    schema_version: Literal["error/v1"] = "error/v1"
+    findings: tuple[ReplayFindingResponse, ...]
+    artifact_evidence_digest: str
+    verification: VerificationReplayResponse
+    schema_version: Literal["replay/v2"] = "replay/v2"
 
 
 def decode_contract[ContractT](data: bytes, contract_type: type[ContractT]) -> ContractT:
@@ -365,66 +650,173 @@ def contract_to_json_builtins(value: StrictStruct) -> object:
     return msgspec.json.decode(msgspec.json.encode(value))
 
 
-def _identifier(value: str, field_name: str) -> None:
-    _bounded_text(value, field_name, maximum=_MAX_ID_CHARS)
-    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in value):
+def plan_topological_order(nodes: tuple[PlanNode, ...]) -> tuple[str, ...]:
+    dependents: dict[str, list[str]] = {node.node_id: [] for node in nodes}
+    remaining = {node.node_id: len(node.depends_on) for node in nodes}
+    for node in nodes:
+        for dependency in node.depends_on:
+            if dependency not in dependents:
+                raise WireContractError()
+            dependents[dependency].append(node.node_id)
+    ready = sorted(node_id for node_id, count in remaining.items() if count == 0)
+    ordered: list[str] = []
+    while ready:
+        node_id = ready.pop(0)
+        ordered.append(node_id)
+        for dependent in sorted(dependents[node_id]):
+            remaining[dependent] -= 1
+            if remaining[dependent] == 0:
+                ready.append(dependent)
+                ready.sort()
+    if len(ordered) != len(nodes):
+        raise WireContractError()
+    return tuple(ordered)
+
+
+def _identifier(value: str) -> None:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > _MAX_ID_CHARS
+        or any(
+            not (character.isascii() and (character.isalnum() or character in "-._"))
+            for character in value
+        )
+    ):
         raise WireContractError()
 
 
-def _bounded_text(value: str, field_name: str, *, maximum: int) -> None:
-    del field_name
-    if not isinstance(value, str) or not value.strip() or len(value) > maximum:
+def _bounded_text(value: str, *, maximum: int) -> None:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or len(value) > maximum
+        or any(ord(character) == 0 or ord(character) == 0x7F for character in value)
+    ):
         raise WireContractError()
 
 
-def _bounded_integer(
-    value: int,
-    field_name: str,
-    *,
-    minimum: int,
-    maximum: int,
-) -> None:
-    del field_name
+def _bounded_token(value: str) -> None:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > _MAX_ARG_CHARS
+        or any(ord(character) == 0 or ord(character) == 0x7F for character in value)
+    ):
+        raise WireContractError()
+
+
+def _bounded_text_collection(values: tuple[str, ...]) -> None:
+    if len(values) > _MAX_COLLECTION_ITEMS:
+        raise WireContractError()
+    for value in values:
+        _bounded_text(value, maximum=_MAX_TEXT_CHARS)
+    if len(values) != len(set(values)):
+        raise WireContractError()
+
+
+def _unique_identifiers(values: tuple[str, ...], *, maximum: int) -> None:
+    if len(values) > maximum:
+        raise WireContractError()
+    for value in values:
+        _identifier(value)
+    if len(values) != len(set(values)):
+        raise WireContractError()
+
+
+def _unique_values(values: Iterable[object], *, maximum: int) -> None:
+    items = tuple(values)
+    if len(items) > maximum or len(items) != len(set(items)):
+        raise WireContractError()
+
+
+def _unique_repository_paths(values: tuple[str, ...]) -> None:
+    if len(values) > _MAX_COLLECTION_ITEMS or len(values) != len(set(values)):
+        raise WireContractError()
+    for value in values:
+        if (
+            not isinstance(value, str)
+            or not value
+            or len(value) > _MAX_ROOT_CHARS
+            or "\x00" in value
+            or "\\" in value
+        ):
+            raise WireContractError()
+        if value == ".":
+            continue
+        path = PurePosixPath(value)
+        if (
+            path.is_absolute()
+            or path.as_posix() != value
+            or any(part in {"", ".", ".."} for part in path.parts)
+            or ".git" in path.parts
+        ):
+            raise WireContractError()
+
+
+def _bounded_integer(value: int, *, minimum: int, maximum: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
         raise WireContractError()
 
 
-def _bounded_collection(value: tuple[object, ...], *, maximum: int) -> None:
-    if not value or len(value) > maximum:
+def _commit(value: str) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) != 40
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
         raise WireContractError()
 
 
-def _aware(value: datetime) -> None:
-    if value.tzinfo is None or value.utcoffset() is None:
+def _digest(value: str) -> None:
+    if (
+        not isinstance(value, str)
+        or len(value) != 71
+        or not value.startswith("sha256:")
+        or any(character not in "0123456789abcdef" for character in value[7:])
+    ):
         raise WireContractError()
 
 
 __all__ = [
-    "MAX_EVENT_PAGE_SIZE",
     "MAX_REQUEST_BODY_BYTES",
     "MAX_RESPONSE_BODY_BYTES",
-    "ApprovalRequest",
-    "ClaimRequest",
-    "ContextResponse",
+    "MAX_RUNTIME_EVENT_PAGE_SIZE",
+    "MAX_RUN_QUERY_PAGE_SIZE",
+    "MAX_RUN_QUERY_SCAN_EVENTS",
+    "RUN_QUERY_MEDIA_TYPE",
+    "RUN_QUERY_RESULT_MEDIA_TYPE",
+    "AcceptanceCheck",
+    "CancelRunRequest",
     "ErrorResponse",
-    "EvaluationResponse",
-    "EventPageResponse",
-    "EventResponse",
-    "EvidenceRequest",
     "HealthResponse",
-    "ObservationIngestRequest",
-    "ObservationIngestResponse",
-    "ObservationRequest",
-    "OrchestrationApprovalResponse",
-    "OrchestrationNodeResponse",
-    "OrchestrationRunResponse",
-    "ReplayArtifactResponse",
-    "ReplayFindingResponse",
-    "ReplayProjectionResponse",
+    "IntentRequest",
+    "IntentResponse",
+    "NodeBudget",
+    "PlanEffect",
+    "PlanNode",
+    "PlanRequest",
+    "PlanResponse",
+    "ProjectRequest",
+    "ProjectResponse",
     "ReplayResponse",
+    "RunBudgetUsageResponse",
+    "RunNodeQueryResponse",
+    "RunNodeStatus",
+    "RunQueryItem",
+    "RunQueryRequest",
+    "RunQueryResponse",
+    "RunRequest",
     "RunResponse",
-    "RunSubmissionRequest",
+    "RunStatus",
+    "RuntimeEventPageResponse",
+    "RuntimeEventResponse",
+    "RuntimeEventType",
     "StrictStruct",
+    "VerificationReplayFindingCode",
+    "VerificationReplayLifecycle",
+    "VerificationReplayResponse",
+    "VerificationVerdict",
     "WireContractError",
     "contract_to_builtins",
     "contract_to_json_builtins",
@@ -432,4 +824,5 @@ __all__ = [
     "decode_contract",
     "decode_response_contract",
     "encode_contract",
+    "plan_topological_order",
 ]

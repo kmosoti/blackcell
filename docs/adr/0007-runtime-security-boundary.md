@@ -20,7 +20,7 @@ Status: accepted
 
 ## Context
 
-Runtime-v1 is about to expose the canonical workflow, replay, approvals, events, and scheduler
+Runtime foundation is about to expose the canonical workflow, replay, approvals, events, and scheduler
 through an HTTP process. The existing local CLI stores data under a repository's Git directory and
 assumes the invoking user is the trust boundary. Those defaults cannot be inherited by a service:
 an implicit data location, credential in a tracked config or command line, permissive filesystem

@@ -20,15 +20,12 @@ from blackcell.config import (
     OTEL_TIMEOUT_SECONDS_ENV,
     REPOSITORY_ROOT_ENV,
     REQUESTS_PER_MINUTE_ENV,
-    WORKER_ID_ENV,
-    WORKER_LEASE_SECONDS_ENV,
-    WORKER_POLL_MILLISECONDS_ENV,
     ProcessConfigError,
     ProcessConfigFailureCode,
     RuntimeProcessConfig,
 )
 
-TOKEN = "Runtime-v1_process-token.0123456789-ABCDEFG"
+TOKEN = "runtime_process-token.0123456789-ABCDEFG"
 
 
 def test_process_config_uses_bounded_explicit_runtime_defaults(tmp_path: Path) -> None:
@@ -39,20 +36,15 @@ def test_process_config_uses_bounded_explicit_runtime_defaults(tmp_path: Path) -
             DATA_DIR_ENV: str(tmp_path / "data"),
             API_TOKEN_ENV: TOKEN,
             REPOSITORY_ROOT_ENV: str(repository),
-        },
-        hostname="runtime-host",
-        process_id=42,
+        }
     )
 
     assert config.repository_root == repository
     assert config.graceful_timeout_seconds == 30
     assert config.api_backpressure == 64
-    assert config.worker_poll_milliseconds == 250
-    assert config.worker_lease_seconds == 30
-    assert config.worker_id == "worker:runtime-host:42"
-    assert config.alpha_worker is None
-    assert config.alpha_review_worker is None
-    assert config.alpha_verify_worker is None
+    assert config.execution_worker is None
+    assert config.review_worker is None
+    assert config.verification_worker is None
     assert not config.telemetry.enabled
     assert config.telemetry.endpoint is None
     assert config.quota.requests_per_minute == 600
@@ -71,9 +63,6 @@ def test_process_config_accepts_explicit_bounded_lifecycle_values(tmp_path: Path
             REPOSITORY_ROOT_ENV: str(repository),
             GRACEFUL_TIMEOUT_SECONDS_ENV: "300",
             API_BACKPRESSURE_ENV: "1024",
-            WORKER_POLL_MILLISECONDS_ENV: "60000",
-            WORKER_LEASE_SECONDS_ENV: "86400",
-            WORKER_ID_ENV: "worker:runtime-1",
             REQUESTS_PER_MINUTE_ENV: "100000",
             ACTIVE_STORAGE_MAX_BYTES_ENV: "1048576",
             MUTATION_RESERVE_BYTES_ENV: "4096",
@@ -82,9 +71,6 @@ def test_process_config_accepts_explicit_bounded_lifecycle_values(tmp_path: Path
 
     assert config.graceful_timeout_seconds == 300
     assert config.api_backpressure == 1024
-    assert config.worker_poll_milliseconds == 60_000
-    assert config.worker_lease_seconds == 86_400
-    assert config.worker_id == "worker:runtime-1"
     assert config.quota.requests_per_minute == 100_000
     assert config.quota.active_storage_max_bytes == 1_048_576
     assert config.quota.mutation_reserve_bytes == 4_096
@@ -176,9 +162,6 @@ def test_process_config_rejects_ambient_or_unsafe_otel_configuration_content_fre
             ProcessConfigFailureCode.INVALID_GRACEFUL_TIMEOUT,
         ),
         (API_BACKPRESSURE_ENV, "1025", ProcessConfigFailureCode.INVALID_API_BACKPRESSURE),
-        (WORKER_POLL_MILLISECONDS_ENV, "9", ProcessConfigFailureCode.INVALID_WORKER_POLL),
-        (WORKER_LEASE_SECONDS_ENV, "86401", ProcessConfigFailureCode.INVALID_WORKER_LEASE),
-        (WORKER_ID_ENV, "worker with space", ProcessConfigFailureCode.INVALID_WORKER_ID),
         (REQUESTS_PER_MINUTE_ENV, "0", ProcessConfigFailureCode.INVALID_QUOTA_CONFIG),
         (
             ACTIVE_STORAGE_MAX_BYTES_ENV,

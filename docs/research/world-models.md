@@ -24,7 +24,7 @@ predictive latent state rather than surface reconstruction.
   space as the substrate for planning through possible action sequences.
 - Graph-JEPA, time-series JEPA, and related systems show that latent prediction
   ideas are not limited to images or video. They remain research inspiration for
-  BlackCell rather than V0 dependencies.
+  BlackCell rather than prototype dependencies.
 
 The software analogy is:
 

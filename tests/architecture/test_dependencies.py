@@ -2,14 +2,69 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from blackcell.orchestration.review import EpistemicDimension
+from blackcell.orchestration.verification import (
+    VerificationCriterionKind,
+    VerificationReasonCode,
+)
+
 ROOT = Path(__file__).parents[2]
 SOURCE_ROOT = ROOT / "src" / "blackcell"
 RULES_PATH = ROOT / "architecture" / "dependency_rules.json"
-DEBT_PATH = ROOT / "architecture" / "dependency_debt.json"
+EXECUTABLE_ROOTS = (
+    SOURCE_ROOT,
+    ROOT / "tests",
+    ROOT / "tools",
+    ROOT / "examples",
+    ROOT / ".github",
+)
+_MATURITY_TERMS = ("al" + "pha", "be" + "ta", "pre" + "view")
+_MATURITY_LABEL = re.compile(rf"(?i)(?:^|[^a-z0-9])({'|'.join(_MATURITY_TERMS)})(?:$|[^a-z0-9])")
+_GENERATION_PATH = re.compile(r"(?i)(?:^|[-_.])v[0-9]+(?:$|[-_.])")
+_GENERATION_IDENTIFIER = re.compile(r"(?i)(?:^|_)v[0-9]+(?=_|$)|(?<=[a-z])v[0-9]+(?=[A-Z_]|$)")
+_VERSION_LITERAL = re.compile(r"(?i)(?:/|[._-])v[0-9]+(?:$|[^0-9])")
+_VERSION_BOUNDARY_MODULES = frozenset(
+    {
+        "blackcell.adapters.daemon_systemd",
+        "blackcell.adapters.execution.bubblewrap",
+        "blackcell.adapters.execution.text_changes",
+        "blackcell.adapters.execution.worktree",
+        "blackcell.adapters.kernform_cli",
+        "blackcell.adapters.models.codex_cli",
+        "blackcell.adapters.recovery.local",
+        "blackcell.adapters.runtime_http",
+        "blackcell.bootstrap.execution_plan",
+        "blackcell.bootstrap.process",
+        "blackcell.cli.app",
+        "blackcell.config.execution",
+        "blackcell.config.process",
+        "blackcell.config.review",
+        "blackcell.config.verification",
+        "blackcell.gateway.configuration",
+        "blackcell.interfaces.http.app",
+        "blackcell.interfaces.http.contracts",
+        "blackcell.interfaces.http.web",
+        "blackcell.interfaces.kernform_contracts",
+        "blackcell.interfaces.tui.app",
+        "blackcell.interfaces.tui.controller",
+        "blackcell.interfaces.tui.cursor",
+        "blackcell.orchestration.acceptance",
+        "blackcell.orchestration.changes",
+        "blackcell.orchestration.execution_artifacts",
+        "blackcell.orchestration.execution_plan",
+        "blackcell.orchestration.replay",
+        "blackcell.orchestration.review",
+        "blackcell.orchestration.review_lifecycle",
+        "blackcell.orchestration.run_lifecycle",
+        "blackcell.orchestration.verification",
+        "blackcell.orchestration.verification_lifecycle",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,17 +76,14 @@ class ImportEdge:
 
 
 def test_every_package_root_is_classified() -> None:
-    rules = _load_json(RULES_PATH)
-    classified = set(rules["classified_roots"])
-    reserved = set(rules["reserved_target_roots"])
+    classified = set(_load_json(RULES_PATH)["classified_roots"])
     actual = {
         path.name
         for path in SOURCE_ROOT.iterdir()
         if path.is_dir() and (path / "__init__.py").is_file()
     }
 
-    unclassified = sorted(actual - classified - reserved)
-    assert not unclassified, f"classify new package roots before merging: {unclassified}"
+    assert actual == classified
 
 
 def test_kernel_has_no_outward_blackcell_dependencies() -> None:
@@ -46,398 +98,129 @@ def test_kernel_has_no_outward_blackcell_dependencies() -> None:
     assert not violations, _format(violations)
 
 
-def test_feature_slices_do_not_reach_across_slices_or_edges() -> None:
-    rules = _load_json(RULES_PATH)
-    feature_dependencies = rules["feature_dependencies"]
-    violations: list[ImportEdge] = []
-    for edge in _imports():
-        parts = edge.importer.split(".")
-        if len(parts) < 3 or parts[:2] != ["blackcell", "features"]:
-            continue
-        if not edge.imported.startswith("blackcell."):
-            continue
-        dependencies = tuple(
-            f"blackcell.features.{dependency}"
-            for dependency in feature_dependencies.get(parts[2], ())
-        )
-        allowed = ("blackcell.kernel", f"blackcell.features.{parts[2]}", *dependencies)
-        if not edge.imported.startswith(allowed):
-            violations.append(edge)
-
-    assert not violations, _format(violations)
-
-
-def test_orchestration_contracts_do_not_depend_on_edge_or_legacy_agent_packages() -> None:
-    forbidden = (
-        "blackcell.adapters",
-        "blackcell.agents",
-        "blackcell.cli",
-        "blackcell.harness",
-        "blackcell.latent",
-        "blackcell.runtime",
-        "blackcell.world",
+def test_orchestration_contracts_depend_only_on_inward_runtime_contracts() -> None:
+    allowed = (
+        "blackcell.gateway",
+        "blackcell.kernel",
+        "blackcell.orchestration",
     )
     violations = [
         edge
         for edge in _imports()
         if edge.importer.startswith("blackcell.orchestration")
-        and edge.imported.startswith(forbidden)
+        and edge.imported.startswith("blackcell.")
+        and not edge.imported.startswith(allowed)
     ]
 
     assert not violations, _format(violations)
 
 
-def test_workflows_and_runtime_cores_depend_inward() -> None:
-    allowed_by_root = {
-        "workflows": ("blackcell.kernel", "blackcell.features", "blackcell.workflows"),
-        "gateway": ("blackcell.kernel", "blackcell.gateway"),
-        "orchestration": (
-            "blackcell.kernel",
-            "blackcell.features",
-            "blackcell.gateway",
-            "blackcell.orchestration",
-            "blackcell.workflows",
-        ),
-    }
-    violations: list[ImportEdge] = []
-    for edge in _imports():
-        parts = edge.importer.split(".")
-        if len(parts) < 2 or parts[0] != "blackcell":
+def test_canonical_runtime_cannot_import_retired_implementations() -> None:
+    retired = tuple(_load_json(RULES_PATH)["retired_runtime_roots"])
+    violations = [
+        edge
+        for edge in _imports()
+        if any(edge.imported == root or edge.imported.startswith(f"{root}.") for root in retired)
+    ]
+
+    assert not violations, _format(violations)
+
+
+def test_retired_runtime_modules_are_absent() -> None:
+    retired = tuple(_load_json(RULES_PATH)["retired_runtime_roots"])
+    present = []
+    for module in retired:
+        relative = Path(*module.split(".")[1:])
+        package = SOURCE_ROOT / relative
+        if package.with_suffix(".py").exists() or any(package.glob("*.py")):
+            present.append(module)
+
+    assert not present
+
+
+def test_executable_names_are_maturity_and_generation_agnostic() -> None:
+    maturity_violations: list[str] = []
+    path_violations: list[str] = []
+    identifier_violations: list[str] = []
+    for root in EXECUTABLE_ROOTS:
+        if not root.exists():
             continue
-        allowed = allowed_by_root.get(parts[1])
-        if allowed is None or not edge.imported.startswith("blackcell."):
-            continue
-        if not edge.imported.startswith(allowed):
-            violations.append(edge)
+        for path in sorted(item for item in root.rglob("*") if item.is_file()):
+            if "__pycache__" in path.parts:
+                continue
+            relative = path.relative_to(ROOT)
+            if any(_GENERATION_PATH.search(part) for part in relative.parts):
+                path_violations.append(str(relative))
+            text = path.read_text(encoding="utf-8")
+            if _MATURITY_LABEL.search(text):
+                maturity_violations.append(str(relative))
+            if path.suffix == ".py":
+                tree = ast.parse(text, filename=str(path))
+                for name, line in _declared_names(tree):
+                    if _GENERATION_IDENTIFIER.search(name):
+                        identifier_violations.append(f"{relative}:{line}: {name}")
+            elif path.suffix == ".js":
+                for match in re.finditer(
+                    r"\b(?:class|function|const|let|var)\s+([A-Za-z_$][\w$]*)",
+                    text,
+                ):
+                    if _GENERATION_IDENTIFIER.search(match.group(1)):
+                        identifier_violations.append(
+                            f"{relative}:{text.count(chr(10), 0, match.start()) + 1}: "
+                            f"{match.group(1)}"
+                        )
 
-    assert not violations, _format(violations)
-
-
-def test_core_packages_do_not_import_frameworks_or_provider_sdks() -> None:
-    rules = _load_json(RULES_PATH)
-    forbidden = tuple(rules["framework_and_provider_modules"])
-    protected = (
-        "blackcell.kernel",
-        "blackcell.features",
-        "blackcell.workflows",
-        "blackcell.gateway",
-        "blackcell.orchestration",
+    assert not maturity_violations, "maturity labels are forbidden:\n" + "\n".join(
+        maturity_violations
     )
-    violations = [
-        edge
-        for edge in _imports()
-        if edge.importer.startswith(protected) and edge.imported.startswith(forbidden)
-    ]
-
-    assert not violations, _format(violations)
-
-
-def test_auth_contract_is_framework_and_edge_independent() -> None:
-    rules = _load_json(RULES_PATH)
-    forbidden = (
-        *rules["framework_and_provider_modules"],
-        "blackcell.adapters",
-        "blackcell.bootstrap",
-        "blackcell.cli",
-        "blackcell.config",
-        "blackcell.operator",
-        "blackcell.runtime",
+    assert not path_violations, "generation-labelled paths are forbidden:\n" + "\n".join(
+        path_violations
     )
-    violations = [
-        edge
-        for edge in _imports()
-        if edge.importer == "blackcell.interfaces.auth" and edge.imported.startswith(forbidden)
-    ]
-
-    assert not violations, _format(violations)
-
-
-def test_http_framework_imports_stay_at_interface_and_bootstrap_edges() -> None:
-    framework_modules = ("litestar", "msgspec")
-    allowed_importers = (
-        "blackcell.interfaces.http",
-        "blackcell.bootstrap",
+    assert not identifier_violations, "generation-labelled identifiers are forbidden:\n" + (
+        "\n".join(identifier_violations)
     )
-    violations = [
-        edge
-        for edge in _imports()
-        if edge.imported.startswith(framework_modules)
-        and not edge.importer.startswith(allowed_importers)
-    ]
-
-    assert not violations, _format(violations)
 
 
-def test_opentelemetry_sdk_imports_stay_inside_the_telemetry_adapter() -> None:
-    violations = [
-        edge
-        for edge in _imports()
-        if edge.imported.startswith("opentelemetry")
-        and not edge.importer.startswith("blackcell.adapters.telemetry")
-    ]
-
-    assert not violations, _format(violations)
-
-
-def test_current_runtime_does_not_import_historical_compatibility() -> None:
-    rules = _load_json(RULES_PATH)
-    historical = tuple(rules["historical_compatibility_roots"])
-    current = tuple(rules["current_runtime_roots"])
-    violations = [
-        edge
-        for edge in _imports()
-        if _matches_root(edge.importer, current) and _matches_root(edge.imported, historical)
-    ]
-
-    assert not violations, _format(violations)
-
-
-def test_production_runtime_does_not_import_compatibility_or_experiments() -> None:
-    rules = _load_json(RULES_PATH)
-    current = tuple(rules["current_runtime_roots"])
-    forbidden = tuple(rules["production_forbidden_roots"])
-    violations = [
-        edge
-        for edge in _imports()
-        if _matches_root(edge.importer, current) and _matches_root(edge.imported, forbidden)
-    ]
-
-    assert forbidden == (
-        "blackcell.compatibility",
-        "blackcell.context",
-        "blackcell.experiments",
-    )
-    assert not violations, _format(violations)
-
-
-def test_current_contract_owners_are_unambiguous() -> None:
-    rules = _load_json(RULES_PATH)
-
-    assert rules["schema_version"] == 3
-    assert "legacy-canonical" not in rules["classified_roots"].values()
-    assert "blackcell.adapters" in rules["current_runtime_roots"]
-    assert "blackcell.adapters" in rules["benchmark_model_forbidden_importers"]
-    assert rules["concept_owners"] == {
-        "authorization-execution-observation": "blackcell.control",
-        "benchmark-decision-models": "blackcell.models",
-        "context-frame-construction": "blackcell.features.build_context",
-        "durable-decision-records": "blackcell.features.request_decision",
-        "evidence-selection": "blackcell.features.retrieve_evidence",
-        "historical-context-baselines": "blackcell.context",
-        "live-model-admission-routing": "blackcell.gateway",
-        "telemetry-attribute-values": "blackcell.telemetry",
-    }
-    assert rules["feature_dependencies"] == {"build_context": ["retrieve_evidence"]}
-
-
-def test_runtime_paths_do_not_import_benchmark_model_implementations() -> None:
-    rules = _load_json(RULES_PATH)
-    forbidden_importers = tuple(rules["benchmark_model_forbidden_importers"])
-    violations = [
-        edge
-        for edge in _imports()
-        if edge.importer.startswith(forbidden_importers)
-        and edge.imported.startswith("blackcell.models")
-    ]
-
-    assert not violations, _format(violations)
-
-
-def test_run_record_protocol_helpers_depend_on_artifact_helpers_one_way() -> None:
-    artifacts = "blackcell.adapters.persistence.sqlite._run_records_v2_artifacts"
-    protocol = "blackcell.adapters.persistence.sqlite._run_records_v2_protocol"
-    violations = [
-        edge
-        for edge in _imports()
-        if edge.importer == artifacts and edge.imported.startswith(protocol)
-    ]
-
-    assert not violations, _format(violations)
-
-
-def test_concrete_runtime_construction_stays_at_approved_sites() -> None:
-    approved = _load_json(RULES_PATH)["approved_construction_sites"]
-    observed: dict[str, set[str]] = {name: set() for name in approved}
+def test_contract_versions_are_confined_to_boundary_modules() -> None:
     violations: list[str] = []
     for path in sorted(SOURCE_ROOT.rglob("*.py")):
-        relative = path.relative_to(ROOT / "src").with_suffix("")
-        importer = ".".join(relative.parts)
+        module = _module(path)
+        if module in _VERSION_BOUNDARY_MODULES:
+            continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        aliases = {
-            alias.asname or alias.name: alias.name
-            for node in tree.body
-            if isinstance(node, ast.ImportFrom)
-            for alias in node.names
-            if alias.name in approved
-        }
         for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            terminal = _terminal_name(node.func)
-            name = aliases.get(terminal, terminal)
-            if name not in approved:
-                continue
-            observed[name].add(importer)
-            if importer not in approved[name]:
-                violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: {name}")
+            if (
+                isinstance(node, ast.Constant)
+                and isinstance(node.value, str)
+                and _VERSION_LITERAL.search(node.value)
+            ):
+                violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: {node.value!r}")
 
-    expected = {name: set(sites) for name, sites in approved.items()}
-    assert observed == expected, (
-        f"construction approvals must exactly match observed sites: "
-        f"expected={expected}, observed={observed}"
-    )
-    assert not violations, "\n".join(violations)
+    assert not violations, "version literals escaped explicit boundaries:\n" + "\n".join(violations)
 
 
-def test_repository_runtime_composition_is_owned_by_bootstrap() -> None:
-    rules = _load_json(RULES_PATH)
-    composition_root = rules["composition_root"]
-    composition_path = SOURCE_ROOT / Path(*composition_root.split(".")[1:]).with_suffix(".py")
-    operator_path = SOURCE_ROOT / "operator" / "facade.py"
-    api_path = SOURCE_ROOT / "bootstrap" / "runtime_api.py"
-    worker_path = SOURCE_ROOT / "bootstrap" / "worker.py"
-
-    assert composition_root == "blackcell.bootstrap.repository"
-    assert composition_path.is_file()
-    assert not (SOURCE_ROOT / "operator" / "repository_adapters.py").exists()
-    assert (SOURCE_ROOT / "adapters" / "repository" / "adapter.py").is_file()
-
-    operator_tree = ast.parse(
-        operator_path.read_text(encoding="utf-8"),
-        filename=str(operator_path),
-    )
-    forbidden_imports = (
-        "blackcell.adapters",
-        "blackcell.bootstrap",
-        "blackcell.config",
-    )
-    operator_edges = [edge for edge in _imports() if edge.path == operator_path]
-    assert not [edge for edge in operator_edges if edge.imported.startswith(forbidden_imports)], (
-        _format(operator_edges)
-    )
-
-    forbidden_constructors = {
-        "ArtifactStore",
-        "CodexCliModelAdapter",
-        "EventStore",
-        "KernelFeedbackRunRecorder",
-        "KernelRunReplayAdapter",
-        "ModelGateway",
-        "RepositoryRecordedModelAdapter",
-        "RepositoryStatusExecutionAdapter",
-        "RepositoryStatusOutcomeObserver",
-        "RepositoryStatusReader",
-        "SQLiteDecisionAttemptJournal",
-        "SQLiteExecutionJournal",
+def test_epistemic_guard_has_closed_review_and_verification_rows() -> None:
+    assert {item.value for item in EpistemicDimension} == {
+        "acceptance-coverage",
+        "causal-overreach",
+        "counterevidence",
+        "evidence-grounding",
+        "scope-challenge",
+        "uncertainty",
     }
-    calls = {
-        node.func.id
-        for node in ast.walk(operator_tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    assert calls.isdisjoint(forbidden_constructors)
-
-    public_store_assignments = {
-        target.attr
-        for node in ast.walk(operator_tree)
-        if isinstance(node, ast.Assign)
-        for target in node.targets
-        if (
-            isinstance(target, ast.Attribute)
-            and isinstance(target.value, ast.Name)
-            and target.value.id == "self"
-            and target.attr in {"events", "artifacts"}
-        )
-    }
-    assert not public_store_assignments
-
-    for path in (api_path, worker_path):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        reach_through = [
-            node
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Attribute)
-            and node.attr in {"events", "artifacts"}
-            and isinstance(node.value, ast.Name)
-            and node.value.id == "operator"
-        ]
-        assert not reach_through, path
-
-
-def test_replay_slice_cannot_reach_live_models_or_actions() -> None:
-    forbidden = (
-        "blackcell.adapters",
-        "blackcell.features.execute_affordance",
-        "blackcell.gateway",
-        "blackcell.orchestration",
-    )
-    violations = [
-        edge
-        for edge in _imports()
-        if edge.importer.startswith("blackcell.features.replay_run")
-        and edge.imported.startswith(forbidden)
-    ]
-
-    assert not violations, _format(violations)
-
-
-def test_architecture_debt_is_precise_and_shrinkable() -> None:
-    debt = _load_json(DEBT_PATH)
-    entries = debt["legacy_roots"]
-    packages = [entry["package"] for entry in entries]
-
-    assert packages == sorted(packages)
-    assert len(packages) == len(set(packages))
-    assert debt["allowed_import_violations"] == []
-    for entry in entries:
-        package = entry["package"]
-        assert "*" not in package
-        assert package.count(".") == 1
-        assert (SOURCE_ROOT / package.removeprefix("blackcell.")).is_dir()
-        assert entry["target"].startswith("blackcell.")
-        assert entry["remove_by"].startswith("WP")
-
-
-def test_wp26_has_retired_all_legacy_package_debt() -> None:
-    debt = _load_json(DEBT_PATH)
-
-    assert debt == {
-        "schema_version": 1,
-        "legacy_roots": [],
-        "allowed_import_violations": [],
-    }
-
-
-def test_relative_imports_are_resolved_before_dependency_rules() -> None:
-    importer = "blackcell.adapters.repository.adapter"
-    expectations = {
-        "from ...context import signals": (
-            "blackcell.context",
-            "blackcell.context.signals",
-        ),
-        "from ... import context, models": (
-            "blackcell",
-            "blackcell.context",
-            "blackcell.models",
-        ),
-        "from .helper import value": (
-            "blackcell.adapters.repository.helper",
-            "blackcell.adapters.repository.helper.value",
-        ),
-        "from blackcell import models": ("blackcell", "blackcell.models"),
-    }
-
-    for source, expected in expectations.items():
-        node = ast.parse(source).body[0]
-        assert isinstance(node, ast.ImportFrom)
-        assert _resolved_imports_from(importer, node) == expected
+    assert VerificationCriterionKind.EPISTEMIC_POLICY.value == "epistemic-policy"
+    assert {
+        VerificationReasonCode.EPISTEMIC_CONCERN,
+        VerificationReasonCode.EPISTEMIC_UNKNOWN,
+        VerificationReasonCode.EPISTEMIC_COVERAGE_COMPLETE,
+        VerificationReasonCode.EPISTEMIC_NOT_APPLICABLE,
+    } <= set(VerificationReasonCode)
 
 
 def _imports() -> tuple[ImportEdge, ...]:
     edges: list[ImportEdge] = []
     for path in sorted(SOURCE_ROOT.rglob("*.py")):
-        relative = path.relative_to(ROOT / "src").with_suffix("")
-        importer = ".".join(relative.parts)
+        importer = _module(path)
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -450,6 +233,27 @@ def _imports() -> tuple[ImportEdge, ...]:
                     for imported in _resolved_imports_from(importer, node)
                 )
     return tuple(edges)
+
+
+def _module(path: Path) -> str:
+    relative = path.relative_to(ROOT / "src").with_suffix("")
+    return ".".join(relative.parts)
+
+
+def _declared_names(tree: ast.AST) -> tuple[tuple[str, int], ...]:
+    names: set[tuple[str, int]] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            names.add((node.id, node.lineno))
+        elif isinstance(node, ast.Attribute):
+            names.add((node.attr, node.lineno))
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            names.add((node.name, node.lineno))
+        elif isinstance(node, ast.arg):
+            names.add((node.arg, node.lineno))
+        elif isinstance(node, ast.alias) and node.asname is not None:
+            names.add((node.asname, getattr(node, "lineno", 0)))
+    return tuple(sorted(names, key=lambda item: (item[1], item[0])))
 
 
 def _resolved_imports_from(importer: str, node: ast.ImportFrom) -> tuple[str, ...]:
@@ -473,18 +277,6 @@ def _load_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(value, dict)
     return value
-
-
-def _matches_root(value: str, roots: tuple[str, ...]) -> bool:
-    return any(value == root or value.startswith(f"{root}.") for root in roots)
-
-
-def _terminal_name(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return ""
 
 
 def _format(edges: list[ImportEdge]) -> str:

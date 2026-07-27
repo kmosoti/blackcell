@@ -21,7 +21,7 @@ from blackcell.config import (
     load_service_token,
 )
 
-TOKEN = "Runtime-v1_opaque-token.0123456789-ABCDEFG"
+TOKEN = "runtime_opaque-token.0123456789-ABCDEFG"
 
 
 def test_runtime_config_creates_owner_only_paths_and_redaction_policy(tmp_path: Path) -> None:
@@ -47,6 +47,7 @@ def test_runtime_config_creates_owner_only_paths_and_redaction_policy(tmp_path: 
     assert config.telemetry_policy().sanitize({"message": f"failed with {TOKEN}"}) == {
         "message": "[REDACTED]"
     }
+    assert config.principal.principal_id == "service:runtime"
     assert config.authenticator().authenticate((f"Bearer {TOKEN}",)) == config.principal
 
 

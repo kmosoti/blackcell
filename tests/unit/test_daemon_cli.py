@@ -204,7 +204,7 @@ def test_daemon_foreground_delegates_to_the_canonical_runtime_entrypoint(monkeyp
     assert calls == [("daemon",)]
 
 
-def test_daemon_help_exposes_status_without_legacy_submission() -> None:
+def test_daemon_help_exposes_only_daemon_lifecycle_commands() -> None:
     result = runner.invoke(app, ["daemon", "--help"], catch_exceptions=False)
 
     assert result.exit_code == 0

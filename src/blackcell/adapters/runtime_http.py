@@ -13,25 +13,25 @@ from urllib.request import HTTPRedirectHandler, OpenerDirector, ProxyHandler, Re
 
 from blackcell.config import SecretValue
 from blackcell.interfaces.http import (
-    ALPHA_RUN_QUERY_MEDIA_TYPE,
-    ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
-    MAX_ALPHA_EVENT_PAGE_SIZE,
     MAX_RESPONSE_BODY_BYTES,
-    AlphaCancelRunRequest,
-    AlphaEventPageResponse,
-    AlphaIntentRequest,
-    AlphaIntentResponse,
-    AlphaPlanRequest,
-    AlphaPlanResponse,
-    AlphaProjectRequest,
-    AlphaProjectResponse,
-    AlphaReplayResponse,
-    AlphaRunQueryRequest,
-    AlphaRunQueryResponse,
-    AlphaRunRequest,
-    AlphaRunResponse,
+    MAX_RUNTIME_EVENT_PAGE_SIZE,
+    RUN_QUERY_MEDIA_TYPE,
+    RUN_QUERY_RESULT_MEDIA_TYPE,
+    CancelRunRequest,
     ErrorResponse,
     HealthResponse,
+    IntentRequest,
+    IntentResponse,
+    PlanRequest,
+    PlanResponse,
+    ProjectRequest,
+    ProjectResponse,
+    ReplayResponse,
+    RunQueryRequest,
+    RunQueryResponse,
+    RunRequest,
+    RunResponse,
+    RuntimeEventPageResponse,
     StrictStruct,
     WireContractError,
     decode_response_contract,
@@ -227,118 +227,118 @@ class RuntimeHttpClient:
             ready=ready.status == "ready",
         )
 
-    def register_alpha_project(self, request: AlphaProjectRequest) -> AlphaProjectResponse:
-        return self._alpha_request(
+    def register_project(self, request: ProjectRequest) -> ProjectResponse:
+        return self._runtime_request(
             "POST",
-            "/api/alpha/v1/projects",
+            "/api/v1/projects",
             (201,),
-            AlphaProjectResponse,
+            ProjectResponse,
             request,
         )
 
-    def accept_alpha_intent(self, request: AlphaIntentRequest) -> AlphaIntentResponse:
-        return self._alpha_request(
+    def accept_intent(self, request: IntentRequest) -> IntentResponse:
+        return self._runtime_request(
             "POST",
-            "/api/alpha/v1/intents",
+            "/api/v1/intents",
             (201,),
-            AlphaIntentResponse,
+            IntentResponse,
             request,
         )
 
-    def accept_alpha_plan(self, request: AlphaPlanRequest) -> AlphaPlanResponse:
-        return self._alpha_request(
+    def accept_plan(self, request: PlanRequest) -> PlanResponse:
+        return self._runtime_request(
             "POST",
-            "/api/alpha/v1/plans",
+            "/api/v1/plans",
             (201,),
-            AlphaPlanResponse,
+            PlanResponse,
             request,
         )
 
-    def submit_alpha_run(self, request: AlphaRunRequest) -> AlphaRunResponse:
-        return self._alpha_request(
+    def submit_run(self, request: RunRequest) -> RunResponse:
+        return self._runtime_request(
             "POST",
-            "/api/alpha/v1/runs",
+            "/api/v1/runs",
             (202,),
-            AlphaRunResponse,
+            RunResponse,
             request,
         )
 
-    def inspect_alpha_run(self, run_id: str) -> AlphaRunResponse:
-        return self._alpha_request(
+    def inspect_run(self, run_id: str) -> RunResponse:
+        return self._runtime_request(
             "GET",
-            f"/api/alpha/v1/runs/{_path_identifier(run_id)}/status",
+            f"/api/v1/runs/{_path_identifier(run_id)}/status",
             (200,),
-            AlphaRunResponse,
+            RunResponse,
         )
 
-    def query_alpha_runs(self, request: AlphaRunQueryRequest) -> AlphaRunQueryResponse:
-        if not isinstance(request, AlphaRunQueryRequest):
+    def query_runs(self, request: RunQueryRequest) -> RunQueryResponse:
+        if not isinstance(request, RunQueryRequest):
             raise RuntimeClientError(RuntimeClientFailureCode.INVALID_REQUEST)
         if self.token is None:
             raise RuntimeClientError(RuntimeClientFailureCode.MISSING_AUTHENTICATION)
         response = self._request(
-            "/api/alpha/v1/run-query",
+            "/api/v1/runs",
             method="QUERY",
             headers={
-                "accept": ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
+                "accept": RUN_QUERY_RESULT_MEDIA_TYPE,
                 "authorization": self.token.authorization_header(),
-                "content-type": ALPHA_RUN_QUERY_MEDIA_TYPE,
+                "content-type": RUN_QUERY_MEDIA_TYPE,
             },
             body=encode_contract(request),
         )
         return _decode_expected(
             response,
             (200,),
-            AlphaRunQueryResponse,
-            media_types=(ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,),
+            RunQueryResponse,
+            media_types=(RUN_QUERY_RESULT_MEDIA_TYPE,),
         )
 
-    def cancel_alpha_run(
+    def cancel_run(
         self,
         run_id: str,
-        request: AlphaCancelRunRequest,
-    ) -> AlphaRunResponse:
-        return self._alpha_request(
+        request: CancelRunRequest,
+    ) -> RunResponse:
+        return self._runtime_request(
             "POST",
-            f"/api/alpha/v1/runs/{_path_identifier(run_id)}/cancel",
+            f"/api/v1/runs/{_path_identifier(run_id)}/cancel",
             (202,),
-            AlphaRunResponse,
+            RunResponse,
             request,
         )
 
-    def replay_alpha_run(self, run_id: str) -> AlphaReplayResponse:
-        return self._alpha_request(
+    def replay_run(self, run_id: str) -> ReplayResponse:
+        return self._runtime_request(
             "GET",
-            f"/api/alpha/v1/runs/{_path_identifier(run_id)}/replay",
+            f"/api/v1/runs/{_path_identifier(run_id)}/replay",
             (200,),
-            AlphaReplayResponse,
+            ReplayResponse,
             timeout_seconds=self.replay_timeout_seconds,
         )
 
-    def list_alpha_events(
+    def list_events(
         self,
         *,
         after_cursor: int = 0,
         limit: int = 100,
-    ) -> AlphaEventPageResponse:
+    ) -> RuntimeEventPageResponse:
         if (
             isinstance(after_cursor, bool)
             or not isinstance(after_cursor, int)
             or not 0 <= after_cursor <= 2**63 - 1
             or isinstance(limit, bool)
             or not isinstance(limit, int)
-            or not 1 <= limit <= MAX_ALPHA_EVENT_PAGE_SIZE
+            or not 1 <= limit <= MAX_RUNTIME_EVENT_PAGE_SIZE
         ):
             raise RuntimeClientError(RuntimeClientFailureCode.INVALID_REQUEST)
         query = urlencode({"after": after_cursor, "limit": limit})
-        return self._alpha_request(
+        return self._runtime_request(
             "GET",
-            f"/api/alpha/v1/events?{query}",
+            f"/api/v1/events?{query}",
             (200,),
-            AlphaEventPageResponse,
+            RuntimeEventPageResponse,
         )
 
-    def _alpha_request[ResponseT: StrictStruct](
+    def _runtime_request[ResponseT: StrictStruct](
         self,
         method: HttpMethod,
         path: str,

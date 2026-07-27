@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from opentelemetry.sdk.resources import Resource
@@ -13,6 +14,15 @@ from opentelemetry.trace import StatusCode
 from blackcell.adapters.telemetry import (
     OpenTelemetryMappingError,
     OpenTelemetrySpanExporter,
+    RuntimeTelemetry,
+)
+from blackcell.config import (
+    API_TOKEN_ENV,
+    DATA_DIR_ENV,
+    OTEL_ENABLED_ENV,
+    OTEL_ENDPOINT_ENV,
+    REPOSITORY_ROOT_ENV,
+    RuntimeProcessConfig,
 )
 from blackcell.telemetry import (
     ContentPolicy,
@@ -22,13 +32,30 @@ from blackcell.telemetry import (
     TraceRecorder,
 )
 
-TOKEN = "Runtime-v1_otel-token.0123456789-ABCDEFG"
+TOKEN = "runtime_otel-token.0123456789-ABCDEFG"
 
 
 class FailingProcessor(SpanProcessor):
     def on_end(self, span: ReadableSpan) -> None:
         del span
         raise RuntimeError("provider detail must remain isolated")
+
+
+class FailingLifecycleExporter:
+    def __init__(self) -> None:
+        self.flush_timeouts: list[int] = []
+        self.shutdown_calls = 0
+
+    def export(self, record: object) -> None:
+        del record
+
+    def force_flush(self, timeout_millis: int) -> None:
+        self.flush_timeouts.append(timeout_millis)
+        raise RuntimeError("flush detail must remain isolated")
+
+    def shutdown(self) -> None:
+        self.shutdown_calls += 1
+        raise RuntimeError("shutdown detail must remain isolated")
 
 
 def test_otel_adapter_preserves_stable_trace_parentage_and_redacted_metadata() -> None:
@@ -130,6 +157,61 @@ def test_otel_processor_failure_is_recorded_without_failing_the_controlled_span(
     assert recorder.export_errors() == ("RuntimeError",)
     assert len(recorder.records()) == 1
     adapter.shutdown()
+
+
+def test_runtime_telemetry_composes_explicit_export_and_suppresses_shutdown_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    config = RuntimeProcessConfig.from_environment(
+        {
+            DATA_DIR_ENV: str(tmp_path / "data"),
+            API_TOKEN_ENV: TOKEN,
+            REPOSITORY_ROOT_ENV: str(repository),
+            OTEL_ENABLED_ENV: "1",
+            OTEL_ENDPOINT_ENV: "http://127.0.0.1:4318/v1/traces",
+        }
+    )
+    exporter = FailingLifecycleExporter()
+    captured: dict[str, object] = {}
+
+    def build_exporter(**kwargs: object) -> FailingLifecycleExporter:
+        captured.update(kwargs)
+        return exporter
+
+    monkeypatch.setattr(OpenTelemetrySpanExporter, "otlp_http", build_exporter)
+
+    runtime = RuntimeTelemetry.from_config(config)
+    runtime.shutdown()
+
+    assert runtime.recorder is not None
+    assert captured["endpoint"] == "http://127.0.0.1:4318/v1/traces"
+    assert captured["timeout_seconds"] == 10
+    resource = captured["resource"]
+    assert isinstance(resource, Resource)
+    assert resource.attributes["service.name"] == "blackcell-runtime"
+    assert resource.attributes["service.instance.id"] == "service:runtime"
+    assert exporter.flush_timeouts == [10_000]
+    assert exporter.shutdown_calls == 1
+
+
+def test_runtime_telemetry_disabled_shutdown_is_a_noop(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    config = RuntimeProcessConfig.from_environment(
+        {
+            DATA_DIR_ENV: str(tmp_path / "data"),
+            API_TOKEN_ENV: TOKEN,
+            REPOSITORY_ROOT_ENV: str(repository),
+        }
+    )
+
+    runtime = RuntimeTelemetry.from_config(config)
+    runtime.shutdown()
+
+    assert runtime.recorder is None
 
 
 def _record() -> SpanRecord:

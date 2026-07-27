@@ -347,7 +347,7 @@ def estimate_codex_cli_input_tokens(
     objective: str,
     context_character_budget: int,
 ) -> int:
-    """Return the versioned conservative admission estimate for the Codex CLI route.
+    """Return the conservative admission estimate for the Codex CLI route.
 
     The explicit prompt, schema, and canonical request envelope are bounded from caller-known
     inputs before the ContextFrame exists. The separate scaffold reserve is pinned from measured

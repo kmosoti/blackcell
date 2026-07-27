@@ -30,4 +30,4 @@ Acceptance:
 - live-model trials remain explicitly separate from deterministic CI and require a pinned model,
   at least three replicates, and an exclusively reserved artifact path;
 - paired Wilson and bootstrap uncertainty, limitations, and the non-promotion decision are
-  retained in `docs/decisions/runtime-v1/wp23-context-retrieval.json`.
+  retained in `docs/decisions/runtime-foundation/wp23-context-retrieval.json`.

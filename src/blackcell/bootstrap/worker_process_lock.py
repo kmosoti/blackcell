@@ -1,4 +1,4 @@
-"""Exclusive owner-only locks for alpha worker process roles."""
+"""Exclusive owner-only locks for execution worker process roles."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ from blackcell.config import RuntimePaths
 
 
 class WorkerProcessRole(StrEnum):
-    ALPHA_EXECUTION = "alpha-execution-worker"
-    ALPHA_REVIEW = "alpha-review-worker"
-    ALPHA_VERIFICATION = "alpha-verification-worker"
+    EXECUTION = "execution-worker"
+    REVIEW = "review-worker"
+    VERIFICATION = "verification-worker"
 
 
 class WorkerProcessLockFailureCode(StrEnum):

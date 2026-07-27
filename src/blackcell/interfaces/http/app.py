@@ -10,7 +10,7 @@ from typing import Any, cast
 from urllib.parse import parse_qsl
 
 import msgspec
-from litestar import Litestar, Request, Response, WebSocket, asgi, get, post, websocket
+from litestar import Litestar, Request, Response, WebSocket, get, post, websocket
 from litestar.concurrency import sync_to_thread
 from litestar.connection import ASGIConnection
 from litestar.exceptions import HTTPException, WebSocketDisconnect
@@ -47,52 +47,45 @@ from blackcell.interfaces import (
     ServicePrincipal,
     ServiceScope,
 )
-from blackcell.interfaces.http.alpha_contracts import (
-    ALPHA_RUN_QUERY_MEDIA_TYPE,
-    ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
-    MAX_ALPHA_EVENT_PAGE_SIZE,
-    AlphaCancelRunRequest,
-    AlphaEventPageResponse,
-    AlphaIntentRequest,
-    AlphaPlanRequest,
-    AlphaProjectRequest,
-    AlphaRunQueryRequest,
-    AlphaRunRequest,
-)
-from blackcell.interfaces.http.alpha_web import (
-    AlphaWebConnectionLimiter,
-    AlphaWebTicketAuthority,
-    AlphaWebTicketError,
-    AlphaWebTicketFailureCode,
-)
-from blackcell.interfaces.http.alpha_web_assets import load_alpha_web_assets
 from blackcell.interfaces.http.contracts import (
-    MAX_EVENT_PAGE_SIZE,
     MAX_REQUEST_BODY_BYTES,
-    ApprovalRequest,
+    MAX_RUNTIME_EVENT_PAGE_SIZE,
+    RUN_QUERY_MEDIA_TYPE,
+    RUN_QUERY_RESULT_MEDIA_TYPE,
+    CancelRunRequest,
     ErrorResponse,
     HealthResponse,
-    ObservationIngestRequest,
-    RunSubmissionRequest,
+    IntentRequest,
+    PlanRequest,
+    ProjectRequest,
+    RunQueryRequest,
+    RunRequest,
+    RuntimeEventPageResponse,
     WireContractError,
     decode_contract,
     encode_contract,
 )
 from blackcell.interfaces.http.ports import (
-    AlphaRuntimeApiPort,
     RuntimeApiError,
     RuntimeApiFailureCode,
     RuntimeApiPort,
 )
 from blackcell.interfaces.http.quota import RequestQuotaPort
+from blackcell.interfaces.http.web import (
+    WebConnectionLimiter,
+    WebTicketAuthority,
+    WebTicketError,
+    WebTicketFailureCode,
+)
+from blackcell.interfaces.http.web_assets import load_web_assets
 
 _PRINCIPAL_STATE_KEY = "blackcell.service_principal"
 _MAX_PATH_ID_CHARS = 200
 _MAX_WEB_SOCKET_QUERY_BYTES = 512
 _WEB_EVENT_PAGE_LIMIT = 100
 _DEFAULT_WEB_POLL_SECONDS = 0.25
-_ALPHA_RUN_QUERY_PATH = "/api/alpha/v1/run-query"
-_ALPHA_RUN_QUERY_ALLOW = "HEAD, OPTIONS, QUERY"
+_RUN_QUERY_PATH = "/api/v1/runs"
+_RUN_QUERY_ALLOW = "HEAD, OPTIONS, QUERY"
 _WS_INVALID_REQUEST = 4400
 _WS_AUTHENTICATION_REQUIRED = 4401
 _WS_CAPACITY_EXCEEDED = 4429
@@ -122,14 +115,14 @@ class _QuerySyntaxError(ValueError):
     pass
 
 
-class _AlphaRunQueryMiddleware:
+class _RunQueryMiddleware:
     """Narrow ASGI adapter for RFC 10008 while Litestar lacks QUERY routing support."""
 
     def __init__(
         self,
         app: ASGIApp,
         *,
-        service: AlphaRuntimeApiPort,
+        service: RuntimeApiPort,
         authenticator: BearerAuthenticator,
         authorizer: ScopeAuthorizer,
         request_quota: RequestQuotaPort | None,
@@ -141,10 +134,13 @@ class _AlphaRunQueryMiddleware:
         self._request_quota = request_quota
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope.get("path") != _ALPHA_RUN_QUERY_PATH:
+        if scope["type"] != "http" or scope.get("path") != _RUN_QUERY_PATH:
             await self._app(scope, receive, send)
             return
         method = scope.get("method", "").upper()
+        if method not in {"HEAD", "OPTIONS", "QUERY"}:
+            await self._app(scope, receive, send)
+            return
         if method == "OPTIONS":
             await _send_query_response(send, status=HTTP_204_NO_CONTENT)
             return
@@ -152,11 +148,8 @@ class _AlphaRunQueryMiddleware:
             await _send_query_response(
                 send,
                 status=HTTP_200_OK,
-                content_type=ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
+                content_type=RUN_QUERY_RESULT_MEDIA_TYPE,
             )
-            return
-        if method != "QUERY":
-            await _send_query_error(send, HTTP_405_METHOD_NOT_ALLOWED, "method-not-allowed")
             return
         try:
             _authorize_query(
@@ -206,7 +199,7 @@ class _AlphaRunQueryMiddleware:
                 )
                 return
             try:
-                contract = msgspec.convert(decoded, type=AlphaRunQueryRequest, strict=True)
+                contract = msgspec.convert(decoded, type=RunQueryRequest, strict=True)
             except msgspec.ValidationError, TypeError, ValueError:
                 await _send_query_error(
                     send,
@@ -214,7 +207,7 @@ class _AlphaRunQueryMiddleware:
                     "unprocessable-query",
                 )
                 return
-            response = await sync_to_thread(self._service.query_alpha_runs, contract)
+            response = await sync_to_thread(self._service.query_runs, contract)
             content = encode_contract(response)
             etag = f'"{hashlib.sha256(content).hexdigest()}"'
             if _etag_matches(_header_values(scope, b"if-none-match"), etag):
@@ -228,7 +221,7 @@ class _AlphaRunQueryMiddleware:
                 send,
                 status=HTTP_200_OK,
                 body=content,
-                content_type=ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
+                content_type=RUN_QUERY_RESULT_MEDIA_TYPE,
                 etag=etag,
             )
         except AuthenticationError:
@@ -282,7 +275,7 @@ def _header_values(scope: Scope, name: bytes) -> tuple[str, ...]:
 
 def _supported_query_content_type(value: str) -> bool:
     pieces = tuple(piece.strip() for piece in value.split(";"))
-    if not pieces or pieces[0].casefold() != ALPHA_RUN_QUERY_MEDIA_TYPE:
+    if not pieces or pieces[0].casefold() != RUN_QUERY_MEDIA_TYPE:
         return False
     for parameter in pieces[1:]:
         name, separator, raw_value = parameter.partition("=")
@@ -301,7 +294,7 @@ def _query_response_acceptable(values: tuple[str, ...]) -> bool:
     combined = ",".join(values)
     if len(combined) > 8_192:
         return False
-    offered_type, offered_subtype = ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE.split("/", 1)
+    offered_type, offered_subtype = RUN_QUERY_RESULT_MEDIA_TYPE.split("/", 1)
     for item in combined.split(","):
         fields = tuple(field.strip() for field in item.split(";"))
         media_range = fields[0].casefold()
@@ -423,8 +416,8 @@ async def _send_query_response(
     authenticate: bool = False,
 ) -> None:
     headers: list[tuple[bytes, bytes]] = [
-        (b"accept-query", ALPHA_RUN_QUERY_MEDIA_TYPE.encode("ascii")),
-        (b"allow", _ALPHA_RUN_QUERY_ALLOW.encode("ascii")),
+        (b"accept-query", RUN_QUERY_MEDIA_TYPE.encode("ascii")),
+        (b"allow", _RUN_QUERY_ALLOW.encode("ascii")),
         (b"cache-control", cache_control.encode("ascii")),
         (b"content-length", str(len(body)).encode("ascii")),
         (b"x-content-type-options", b"nosniff"),
@@ -450,36 +443,22 @@ def create_http_app(
     authenticator: BearerAuthenticator,
     authorizer: ScopeAuthorizer,
     request_quota: RequestQuotaPort | None = None,
-    web_ticket_authority: AlphaWebTicketAuthority | None = None,
-    web_connection_limiter: AlphaWebConnectionLimiter | None = None,
+    web_ticket_authority: WebTicketAuthority | None = None,
+    web_connection_limiter: WebConnectionLimiter | None = None,
     web_poll_seconds: float = _DEFAULT_WEB_POLL_SECONDS,
 ) -> Litestar:
-    """Create the versioned HTTP edge over one injected runtime application port."""
-
-    alpha_service = cast(AlphaRuntimeApiPort, service)
+    """Create the HTTP edge over one injected runtime application port."""
     if (
         isinstance(web_poll_seconds, bool)
         or not isinstance(web_poll_seconds, int | float)
         or not 0.05 <= web_poll_seconds <= 5.0
     ):
         raise ValueError("web_poll_seconds must be between 0.05 and 5.0")
-    ticket_authority = web_ticket_authority or AlphaWebTicketAuthority()
-    connection_limiter = web_connection_limiter or AlphaWebConnectionLimiter()
-    web_assets = load_alpha_web_assets()
+    ticket_authority = web_ticket_authority or WebTicketAuthority()
+    connection_limiter = web_connection_limiter or WebConnectionLimiter()
+    web_assets = load_web_assets()
     read_guard = _scope_guard(authenticator, authorizer, ServiceScope.READ, request_quota)
     run_guard = _scope_guard(authenticator, authorizer, ServiceScope.RUN, request_quota)
-    approve_guard = _scope_guard(authenticator, authorizer, ServiceScope.APPROVE, request_quota)
-    query_endpoint = _AlphaRunQueryMiddleware(
-        _unmatched_query_app,
-        service=alpha_service,
-        authenticator=authenticator,
-        authorizer=authorizer,
-        request_quota=request_quota,
-    )
-
-    @asgi(_ALPHA_RUN_QUERY_PATH, copy_scope=True)
-    async def alpha_run_query(scope: Scope, receive: Receive, send: Send) -> None:
-        await query_endpoint(scope, receive, send)
 
     @get("/health/live", status_code=HTTP_200_OK, sync_to_thread=False)
     def liveness() -> Response[bytes]:
@@ -491,124 +470,106 @@ def create_http_app(
         status = HTTP_200_OK if response.status == "ready" else HTTP_503_SERVICE_UNAVAILABLE
         return _json_response(response, status_code=status)
 
-    @get(["/alpha", "/alpha/"], sync_to_thread=False)
-    def alpha_web_ui() -> Response[bytes]:
+    @get(["/ui", "/ui/"], sync_to_thread=False)
+    def web_ui() -> Response[bytes]:
         return _web_asset_response(web_assets.html, media_type="text/html")
 
-    @get("/alpha/assets/app.css", sync_to_thread=False)
-    def alpha_web_css() -> Response[bytes]:
+    @get("/ui/assets/app.css", sync_to_thread=False)
+    def web_css() -> Response[bytes]:
         return _web_asset_response(web_assets.css, media_type="text/css")
 
-    @get("/alpha/assets/app.js", sync_to_thread=False)
-    def alpha_web_javascript() -> Response[bytes]:
+    @get("/ui/assets/app.js", sync_to_thread=False)
+    def web_javascript() -> Response[bytes]:
         return _web_asset_response(web_assets.javascript, media_type="application/javascript")
 
     @post(
-        "/api/v1/observations",
+        "/api/v1/projects",
         guards=[run_guard],
         status_code=HTTP_201_CREATED,
     )
-    async def ingest_observations(request: Request[Any, Any, Any]) -> Response[bytes]:
-        contract = await _request_contract(request, ObservationIngestRequest)
+    async def register_project(request: Request[Any, Any, Any]) -> Response[bytes]:
+        contract = await _request_contract(request, ProjectRequest)
         principal_id = _principal(request).principal_id
         response = await sync_to_thread(
             _invoke,
-            lambda: service.ingest_observations(contract, principal_id=principal_id),
+            lambda: service.register_project(contract, principal_id=principal_id),
         )
         return _json_response(response, status_code=HTTP_201_CREATED)
 
     @post(
-        "/api/alpha/v1/projects",
+        "/api/v1/intents",
         guards=[run_guard],
         status_code=HTTP_201_CREATED,
     )
-    async def register_alpha_project(request: Request[Any, Any, Any]) -> Response[bytes]:
-        contract = await _request_contract(request, AlphaProjectRequest)
+    async def accept_intent(request: Request[Any, Any, Any]) -> Response[bytes]:
+        contract = await _request_contract(request, IntentRequest)
         principal_id = _principal(request).principal_id
         response = await sync_to_thread(
             _invoke,
-            lambda: alpha_service.register_alpha_project(contract, principal_id=principal_id),
+            lambda: service.accept_intent(contract, principal_id=principal_id),
         )
         return _json_response(response, status_code=HTTP_201_CREATED)
 
     @post(
-        "/api/alpha/v1/intents",
+        "/api/v1/plans",
         guards=[run_guard],
         status_code=HTTP_201_CREATED,
     )
-    async def accept_alpha_intent(request: Request[Any, Any, Any]) -> Response[bytes]:
-        contract = await _request_contract(request, AlphaIntentRequest)
+    async def accept_plan(request: Request[Any, Any, Any]) -> Response[bytes]:
+        contract = await _request_contract(request, PlanRequest)
         principal_id = _principal(request).principal_id
         response = await sync_to_thread(
             _invoke,
-            lambda: alpha_service.accept_alpha_intent(contract, principal_id=principal_id),
+            lambda: service.accept_plan(contract, principal_id=principal_id),
         )
         return _json_response(response, status_code=HTTP_201_CREATED)
 
     @post(
-        "/api/alpha/v1/plans",
-        guards=[run_guard],
-        status_code=HTTP_201_CREATED,
-    )
-    async def accept_alpha_plan(request: Request[Any, Any, Any]) -> Response[bytes]:
-        contract = await _request_contract(request, AlphaPlanRequest)
-        principal_id = _principal(request).principal_id
-        response = await sync_to_thread(
-            _invoke,
-            lambda: alpha_service.accept_alpha_plan(contract, principal_id=principal_id),
-        )
-        return _json_response(response, status_code=HTTP_201_CREATED)
-
-    @post(
-        "/api/alpha/v1/runs",
+        "/api/v1/runs",
         guards=[run_guard],
         status_code=HTTP_202_ACCEPTED,
     )
-    async def submit_alpha_run(request: Request[Any, Any, Any]) -> Response[bytes]:
-        contract = await _request_contract(request, AlphaRunRequest)
+    async def submit_run(request: Request[Any, Any, Any]) -> Response[bytes]:
+        contract = await _request_contract(request, RunRequest)
         principal_id = _principal(request).principal_id
         response = await sync_to_thread(
             _invoke,
-            lambda: alpha_service.submit_alpha_run(contract, principal_id=principal_id),
+            lambda: service.submit_run(contract, principal_id=principal_id),
         )
         return _json_response(response, status_code=HTTP_202_ACCEPTED)
 
     @post(
-        "/api/alpha/v1/runs/{run_id:str}/cancel",
+        "/api/v1/runs/{run_id:str}/cancel",
         guards=[run_guard],
         status_code=HTTP_202_ACCEPTED,
     )
-    async def cancel_alpha_run(
-        run_id: FromPath[str], request: Request[Any, Any, Any]
-    ) -> Response[bytes]:
-        contract = await _request_contract(request, AlphaCancelRunRequest)
+    async def cancel_run(run_id: FromPath[str], request: Request[Any, Any, Any]) -> Response[bytes]:
+        contract = await _request_contract(request, CancelRunRequest)
         principal_id = _principal(request).principal_id
         response = await sync_to_thread(
             _invoke,
-            lambda: alpha_service.cancel_alpha_run(
-                _path_id(run_id), contract, principal_id=principal_id
-            ),
+            lambda: service.cancel_run(_path_id(run_id), contract, principal_id=principal_id),
         )
         return _json_response(response, status_code=HTTP_202_ACCEPTED)
 
     @get(
-        "/api/alpha/v1/runs/{run_id:str}/status",
+        "/api/v1/runs/{run_id:str}/status",
         guards=[read_guard],
         sync_to_thread=True,
     )
-    def inspect_alpha_run(run_id: FromPath[str]) -> Response[bytes]:
-        return _json_response(_invoke(lambda: alpha_service.inspect_alpha_run(_path_id(run_id))))
+    def inspect_run(run_id: FromPath[str]) -> Response[bytes]:
+        return _json_response(_invoke(lambda: service.inspect_run(_path_id(run_id))))
 
     @get(
-        "/api/alpha/v1/runs/{run_id:str}/replay",
+        "/api/v1/runs/{run_id:str}/replay",
         guards=[read_guard],
         sync_to_thread=True,
     )
-    def replay_alpha_run(run_id: FromPath[str]) -> Response[bytes]:
-        return _json_response(_invoke(lambda: alpha_service.replay_alpha_run(_path_id(run_id))))
+    def replay_run(run_id: FromPath[str]) -> Response[bytes]:
+        return _json_response(_invoke(lambda: service.replay_run(_path_id(run_id))))
 
-    @get("/api/alpha/v1/events", guards=[read_guard], sync_to_thread=True)
-    def list_alpha_events(request: Request[Any, Any, Any]) -> Response[bytes]:
+    @get("/api/v1/events", guards=[read_guard], sync_to_thread=True)
+    def list_events(request: Request[Any, Any, Any]) -> Response[bytes]:
         after = _query_integer(
             request,
             "after",
@@ -621,32 +582,30 @@ def create_http_app(
             "limit",
             default=100,
             minimum=1,
-            maximum=MAX_ALPHA_EVENT_PAGE_SIZE,
+            maximum=MAX_RUNTIME_EVENT_PAGE_SIZE,
         )
-        return _json_response(
-            _invoke(lambda: alpha_service.list_alpha_events(after_cursor=after, limit=limit))
-        )
+        return _json_response(_invoke(lambda: service.list_events(after_cursor=after, limit=limit)))
 
     @post(
-        "/api/alpha/v1/ui/socket-tickets",
+        "/api/v1/ui/socket-tickets",
         guards=[read_guard],
         status_code=HTTP_201_CREATED,
         sync_to_thread=True,
     )
-    def issue_alpha_web_socket_ticket(request: Request[Any, Any, Any]) -> Response[bytes]:
+    def issue_web_socket_ticket(request: Request[Any, Any, Any]) -> Response[bytes]:
         try:
             issued = ticket_authority.issue(_principal(request))
-        except AlphaWebTicketError as error:
+        except WebTicketError as error:
             status = (
                 HTTP_429_TOO_MANY_REQUESTS
-                if error.code is AlphaWebTicketFailureCode.CAPACITY_EXCEEDED
+                if error.code is WebTicketFailureCode.CAPACITY_EXCEEDED
                 else HTTP_500_INTERNAL_SERVER_ERROR
             )
             raise HttpBoundaryError(error.code.value, status) from error
         return _json_response(issued.response(), status_code=HTTP_201_CREATED)
 
-    @websocket("/api/alpha/v1/ui/events")
-    async def stream_alpha_web_events(socket: WebSocket[Any, Any, Any]) -> None:
+    @websocket("/api/v1/ui/events")
+    async def stream_web_events(socket: WebSocket[Any, Any, Any]) -> None:
         query = _websocket_query(socket)
         if query is None:
             await socket.close(code=_WS_INVALID_REQUEST, reason="invalid-request")
@@ -654,7 +613,7 @@ def create_http_app(
         ticket, after_cursor = query
         try:
             ticket_authority.consume(ticket)
-        except AlphaWebTicketError:
+        except WebTicketError:
             await socket.close(
                 code=_WS_AUTHENTICATION_REQUIRED,
                 reason="authentication-required",
@@ -672,7 +631,7 @@ def create_http_app(
             while True:
                 try:
                     page = await sync_to_thread(
-                        alpha_service.list_alpha_events,
+                        service.list_events,
                         after_cursor=cursor,
                         limit=_WEB_EVENT_PAGE_LIMIT,
                     )
@@ -709,118 +668,23 @@ def create_http_app(
                     await receiver
             connection_limiter.release()
 
-    @post("/api/v1/runs", guards=[run_guard], status_code=HTTP_201_CREATED)
-    async def submit_run(request: Request[Any, Any, Any]) -> Response[bytes]:
-        contract = await _request_contract(request, RunSubmissionRequest)
-        principal_id = _principal(request).principal_id
-        response = await sync_to_thread(
-            _invoke,
-            lambda: service.submit_run(contract, principal_id=principal_id),
-        )
-        return _json_response(response, status_code=HTTP_201_CREATED)
-
-    @get("/api/v1/runs/{run_id:str}", guards=[read_guard], sync_to_thread=True)
-    def inspect_run(run_id: FromPath[str]) -> Response[bytes]:
-        return _json_response(_invoke(lambda: service.inspect_run(_path_id(run_id))))
-
-    @get(
-        "/api/v1/runs/{run_id:str}/context",
-        guards=[read_guard],
-        sync_to_thread=True,
-    )
-    def inspect_context(run_id: FromPath[str]) -> Response[bytes]:
-        return _json_response(_invoke(lambda: service.inspect_context(_path_id(run_id))))
-
-    @get(
-        "/api/v1/runs/{run_id:str}/replay",
-        guards=[read_guard],
-        sync_to_thread=True,
-    )
-    def replay_run(run_id: FromPath[str]) -> Response[bytes]:
-        return _json_response(_invoke(lambda: service.replay_run(_path_id(run_id))))
-
-    @get(
-        "/api/v1/runs/{run_id:str}/evaluation",
-        guards=[read_guard],
-        sync_to_thread=True,
-    )
-    def inspect_evaluation(run_id: FromPath[str]) -> Response[bytes]:
-        return _json_response(_invoke(lambda: service.inspect_evaluation(_path_id(run_id))))
-
-    @get("/api/v1/events", guards=[read_guard], sync_to_thread=True)
-    def list_events(request: Request[Any, Any, Any]) -> Response[bytes]:
-        after = _query_integer(
-            request,
-            "after",
-            default=0,
-            minimum=0,
-            maximum=2**63 - 1,
-        )
-        limit = _query_integer(
-            request,
-            "limit",
-            default=100,
-            minimum=1,
-            maximum=MAX_EVENT_PAGE_SIZE,
-        )
-        return _json_response(
-            _invoke(lambda: service.list_events(after_position=after, limit=limit))
-        )
-
-    @get(
-        "/api/v1/orchestration/runs/{run_id:str}",
-        guards=[read_guard],
-        sync_to_thread=True,
-    )
-    def inspect_orchestration(run_id: FromPath[str]) -> Response[bytes]:
-        return _json_response(_invoke(lambda: service.inspect_orchestration(_path_id(run_id))))
-
-    @post(
-        "/api/v1/orchestration/runs/{run_id:str}/nodes/{node_id:str}/approvals",
-        guards=[approve_guard],
-    )
-    async def record_approval(
-        request: Request[Any, Any, Any],
-        run_id: FromPath[str],
-        node_id: FromPath[str],
-    ) -> Response[bytes]:
-        contract = await _request_contract(request, ApprovalRequest)
-        principal_id = _principal(request).principal_id
-        response = await sync_to_thread(
-            _invoke,
-            lambda: service.record_orchestration_approval(
-                _path_id(run_id), _path_id(node_id), contract, principal_id=principal_id
-            ),
-        )
-        return _json_response(response)
-
-    return Litestar(
+    application = Litestar(
         route_handlers=[
             liveness,
             readiness,
-            alpha_web_ui,
-            alpha_web_css,
-            alpha_web_javascript,
-            ingest_observations,
-            register_alpha_project,
-            accept_alpha_intent,
-            accept_alpha_plan,
-            submit_alpha_run,
-            cancel_alpha_run,
-            inspect_alpha_run,
-            replay_alpha_run,
-            list_alpha_events,
-            alpha_run_query,
-            issue_alpha_web_socket_ticket,
-            stream_alpha_web_events,
+            web_ui,
+            web_css,
+            web_javascript,
+            register_project,
+            accept_intent,
+            accept_plan,
             submit_run,
+            cancel_run,
             inspect_run,
-            inspect_context,
             replay_run,
-            inspect_evaluation,
             list_events,
-            inspect_orchestration,
-            record_approval,
+            issue_web_socket_ticket,
+            stream_web_events,
         ],
         debug=False,
         openapi_config=None,
@@ -833,11 +697,14 @@ def create_http_app(
             Exception: _exception_response,
         },
     )
-
-
-async def _unmatched_query_app(scope: Scope, receive: Receive, send: Send) -> None:
-    del scope, receive
-    await _send_query_error(send, HTTP_404_NOT_FOUND, "not-found")
+    application.asgi_handler = _RunQueryMiddleware(
+        application.asgi_handler,
+        service=service,
+        authenticator=authenticator,
+        authorizer=authorizer,
+        request_quota=request_quota,
+    )
+    return application
 
 
 def _scope_guard(
@@ -956,7 +823,7 @@ def _websocket_query(socket: WebSocket[Any, Any, Any]) -> tuple[str, int] | None
 
 
 def _valid_web_event_page(page: object, *, after_cursor: int) -> bool:
-    if not isinstance(page, AlphaEventPageResponse):
+    if not isinstance(page, RuntimeEventPageResponse):
         return False
     cursors = tuple(event.cursor for event in page.events)
     return not (

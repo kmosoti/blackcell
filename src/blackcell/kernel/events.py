@@ -152,21 +152,3 @@ class EventEnvelope:
                 "stream_id": self.stream_id,
             }
         )
-
-    @property
-    def sequence(self) -> int:
-        """Compatibility alias for stream-oriented projectors."""
-
-        return self.stream_sequence
-
-    @property
-    def kind(self) -> str:
-        """Compatibility alias for event consumers using domain terminology."""
-
-        return self.event_type
-
-    @property
-    def occurred_at(self) -> datetime:
-        """Compatibility alias; the canonical ingestion time is ``recorded_at``."""
-
-        return self.recorded_at

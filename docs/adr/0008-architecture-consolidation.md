@@ -10,7 +10,7 @@ edges:
     - adr/0003-model-execution-boundary
     - adr/0004-evolutionary-runtime-architecture
     - adr/0005-durable-run-and-execution-protocol
-    - adr/0006-versioned-run-feedback-protocol
+    - adr/0006-run-feedback-protocol-evolution
     - adr/0007-runtime-security-boundary
 ---
 
@@ -23,7 +23,7 @@ enforced through ordinary protected-branch CI.
 
 ## Context
 
-Runtime-v1 has accepted authority, provenance, replay, durability, recovery, security, and static
+The runtime foundation has accepted authority, provenance, replay, durability, recovery, security, and static
 dependency boundaries. Its implementation also contains concrete composition outside the documented
 bootstrap boundary, duplicated contract vocabulary, broad field-copying structural Protocols,
 stateless service objects, physically large protocol coordinators, and SQLite-specific behavior
@@ -50,7 +50,7 @@ presumed justified when at least two of these conditions hold:
 1. it crosses an authority or trust boundary;
 2. it owns independent failure or recovery semantics;
 3. it has multiple demonstrated implementations;
-4. it owns an externally persisted or versioned contract;
+4. it owns an externally persisted contract with an explicit identity;
 5. it has an independent deployment, scaling, latency, or resource profile;
 6. it changes under a materially different ownership or release cadence;
 7. it is independently invoked as a product use case;
@@ -93,7 +93,7 @@ value object, or strategy callable. No repository-wide class-to-function convers
   transition-binding operation remain. Their physical internals may split by protocol phase; no
   generic command bus, saga framework, or polymorphic workflow hierarchy is introduced.
 - **H6, SQLite boundary ambiguity: confirmed.** SQLite schema, WAL, filesystem mode, transaction,
-  append, and recovery behavior are runtime-v1 kernel commitments. Alternate storage abstraction
+  append, and recovery behavior are runtime-foundation kernel commitments. Alternate storage abstraction
   requires a demonstrated second implementation or deployment requirement and a separate ADR.
 - **H7, incomplete architecture fitness: confirmed.** Existing dependency and replay checks remain.
   Binary composition, compatibility, and reach-through rules may fail CI; similarity, breadth,
@@ -111,7 +111,7 @@ No consolidation may weaken:
 - prepared execution, uncertain-effect reconciliation, fencing, leases, retries, approvals, and
   recovery;
 - fail-closed handling of unknown, conflicting, malformed, or stale evidence;
-- explicit versioning and identity of persisted event and artifact formats;
+- explicit identity and compatibility handling for persisted event and artifact formats;
 - existing CLI and HTTP behavior unless a separately approved issue changes it.
 
 An issue stops and splits when it discovers a required persisted schema, public behavior,
@@ -127,14 +127,10 @@ semantic finding.
 
 ### Evidence policy
 
-The runtime-v1 evidence bundle is historical and read-only. Every Git-tracked regular file below
-`docs/decisions/runtime-v1/` and `release/runtime-v1/` is part of that frozen inventory.
-Architecture-consolidation work does not regenerate its candidate ID, verification manifest,
-decisions, release notes, release configuration, or SBOM. The source SHA ratified by AC00 anchors
-the exact path and byte inventory, and current tests compare the frozen files with that Git tree so
-adding, removing, or changing a historical evidence file fails closed. Runtime-v1 release-tool
-behavior is exercised against a synthetic current fixture instead of falsely reproducing the
-frozen candidate from the refactored working tree.
+Release evidence is not an incremental-development gate. The generated bundle, writer, verifier,
+historical immutability preflight, and source-bound update obligation are removed. Architecture
+decisions remain normal repository documents and tests; they do not carry a parallel release
+lifecycle or force unrelated work to refresh hashes from an earlier candidate.
 
 AC00 remains the source-bound historical baseline for the decisions that started this program. Its
 candidate scheme is superseded by this amendment. The first AC07 implementation demonstrated that
@@ -156,9 +152,8 @@ AC07 therefore retains only the parts that earn ongoing enforcement:
   review or conversation policy pass.
 
 The architecture-consolidation manifest, generator, replay/freshness modes, conditional SBOM, and
-merge-commit-only rule are retired. This does not supersede or regenerate runtime-v1 historical
-evidence. A future release or dependency-closure decision must establish its own independently
-approved evidence contract rather than inheriting AC07 ceremony.
+merge-commit-only rule are retired. A future release or dependency-closure decision must establish
+its own independently approved evidence contract rather than inheriting AC07 ceremony.
 
 ## Consequences
 
@@ -170,6 +165,8 @@ approved evidence contract rather than inheriting AC07 ceremony.
   the repository as a release candidate.
 - Architecture-consolidation changes use the same protected-branch checks and review policy as
   other maintained source changes.
+- Release generation and current-worktree candidate verification are absent from the maintained
+  toolchain; a future release requires an explicitly authorized contract tied to that release.
 
 ## Rejected alternatives
 
@@ -179,5 +176,5 @@ approved evidence contract rather than inheriting AC07 ceremony.
   speculative persistence hierarchies;
 - merging model proposal, policy, authorization, execution, observation, evaluation, and accepted
   transition contracts because their fields look similar;
-- silently inheriting runtime-v1 release evidence for architecture-consolidation source.
+- silently inheriting a prior release-evidence bundle for architecture-consolidation source;
 - reissuing project-wide source evidence after every ordinary change.

@@ -120,7 +120,7 @@ def test_init_builds_exact_argv_and_canonicalizes_in_root_artifacts(tmp_path: Pa
     client = KernformCliClient(executable="kernform-recorded", transport=transport)
 
     result = client.init(
-        name="alpha-tool",
+        name="execution-tool",
         destination=destination,
         signatures=("sdk", "cli"),
         default_signature="cli",
@@ -136,7 +136,7 @@ def test_init_builds_exact_argv_and_canonicalizes_in_root_artifacts(tmp_path: Pa
             "--format",
             "json",
             "init",
-            "alpha-tool",
+            "execution-tool",
             "--destination",
             str(destination),
             "--signature",
@@ -161,7 +161,7 @@ def test_init_builds_exact_argv_and_canonicalizes_in_root_artifacts(tmp_path: Pa
     }
 
 
-def test_compile_invokes_read_only_v2_contract_and_validates_plan(tmp_path: Path) -> None:
+def test_compile_invokes_current_read_only_contract_and_validates_plan(tmp_path: Path) -> None:
     form = tmp_path / "project-form.json"
     form.write_text("{}", encoding="utf-8")
     transport = FakeTransport(
@@ -287,7 +287,7 @@ def test_client_rejects_open_or_semantically_invalid_command_results(tmp_path: P
         )
         with pytest.raises(KernformClientError) as invalid_init:
             KernformCliClient(transport=transport).init(
-                name="alpha-tool",
+                name="execution-tool",
                 destination=destination,
                 no_git=True,
             )
@@ -303,7 +303,7 @@ def test_client_rejects_open_or_semantically_invalid_command_results(tmp_path: P
     )
     with pytest.raises(KernformClientError) as escaped:
         KernformCliClient(transport=escaped_transport).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=destination,
             no_git=True,
         )
@@ -382,7 +382,7 @@ def test_client_rejects_artifact_escape_and_invalid_init_inputs(tmp_path: Path) 
     )
     with pytest.raises(KernformClientError) as outside:
         KernformCliClient(transport=escaped).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=tmp_path / "project",
             no_git=True,
         )
@@ -390,7 +390,7 @@ def test_client_rejects_artifact_escape_and_invalid_init_inputs(tmp_path: Path) 
 
     with pytest.raises(KernformClientError) as conflicting_git:
         KernformCliClient(transport=FakeTransport()).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=tmp_path / "project",
             no_git=True,
             initial_commit=True,
@@ -399,14 +399,14 @@ def test_client_rejects_artifact_escape_and_invalid_init_inputs(tmp_path: Path) 
 
     with pytest.raises(KernformClientError) as missing_parent:
         KernformCliClient(transport=FakeTransport()).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=tmp_path / "missing" / "project",
         )
     assert missing_parent.value.code is KernformClientFailureCode.INVALID_PROJECT_ROOT
 
     with pytest.raises(KernformClientError) as string_capabilities:
         KernformCliClient(transport=FakeTransport()).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=tmp_path / "project",
             capabilities="lint",
         )
@@ -414,7 +414,7 @@ def test_client_rejects_artifact_escape_and_invalid_init_inputs(tmp_path: Path) 
 
     with pytest.raises(KernformClientError) as invalid_signatures:
         KernformCliClient(transport=FakeTransport()).init(
-            name="alpha-tool",
+            name="execution-tool",
             destination=tmp_path / "project",
             signatures=("cli", "cli"),
         )
@@ -495,7 +495,7 @@ def _compile_result() -> dict[str, object]:
         "plan_id": "c" * 64,
         "generator_version": SUPPORTED_KERNFORM_VERSION,
         "intent": {
-            "name": "alpha-tool",
+            "name": "execution-tool",
             "requested_signatures": ["sdk", "cli"],
             "resolved_signatures": ["sdk", "cli"],
             "default_signature": "cli",

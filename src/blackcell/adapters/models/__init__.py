@@ -8,12 +8,6 @@ from blackcell.adapters.models.agy_cli import (
     AgyCliOutputError,
     AgyCliTimeoutError,
 )
-from blackcell.adapters.models.alpha_planner import GatewayAlphaPlanner
-from blackcell.adapters.models.alpha_review_provider import (
-    AlphaReviewProviderError,
-    AlphaReviewProviderFailureCode,
-    GatewayAlphaReviewer,
-)
 from blackcell.adapters.models.codex_cli import (
     CODEX_CLI_ADAPTER_ID,
     CodexCliAdapterError,
@@ -21,8 +15,12 @@ from blackcell.adapters.models.codex_cli import (
     CodexCliOutputError,
     CodexCliTimeoutError,
 )
-from blackcell.adapters.models.gateway_decision import GatewayDecisionAdapter
-from blackcell.adapters.models.recorded import RecordedModelAdapter
+from blackcell.adapters.models.planner import GatewayPlanner
+from blackcell.adapters.models.review_provider import (
+    GatewayReviewer,
+    ReviewProviderError,
+    ReviewProviderFailureCode,
+)
 
 __all__ = [
     "AGY_CLI_ADAPTER_ID",
@@ -32,14 +30,12 @@ __all__ = [
     "AgyCliModelAdapter",
     "AgyCliOutputError",
     "AgyCliTimeoutError",
-    "AlphaReviewProviderError",
-    "AlphaReviewProviderFailureCode",
     "CodexCliAdapterError",
     "CodexCliModelAdapter",
     "CodexCliOutputError",
     "CodexCliTimeoutError",
-    "GatewayAlphaPlanner",
-    "GatewayAlphaReviewer",
-    "GatewayDecisionAdapter",
-    "RecordedModelAdapter",
+    "GatewayPlanner",
+    "GatewayReviewer",
+    "ReviewProviderError",
+    "ReviewProviderFailureCode",
 ]

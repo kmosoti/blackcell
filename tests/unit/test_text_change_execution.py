@@ -20,11 +20,11 @@ from blackcell.adapters.execution.worktree import (
     WorktreeLeaseIdentity,
 )
 from blackcell.kernel._json import bytes_digest
-from blackcell.orchestration.alpha_changes import (
-    AlphaChangeContractError,
-    AlphaChangeProposal,
-    AlphaFileChange,
-    AlphaTextOperation,
+from blackcell.orchestration.changes import (
+    ChangeContractError,
+    ChangeProposal,
+    FileChange,
+    TextOperation,
 )
 
 
@@ -64,15 +64,15 @@ def test_executor_applies_create_replace_delete_and_reports_exact_delta(tmp_path
     lifecycle = GitWorktreeLifecycle()
     worktree = lifecycle.create(spec).worktree_path
     proposal = _proposal(
-        AlphaFileChange(AlphaTextOperation.CREATE, "src/created.txt", None, "created\n"),
-        AlphaFileChange(
-            AlphaTextOperation.REPLACE,
+        FileChange(TextOperation.CREATE, "src/created.txt", None, "created\n"),
+        FileChange(
+            TextOperation.REPLACE,
             "src/replace.txt",
             bytes_digest(b"old\n"),
             "new\n",
         ),
-        AlphaFileChange(
-            AlphaTextOperation.DELETE,
+        FileChange(
+            TextOperation.DELETE,
             "src/delete.txt",
             bytes_digest(b"delete me\n"),
             None,
@@ -91,9 +91,9 @@ def test_executor_applies_create_replace_delete_and_reports_exact_delta(tmp_path
         "src/replace.txt",
     )
     assert tuple(effect.operation for effect in result.effects) == (
-        AlphaTextOperation.CREATE,
-        AlphaTextOperation.DELETE,
-        AlphaTextOperation.REPLACE,
+        TextOperation.CREATE,
+        TextOperation.DELETE,
+        TextOperation.REPLACE,
     )
     assert result.effects[0].before_digest is None
     assert result.effects[0].after_digest == bytes_digest(b"created\n")
@@ -112,14 +112,14 @@ def test_executor_preflights_all_operations_before_any_mutation(tmp_path: Path) 
     lifecycle = GitWorktreeLifecycle()
     worktree = lifecycle.create(spec).worktree_path
     proposal = _proposal(
-        AlphaFileChange(
-            AlphaTextOperation.REPLACE,
+        FileChange(
+            TextOperation.REPLACE,
             "src/delete.txt",
             bytes_digest(b"delete me\n"),
             "would have changed\n",
         ),
-        AlphaFileChange(
-            AlphaTextOperation.REPLACE,
+        FileChange(
+            TextOperation.REPLACE,
             "src/replace.txt",
             "sha256:" + "9" * 64,
             "stale\n",
@@ -143,12 +143,12 @@ def test_executor_rejects_git_metadata_out_of_scope_and_symlink_targets(
     lifecycle = GitWorktreeLifecycle()
     lifecycle.create(spec)
 
-    with pytest.raises(AlphaChangeContractError):
-        AlphaFileChange(AlphaTextOperation.CREATE, ".git/config", None, "forbidden\n")
+    with pytest.raises(ChangeContractError):
+        FileChange(TextOperation.CREATE, ".git/config", None, "forbidden\n")
 
     outside = _proposal(
-        AlphaFileChange(
-            AlphaTextOperation.REPLACE,
+        FileChange(
+            TextOperation.REPLACE,
             "outside.txt",
             bytes_digest(b"outside\n"),
             "changed\n",
@@ -159,8 +159,8 @@ def test_executor_rejects_git_metadata_out_of_scope_and_symlink_targets(
     assert outside_error.value.code is TextChangeFailureCode.PATH_POLICY_VIOLATION
 
     symlink = _proposal(
-        AlphaFileChange(
-            AlphaTextOperation.REPLACE,
+        FileChange(
+            TextOperation.REPLACE,
             "src/link.txt",
             bytes_digest(b"old\n"),
             "changed\n",
@@ -171,8 +171,8 @@ def test_executor_rejects_git_metadata_out_of_scope_and_symlink_targets(
     assert symlink_error.value.code is TextChangeFailureCode.TARGET_NOT_REGULAR_TEXT
 
     missing_parent = _proposal(
-        AlphaFileChange(
-            AlphaTextOperation.CREATE,
+        FileChange(
+            TextOperation.CREATE,
             "src/missing/new.txt",
             None,
             "new\n",
@@ -194,9 +194,9 @@ def test_executor_rolls_back_caught_partial_failure(tmp_path: Path) -> None:
     lifecycle = GitWorktreeLifecycle()
     worktree = lifecycle.create(spec).worktree_path
     proposal = _proposal(
-        AlphaFileChange(AlphaTextOperation.CREATE, "src/a-created.txt", None, "created\n"),
-        AlphaFileChange(
-            AlphaTextOperation.REPLACE,
+        FileChange(TextOperation.CREATE, "src/a-created.txt", None, "created\n"),
+        FileChange(
+            TextOperation.REPLACE,
             "src/replace.txt",
             bytes_digest(b"old\n"),
             "new\n",
@@ -253,8 +253,8 @@ def _spec(
     )
 
 
-def _proposal(*operations: AlphaFileChange) -> AlphaChangeProposal:
-    return AlphaChangeProposal(
+def _proposal(*operations: FileChange) -> ChangeProposal:
+    return ChangeProposal(
         proposal_id="proposal-1",
         evidence_digest="sha256:" + "1" * 64,
         operations=operations,
@@ -264,7 +264,7 @@ def _proposal(*operations: AlphaFileChange) -> AlphaChangeProposal:
 
 def _admission(
     spec: WorktreeExecutionSpec,
-    proposal: AlphaChangeProposal,
+    proposal: ChangeProposal,
 ) -> TextChangeAdmission:
     return TextChangeAdmission(
         worktree_spec_digest=spec.digest,

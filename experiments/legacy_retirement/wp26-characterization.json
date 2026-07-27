@@ -11,8 +11,8 @@
       "pytest",
       "-q",
       "tests/unit/test_operator_service.py",
-      "tests/unit/test_daily_operator_workflow.py",
-      "tests/unit/test_daily_operator_identity.py",
+      "tests/unit/test_daily_operator.py",
+      "tests/unit/test_daily_operator_request.py",
       "tests/unit/test_run_replay.py",
       "tests/unit/test_harness_cli.py",
       "tests/unit/test_agents_cli.py",
@@ -57,7 +57,7 @@
         "legacy-only result DTOs"
       ],
       "retain": [
-        "RepositoryOperator Daily Operator v2 facade",
+        "RepositoryOperator Daily Operator feedback facade",
         "repository adapters",
         "canonical product DTOs"
       ]
@@ -128,9 +128,9 @@
     "status": "obsolete"
   },
   "replay_boundary": {
-    "daily_operator_v1_history": "retain read-only decoding and verification",
-    "daily_operator_v1_writer": "retire",
-    "daily_operator_v2_execution_and_replay": "retain",
+    "daily_operator_baseline_history": "retain read-only decoding and verification",
+    "daily_operator_baseline_writer": "retire",
+    "daily_operator_execution_and_replay": "retain",
     "live_model_or_action_allowed_during_replay": false
   }
 }

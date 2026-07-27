@@ -18,10 +18,9 @@ from blackcell.config import (
     BIND_PORT_ENV,
     DATA_DIR_ENV,
     REPOSITORY_ROOT_ENV,
-    WORKER_POLL_MILLISECONDS_ENV,
 )
 
-TOKEN = "Runtime-v1_process-integration.0123456789-ABCDEFG"
+TOKEN = "runtime_process-integration.0123456789-ABCDEFG"
 
 
 def test_granian_api_serves_authenticated_runtime_and_exits_on_sigterm(tmp_path: Path) -> None:
@@ -49,21 +48,19 @@ def test_granian_api_serves_authenticated_runtime_and_exits_on_sigterm(tmp_path:
     assert stat.S_IMODE(database.stat().st_mode) == 0o600
 
 
-def test_worker_process_stops_cleanly_without_acquiring_new_work(tmp_path: Path) -> None:
+def test_unconfigured_execution_worker_fails_closed_without_creating_state(
+    tmp_path: Path,
+) -> None:
     environment, _port = _environment(tmp_path)
-    process = _start("worker", environment=environment)
+    process = _start("execution-worker", environment=environment)
     database = tmp_path / "data" / "kernel.sqlite3"
-    try:
-        _wait_for_path(database)
-        process.send_signal(signal.SIGTERM)
-        stdout, stderr = process.communicate(timeout=10)
-    finally:
-        _stop(process)
+    stdout, stderr = process.communicate(timeout=10)
 
-    assert process.returncode == 0
+    assert process.returncode == 1
     assert stdout == ""
+    assert json.loads(stderr) == {"error": {"code": "execution-worker-not-configured"}}
     assert TOKEN not in stderr
-    assert stat.S_IMODE(database.stat().st_mode) == 0o600
+    assert not database.exists()
 
 
 def _start(mode: str, *, environment: dict[str, str]) -> subprocess.Popen[str]:
@@ -96,7 +93,6 @@ def _environment(tmp_path: Path) -> tuple[dict[str, str], int]:
             REPOSITORY_ROOT_ENV: str(repository),
             BIND_HOST_ENV: "127.0.0.1",
             BIND_PORT_ENV: str(port),
-            WORKER_POLL_MILLISECONDS_ENV: "10",
         }
     )
     return environment, port
@@ -123,15 +119,6 @@ def _wait_for_json(url: str, *, token: str | None = None) -> dict[str, object]:
         except OSError, TimeoutError, urllib.error.URLError:
             time.sleep(0.05)
     raise AssertionError("runtime endpoint did not become ready")
-
-
-def _wait_for_path(path: Path) -> None:
-    deadline = time.monotonic() + 10
-    while time.monotonic() < deadline:
-        if path.is_file():
-            return
-        time.sleep(0.02)
-    raise AssertionError("worker storage did not become ready")
 
 
 def _stop(process: subprocess.Popen[str]) -> None:

@@ -1,19 +1,47 @@
-# Blackcell
+# BlackCell
 
 [![CI](https://github.com/kmosoti/blackcell/actions/workflows/ci.yml/badge.svg)](https://github.com/kmosoti/blackcell/actions/workflows/ci.yml)
 [![Python 3.14+](https://img.shields.io/badge/python-3.14%2B-3776AB.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/github/license/kmosoti/blackcell)](LICENSE)
 
-**CLI-first, project-scoped agentic framework with durable review and verification.**
+**CLI-first, project-scoped software execution with durable review and verification.**
 
-BlackCell is being built around one local daemon that turns project intent and repository evidence
-into typed plans, bounded execution, independent review, verified outcomes, and replayable records.
-The JSON-first CLI is the complete automation surface; the packaged PyRatatui TUI and Litestar web
-UI are clients of the same versioned service.
+BlackCell turns explicit project intent and repository evidence into a dependency-safe plan,
+bounded execution, independent review, deterministic verification, and live-free replay. One local
+daemon owns state, scheduling, policy, providers, recovery, and ordered events. The JSON-first CLI,
+terminal UI, and browser UI are clients of that service.
 
-> [!NOTE]
-> The alpha project loop is under active implementation. `DailyOperatorV2Workflow` and the legacy
-> synchronous run route are retained as migration/replay evidence, not as the alpha execution path.
+## Why BlackCell
+
+Most agent frameworks begin with a model loop and tool access. BlackCell begins with the evidence
+and authority boundary around that loop:
+
+- Evidence retains provenance, conflicts, unknowns, effective time, and content identity.
+- Models propose; host-owned contracts decide what can run.
+- Plans bind dependencies, effects, repository paths, budgets, and acceptance commands.
+- Execution uses fenced claims, isolated worktrees, bounded processes, and durable transitions.
+- Review searches for defects and epistemic overreach without changing the acceptance contract.
+- Verification maps every declared outcome to deterministic evidence and preserves uncertainty.
+- Replay reconstructs a run without calling a model or repeating repository effects.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    C[JSON CLI] --> D[Runtime daemon]
+    T[Terminal UI] --> D
+    W[Browser UI] --> D
+    D --> K[(Events and artifacts)]
+    D --> P[Project and intent admission]
+    D --> E[Execution worker]
+    E --> R[Review worker]
+    R --> V[Verification worker]
+    K --> X[Live-free replay]
+```
+
+Clients never embed a scheduler or read mutable storage directly. Worker configuration is opt-in,
+owner-only, and fail closed. Execution, review, and verification have distinct processes,
+configuration files, identities, streams, and authority.
 
 ## Development bootstrap
 
@@ -26,165 +54,81 @@ uv sync --locked --all-groups
 uv run blackcell --help
 ```
 
-## Why Blackcell
-
-Most agent frameworks begin with a model loop and tool access. Blackcell begins with the evidence
-and control boundary around that loop:
-
-- **Evidence before assertion:** conflicts, unknowns, provenance, and effective time remain visible.
-- **Inspectable context:** every selected or omitted item can be traced to recorded evidence.
-- **Bounded authority:** the model proposes; typed policy, approval, and affordances decide what runs.
-- **Observed outcomes:** predictions and actual effects are recorded independently.
-- **Live-free replay:** historical runs can be reconstructed without calling a model or repeating a
-  side effect.
-- **Separate assurance roles:** prediction is advisory, review searches for defects, and
-  verification adjudicates declared outcomes.
-
-Models are replaceable proposal mechanisms. The daemon remains the state store, scheduler, policy
-gate, execution coordinator, and source of authoritative outcomes.
-
-## Alpha architecture
-
-```mermaid
-flowchart LR
-    C[CLI] --> D[BlackCell daemon]
-    T[PyRatatui TUI] --> D
-    W[Web UI] --> D
-    D --> K[Kernform project boundary]
-    D --> P[Model providers]
-    D --> E[Isolated execution]
-    D --> R[Review and verification]
-    D --> L[(Events and artifacts)]
-```
-
-The daemon runs in the foreground and may be supervised by an operating-system service manager.
-Clients never embed a second scheduler or read mutable storage directly. Kernform is invoked only
-through its pinned agent-mode JSON command contract; BlackCell does not import Kernform internals.
-
-## Current surfaces
-
-| Goal | Command |
-| --- | --- |
-| Inspect CLI commands | `uv run blackcell --help` |
-| Run the daemon in the foreground | `uv run blackcell daemon foreground` |
-| Enable alpha dispatch | Set `BLACKCELL_ALPHA_WORKER_CONFIG_FILE` to an absolute owner-only JSON contract before starting the daemon |
-| Install the optional user service | `uv run blackcell daemon install --environment-file ~/.config/blackcell/runtime.env` |
-| Start or inspect the daemon | `uv run blackcell daemon start`; `uv run blackcell daemon status` |
-| Read bounded daemon logs | `uv run blackcell daemon logs --lines 100` |
-| Compile a Kernform v2 project form | `uv run blackcell project compile --form project-form.json` |
-| Check a Kernform-managed project | `uv run blackcell project check --path .` |
-| Initialize project configuration | `uv run blackcell project init NAME --destination PATH --signature sdk --signature cli --default-signature cli` |
-| Use AGY for a bounded proposal route | `uv run blackcell operator run --model agy --agy-model gemini-3.1-pro-high --agy-effort high` |
-| Use the authenticated alpha API | `POST /api/alpha/v1/projects`, `/intents`, `/plans`, then `/runs` |
-| Discover and resume alpha state | RFC 10008 `QUERY /api/alpha/v1/run-query`, run `status`, or run `replay` |
-| Open the packaged browser client | `http://127.0.0.1:8080/alpha` while the daemon is running |
-| Open the packaged terminal client | `uv run blackcell alpha tui` with the endpoint and token environment set |
-| Inspect the active alpha DAG | `alpha.plan.yaml` |
-| Verify historical runtime evidence | `bash examples/runtime-v1/recorded-operator.sh` |
-
-Successful commands emit JSON by default. Add `--jsonl` for record streams or `--rich` for
-operator-facing tables. The A03 HTTP core now accepts immutable project, intent, and plan contracts
-and returns `202 Accepted` after durably queueing a run. It exposes status, cursor-based events, and
-live-free replay without calling the legacy V2 route. The daemon starts API-only by default, so a
-run remains `queued` until an explicit `blackcell.alpha-worker-config/v3` file enables the alpha
-worker. That owner-only file lives outside the repository and fixes the model route, provider
-environment-variable names, executable identities, isolation roots, aliases, and resource limits;
-invalid or incomplete configuration stops startup without falling back to the legacy worker.
-See the [alpha worker configuration guide](docs/guides/alpha-worker-configuration.md) for the closed
-JSON shape, path permissions, provider environment allowlist, and fast `--once` diagnostic.
-Use the [alpha operator quickstart](docs/guides/alpha-operator-quickstart.md) for the exact secure
-foreground environment, checked request templates, CLI/browser submission order, cancellation,
-restart, and replay flow. Independent assurance configuration is split between the
-[review guide](docs/guides/alpha-review-configuration.md) and deterministic
-[verification guide](docs/guides/alpha-verify-configuration.md).
-
-The AGY adapter is pinned to 1.1.7 and uses its stdin-triggered print mode with `plan` and
-`sandbox` enabled. AGY's explicit `--print` flag is intentionally not used because 1.1.7 requires
-the prompt as an argument; BlackCell keeps canonical requests out of process argument lists. AGY
-owns its existing-session authentication; BlackCell accepts no credential path for this adapter.
-Subscription routes leave provider token counts and monetary cost unknown instead of recording
-fabricated zeroes.
-
-`daemon install` reads no credential value and never creates an environment file. Supply an
-existing absolute, owner-only mode-`0600` file containing the runtime configuration. Installation
-enables one foreground `blackcell.service` user unit but does not start it.
-
-## Runtime-v1 evidence
-
-The unpublished bundle under [`release/runtime-v1/`](release/runtime-v1/) contains a deterministic
-CycloneDX 1.7 pre-build Python-runtime SBOM and a verification manifest that binds the declared
-source, tests, documentation, examples, experiments, and retained runtime evidence by SHA-256.
-
-Verify the candidate without rewriting it:
+Validate the checked request contracts without starting a service or invoking a provider:
 
 ```bash
-uv run python tools/release_evidence.py verify --repo-root .
+bash examples/runtime/validate-contracts.sh
 ```
 
-See the [runtime-v1 release guide](docs/guides/runtime-v1-release.md) for the recorded walkthrough,
-rootless API and worker boundary, recovery procedure, SBOM scope, and exact publication non-claims.
-
-The credential-free historical walkthrough remains available for migration verification:
-
-```bash
-bash examples/runtime-v1/recorded-operator.sh
-```
-
-Expected result:
+Expected output:
 
 ```json
-{"replay": "completed", "run": "completed", "schema_version": "runtime-v1-recorded-example/v1", "state_projected": true, "workflow_version": "daily-operator/v2"}
+{"contracts": ["project", "intent", "plan", "run", "query", "cancel"], "schema_version": "runtime-contract-example", "status": "valid"}
 ```
 
-## Scientific boundary
+## Runtime surfaces
 
-Blackcell implements an operational state estimator and a replaceable proposal mechanism with
-symbolic validation. It does not claim a POMDP belief state, learned world model, JEPA architecture,
-causal understanding, or a neuro-symbolic reasoning contribution.
+| Goal | Surface |
+| --- | --- |
+| Run the daemon in the foreground | `uv run blackcell daemon foreground` |
+| Inspect readiness | `uv run blackcell daemon status` |
+| Register a project | `uv run blackcell project register --request project.json` |
+| Accept intent | `uv run blackcell intent accept --request intent.json` |
+| Accept a plan | `uv run blackcell plan accept --request plan.json` |
+| Submit a run | `uv run blackcell run submit --request run.json` |
+| Inspect or query runs | `uv run blackcell run status RUN_ID`; `uv run blackcell run query --request query.json` |
+| Cancel or replay | `uv run blackcell run cancel RUN_ID --request cancel.json`; `uv run blackcell run replay RUN_ID` |
+| Resume ordered events | `uv run blackcell events list --after 0 --limit 100` |
+| Open the terminal client | `uv run blackcell tui` |
+| Open the browser client | `http://127.0.0.1:8080/ui` |
 
-The narrow production alpha now includes immutable versioned plans, bounded repair, a policy gate,
-isolated Git worktrees, proposal-only providers, host-owned checks in Bubblewrap, replayable event
-history, and content-addressed evidence. This is a repository-local implementation kernel, not a
-claim of arbitrary hostile-code containment, a calibrated predictive risk model, or an infallible
-reward-hack-resistant reviewer. The active [alpha plan](alpha.plan.yaml) names the additional live,
-operator, platform, and release evidence required before broader claims are promoted.
+The typed HTTP boundary uses `/api/v1/projects`, `/intents`, `/plans`, `/runs`, and `/events`, plus
+the same-origin `/api/v1/ui` support routes. Those revision tokens are public protocol contracts;
+internal modules and symbols use capability names instead of product maturity or generation labels.
 
-The runtime records state, action, expected effect, observed outcome, and residual tuples. A learned
-transition model becomes eligible only after those records support held-out comparison against
-persistence, symbolic, empirical, and LLM-only baselines.
+Set `BLACKCELL_EXECUTION_CONFIG_FILE`, `BLACKCELL_REVIEW_CONFIG_FILE`, and
+`BLACKCELL_VERIFICATION_CONFIG_FILE` only for workers that should run. Without them, the daemon is
+API-only and submitted work remains queued. Incompatible persisted state is rejected before a
+write-capable connection is opened; BlackCell does not migrate or delete it automatically.
+
+## Epistemic guard
+
+Review and verification use a closed matrix covering acceptance coverage, evidence grounding,
+counterevidence, causal overreach, scope challenge, and uncertainty. Findings must cite admitted
+evidence. Missing evidence remains unknown and produces an inconclusive verification result rather
+than model-authored certainty. Human acceptance stays separate from both model review and
+deterministic verification.
+
+See [Epistemic evaluation](docs/epistemic-evaluation.md) for the research basis, threat model, and
+matrix contract.
 
 ## Documentation
 
 | Start here | Purpose |
 | --- | --- |
-| [Alpha operator quickstart](docs/guides/alpha-operator-quickstart.md) | Source-run daemon, checked requests, CLI/browser workflow, restart, and current nonclaims |
-| [Alpha v2 kernel](docs/guides/alpha-v2-kernel.md) | Versioned plans, bounded repair, event replay, provider ports, and policy |
-| [Runtime-v1 release guide](docs/guides/runtime-v1-release.md) | Credential-free walkthrough and runtime boundaries |
-| [Alpha plan](alpha.plan.yaml) | Active work packages, dependency DAG, architecture, and fast gates |
-| [Charter](docs/charter.md) | Product identity, scope, acceptance, and claim gates |
-| [Product scope](docs/scope.md) | Accepted target, current boundary, non-goals, and promotion rules |
-| [Architecture](docs/architecture.md) | Event, state, execution, replay, service, and recovery design |
-| [Scientific basis](docs/scientific-basis.md) | Terminology and evidence required to promote research claims |
-| [Evaluation methodology](docs/evaluation-methodology.md) | OperatorBench, PredictionBench, and RuntimeBench contracts |
-| [Documentation map](docs/index.md) | Canonical graph, ADRs, specifications, targets, and research |
+| [Runtime quickstart](docs/guides/runtime-quickstart.md) | Secure daemon, request, client, restart, and recovery flow |
+| [Execution model](docs/guides/execution.md) | Plan admission, execution lifecycle, review, verification, and replay |
+| [Execution worker configuration](docs/guides/execution-worker-configuration.md) | Provider, worktree, isolation, and resource authority |
+| [Review configuration](docs/guides/review-configuration.md) | Separate review provider, identity, budget, and process |
+| [Verification configuration](docs/guides/verification-configuration.md) | Deterministic verification identity and lifecycle |
+| [Charter](docs/charter.md) | Product identity, authority, and claim gates |
+| [Scope](docs/scope.md) | Current product boundary and non-goals |
+| [Architecture](docs/architecture.md) | Runtime ownership, persistence, clients, and recovery |
+| [Documentation map](docs/index.md) | Canonical guides, decisions, specifications, and research |
 
 ## Development
 
-Install the locked development environment, then use exact affected tests while iterating:
+Use exact affected nodes during iteration and run tests through the repository wrapper:
 
 ```bash
-uv sync --locked --all-groups
 uv run python tools/run_pytest.py path/to/test.py::test_name -q --blackcell-require-all-pass
-uv run ruff check path/to/changed.py path/to/test_changed.py
 uv run ruff format --check path/to/changed.py path/to/test_changed.py
+uv run ruff check path/to/changed.py path/to/test_changed.py
 ```
 
-Use `uv run ruff check .` as the fast milestone gate. CI owns broad coverage and type checking;
-reserve a local full suite for release/publication or changes whose risk cannot be bounded by
-focused evidence.
-
-Use [GitHub Issues](https://github.com/kmosoti/blackcell/issues) for bugs and feature requests.
+CI runs architecture fitness, formatting, linting, type checking, and the complete coverage gate.
+It does not generate or validate source-bound release artifacts.
 
 ## License
 
-Blackcell is available under the [MIT License](LICENSE).
+MIT. See [LICENSE](LICENSE).

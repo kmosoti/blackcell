@@ -4,7 +4,6 @@ import json
 import shutil
 import stat
 import subprocess
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,24 +15,10 @@ from blackcell.adapters.models import (
     CodexCliModelAdapter,
     CodexCliOutputError,
     CodexCliTimeoutError,
-    GatewayDecisionAdapter,
 )
 from blackcell.adapters.models.codex_cli import (
     CODEX_CLI_PROVIDER_SCAFFOLD_RESERVE_TOKENS,
     estimate_codex_cli_input_tokens,
-)
-from blackcell.adapters.persistence.sqlite import SQLiteDecisionAttemptJournal
-from blackcell.features.request_decision import (
-    DecisionAffordance,
-    DecisionBudget,
-    DecisionCapability,
-    DecisionClassification,
-    DecisionLocality,
-    DecisionPreparation,
-    DecisionRequirements,
-    DecisionSuccessRecord,
-    RequestDecision,
-    RequestDecisionHandler,
 )
 from blackcell.gateway import (
     DataClassification,
@@ -44,8 +29,6 @@ from blackcell.gateway import (
     ModelGateway,
     ModelRequest,
 )
-
-NOW = datetime(2026, 7, 17, 12, tzinfo=UTC)
 
 SCHEMA = {
     "type": "object",
@@ -248,53 +231,6 @@ def test_codex_cli_adapter_integrates_with_gateway_policy() -> None:
     assert result.response.deterministic is False
 
 
-def test_codex_cli_transport_completes_the_durable_decision_stack(tmp_path: Path) -> None:
-    response = {
-        "proposal_id": "proposal:codex",
-        "context_frame_id": "sha256:" + "1" * 64,
-        "affordance": "inspect",
-        "arguments": (),
-        "rationale": "inspect the bounded repository context",
-        "evidence_event_ids": (),
-    }
-    runner = Runner(response=response)
-    ticks = iter((20.0, 20.0, 20.01))
-    adapter = CodexCliModelAdapter(runner=runner, clock=lambda: next(ticks))
-    profile = GatewayProfile(
-        "codex-reason",
-        ModelCapability.REASON,
-        adapter.adapter_id,
-        "gpt-test",
-        0,
-        False,
-        False,
-        DataClassification.PRIVATE,
-        100,
-        20,
-        100,
-    )
-    gateway = GatewayDecisionAdapter(
-        ModelGateway(
-            (profile,),
-            {adapter.adapter_id: adapter},
-            clock=lambda: NOW,
-        ),
-        clock=lambda: NOW,
-    )
-    journal = SQLiteDecisionAttemptJournal(tmp_path / "decision-artifacts")
-    handler = RequestDecisionHandler(gateway, journal, clock=lambda: NOW)
-    request = _decision_request()
-
-    preparation = handler.prepare(request)
-    assert isinstance(preparation, DecisionPreparation)
-    outcome = handler.handle(preparation)
-
-    assert isinstance(outcome, DecisionSuccessRecord)
-    assert outcome.response.proposal.proposal_id == "proposal:codex"
-    assert outcome.usage.input_tokens == 41
-    assert journal.get_terminal(request.request_id) == outcome
-
-
 def test_codex_cli_adapter_enforces_zero_and_subprocess_deadlines() -> None:
     unused = Runner()
     with pytest.raises(CodexCliTimeoutError, match="no admitted"):
@@ -414,27 +350,3 @@ def _executable(name: str) -> Path:
     value = shutil.which(name)
     assert value is not None
     return Path(value).resolve(strict=True)
-
-
-def _decision_request() -> RequestDecision:
-    return RequestDecision(
-        DecisionRequirements(
-            "decision:codex",
-            "node:planner",
-            DecisionCapability.REASON,
-            DecisionClassification.PRIVATE,
-            DecisionLocality.REMOTE_ALLOWED,
-            DecisionBudget(100, 20, 2_000, 100),
-            20,
-            False,
-            NOW,
-        ),
-        "run:codex",
-        "run:codex",
-        "event:context",
-        "sha256:" + "1" * 64,
-        "inspect project status",
-        '{"status":"ready"}',
-        (),
-        (DecisionAffordance("inspect"),),
-    )

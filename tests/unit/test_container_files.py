@@ -46,31 +46,26 @@ def test_runtime_image_is_locked_minimal_non_root_and_process_shaped() -> None:
     assert "COPY . ." not in runtime
 
 
-def test_compose_runs_api_and_worker_from_one_restricted_image() -> None:
+def test_compose_runs_an_api_only_restricted_default() -> None:
     compose = _compose()
+    assert set(compose["services"]) == {"blackcell-api"}
     api = compose["services"]["blackcell-api"]
-    worker = compose["services"]["blackcell-worker"]
 
-    assert api["image"] == worker["image"]
-    assert api["build"] == worker["build"]
+    assert api["image"] == "${BLACKCELL_RUNTIME_IMAGE:-blackcell-runtime:local}"
     assert api["build"]["target"] == "runtime"
     assert api["command"] == ["api"]
-    assert worker["command"] == ["worker"]
-    assert worker["depends_on"] == {"blackcell-api": {"condition": "service_healthy"}}
-    for service in (api, worker):
-        assert service["user"] == "10001:10001"
-        assert service["read_only"] is True
-        assert service["cap_drop"] == ["ALL"]
-        assert service["security_opt"] == ["no-new-privileges:true"]
-        assert service["tmpfs"] == ["/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777"]
-        assert service["restart"] == "unless-stopped"
-        assert service["stop_grace_period"] == "35s"
+    assert api["user"] == "10001:10001"
+    assert api["read_only"] is True
+    assert api["cap_drop"] == ["ALL"]
+    assert api["security_opt"] == ["no-new-privileges:true"]
+    assert api["tmpfs"] == ["/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777"]
+    assert api["restart"] == "unless-stopped"
+    assert api["stop_grace_period"] == "35s"
 
 
 def test_compose_preserves_state_repository_network_and_secret_boundaries() -> None:
     compose = _compose()
     api = compose["services"]["blackcell-api"]
-    worker = compose["services"]["blackcell-worker"]
     state_mount, repository_mount = api["volumes"]
 
     assert state_mount == {
@@ -85,12 +80,11 @@ def test_compose_preserves_state_repository_network_and_secret_boundaries() -> N
         "read_only": True,
         "bind": {"create_host_path": False},
     }
-    assert worker["volumes"] == api["volumes"]
     assert "blackcell-data" in compose["volumes"]
     assert api["environment"]["BLACKCELL_DATA_DIR"] == "/var/lib/blackcell/data"
     assert api["environment"]["BLACKCELL_REPOSITORY_ROOT"] == "/workspace/repository"
     assert api["environment"]["BLACKCELL_API_TOKEN"].startswith("${BLACKCELL_API_TOKEN:?")
-    assert api["environment"] == worker["environment"]
+    assert "BLACKCELL_WORKER_ID" not in api["environment"]
     assert api["ports"] == [
         {
             "target": 8080,
@@ -100,10 +94,6 @@ def test_compose_preserves_state_repository_network_and_secret_boundaries() -> N
         }
     ]
     assert "healthcheck" not in api
-    assert worker["healthcheck"]["test"] == [
-        "CMD-SHELL",
-        "python -c 'import os; os.kill(1, 0)'",
-    ]
 
 
 def test_container_contract_does_not_mount_or_embed_credentials_or_engine_authority() -> None:

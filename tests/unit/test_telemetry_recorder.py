@@ -72,7 +72,7 @@ def test_redact_sensitive_mode_detects_bearer_values_and_truncates() -> None:
 
 
 def test_content_policy_redacts_exact_runtime_secret_and_credential_shapes() -> None:
-    token = "Runtime-v1_opaque-token.0123456789-ABCDEFG"
+    token = "runtime_opaque-token.0123456789-ABCDEFG"
     policy = ContentPolicy(
         mode=ContentMode.REDACT_SENSITIVE,
         sensitive_values=(token,),
@@ -103,7 +103,7 @@ def test_content_policy_redacts_exact_runtime_secret_and_credential_shapes() -> 
 
 
 def test_configured_secret_is_redacted_from_exception_before_export() -> None:
-    token = "Runtime-v1_opaque-token.0123456789-ABCDEFG"
+    token = "runtime_opaque-token.0123456789-ABCDEFG"
     exporter = CollectingExporter()
     recorder = TraceRecorder(
         content_policy=ContentPolicy(sensitive_values=(token,)),

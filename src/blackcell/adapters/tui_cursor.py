@@ -12,11 +12,11 @@ from pathlib import Path
 from typing import cast
 
 from blackcell.interfaces.tui.cursor import (
-    ALPHA_TUI_CURSOR_SCHEMA,
-    AlphaTuiCursorCheckpoint,
-    AlphaTuiCursorError,
-    AlphaTuiCursorFailureCode,
-    AlphaTuiCursorWitness,
+    TUI_CURSOR_SCHEMA,
+    TuiCursorCheckpoint,
+    TuiCursorError,
+    TuiCursorFailureCode,
+    TuiCursorWitness,
 )
 
 _MAX_CHECKPOINT_BYTES = 4_096
@@ -25,7 +25,7 @@ _WITNESS_KEYS = frozenset({"cursor", "event_id", "payload_digest"})
 
 
 @dataclass(frozen=True, slots=True)
-class FileAlphaTuiCursorStore:
+class FileTuiCursorStore:
     root: Path
     expected_uid: int
 
@@ -35,27 +35,27 @@ class FileAlphaTuiCursorStore:
         root: Path,
         *,
         expected_uid: int | None = None,
-    ) -> FileAlphaTuiCursorStore:
+    ) -> FileTuiCursorStore:
         uid = _current_uid() if expected_uid is None else expected_uid
         _prepare_root(root, expected_uid=uid)
         return cls(root=root, expected_uid=uid)
 
-    def load(self, endpoint_id: str) -> AlphaTuiCursorCheckpoint:
-        empty = AlphaTuiCursorCheckpoint(endpoint_id=endpoint_id, cursor=0, witness=None)
+    def load(self, endpoint_id: str) -> TuiCursorCheckpoint:
+        empty = TuiCursorCheckpoint(endpoint_id=endpoint_id, cursor=0, witness=None)
         path = self._path(endpoint_id)
         try:
             before = path.lstat()
         except FileNotFoundError:
             return empty
         except OSError as error:
-            raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.UNSAFE_STATE_FILE) from error
+            raise TuiCursorError(TuiCursorFailureCode.UNSAFE_STATE_FILE) from error
         if stat.S_ISLNK(before.st_mode):
-            raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.UNSAFE_STATE_FILE)
+            raise TuiCursorError(TuiCursorFailureCode.UNSAFE_STATE_FILE)
         flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
         try:
             descriptor = os.open(path, flags)
         except OSError as error:
-            raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.UNSAFE_STATE_FILE) from error
+            raise TuiCursorError(TuiCursorFailureCode.UNSAFE_STATE_FILE) from error
         try:
             metadata = os.fstat(descriptor)
             if (
@@ -66,25 +66,25 @@ class FileAlphaTuiCursorStore:
                 or metadata.st_ino != before.st_ino
                 or not 1 <= metadata.st_size <= _MAX_CHECKPOINT_BYTES
             ):
-                raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.UNSAFE_STATE_FILE)
+                raise TuiCursorError(TuiCursorFailureCode.UNSAFE_STATE_FILE)
             content = _read_bounded(descriptor)
         finally:
             os.close(descriptor)
         checkpoint = _decode_checkpoint(content)
         if checkpoint.endpoint_id != endpoint_id:
-            raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.ENDPOINT_MISMATCH)
+            raise TuiCursorError(TuiCursorFailureCode.ENDPOINT_MISMATCH)
         return checkpoint
 
-    def save(self, checkpoint: AlphaTuiCursorCheckpoint) -> None:
-        if not isinstance(checkpoint, AlphaTuiCursorCheckpoint):
-            raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.INVALID_CHECKPOINT)
+    def save(self, checkpoint: TuiCursorCheckpoint) -> None:
+        if not isinstance(checkpoint, TuiCursorCheckpoint):
+            raise TuiCursorError(TuiCursorFailureCode.INVALID_CHECKPOINT)
         current = self.load(checkpoint.endpoint_id)
         if current.cursor > checkpoint.cursor:
-            raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.CURSOR_REGRESSION)
+            raise TuiCursorError(TuiCursorFailureCode.CURSOR_REGRESSION)
         if current.cursor == checkpoint.cursor:
             if current == checkpoint:
                 return
-            raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.INVALID_CHECKPOINT)
+            raise TuiCursorError(TuiCursorFailureCode.INVALID_CHECKPOINT)
         content = _encode_checkpoint(checkpoint)
         target = self._path(checkpoint.endpoint_id)
         descriptor = -1
@@ -104,7 +104,7 @@ class FileAlphaTuiCursorStore:
             temporary = ""
             _sync_directory(self.root)
         except OSError as error:
-            raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.IO_FAILED) from error
+            raise TuiCursorError(TuiCursorFailureCode.IO_FAILED) from error
         finally:
             if descriptor >= 0:
                 os.close(descriptor)
@@ -113,13 +113,13 @@ class FileAlphaTuiCursorStore:
                     os.unlink(temporary)
 
     def _path(self, endpoint_id: str) -> Path:
-        AlphaTuiCursorCheckpoint(endpoint_id=endpoint_id, cursor=0, witness=None)
+        TuiCursorCheckpoint(endpoint_id=endpoint_id, cursor=0, witness=None)
         return self.root / f"{endpoint_id}.json"
 
 
 def _prepare_root(root: Path, *, expected_uid: int) -> None:
     if not isinstance(root, Path) or not root.is_absolute() or ".." in root.parts:
-        raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.UNSAFE_STATE_DIRECTORY)
+        raise TuiCursorError(TuiCursorFailureCode.UNSAFE_STATE_DIRECTORY)
     try:
         parent = root.parent
         parent_metadata = parent.lstat()
@@ -129,7 +129,7 @@ def _prepare_root(root: Path, *, expected_uid: int) -> None:
             or parent.resolve(strict=True) != parent
             or parent_metadata.st_mode & 0o022
         ):
-            raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.UNSAFE_STATE_DIRECTORY)
+            raise TuiCursorError(TuiCursorFailureCode.UNSAFE_STATE_DIRECTORY)
         try:
             metadata = root.lstat()
         except FileNotFoundError:
@@ -143,11 +143,11 @@ def _prepare_root(root: Path, *, expected_uid: int) -> None:
             or stat.S_IMODE(metadata.st_mode) != 0o700
             or root.resolve(strict=True) != root
         ):
-            raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.UNSAFE_STATE_DIRECTORY)
-    except AlphaTuiCursorError:
+            raise TuiCursorError(TuiCursorFailureCode.UNSAFE_STATE_DIRECTORY)
+    except TuiCursorError:
         raise
     except OSError as error:
-        raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.UNSAFE_STATE_DIRECTORY) from error
+        raise TuiCursorError(TuiCursorFailureCode.UNSAFE_STATE_DIRECTORY) from error
 
 
 def _read_bounded(descriptor: int) -> bytes:
@@ -161,11 +161,11 @@ def _read_bounded(descriptor: int) -> bytes:
         remaining -= len(chunk)
     content = b"".join(chunks)
     if not 1 <= len(content) <= _MAX_CHECKPOINT_BYTES:
-        raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.UNSAFE_STATE_FILE)
+        raise TuiCursorError(TuiCursorFailureCode.UNSAFE_STATE_FILE)
     return content
 
 
-def _decode_checkpoint(content: bytes) -> AlphaTuiCursorCheckpoint:
+def _decode_checkpoint(content: bytes) -> TuiCursorCheckpoint:
     try:
         value = json.loads(content)
         if not isinstance(value, dict) or frozenset(value) != _ROOT_KEYS:
@@ -175,14 +175,14 @@ def _decode_checkpoint(content: bytes) -> AlphaTuiCursorCheckpoint:
         if witness_value is not None:
             if not isinstance(witness_value, dict) or frozenset(witness_value) != _WITNESS_KEYS:
                 raise ValueError
-            witness = AlphaTuiCursorWitness(
+            witness = TuiCursorWitness(
                 cursor=_integer(witness_value["cursor"]),
                 event_id=_text(witness_value["event_id"]),
                 payload_digest=_text(witness_value["payload_digest"]),
             )
-        if _text(value["schema_version"]) != ALPHA_TUI_CURSOR_SCHEMA:
+        if _text(value["schema_version"]) != TUI_CURSOR_SCHEMA:
             raise ValueError
-        checkpoint = AlphaTuiCursorCheckpoint(
+        checkpoint = TuiCursorCheckpoint(
             endpoint_id=_text(value["endpoint_id"]),
             cursor=_integer(value["cursor"]),
             witness=witness,
@@ -190,13 +190,13 @@ def _decode_checkpoint(content: bytes) -> AlphaTuiCursorCheckpoint:
         if _encode_checkpoint(checkpoint) != content:
             raise ValueError
         return checkpoint
-    except AlphaTuiCursorError:
+    except TuiCursorError:
         raise
     except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError, ValueError) as error:
-        raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.INVALID_CHECKPOINT) from error
+        raise TuiCursorError(TuiCursorFailureCode.INVALID_CHECKPOINT) from error
 
 
-def _encode_checkpoint(checkpoint: AlphaTuiCursorCheckpoint) -> bytes:
+def _encode_checkpoint(checkpoint: TuiCursorCheckpoint) -> bytes:
     witness: dict[str, object] | None = None
     if checkpoint.witness is not None:
         witness = {
@@ -207,7 +207,7 @@ def _encode_checkpoint(checkpoint: AlphaTuiCursorCheckpoint) -> bytes:
     document = {
         "cursor": checkpoint.cursor,
         "endpoint_id": checkpoint.endpoint_id,
-        "schema_version": ALPHA_TUI_CURSOR_SCHEMA,
+        "schema_version": TUI_CURSOR_SCHEMA,
         "witness": witness,
     }
     content = json.dumps(document, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
@@ -247,8 +247,8 @@ def _sync_directory(path: Path) -> None:
 def _current_uid() -> int:
     getuid = getattr(os, "getuid", None)
     if getuid is None:
-        raise AlphaTuiCursorError(AlphaTuiCursorFailureCode.UNSAFE_STATE_DIRECTORY)
+        raise TuiCursorError(TuiCursorFailureCode.UNSAFE_STATE_DIRECTORY)
     return cast("int", getuid())
 
 
-__all__ = ["FileAlphaTuiCursorStore"]
+__all__ = ["FileTuiCursorStore"]

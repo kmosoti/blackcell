@@ -10,125 +10,95 @@ edges:
     - evaluation-methodology
 ---
 
-# BlackCell Alpha Scope
+# BlackCell scope
 
 ## Product definition
 
-BlackCell is a **CLI-first, project-scoped agentic framework** for turning a software request into
-explicit intent, bounded evidence, a dependency-safe plan, isolated execution, review, verified
-outcomes, and replayable records.
+BlackCell is a CLI-first, project-scoped software execution framework. It turns one bounded request
+into explicit intent, a dependency-safe plan, isolated execution, independent review, deterministic
+verification, and replayable records.
 
-The alpha is local-first. One long-running daemon owns project state, scheduling, persistence,
-policy, provider dispatch, recovery, and the ordered event stream. The CLI is the complete
-automation surface. The PyRatatui TUI and Litestar web UI are clients of the same versioned service;
-they are not additional runtimes.
+One foreground daemon owns project state, scheduling, persistence, policy, provider dispatch,
+recovery, and the ordered event stream. The JSON-first CLI is the complete automation surface. The
+terminal and browser interfaces are projections over the same service, not additional runtimes.
 
-[`../alpha.plan.yaml`](../alpha.plan.yaml) is the active delivery program.
+[`../blackcell.plan.yaml`](../blackcell.plan.yaml) is the active capability and verification map.
 
-## Current boundary
+## Capability contract
 
-The repository contains substantial runtime-v1 foundations: immutable events and artifacts,
-SQLite persistence, typed policies, scheduler leases and fencing, an HTTP/process boundary,
-recovery, and live-free replay. Those contracts may be reused after focused characterization.
+The runtime has explicit authority-bearing stages:
 
-The current `RepositoryOperator` and `DailyOperatorV2Workflow` do not constitute the alpha project
-loop. They are retained only as historical migration and replay evidence. In particular, the
-legacy synchronous `/api/v1/runs` route is not an alpha submission path. The A03 core instead uses
-closed `/api/alpha/v1` contracts to persist projects, intents, plans, and queued runs, then exposes
-status, a resumable ordered event cursor, and live-free replay. It does not yet dispatch a provider,
-claim work, execute a command, or mutate a repository by itself. An opt-in alpha worker now claims
-dependency-ready nodes from the same ledger, but the daemon composes it only when an external
-owner-only closed configuration explicitly fixes the provider and Bubblewrap boundaries. With no
-such configuration the daemon is API-only and runs remain queued; it never falls back to the
-historical V2 worker.
+1. **Project** binds a canonical repository root and project-configuration identity.
+2. **Intent** records the outcome, constraints, assumptions, and unresolved questions.
+3. **Plan** defines an acyclic graph, budgets, effects, allowed paths, and acceptance commands.
+4. **Run** durably queues work and owns status and cancellation.
+5. **Execution** operates only inside the admitted worktree, provider, and command boundaries.
+6. **Review** searches for correctness, regression, security, policy, and epistemic defects.
+7. **Verification** maps every declared criterion and epistemic dimension to deterministic evidence.
+8. **Replay** reconstructs accepted state without invoking a provider or repeating an effect.
 
-## Alpha contract
+Models propose and synthesize inside this graph. They never become the state store, policy engine,
+executor, approver, verifier, or source of truth.
 
-The target loop has explicit authority-bearing stages:
+## Service boundary
 
-1. **Project configuration** checks or initializes a project through a pinned Kernform contract.
-2. **Intent** records the requested outcome, constraints, assumptions, and unresolved questions.
-3. **Evidence** binds repository facts and omissions to stable identities and budgets.
-4. **Plan** defines a typed acyclic graph, allowed effects, recovery rules, and acceptance checks.
-5. **Verification before execution** rejects invalid dependencies, authority expansion, and
-   untestable outcomes.
-6. **Execution** runs only approved work in a recoverable isolated worktree.
-7. **Review** searches for correctness, regression, policy, replay, and specification-gaming
-   defects without changing the acceptance contract.
-8. **Outcome verification** maps declared results to source and runtime evidence.
-9. **Replay** reconstructs accepted state without invoking live providers or repeating effects.
+The public HTTP contract exposes project registration, intent and plan acceptance, asynchronous run
+submission and query, cancellation, status, ordered events, replay, and browser support beneath
+`/api/v1`. The revision token belongs to that public protocol boundary. Internal packages,
+processes, symbols, tests, and workflows use semantic capability names.
 
-Models propose and synthesize inside this loop. They never become the state store, policy engine,
-executor, approver, or outcome authority.
+Every accepted plan binds one base commit, explicit budgets and effects, repository-relative path
+authority, and host-owned direct-argv acceptance commands. Repository writers must be ordered by
+dependencies. Unknown fields, cycles, path escape, undeclared effects, and ambiguous writers fail
+before work is queued.
 
-## Service and client boundary
+Execution, review, and verification workers are separately configured and separately identified.
+With no configuration the daemon is API-only. It never guesses a provider or worker authority from
+the environment.
 
-The daemon runs in the foreground. On Linux, an optional systemd user service supervises that
-process; other platforms use a documented foreground command until a native supervisor adapter is
-earned. BlackCell does not implement double-fork daemonization or treat a PID file as authority.
+## Persistence boundary
 
-All clients use one typed API under the `/api/alpha/v1` namespace and one ordered event stream:
+The SQLite event ledger and content-addressed artifact store are the durable authority. Event
+occurrence, stream sequence, idempotency, correlation, causation, recorded time, effective time,
+actor, source, payload, and payload digest remain distinct.
 
-- the CLI provides complete JSON-first automation and recovery commands;
-- the PyRatatui TUI keeps native rendering on the event-loop thread and schedules controller work
-  through bounded non-blocking tasks;
-- the web UI consumes ordered updates through Litestar channels and WebSockets;
-- no client imports daemon persistence or embeds another scheduler.
+Replay verifies every event and artifact binding and performs no live call. If an existing database
+does not match the kernel's persisted schema, startup fails before opening a write-capable
+connection. Migration, deletion, and recovery are explicit operator decisions.
 
-The initial HTTP slice registers the daemon's canonical project root, accepts explicit constraints,
-assumptions, and unresolved questions, validates plan dependencies, budgets, effects, and checks,
-and durably queues a run with HTTP 202. Event pages use the immutable ledger's global position as
-their cursor and omit legacy payloads. Replay verifies the referenced event identities and digests
-before rebuilding the accepted project, intent, plan, and queued status without live calls.
+## Project configuration boundary
 
-## Kernform boundary
+Kernform remains behind a pinned argv-only JSON adapter. BlackCell validates the installed package
+and wire contract, bounds process duration and output, and never imports a sibling checkout or
+Kernform implementation internals. Package and wire revisions are explicit external boundaries,
+not names for BlackCell's internal architecture.
 
-Kernform is the project configuration and scaffolding provider. BlackCell invokes its installed
-CLI with argv only; it does not import a sibling checkout or depend on Kernform's internal Python
-or Rust implementation.
+## Assurance boundary
 
-The adapter accepts exactly Kernform `0.2.0` and `kernform.command/v2`, probes with
-`kernform --agent --version`, and invokes `compile`, `check`, or `init` with
-`kernform --agent --format json`. It enforces wall-clock and output budgets, validates the closed
-response envelope, maps stable exit classes, and persists the version plus request/result digests.
-`compile` exposes the deterministic v2 project-form plan without applying it; `init` accepts the
-composable `sdk`, `cli`, `api`, `interactive-web`, and `daemon` signatures. Raw `inspect` output is
-deferred because a large repository inventory can exceed the alpha adapter's bounded output
-contract.
+Review uses a closed matrix for acceptance coverage, evidence grounding, counterevidence, causal
+overreach, scope challenge, and uncertainty. Findings cite admitted evidence. Verification maps
+each row to deterministic evidence; a concern fails, missing evidence is inconclusive, and
+not-applicable requires a reason. Human acceptance remains separate.
 
-## Delivery boundary
-
-The alpha sequence is deliberately compact:
-
-`rebaseline -> daemon and Kernform -> alpha contracts -> isolated execution -> review and verify
--> TUI and web -> real-project proof`
-
-The former intent/review issues and observability, scaffolding, and greenfield-rewrite epics
-described older overlapping or conflicting programs. After the local contract passed, they were
-closed as not planned in favor of native alpha epic
-[#91](https://github.com/kmosoti/blackcell/issues/91). Their useful scope is absorbed into A01,
-A03, A05, A07, and A08; speculative scaffold search is deferred beyond alpha.
-
-## Fast verification
-
-Ordinary development runs exact affected pytest nodes and Ruff only on changed Python paths. One
-fast repository-wide Ruff check is the milestone gate. CI owns broad regression coverage and type
-checking. A local full suite is reserved for release/publication or a change whose risk cannot be
-bounded by focused evidence.
+These mechanisms reduce known failure modes. They do not prove model independence, causal
+understanding, hostile-code containment, correctness of the acceptance contract, or absence of
+unknown failure modes.
 
 ## Non-goals
 
-The alpha does not authorize:
+The current scope does not authorize:
 
-- a greenfield rewrite of the accepted Python runtime;
-- a BlackCell-owned Rust or PyO3 configuration layer;
-- repository-local named-agent, model-selection, or Codex orchestration configuration;
-- distributed queues, Kubernetes, or a visual workflow builder;
-- online self-rewriting, automatic production deployment, or ambient provider authority;
-- claims that legacy V2 behavior is the alpha project workflow.
+- distributed scheduling or multi-host execution;
+- online self-modification or self-publishing;
+- hidden model tool authority or client-owned persistence;
+- automatic schema migration or destructive state cleanup;
+- a greenfield language rewrite;
+- claims of calibrated world modeling or causal reasoning without held-out evidence;
+- release, deployment, or publication as a side effect of execution.
 
 ## Promotion rule
 
-A work package advances only when its declared focused checks pass and its dependencies are
-terminal. A model result, human preference, benchmark headline, or legacy test pass cannot waive a
-typed contract, replay, recovery, or outcome-verification failure.
+A new capability enters the executable graph only with a typed contract, explicit authority,
+failure and recovery behavior, durable evidence, focused tests, an applicable repository-wide gate,
+and current operational documentation. Names describe what the capability does; iteration history
+belongs in commits, decisions, discussions, and external protocol revisions.

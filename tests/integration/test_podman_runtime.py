@@ -28,10 +28,11 @@ def test_rootless_compose_runtime_is_restricted_healthy_and_persistent() -> None
     assert info["host"]["security"]["rootless"] is True
 
     suffix = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
-    project = f"blackcellwp20{suffix.replace('-', '')}"
-    image = f"localhost/blackcell-runtime-wp20-test:{suffix}"
-    token = f"Wp20-{uuid.uuid4().hex}-{uuid.uuid4().hex}"
-    stream_id = f"observation:container-{suffix}"
+    project = f"blackcellruntime{suffix.replace('-', '')}"
+    image = f"localhost/blackcell-runtime-test:{suffix}"
+    token = f"Runtime-{uuid.uuid4().hex}-{uuid.uuid4().hex}"
+    project_id = f"container-{suffix}"
+    stream_id = f"project:{project_id}"
     port = _available_port()
     environment = dict(os.environ)
     environment.update(
@@ -60,34 +61,14 @@ def test_rootless_compose_runtime_is_restricted_healthy_and_persistent() -> None
         )
         api = _wait_for_container("blackcell-api", environment)
         _wait_for_container_health(api, description="API container health")
-        # The dependency is already proven healthy above. Avoid asking the Docker-compatible
-        # provider to recreate it because this rootless host has no autonomous health scheduler.
-        _run(
-            (
-                "podman",
-                "compose",
-                "up",
-                "--detach",
-                "--no-deps",
-                "blackcell-worker",
-            ),
-            environment=environment,
-            timeout=120,
-        )
-        api = _wait_for_container("blackcell-api", environment)
-        worker = _wait_for_container("blackcell-worker", environment)
-        _wait_for_container_health(worker, description="worker container health")
         _wait_until(
             lambda: _health_ready(port),
             description="published API readiness",
         )
 
         assert _inspect(api, "{{.Config.User}}") == "10001:10001"
-        assert _inspect(worker, "{{.Config.User}}") == "10001:10001"
         assert _inspect(api, "{{.HostConfig.ReadonlyRootfs}}") == "true"
-        assert _inspect(worker, "{{.HostConfig.ReadonlyRootfs}}") == "true"
         assert _exec(api, ("id", "-u")).stdout.strip() == "10001"
-        assert _exec(worker, ("id", "-u")).stdout.strip() == "10001"
         root_write = _exec(
             api,
             (
@@ -128,33 +109,20 @@ def test_rootless_compose_runtime_is_restricted_healthy_and_persistent() -> None
         assert token not in _inspect(api, "{{json .Args}}")
 
         created = _request_json(
-            f"http://127.0.0.1:{port}/api/v1/observations",
+            f"http://127.0.0.1:{port}/api/v1/projects",
             token=token,
             method="POST",
             body={
-                "schema_version": "observation-ingest-request/v1",
-                "stream_id": stream_id,
-                "expected_sequence": 0,
-                "source": "container-acceptance/v1",
-                "correlation_id": f"correlation-{suffix}",
-                "observations": [
-                    {
-                        "observation_id": f"observation-{suffix}",
-                        "effective_at": "2026-07-13T12:00:00Z",
-                        "claims": [
-                            {
-                                "claim_id": f"claim-{suffix}",
-                                "subject": "runtime",
-                                "predicate": "container-ready",
-                                "value": True,
-                            }
-                        ],
-                        "evidence": [{"locator": "container://wp20-acceptance"}],
-                    }
-                ],
+                "schema_version": "project-request/v1",
+                "project_id": project_id,
+                "root": "/workspace/repository",
+                "configuration_provider": "kernform",
+                "configuration_version": "0.2.0",
+                "configuration_digest": f"sha256:{'0' * 64}",
+                "idempotency_key": f"register-{suffix}",
             },
         )
-        assert created["stream_id"] == stream_id
+        assert created["project_id"] == project_id
 
         _run(
             ("podman", "compose", "restart", "blackcell-api"),

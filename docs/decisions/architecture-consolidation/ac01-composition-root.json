@@ -80,7 +80,7 @@
   ],
   "compatibility_decision": "The retired constructor and adapter import paths are internal composition surfaces, not preserved CLI or HTTP contracts. Retaining shims would reintroduce the concrete operator-to-adapter dependency and the false boundary AC01 removes.",
   "explicitly_unchanged": [
-    "DailyOperatorV2 event names, payloads, ordering, and artifact codecs",
+    "DailyOperator event names, payloads, ordering, and artifact codecs",
     "decision and execution journal schemas",
     "replay classifications and live-free behavior",
     "repository status subprocess bounds",
@@ -90,6 +90,6 @@
   "verification": {
     "focused": "uv run pytest -q tests/unit/test_operator_facade.py tests/unit/test_runtime_worker.py tests/unit/test_transition_prediction.py tests/integration/test_runtime_disaster_recovery.py tests/integration/test_otel_export.py tests/integration/test_runtime_api.py tests/architecture/test_dependencies.py",
     "focused_result": "26 passed before the architecture assertion was added",
-    "full_gate": "uv run python tools/run_pytest.py --ignore=tests/unit/test_release_evidence.py --cov=blackcell --cov-report=term-missing"
+    "full_gate": "uv run python tools/run_pytest.py --cov=blackcell --cov-report=term-missing"
   }
 }

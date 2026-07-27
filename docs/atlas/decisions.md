@@ -9,7 +9,7 @@ edges:
     - adr/0003-model-execution-boundary
     - adr/0004-evolutionary-runtime-architecture
     - adr/0005-durable-run-and-execution-protocol
-    - adr/0006-versioned-run-feedback-protocol
+    - adr/0006-run-feedback-protocol-evolution
     - adr/0007-runtime-security-boundary
     - adr/0008-architecture-consolidation
     - adr/0009-project-runtime-scope
@@ -41,5 +41,5 @@ edges:
 - Build the alpha around one foreground daemon; keep CLI, PyRatatui TUI, and Litestar web as clients
   of its typed service contracts.
 - Integrate Kernform through pinned agent-mode JSON rather than importing its Python/Rust internals.
-- Retain `DailyOperatorV2Workflow` only for migration and replay evidence; no new alpha surface may
+- Retain `DailyOperatorWorkflow` only for migration and replay evidence; no new alpha surface may
   invoke it.

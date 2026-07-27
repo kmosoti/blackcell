@@ -1,0 +1,8 @@
+{
+  "idempotency_key": "run-submit",
+  "intent_id": "intent",
+  "plan_id": "plan",
+  "project_id": "project",
+  "run_id": "run",
+  "schema_version": "run-request/v1"
+}

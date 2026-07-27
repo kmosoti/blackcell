@@ -2,7 +2,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-from blackcell.adapters.models import RecordedModelAdapter
 from blackcell.gateway import (
     AdapterResult,
     DataClassification,
@@ -35,7 +34,48 @@ class AuditSink:
         self.records.append(record)
 
 
-class UsageAdapter(RecordedModelAdapter):
+class StubModelAdapter:
+    def __init__(
+        self,
+        adapter_id: str,
+        recordings: dict[tuple[str, str], dict[str, JsonValue]],
+        *,
+        capabilities: set[ModelCapability],
+        local: bool = True,
+    ) -> None:
+        self._adapter_id = adapter_id
+        self._recordings = recordings
+        self._capabilities = capabilities
+        self._local = local
+
+    @property
+    def adapter_id(self) -> str:
+        return self._adapter_id
+
+    @property
+    def capabilities(self) -> set[ModelCapability]:
+        return self._capabilities
+
+    @property
+    def local(self) -> bool:
+        return self._local
+
+    @property
+    def deterministic(self) -> bool:
+        return True
+
+    def invoke(self, request: ModelRequest, *, model_id: str) -> AdapterResult:
+        return AdapterResult(
+            self._recordings[(model_id, request.request_id)],
+            input_tokens=0,
+            output_tokens=0,
+            latency_ms=0,
+            cost_microusd=0,
+            deterministic=True,
+        )
+
+
+class UsageAdapter(StubModelAdapter):
     def __init__(
         self,
         *,
@@ -52,7 +92,7 @@ class UsageAdapter(RecordedModelAdapter):
         self.seen_budget: GatewayBudget | None = None
 
     def invoke(self, request: ModelRequest, *, model_id: str) -> AdapterResult:
-        assert model_id == "reason-v1"
+        assert model_id == "reason-model"
         self.seen_budget = request.budget
         return AdapterResult(
             {"answer": "ready"},
@@ -66,9 +106,9 @@ class UsageAdapter(RecordedModelAdapter):
 
 def test_gateway_routes_by_capability_and_emits_content_free_audit() -> None:
     audit = AuditSink()
-    adapter = RecordedModelAdapter(
+    adapter = StubModelAdapter(
         "recorded",
-        {("reason-v1", "request:1"): {"answer": "ready"}},
+        {("reason-model", "request:1"): {"answer": "ready"}},
         capabilities={ModelCapability.REASON},
     )
     gateway = ModelGateway(
@@ -88,15 +128,15 @@ def test_gateway_routes_by_capability_and_emits_content_free_audit() -> None:
 
 
 def test_gateway_enforces_locality_classification_and_capability() -> None:
-    remote = RecordedModelAdapter(
+    remote = StubModelAdapter(
         "remote",
-        {("reason-v1", "request:1"): {"answer": "remote"}},
+        {("reason-model", "request:1"): {"answer": "remote"}},
         capabilities={ModelCapability.REASON},
         local=False,
     )
-    local = RecordedModelAdapter(
+    local = StubModelAdapter(
         "local",
-        {("reason-v1", "request:1"): {"answer": "local"}},
+        {("reason-model", "request:1"): {"answer": "local"}},
         capabilities={ModelCapability.REASON},
     )
     profiles = (
@@ -121,9 +161,9 @@ def test_gateway_enforces_locality_classification_and_capability() -> None:
 
 
 def test_gateway_rejects_budget_and_schema_violations() -> None:
-    adapter = RecordedModelAdapter(
+    adapter = StubModelAdapter(
         "recorded",
-        {("reason-v1", "request:1"): {"unexpected": True}},
+        {("reason-model", "request:1"): {"unexpected": True}},
         capabilities={ModelCapability.REASON},
     )
     gateway = ModelGateway((_profile("reason", ModelCapability.REASON),), {"recorded": adapter})
@@ -261,7 +301,7 @@ def test_gateway_refuses_direct_tool_authority() -> None:
 
 
 def test_gateway_rejects_adapter_registry_identity_mismatch() -> None:
-    adapter = RecordedModelAdapter(
+    adapter = StubModelAdapter(
         "actual-id",
         {},
         capabilities={ModelCapability.REASON},
@@ -516,7 +556,7 @@ def _profile(
         profile_id,
         capability,
         adapter,
-        "reason-v1",
+        "reason-model",
         priority,
         adapter != "remote",
         True,

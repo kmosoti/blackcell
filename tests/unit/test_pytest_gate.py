@@ -45,11 +45,29 @@ def test_pytest_gate_passes_exact_requested_nodes_to_required_plugin(
         assert list(arguments) == [*node_ids, "--blackcell-require-all-pass"]
         plugin = cast("run_pytest.RequireAllPassPlugin", plugins[0])
         assert plugin._required_node_ids == frozenset(node_ids)
+        assert plugin._selection_declared
         return 0
 
     monkeypatch.setattr(run_pytest.pytest, "main", record_pytest)
 
     assert run_pytest.main((*node_ids, "--blackcell-require-all-pass")) == 0
+
+
+def test_pytest_gate_accepts_a_whole_file_as_the_required_selection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selector = "tests/architecture/test_dependencies.py"
+
+    def record_pytest(arguments: Sequence[str], *, plugins: Sequence[object]) -> int:
+        assert list(arguments) == [selector, "-q", "--blackcell-require-all-pass"]
+        plugin = cast("run_pytest.RequireAllPassPlugin", plugins[0])
+        assert plugin._required_node_ids == frozenset()
+        assert plugin._selection_declared
+        return 0
+
+    monkeypatch.setattr(run_pytest.pytest, "main", record_pytest)
+
+    assert run_pytest.main((selector, "-q", "--blackcell-require-all-pass")) == 0
 
 
 def test_required_pass_plugin_rejects_skips_xfails_and_empty_collection() -> None:
