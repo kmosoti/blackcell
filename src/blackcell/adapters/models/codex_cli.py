@@ -271,7 +271,7 @@ class CodexCliModelAdapter:
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             latency_ms=round(duration_seconds * 1000),
-            cost_microusd=0,
+            cost_microusd=None,
             deterministic=False,
         )
 

@@ -84,18 +84,18 @@ architecture:
       updates: channels and WebSockets consume the ordered daemon event stream
   project_configuration:
     provider: Kernform
-    supported_version: "0.1.0"
-    wire_schema: kernform.command/v1
+    supported_version: "0.2.0"
+    wire_schema: kernform.command/v2
     transport: argv-only subprocess
     version_probe: [kernform, --agent, --version]
     command_prefix: [kernform, --agent, --format, json]
-    initial_commands: [check, init]
+    initial_commands: [compile, check, init]
     prohibited_initial_commands: [inspect]
     reason_inspect_is_deferred: Its repository inventory can exceed the alpha adapter output budget.
     boundaries:
       - never import a sibling Kernform checkout or its Python or Rust internals
       - reject unsupported versions and schema values before applying artifacts
-      - validate command-specific check and init result fields, semantics, and path bindings before exposing them to clients
+      - validate command-specific compile, check, and init result fields, semantics, and path bindings before exposing them to clients
       - use bounded stdout, stderr, and wall-clock budgets
       - preserve stable exit classes and diagnostic codes without parsing human prose
       - persist the invoked version, argv digest, result digest, and accepted artifacts
@@ -221,16 +221,16 @@ work_packages:
     depends_on: [A00]
     issue_number: 94
     acceptance:
-      - project check and init use the pinned agent-mode command contract
+      - project compile, check, and init use the pinned agent-mode command contract
       - unsupported versions, oversized output, timeouts, and malformed envelopes fail closed
       - accepted artifacts are bounded to the requested project root
     candidate_evidence:
-      - the argv-only adapter probes and requires Kernform 0.1.0, then invokes only the closed kernform.command/v1 agent JSON check and init commands
+      - the argv-only adapter probes and requires Kernform 0.2.0, then invokes only the closed kernform.command/v2 agent JSON compile, check, and init commands
       - direct subprocess capture bounds stdout, stderr, wall time, token, diagnostic, capability, and artifact counts with stable content-free failures
-      - check and init preserve exact invocation evidence, reject schema, version, exit, truncation, and stderr drift, and canonicalize every returned artifact inside the requested project root
-      - closed check and init result contracts reject unknown fields, malformed catalog and plan identities, invalid conformance relationships, duplicate or unsorted requirements, unbounded counts, mismatched artifact references, and result-path escapes
-      - a disposable read-only integration probe against the current Kernform 0.1.0 Python/Rust checkout initialized a 64-operation API/web project and then validated all 39 managed files as conformant through the production BlackCell adapter
-      - the JSON-first project CLI exposes only check and init, preserves Kernform failure exit classes, and accepts an explicit executable boundary
+      - compile, check, and init preserve exact invocation evidence, reject schema, version, exit, truncation, stderr, path, and plan drift, and canonicalize every returned artifact inside the requested project root
+      - closed compile, check, and init result contracts reject unknown fields, malformed catalog and plan identities, invalid signature relationships, unsafe operation paths, unbounded counts, mismatched artifact references, and result-path escapes
+      - a disposable integration probe against the current Kernform 0.2.0 Python/Rust checkout compiled a v2 project form, initialized an sdk plus cli project, and validated all 40 managed files as conformant through the production BlackCell adapter
+      - the JSON-first project CLI exposes compile, check, and init, preserves Kernform failure exit classes, and accepts an explicit executable boundary
     remaining: []
   - id: A03
     title: Alpha intent, plan, run, and event contracts

@@ -23,6 +23,8 @@ from blackcell.interfaces.http import (
     AlphaProjectRequest,
     AlphaProjectResponse,
     AlphaReplayResponse,
+    AlphaRunQueryRequest,
+    AlphaRunQueryResponse,
     AlphaRunRequest,
     AlphaRunResponse,
 )
@@ -53,6 +55,7 @@ class _FakeAlphaTuiClient:
         run: AlphaRunResponse | None = None,
         canceled_run: AlphaRunResponse | None = None,
         replay: AlphaReplayResponse | None = None,
+        run_query: AlphaRunQueryResponse | None = None,
         event_pages: list[AlphaEventPageResponse] | None = None,
     ) -> None:
         self.status_response = _Status()
@@ -62,6 +65,7 @@ class _FakeAlphaTuiClient:
         self.run_response = run
         self.canceled_run_response = canceled_run
         self.replay_response = replay
+        self.run_query_response = run_query
         self.event_pages = [] if event_pages is None else event_pages
         self.calls: list[tuple[str, object]] = []
         self.thread_ids: list[int] = []
@@ -88,6 +92,16 @@ class _FakeAlphaTuiClient:
     def inspect_alpha_run(self, run_id: str) -> AlphaRunResponse:
         assert self.run_response is not None
         return self._record("status-run", run_id, self.run_response)
+
+    def query_alpha_runs(self, request: AlphaRunQueryRequest) -> AlphaRunQueryResponse:
+        response = self.run_query_response or AlphaRunQueryResponse(
+            query=request,
+            scanned_events=0,
+            runs=(),
+            next_cursor=request.after_cursor,
+            has_more=False,
+        )
+        return self._record("query", request, response)
 
     def cancel_alpha_run(
         self,
@@ -175,6 +189,7 @@ def test_tui_controller_offloads_complete_client_surface_and_updates_projection(
     assert state.revision == 9
     assert [operation for operation, _ in client.calls] == [
         "status",
+        "query",
         "project",
         "intent",
         "plan",
@@ -186,6 +201,27 @@ def test_tui_controller_offloads_complete_client_surface_and_updates_projection(
     ]
     assert client.thread_ids
     assert all(thread_id != event_loop_thread for thread_id in client.thread_ids)
+
+
+def test_tui_controller_rejects_mismatched_run_query_without_mutating_projection() -> None:
+    requested = AlphaRunQueryRequest(
+        schema_version="alpha-run-query-request/v1",
+        limit=50,
+    )
+    mismatched = AlphaRunQueryResponse(
+        query=msgspec.structs.replace(requested, after_cursor=1),
+        scanned_events=0,
+        runs=(),
+        next_cursor=1,
+        has_more=False,
+    )
+    controller = AlphaTuiController(_FakeAlphaTuiClient(run_query=mismatched))
+
+    with pytest.raises(AlphaTuiError) as captured:
+        asyncio.run(controller.connect())
+
+    assert captured.value.code is AlphaTuiFailureCode.INVALID_RUN_QUERY
+    assert controller.state == controller.state.__class__()
 
 
 def test_tui_controller_resumes_and_bounds_ordered_events() -> None:

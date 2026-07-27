@@ -43,6 +43,11 @@ dev = [
 addopts = "-ra"
 testpaths = ["tests"]
 
+[tool.mutmut]
+source_paths = ["src/blackcell"]
+only_mutate = ["src/blackcell/adapters/telemetry/alpha_v2.py"]
+pytest_add_cli_args_test_selection = ["tests/unit/test_alpha_v2_kernel.py"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py314"

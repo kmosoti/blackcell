@@ -18,10 +18,12 @@ class RuntimeTelemetry:
         self,
         workflow: WorkflowTelemetry,
         *,
+        recorder: TraceRecorder | None = None,
         exporter: OpenTelemetrySpanExporter | None = None,
         flush_timeout_millis: int = 10_000,
     ) -> None:
         self.workflow = workflow
+        self.recorder = recorder
         self._exporter = exporter
         self._flush_timeout_millis = flush_timeout_millis
 
@@ -60,6 +62,7 @@ class RuntimeTelemetry:
         )
         return cls(
             TraceWorkflowTelemetry(recorder),
+            recorder=recorder,
             exporter=exporter,
             flush_timeout_millis=telemetry.timeout_seconds * 1_000,
         )

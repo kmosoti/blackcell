@@ -307,24 +307,18 @@ class DecisionAttemptClaim:
 @dataclass(frozen=True, slots=True)
 class DecisionAdapterResult:
     output: Mapping[str, JsonValue]
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
     latency_ms: int
-    cost_microusd: int
+    cost_microusd: int | None
     deterministic: bool
     completed_at: datetime
 
     def __post_init__(self) -> None:
-        values = (
-            self.input_tokens,
-            self.output_tokens,
-            self.latency_ms,
-            self.cost_microusd,
-        )
-        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
-            raise TypeError("decision adapter usage values must be integers")
-        if min(values) < 0:
-            raise ValueError("decision adapter usage values must be non-negative")
+        _usage_value(self.input_tokens, "decision adapter input tokens", optional=True)
+        _usage_value(self.output_tokens, "decision adapter output tokens", optional=True)
+        _usage_value(self.latency_ms, "decision adapter latency", optional=False)
+        _usage_value(self.cost_microusd, "decision adapter cost", optional=True)
         if not isinstance(self.deterministic, bool):
             raise TypeError("decision adapter determinism marker must be a boolean")
         frozen = freeze_json(self.output, path="$.output")
@@ -343,25 +337,19 @@ class DecisionGatewayCompletion:
     """Content-free evidence returned when a gateway call completed then failed policy."""
 
     output_digest: str
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
     latency_ms: int
-    cost_microusd: int
+    cost_microusd: int | None
     deterministic: bool
     completed_at: datetime
 
     def __post_init__(self) -> None:
         _validate_digest(self.output_digest, "output_digest")
-        values = (
-            self.input_tokens,
-            self.output_tokens,
-            self.latency_ms,
-            self.cost_microusd,
-        )
-        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
-            raise TypeError("gateway completion usage values must be integers")
-        if min(values) < 0:
-            raise ValueError("gateway completion usage values must be non-negative")
+        _usage_value(self.input_tokens, "gateway completion input tokens", optional=True)
+        _usage_value(self.output_tokens, "gateway completion output tokens", optional=True)
+        _usage_value(self.latency_ms, "gateway completion latency", optional=False)
+        _usage_value(self.cost_microusd, "gateway completion cost", optional=True)
         if not isinstance(self.deterministic, bool):
             raise TypeError("gateway completion determinism marker must be a boolean")
         object.__setattr__(
@@ -375,10 +363,10 @@ class DecisionGatewayCompletion:
 class DecisionUsage:
     request_id: str
     attempt_id: str
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
     latency_ms: int
-    cost_microusd: int
+    cost_microusd: int | None
     deterministic: bool
     schema_version: str = "decision-usage/v1"
     usage_id: str = field(init=False)
@@ -388,16 +376,10 @@ class DecisionUsage:
             if not getattr(self, name).strip():
                 raise ValueError(f"{name} must not be empty")
         _validate_digest(self.attempt_id, "attempt_id")
-        values = (
-            self.input_tokens,
-            self.output_tokens,
-            self.latency_ms,
-            self.cost_microusd,
-        )
-        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
-            raise TypeError("decision usage values must be integers")
-        if min(values) < 0:
-            raise ValueError("decision usage values must be non-negative")
+        _usage_value(self.input_tokens, "decision usage input tokens", optional=True)
+        _usage_value(self.output_tokens, "decision usage output tokens", optional=True)
+        _usage_value(self.latency_ms, "decision usage latency", optional=False)
+        _usage_value(self.cost_microusd, "decision usage cost", optional=True)
         if not isinstance(self.deterministic, bool):
             raise TypeError("decision usage determinism marker must be a boolean")
         object.__setattr__(self, "usage_id", json_digest(_usage_payload(self)))
@@ -630,6 +612,18 @@ def _usage_payload(usage: DecisionUsage) -> dict[str, object]:
         "cost_microusd": usage.cost_microusd,
         "deterministic": usage.deterministic,
     }
+
+
+def _usage_value(value: int | None, label: str, *, optional: bool) -> None:
+    if value is None:
+        if optional:
+            return
+        raise TypeError(f"{label} must be an integer")
+    if isinstance(value, bool) or not isinstance(value, int):
+        suffix = "an integer or null" if optional else "an integer"
+        raise TypeError(f"{label} must be {suffix}")
+    if value < 0:
+        raise ValueError(f"{label} must be non-negative")
 
 
 def _response_payload(response: DecisionResponse) -> dict[str, object]:

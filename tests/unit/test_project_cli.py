@@ -31,12 +31,17 @@ class FakeKernformClient:
         type(self).calls.append(("check", project_root))
         return type(self).result
 
+    def compile(self, form: Path) -> KernformInvocationResult:
+        type(self).calls.append(("compile", form))
+        return type(self).result
+
     def init(
         self,
         *,
         name: str,
         destination: Path,
-        profile: str,
+        signatures: tuple[str, ...],
+        default_signature: str | None,
         capabilities: tuple[str, ...],
         no_git: bool,
         initial_commit: bool,
@@ -47,7 +52,8 @@ class FakeKernformClient:
                 {
                     "name": name,
                     "destination": destination,
-                    "profile": profile,
+                    "signatures": signatures,
+                    "default_signature": default_signature,
                     "capabilities": capabilities,
                     "no_git": no_git,
                     "initial_commit": initial_commit,
@@ -92,8 +98,8 @@ def test_project_check_emits_evidence_and_preserves_kernform_failure_exit(
 
     assert result.exit_code == 2
     payload = json.loads(result.stdout)
-    assert payload["schema_version"] == "kernform-invocation/v1"
-    assert payload["kernform_version"] == "0.1.0"
+    assert payload["schema_version"] == "kernform-invocation/v2"
+    assert payload["kernform_version"] == "0.2.0"
     assert payload["status"] == "failure"
     assert payload["diagnostics"][0]["id"] == "KF-STATE-001"
     assert FakeKernformClient.instances[0].executable == "/opt/kernform/bin/kernform"
@@ -121,7 +127,11 @@ def test_project_init_parses_repeated_capabilities_and_environment_executable(
             "alpha-tool",
             "--destination",
             str(destination),
-            "--profile",
+            "--signature",
+            "sdk",
+            "--signature",
+            "api",
+            "--default-signature",
             "api",
             "--with",
             "lint",
@@ -141,7 +151,8 @@ def test_project_init_parses_repeated_capabilities_and_environment_executable(
             {
                 "name": "alpha-tool",
                 "destination": destination,
-                "profile": "api",
+                "signatures": ("sdk", "api"),
+                "default_signature": "api",
                 "capabilities": ("lint", "test"),
                 "no_git": True,
                 "initial_commit": False,
@@ -169,11 +180,24 @@ def test_project_boundary_errors_use_typed_exit_class_and_content_free_json(
     }
 
 
-def test_project_help_exposes_only_the_initial_check_and_init_contract() -> None:
+def test_project_compile_and_help_expose_the_v2_contract(monkeypatch, tmp_path: Path) -> None:
+    _install_fake(monkeypatch)
+    form = tmp_path / "project-form.json"
+    form.write_text("{}", encoding="utf-8")
+    FakeKernformClient.result = _result(root=tmp_path, command="compile")
+
+    compiled = runner.invoke(
+        app,
+        ["project", "compile", "--form", str(form)],
+        catch_exceptions=False,
+    )
     result = runner.invoke(app, ["project", "--help"], catch_exceptions=False)
 
+    assert compiled.exit_code == 0
+    assert FakeKernformClient.calls == [("compile", form)]
     assert result.exit_code == 0
     assert "check" in result.stdout
+    assert "compile" in result.stdout
     assert "init" in result.stdout
     assert "inspect" not in result.stdout
     assert "adopt" not in result.stdout
@@ -189,14 +213,14 @@ def _install_fake(monkeypatch) -> None:
 def _result(
     *,
     root: Path,
-    command: Literal["check", "init"],
+    command: Literal["check", "compile", "init"],
     status: Literal["success", "failure", "refused"] = "success",
     exit_code: int = 0,
     diagnostics: tuple[KernformDiagnostic, ...] = (),
     artifacts: tuple[KernformArtifact, ...] = (),
 ) -> KernformInvocationResult:
     return KernformInvocationResult(
-        kernform_version="0.1.0",
+        kernform_version="0.2.0",
         project_root=root,
         command=command,
         status=status,

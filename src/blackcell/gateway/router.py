@@ -99,25 +99,31 @@ class ModelGateway:
             completed_at=self._clock(),
         )
         request = call.request
-        if result.input_tokens > request.budget.max_input_tokens:
+        if (
+            result.input_tokens is not None
+            and result.input_tokens > request.budget.max_input_tokens
+        ):
             raise GatewayAdmissionError(
                 GatewayFailureCode.ADAPTER_INPUT_BUDGET_EXCEEDED,
                 "adapter exceeded the input-token budget",
                 completion=completion,
             )
-        if result.input_tokens > profile.max_input_tokens:
+        if result.input_tokens is not None and result.input_tokens > profile.max_input_tokens:
             raise GatewayAdmissionError(
                 GatewayFailureCode.PROFILE_INPUT_LIMIT_EXCEEDED,
                 "adapter exceeded the profile input-token limit",
                 completion=completion,
             )
-        if result.output_tokens > request.budget.max_output_tokens:
+        if (
+            result.output_tokens is not None
+            and result.output_tokens > request.budget.max_output_tokens
+        ):
             raise GatewayAdmissionError(
                 GatewayFailureCode.ADAPTER_OUTPUT_BUDGET_EXCEEDED,
                 "adapter exceeded the output-token budget",
                 completion=completion,
             )
-        if result.output_tokens > profile.max_output_tokens:
+        if result.output_tokens is not None and result.output_tokens > profile.max_output_tokens:
             raise GatewayAdmissionError(
                 GatewayFailureCode.PROFILE_OUTPUT_LIMIT_EXCEEDED,
                 "adapter exceeded the profile output-token limit",
@@ -129,13 +135,16 @@ class ModelGateway:
                 "adapter exceeded the latency budget",
                 completion=completion,
             )
-        if result.cost_microusd > request.budget.max_cost_microusd:
+        if (
+            result.cost_microusd is not None
+            and result.cost_microusd > request.budget.max_cost_microusd
+        ):
             raise GatewayAdmissionError(
                 GatewayFailureCode.ADAPTER_COST_BUDGET_EXCEEDED,
                 "adapter exceeded the cost budget",
                 completion=completion,
             )
-        if result.cost_microusd > profile.max_cost_microusd:
+        if result.cost_microusd is not None and result.cost_microusd > profile.max_cost_microusd:
             raise GatewayAdmissionError(
                 GatewayFailureCode.PROFILE_COST_LIMIT_EXCEEDED,
                 "adapter exceeded the profile cost limit",

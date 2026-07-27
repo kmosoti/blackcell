@@ -8,6 +8,7 @@ edges:
     - architecture
     - adr/0009-project-runtime-scope
   complements:
+    - guides/alpha-v2-kernel
     - guides/alpha-worker-configuration
     - guides/alpha-review-configuration
     - guides/alpha-verify-configuration
@@ -26,7 +27,7 @@ The daemon owns orchestration and durable state. The CLI and browser call the sa
 
 ## 1. Prepare the source checkout and project
 
-BlackCell currently requires Python 3.14, `uv`, Git, and a pinned Kernform 0.1.0 executable. A
+BlackCell currently requires Python 3.14, `uv`, Git, and a pinned Kernform 0.2.0 executable. A
 repository-writing run additionally requires Linux user namespaces, Bubblewrap, `prlimit`, and
 every executable alias named by the accepted plan.
 
@@ -48,7 +49,7 @@ uv run blackcell project check \
   > /tmp/blackcell-kernform-check.json
 ```
 
-The result must report `kernform_version` `0.1.0` and a `success` status. Copy its
+The result must report `kernform_version` `0.2.0` and a `success` status. Copy its
 `result_digest` into `project.template.json` as `configuration_digest`. Registration durably binds
 that operator-supplied digest; the daemon does not silently import or rerun Kernform.
 
@@ -161,6 +162,8 @@ Before submission, replace every repository-specific value:
    the complete review-evidence shape
    across all nodes: one outcome per node, four artifacts per check, and up to three source/effect
    artifacts per maximum changed file must fit the closed 128-item context limit.
+   The checked template uses `planning_mode: "generated"`: the node is an authority envelope whose
+   paths, checks, and budgets constrain the immutable task DAG proposed by the configured planner.
 4. Keep the project, intent, plan, and run identifiers cross-linked. If an identifier changes,
    update every later request. Use new idempotency keys when the content changes.
 
@@ -190,13 +193,17 @@ Inspect durable state without calling a provider or repeating effects:
 
 ```bash
 uv run blackcell alpha run status alpha-run
+uv run blackcell alpha run query \
+  --request /tmp/blackcell-alpha-requests/query.template.json
 uv run blackcell alpha events list --after 0 --limit 100
 uv run blackcell alpha run replay alpha-run
 ```
 
-Replay may report execution complete while review or verification is not started. A verified
-terminal outcome requires the execution, review, and verification workers to consume the same event
-and artifact root.
+The query command sends a bounded, authenticated RFC 10008 `QUERY` request. It is a read-only
+projection operation: it does not call a provider, advance a task, or write an event. Generated-mode
+replay verifies every event-referenced artifact against the shared content-addressed store. The
+separate alpha review worker is not part of generated-mode acceptance and remains an optional later
+assurance layer.
 
 Request cooperative cancellation with the checked cancel contract:
 

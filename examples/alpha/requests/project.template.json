@@ -1,7 +1,7 @@
 {
   "configuration_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
   "configuration_provider": "kernform",
-  "configuration_version": "0.1.0",
+  "configuration_version": "0.2.0",
   "idempotency_key": "alpha-project-register-v1",
   "project_id": "alpha-project",
   "root": "/ABSOLUTE/PATH/TO/PROJECT",

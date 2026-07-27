@@ -12,7 +12,7 @@ edges:
 # Alpha Worker Configuration
 
 The daemon is API-only unless `BLACKCELL_ALPHA_WORKER_CONFIG_FILE` points to one valid
-`blackcell.alpha-worker-config/v1` document. This is deliberate: an omitted model, executable, or
+`blackcell.alpha-worker-config/v3` document. This is deliberate: an omitted model, executable, or
 isolation choice leaves work queued instead of selecting ambient authority or the historical V2
 worker.
 
@@ -27,19 +27,21 @@ path or an operator-selected model identifier:
 
 ```json
 {
-  "schema_version": "blackcell.alpha-worker-config/v1",
+  "schema_version": "blackcell.alpha-worker-config/v3",
   "provider": {
+    "adapter": "agy-cli",
     "profile_id": "alpha-code",
     "model_id": "YOUR_CODE_MODEL_ID",
-    "codex_executable": "/CANONICAL/PATH/TO/codex",
+    "executable": "/CANONICAL/PATH/TO/agy",
     "git_executable": "/CANONICAL/PATH/TO/git",
+    "effort": "high",
     "classification": "private",
     "locality": "remote-allowed",
     "max_input_tokens": 32000,
     "max_output_tokens": 4096,
     "max_cost_microusd": 0,
     "timeout_ceiling_seconds": 120,
-    "environment_variables": ["CODEX_HOME", "HOME", "OPENAI_API_KEY"]
+    "environment_variables": ["HOME"]
   },
   "isolation": {
     "root": "/OWNER/ONLY/BLACKCELL_DATA/alpha-worktrees",
@@ -69,15 +71,23 @@ path or an operator-selected model identifier:
 }
 ```
 
-The file contains no credential values. `environment_variables` is a required name-only allowlist;
-every listed name must exist in the daemon environment. BlackCell rejects its own `BLACKCELL_*`
-variables and dynamic-loader, Python, Git, or shell control variables. Include only the provider
-authentication and platform values the pinned Codex executable actually needs. If Codex uses an
-owner-only auth store rather than an API-key variable, omit `OPENAI_API_KEY` and allow the required
-home variable instead.
+The file contains no credential values or credential paths. For `agy-cli`, AGY owns discovery and
+use of its existing authenticated session; BlackCell neither locates nor reads that material and
+rejects an `auth_token_path` field. The adapter pins AGY `1.1.7`, submits the canonical request on
+standard input, and does not invoke the decommissioning Gemini CLI. `effort` is one of `low`,
+`medium`, or `high`.
 
-`classification` may be `public`, `internal`, or `private`. The only alpha provider in this version
-is the non-local Codex CLI adapter, so `locality` must explicitly be `remote-allowed`; `secret`
+`environment_variables` is a required name-only allowlist; every listed name must exist in the
+daemon environment. BlackCell rejects its own `BLACKCELL_*` variables and dynamic-loader, Python,
+Git, or shell control variables. Include only the provider authentication and platform names the
+pinned executable actually needs.
+
+Codex remains an explicit alternative. Its provider object uses `"adapter": "codex-cli"` and
+`"executable": "/CANONICAL/PATH/TO/codex"`, and omits `effort`; all other provider fields are
+unchanged.
+
+`classification` may be `public`, `internal`, or `private`. Both alpha adapters are non-local, so
+`locality` must explicitly be `remote-allowed`; `secret`
 classification and `local-only` fail closed. Each acceptance command's first argv token must match
 one key in `isolation.executables`. Add a canonical runtime directory to `runtime_roots` only when
 that executable requires files outside the fixed read-only system roots; those directories become
@@ -115,7 +125,7 @@ an API process running with a silently missing worker.
 ## Provider crash boundary
 
 For every repository-writing node, BlackCell stores the canonical bounded context artifact and then
-appends `alpha.node.provider-dispatch-started` before invoking the configured Codex process. The
+appends `alpha.node.provider-dispatch-started` before invoking the configured provider process. The
 event binds the exact lease, worker, deterministic request ID, and identical context and artifact
 digests. The provider call uses that event as its causation identity.
 
@@ -123,7 +133,7 @@ If the daemon restarts after this marker but before a terminal node event, Black
 the provider again. The run becomes `reconciliation-required` with failure code
 `alpha-provider-dispatch-ambiguous`, even when the worktree is missing or unchanged. This is a
 fail-closed duplicate-prevention boundary, not proof of provider completion or external
-exactly-once behavior; the prior Codex process may have accepted, completed, or still be executing
+exactly-once behavior; the prior provider process may have accepted, completed, or still be executing
 the request. Inspect the retained event and artifact evidence and resolve the attempt explicitly.
 Cancellation already requested before restart keeps precedence.
 

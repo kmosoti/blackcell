@@ -287,10 +287,10 @@ class AlphaChangeProviderResult:
     profile_id: str
     adapter_id: str
     model_id: str
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
     latency_ms: int
-    cost_microusd: int
+    cost_microusd: int | None
     completed_at: datetime
     schema_version: str = ALPHA_CHANGE_PROVIDER_RESULT_SCHEMA
 
@@ -305,9 +305,15 @@ class AlphaChangeProviderResult:
         for value in (self.profile_id, self.adapter_id, self.model_id):
             if not isinstance(value, str) or not value.strip() or len(value) > 256:
                 raise AlphaChangeContractError(AlphaChangeContractFailureCode.INVALID_PROPOSAL)
-        usage = (self.input_tokens, self.output_tokens, self.latency_ms, self.cost_microusd)
+        optional_usage = (self.input_tokens, self.output_tokens, self.cost_microusd)
         if any(
-            isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in usage
+            value is not None
+            and (isinstance(value, bool) or not isinstance(value, int) or value < 0)
+            for value in optional_usage
+        ) or (
+            isinstance(self.latency_ms, bool)
+            or not isinstance(self.latency_ms, int)
+            or self.latency_ms < 0
         ):
             raise AlphaChangeContractError(AlphaChangeContractFailureCode.INVALID_PROPOSAL)
         if self.completed_at.tzinfo is None or self.completed_at.utcoffset() is None:

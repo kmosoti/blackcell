@@ -87,12 +87,14 @@ Kernform is the project configuration and scaffolding provider. BlackCell invoke
 CLI with argv only; it does not import a sibling checkout or depend on Kernform's internal Python
 or Rust implementation.
 
-The first adapter accepts exactly Kernform `0.1.0` and `kernform.command/v1`, probes with
-`kernform --agent --version`, and invokes `check` or `init` with
+The adapter accepts exactly Kernform `0.2.0` and `kernform.command/v2`, probes with
+`kernform --agent --version`, and invokes `compile`, `check`, or `init` with
 `kernform --agent --format json`. It enforces wall-clock and output budgets, validates the closed
 response envelope, maps stable exit classes, and persists the version plus request/result digests.
-Raw `inspect` output is deferred because a large repository inventory can exceed the alpha
-adapter's bounded output contract.
+`compile` exposes the deterministic v2 project-form plan without applying it; `init` accepts the
+composable `sdk`, `cli`, `api`, `interactive-web`, and `daemon` signatures. Raw `inspect` output is
+deferred because a large repository inventory can exceed the alpha adapter's bounded output
+contract.
 
 ## Delivery boundary
 

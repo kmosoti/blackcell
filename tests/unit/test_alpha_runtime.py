@@ -77,6 +77,51 @@ def test_alpha_flow_is_idempotent_restart_safe_and_live_free(tmp_path: Path) -> 
     assert len(events) == 4
 
 
+def test_generated_plan_run_is_selected_by_existing_runtime_without_legacy_claim(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    service = AlphaRuntimeApiService(EventStore(tmp_path / "generated.sqlite3"), repository)
+    service.register_project(_project(repository), principal_id="operator")
+    intent = AlphaIntentRequest(
+        schema_version="alpha-intent-request/v1",
+        intent_id="intent-1",
+        project_id="project-1",
+        objective="Generate, execute, and verify the bounded plan.",
+        constraints=("Preserve public contracts.",),
+        assumptions=("The repository base is immutable.",),
+        unresolved_questions=(),
+        idempotency_key="intent-generated",
+    )
+    service.accept_intent(intent, principal_id="operator")
+    declared = _plan(repository)
+    generated = AlphaPlanRequest(
+        schema_version=declared.schema_version,
+        plan_id=declared.plan_id,
+        project_id=declared.project_id,
+        intent_id=declared.intent_id,
+        base_commit=declared.base_commit,
+        allowed_effects=declared.allowed_effects,
+        nodes=declared.nodes,
+        idempotency_key=declared.idempotency_key,
+        planning_mode="generated",
+    )
+    service.accept_plan(generated, principal_id="operator")
+    service.submit_run(_run(), principal_id="operator")
+
+    selected = service.next_generated_run()
+
+    assert service.next_ready_node() is None
+    assert selected is not None
+    assert selected.run_id == "run-1"
+    assert selected.goal.objective == intent.objective
+    assert selected.goal.base_commit == generated.base_commit
+    assert tuple(item.check_id for item in selected.goal.verification_checks) == (
+        "inspect-pass",
+        "verify-pass",
+    )
+
+
 def test_alpha_submission_rejects_mismatched_references_and_conflicts(tmp_path: Path) -> None:
     repository = _repository(tmp_path)
     service = AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
@@ -105,7 +150,7 @@ def test_alpha_submission_rejects_mismatched_references_and_conflicts(tmp_path: 
         project_id="project-1",
         root=str(repository),
         configuration_provider="kernform",
-        configuration_version="0.1.0",
+        configuration_version="0.2.0",
         configuration_digest=_OTHER_CONFIGURATION_DIGEST,
         idempotency_key="project-1",
     )
@@ -370,7 +415,7 @@ def _project(repository: Path, *, project_id: str = "project-1") -> AlphaProject
         project_id=project_id,
         root=str(repository),
         configuration_provider="kernform",
-        configuration_version="0.1.0",
+        configuration_version="0.2.0",
         configuration_digest=_CONFIGURATION_DIGEST,
         idempotency_key=project_id,
     )

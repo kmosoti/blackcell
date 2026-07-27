@@ -1476,10 +1476,10 @@ def _usage_within_budget(
     budget = request.budget
     return (
         usage.request_id == request.request_id
-        and usage.input_tokens <= budget.max_input_tokens
-        and usage.output_tokens <= budget.max_output_tokens
+        and (usage.input_tokens is None or usage.input_tokens <= budget.max_input_tokens)
+        and (usage.output_tokens is None or usage.output_tokens <= budget.max_output_tokens)
         and usage.latency_ms <= budget.max_latency_ms
-        and usage.cost_microusd <= budget.max_cost_microusd
+        and (usage.cost_microusd is None or usage.cost_microusd <= budget.max_cost_microusd)
         and (not request.deterministic_required or usage.deterministic)
         and (not route.deterministic or usage.deterministic)
     )

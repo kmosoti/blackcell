@@ -302,16 +302,20 @@ def _result_failure(
     elif result.completed_at < claim.invoked_at:
         kind = DecisionFailureKind.INTEGRITY
         code = "decision_completion_precedes_invocation"
-    elif result.input_tokens > request.budget.max_input_tokens:
+    elif result.input_tokens is not None and result.input_tokens > request.budget.max_input_tokens:
         kind = DecisionFailureKind.BUDGET
         code = "input_token_budget_exceeded"
-    elif result.output_tokens > request.budget.max_output_tokens:
+    elif (
+        result.output_tokens is not None and result.output_tokens > request.budget.max_output_tokens
+    ):
         kind = DecisionFailureKind.BUDGET
         code = "output_token_budget_exceeded"
     elif result.latency_ms > request.budget.max_latency_ms:
         kind = DecisionFailureKind.BUDGET
         code = "latency_budget_exceeded"
-    elif result.cost_microusd > request.budget.max_cost_microusd:
+    elif (
+        result.cost_microusd is not None and result.cost_microusd > request.budget.max_cost_microusd
+    ):
         kind = DecisionFailureKind.BUDGET
         code = "cost_budget_exceeded"
     elif request.deterministic_required and not result.deterministic:

@@ -13,6 +13,10 @@ from blackcell.orchestration.alpha_acceptance import (
 )
 
 MAX_ALPHA_EVENT_PAGE_SIZE = 200
+MAX_ALPHA_RUN_QUERY_PAGE_SIZE = 100
+MAX_ALPHA_RUN_QUERY_SCAN_EVENTS = 1_000
+ALPHA_RUN_QUERY_MEDIA_TYPE = "application/vnd.blackcell.alpha-run-query+json"
+ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE = "application/vnd.blackcell.alpha-run-query-result+json"
 _MAX_ID_CHARS = 120
 _MAX_ROOT_CHARS = 4_096
 _MAX_OBJECTIVE_CHARS = 8_000
@@ -63,6 +67,33 @@ AlphaRunStatus = Literal[
     "canceled",
     "succeeded",
     "failed",
+    "reconciliation-required",
+]
+_ALPHA_RUN_STATUSES = frozenset(
+    {
+        "queued",
+        "running",
+        "canceling",
+        "canceled",
+        "succeeded",
+        "failed",
+        "reconciliation-required",
+    }
+)
+AlphaRunNodeStatus = Literal[
+    "pending",
+    "ready",
+    "claimed",
+    "running",
+    "verifying",
+    "succeeded",
+    "repairable",
+    "replan-required",
+    "blocked",
+    "escalated",
+    "terminal-failure",
+    "failed",
+    "canceled",
     "reconciliation-required",
 ]
 AlphaReplayArtifactIntegrity = Literal[
@@ -125,7 +156,7 @@ class AlphaProjectRequest(StrictStruct, frozen=True):
     project_id: str
     root: str
     configuration_provider: Literal["kernform"]
-    configuration_version: Literal["0.1.0"]
+    configuration_version: Literal["0.2.0"]
     configuration_digest: str
     idempotency_key: str
 
@@ -237,6 +268,7 @@ class AlphaPlanRequest(StrictStruct, frozen=True):
     allowed_effects: tuple[AlphaEffect, ...]
     nodes: tuple[AlphaPlanNode, ...]
     idempotency_key: str
+    planning_mode: Literal["declared", "generated"] = "declared"
 
     def __post_init__(self) -> None:
         _identifier(self.plan_id)
@@ -298,7 +330,7 @@ class AlphaProjectResponse(StrictStruct, frozen=True):
     project_id: str
     root: str
     configuration_provider: Literal["kernform"]
-    configuration_version: Literal["0.1.0"]
+    configuration_version: Literal["0.2.0"]
     configuration_digest: str
     principal_id: str
     event_id: str
@@ -352,6 +384,104 @@ class AlphaRunResponse(StrictStruct, frozen=True):
     cursor: int
     event_digest: str
     schema_version: Literal["alpha-run/v1"] = "alpha-run/v1"
+
+
+class AlphaRunQueryRequest(StrictStruct, frozen=True):
+    """Closed RFC 10008 content for bounded, read-only run discovery."""
+
+    schema_version: Literal["alpha-run-query-request/v1"]
+    statuses: tuple[AlphaRunStatus, ...] = ()
+    project_ids: tuple[str, ...] = ()
+    intent_ids: tuple[str, ...] = ()
+    plan_ids: tuple[str, ...] = ()
+    run_ids: tuple[str, ...] = ()
+    after_cursor: int = 0
+    limit: int = 50
+
+    def __post_init__(self) -> None:
+        statuses = tuple(sorted(self.statuses))
+        if len(statuses) > len(_ALPHA_RUN_STATUSES) or len(statuses) != len(set(statuses)):
+            raise WireContractError()
+        for value in statuses:
+            if value not in _ALPHA_RUN_STATUSES:
+                raise WireContractError()
+        object.__setattr__(self, "statuses", statuses)
+        for field_name in ("project_ids", "intent_ids", "plan_ids", "run_ids"):
+            values = tuple(sorted(getattr(self, field_name)))
+            _unique_identifiers(values, maximum=_MAX_COLLECTION_ITEMS)
+            object.__setattr__(self, field_name, values)
+        _bounded_integer(self.after_cursor, minimum=0, maximum=2**63 - 1)
+        _bounded_integer(self.limit, minimum=1, maximum=MAX_ALPHA_RUN_QUERY_PAGE_SIZE)
+
+
+class AlphaRunNodeQueryResponse(StrictStruct, frozen=True):
+    node_id: str
+    status: AlphaRunNodeStatus
+    attempts: int
+    fencing_token: int
+    failure_code: str | None
+    retained_worktree: bool
+    head_commit: str | None
+    depends_on: tuple[str, ...] = ()
+    max_attempts: int | None = None
+
+    def __post_init__(self) -> None:
+        _identifier(self.node_id)
+        _unique_identifiers(self.depends_on, maximum=_MAX_PLAN_NODES)
+        if self.max_attempts is not None:
+            _bounded_integer(self.max_attempts, minimum=1, maximum=3)
+
+
+class AlphaRunBudgetUsageResponse(StrictStruct, frozen=True):
+    input_tokens: int
+    input_tokens_complete: bool
+    max_input_tokens: int
+    output_tokens: int
+    output_tokens_complete: bool
+    max_output_tokens: int
+    latency_ms: int
+    max_latency_ms: int
+    cost_microusd: int
+    cost_microusd_complete: bool
+    max_cost_microusd: int
+
+    def __post_init__(self) -> None:
+        for value in (
+            self.input_tokens,
+            self.max_input_tokens,
+            self.output_tokens,
+            self.max_output_tokens,
+            self.latency_ms,
+            self.max_latency_ms,
+            self.cost_microusd,
+            self.max_cost_microusd,
+        ):
+            _bounded_integer(value, minimum=0, maximum=2**63 - 1)
+        if not all(
+            isinstance(value, bool)
+            for value in (
+                self.input_tokens_complete,
+                self.output_tokens_complete,
+                self.cost_microusd_complete,
+            )
+        ):
+            raise WireContractError()
+
+
+class AlphaRunQueryItem(StrictStruct, frozen=True):
+    queued_cursor: int
+    run: AlphaRunResponse
+    nodes: tuple[AlphaRunNodeQueryResponse, ...]
+    usage: AlphaRunBudgetUsageResponse | None = None
+
+
+class AlphaRunQueryResponse(StrictStruct, frozen=True):
+    query: AlphaRunQueryRequest
+    scanned_events: int
+    runs: tuple[AlphaRunQueryItem, ...]
+    next_cursor: int
+    has_more: bool
+    schema_version: Literal["alpha-run-query/v1"] = "alpha-run-query/v1"
 
 
 class AlphaEventResponse(StrictStruct, frozen=True):
@@ -564,7 +694,11 @@ def _digest(value: str) -> None:
 
 
 __all__ = [
+    "ALPHA_RUN_QUERY_MEDIA_TYPE",
+    "ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE",
     "MAX_ALPHA_EVENT_PAGE_SIZE",
+    "MAX_ALPHA_RUN_QUERY_PAGE_SIZE",
+    "MAX_ALPHA_RUN_QUERY_SCAN_EVENTS",
     "AlphaAcceptanceCheck",
     "AlphaEffect",
     "AlphaEventPageResponse",
@@ -579,6 +713,12 @@ __all__ = [
     "AlphaProjectRequest",
     "AlphaProjectResponse",
     "AlphaReplayResponse",
+    "AlphaRunBudgetUsageResponse",
+    "AlphaRunNodeQueryResponse",
+    "AlphaRunNodeStatus",
+    "AlphaRunQueryItem",
+    "AlphaRunQueryRequest",
+    "AlphaRunQueryResponse",
     "AlphaRunRequest",
     "AlphaRunResponse",
     "AlphaRunStatus",

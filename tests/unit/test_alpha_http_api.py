@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, cast
 
+import msgspec
 from litestar.testing import TestClient
 
 from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
@@ -14,6 +15,8 @@ from blackcell.interfaces import (
     ServiceScope,
 )
 from blackcell.interfaces.http import (
+    ALPHA_RUN_QUERY_MEDIA_TYPE,
+    ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
     AlphaCancelRunRequest,
     AlphaEventPageResponse,
     AlphaIntentRequest,
@@ -23,6 +26,8 @@ from blackcell.interfaces.http import (
     AlphaProjectRequest,
     AlphaProjectResponse,
     AlphaReplayResponse,
+    AlphaRunQueryRequest,
+    AlphaRunQueryResponse,
     AlphaRunRequest,
     AlphaRunResponse,
     create_http_app,
@@ -135,12 +140,135 @@ def test_alpha_cancel_route_is_authenticated_typed_and_async(tmp_path: Path) -> 
     assert service.principal_ids[-1] == "client:test"
 
 
+def test_alpha_run_query_is_safe_cacheable_typed_and_discoverable(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    runtime = AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
+    service = _AlphaHttpPort(runtime)
+    query = AlphaRunQueryRequest(
+        schema_version="alpha-run-query-request/v1",
+        statuses=("queued",),
+        project_ids=("project-1",),
+        limit=10,
+    )
+    headers = {
+        **_auth(),
+        "accept": ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
+        "content-type": ALPHA_RUN_QUERY_MEDIA_TYPE,
+    }
+
+    with _client(service) as client:
+        client.post("/api/alpha/v1/projects", json=_project_body(repository), headers=_auth())
+        client.post("/api/alpha/v1/intents", json=_intent_body(), headers=_auth())
+        client.post(
+            "/api/alpha/v1/plans",
+            json=_plan_body(_base_commit(repository)),
+            headers=_auth(),
+        )
+        client.post("/api/alpha/v1/runs", json=_run_body(), headers=_auth())
+        before = runtime.list_events(after_cursor=0, limit=20)
+        response = client.request(
+            "QUERY",
+            "/api/alpha/v1/run-query",
+            content=msgspec.json.encode(query),
+            headers=headers,
+        )
+        conditional = client.request(
+            "QUERY",
+            "/api/alpha/v1/run-query",
+            content=msgspec.json.encode(query),
+            headers={**headers, "if-none-match": response.headers["etag"]},
+        )
+        head = client.head("/api/alpha/v1/run-query")
+        options = client.options("/api/alpha/v1/run-query")
+        after = runtime.list_events(after_cursor=0, limit=20)
+
+    decoded = msgspec.json.decode(response.content, type=AlphaRunQueryResponse)
+    assert response.status_code == 200
+    assert response.headers["content-type"].split(";", 1)[0] == ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE
+    assert response.headers["accept-query"] == ALPHA_RUN_QUERY_MEDIA_TYPE
+    assert response.headers["allow"] == "HEAD, OPTIONS, QUERY"
+    assert decoded.query == query
+    assert tuple(item.run.run_id for item in decoded.runs) == ("run-1",)
+    assert decoded.runs[0].run.status == "queued"
+    assert tuple(node.node_id for node in decoded.runs[0].nodes) == ("inspect", "verify")
+    assert conditional.status_code == 304
+    assert conditional.content == b""
+    assert head.status_code == 200
+    assert head.content == b""
+    assert options.status_code == 204
+    assert options.headers["accept-query"] == ALPHA_RUN_QUERY_MEDIA_TYPE
+    assert after == before
+
+
+def test_alpha_run_query_rejects_boundary_failures_before_service(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    service = _AlphaHttpPort(
+        AlphaRuntimeApiService(EventStore(tmp_path / "state.sqlite3"), repository)
+    )
+    valid = msgspec.json.encode(AlphaRunQueryRequest(schema_version="alpha-run-query-request/v1"))
+    vendor_headers = {
+        **_auth(),
+        "accept": ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
+        "content-type": ALPHA_RUN_QUERY_MEDIA_TYPE,
+    }
+
+    with _client(service) as client:
+        unauthenticated = client.request(
+            "QUERY",
+            "/api/alpha/v1/run-query",
+            content=valid,
+            headers={key: value for key, value in vendor_headers.items() if key != "authorization"},
+        )
+        missing_content_type = client.request(
+            "QUERY",
+            "/api/alpha/v1/run-query",
+            content=valid,
+            headers={**_auth(), "accept": ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE},
+        )
+        unsupported = client.request(
+            "QUERY",
+            "/api/alpha/v1/run-query",
+            content=valid,
+            headers={**vendor_headers, "content-type": "application/json"},
+        )
+        unacceptable = client.request(
+            "QUERY",
+            "/api/alpha/v1/run-query",
+            content=valid,
+            headers={**vendor_headers, "accept": "text/plain"},
+        )
+        malformed = client.request(
+            "QUERY",
+            "/api/alpha/v1/run-query",
+            content=b'{"limit": 1, "limit": 2}',
+            headers=vendor_headers,
+        )
+        unprocessable = client.request(
+            "QUERY",
+            "/api/alpha/v1/run-query",
+            content=b'{"schema_version":"alpha-run-query-request/v1","limit":0}',
+            headers=vendor_headers,
+        )
+        wrong_method = client.post("/api/alpha/v1/run-query", headers=_auth())
+
+    assert unauthenticated.status_code == 401
+    assert missing_content_type.status_code == 400
+    assert unsupported.status_code == 415
+    assert unsupported.headers["accept-query"] == ALPHA_RUN_QUERY_MEDIA_TYPE
+    assert unacceptable.status_code == 406
+    assert malformed.status_code == 400
+    assert unprocessable.status_code == 422
+    assert wrong_method.status_code == 405
+    assert service.run_queries == 0
+
+
 class _AlphaHttpPort:
     def __init__(self, service: AlphaRuntimeApiService) -> None:
         self.service = service
         self.principal_ids: list[str] = []
         self.run_submissions = 0
         self.cancellations = 0
+        self.run_queries = 0
 
     def register_alpha_project(
         self,
@@ -181,6 +309,10 @@ class _AlphaHttpPort:
 
     def inspect_alpha_run(self, run_id: str) -> AlphaRunResponse:
         return self.service.inspect_run(run_id)
+
+    def query_alpha_runs(self, request: AlphaRunQueryRequest) -> AlphaRunQueryResponse:
+        self.run_queries += 1
+        return self.service.query_runs(request)
 
     def cancel_alpha_run(
         self,
@@ -228,7 +360,7 @@ def _project_body(repository: Path) -> dict[str, object]:
         "project_id": "project-1",
         "root": str(repository.resolve()),
         "configuration_provider": "kernform",
-        "configuration_version": "0.1.0",
+        "configuration_version": "0.2.0",
         "configuration_digest": _DIGEST,
         "idempotency_key": "project-1",
     }

@@ -43,15 +43,17 @@ references an existing owner-only environment file, is idempotent for byte-ident
 and never writes credentials or starts the service implicitly. Other platforms retain foreground
 API mode; configured alpha acceptance fails closed where the Bubblewrap contract is unavailable.
 
-Kernform integration is an argv-only subprocess adapter pinned initially to version `0.1.0` and
-`kernform.command/v1`. BlackCell validates bounded agent-mode JSON, then separately closes the
-command-specific `check` and `init` result payloads. Check results must carry the exact conformance
-set, bounded deterministic requirements, catalog identity, mode, and file count. Init results must
-carry a bounded operation count and exact plan, state, and evidence identities whose canonical paths
-match the two accepted in-root artifacts. Unknown result fields, semantic status mismatches, duplicate
-requirements, or path drift fail closed. A disposable interoperability probe against the current
-Kernform 0.1.0 Python/Rust checkout initialized an API/web project and checked all 39 managed files
-as conformant through this adapter. BlackCell does not import Kernform's Python/Rust internals. The
+Kernform integration is an argv-only subprocess adapter pinned to version `0.2.0` and
+`kernform.command/v2`. BlackCell validates bounded agent-mode JSON, then separately closes the
+command-specific `compile`, `check`, and `init` result payloads. Compile results must carry a v2
+plan, valid catalog and plan identities, composable signature relationships, unique operations,
+and repository-relative operation paths. Check results accept only the documented source, managed,
+or explicit legacy-migration shapes. Init results must carry a bounded operation count and exact
+plan and state identities whose canonical path matches the accepted in-root managed-state artifact.
+Unknown result fields, semantic status mismatches, or path drift fail closed. A disposable
+interoperability probe against the current Kernform 0.2.0 Python/Rust checkout compiled a v2 form,
+initialized an `sdk + cli` project, and checked all 40 managed files as conformant through this
+adapter. BlackCell does not import Kernform's Python/Rust internals. The
 accepted Python modular monolith remains the implementation baseline; no BlackCell Rust or PyO3
 rewrite is authorized.
 
@@ -437,16 +439,19 @@ unavailable. The provider-facing schema now excludes an empty operations array b
 domain parser. This is failure-path and recovery evidence, not successful output-quality evidence.
 
 The foreground `alpha-worker` process now composes that coordinator only from an explicit closed
-`blackcell.alpha-worker-config/v1` JSON file. The file must be an absolute, canonical, owner-owned
+`blackcell.alpha-worker-config/v3` JSON file. The file must be an absolute, canonical, owner-owned
 mode-`0600` regular file outside the project repository. Its isolation root must already be an
 owner-only mode-`0700` directory. The provider section fixes the profile and model identities,
-canonical Codex and Git executables, non-secret classification ceiling, `remote-allowed` locality,
+one explicit `agy-cli` or `codex-cli` adapter, canonical provider and Git executables, a non-secret
+classification ceiling, `remote-allowed` locality,
 token/cost/deadline ceilings, and a name-only environment allowlist. Missing allowlisted variables
 fail startup; `BLACKCELL_*`, loader, Python, and Git control variables cannot be forwarded. Thus the
-Codex subprocess receives only specifically admitted values and never inherits the daemon API token
+provider subprocess receives only specifically admitted values and never inherits the daemon API token
 or ambient process environment. Absolute provider executables are identity-checked again before
-each call, canonical request content stays on stdin, and Codex user and repository configuration is
-ignored.
+each call and canonical request content stays on stdin. The AGY boundary pins version `1.1.7`,
+delegates existing-session authentication entirely to AGY, rejects credential-path authority in
+BlackCell configuration, and never invokes the decommissioning Gemini CLI. The Codex boundary
+continues to ignore user and repository configuration.
 
 The isolation section fixes the worktree root, command alias-to-executable bindings, optional
 read-only runtime roots, Bubblewrap support executables, and all process/filesystem resource limits.
@@ -464,6 +469,18 @@ uses the same composition for diagnostics. The durable pre-dispatch fence preven
 duplicate invocation across worker restart, but it is deliberately not an external exactly-once
 claim: an abruptly orphaned provider process may still be running, and no provider-side status API
 exists to settle that uncertainty. An operator must reconcile the marked attempt.
+
+That foreground composition also owns the alpha-v2 application service. A proposal-only REASON
+profile produces a closed task DAG whose check identifiers must resolve through the admitted
+goal's host-owned command catalog. The deterministic compiler freezes each plan version, and the
+policy kernel records authorization before `ProductionAlphaV2AttemptExecutor` may create a Git
+worktree. The executor collects bounded evidence, asks the selected `agy-cli` or `codex-cli`
+adapter only for an inert text-change proposal, applies admitted effects, commits them, and runs the
+host commands through the existing Bubblewrap boundary. A repair starts from the failed attempt's
+committed head; repeated failures without a new semantic evidence digest escalate. The same event
+database and artifact store remain authoritative, checkpoints accelerate tail replay, and an
+enabled runtime OTel recorder exports metadata-only run, plan, task, workspace, and attempt spans.
+Repeated-error Praxis candidates contain durable identifiers and digests rather than raw logs.
 
 The model gateway, persistence, retrieval, solvers, execution, telemetry, and HTTP server are edge
 adapters. Workflows coordinate feature ports. Only bootstrap code assembles concrete dependencies.

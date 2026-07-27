@@ -237,8 +237,8 @@ alpha:
     - Litestar web UI
   project_configuration:
     provider: Kernform
-    supported_version: "0.1.0"
-    wire_schema: kernform.command/v1
+    supported_version: "0.2.0"
+    wire_schema: kernform.command/v2
     transport: argv-only subprocess
   legacy_runtime:
     component: DailyOperatorV2Workflow

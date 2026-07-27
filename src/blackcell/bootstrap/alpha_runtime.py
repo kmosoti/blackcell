@@ -24,6 +24,7 @@ from blackcell.adapters.execution.worktree import (
 )
 from blackcell.interfaces.http.alpha_contracts import (
     MAX_ALPHA_EVENT_PAGE_SIZE,
+    MAX_ALPHA_RUN_QUERY_SCAN_EVENTS,
     AlphaCancelRunRequest,
     AlphaEventPageResponse,
     AlphaEventResponse,
@@ -35,25 +36,35 @@ from blackcell.interfaces.http.alpha_contracts import (
     AlphaPlanResponse,
     AlphaProjectRequest,
     AlphaProjectResponse,
+    AlphaReplayArtifactIntegrity,
     AlphaReplayArtifactResponse,
     AlphaReplayFindingResponse,
     AlphaReplayResponse,
+    AlphaRunBudgetUsageResponse,
+    AlphaRunNodeQueryResponse,
+    AlphaRunQueryItem,
+    AlphaRunQueryRequest,
+    AlphaRunQueryResponse,
     AlphaRunRequest,
     AlphaRunResponse,
+    AlphaRunStatus,
     AlphaVerificationReplayResponse,
     alpha_plan_topological_order,
 )
 from blackcell.interfaces.http.ports import RuntimeApiError, RuntimeApiFailureCode
 from blackcell.kernel import (
+    ArtifactIntegrityError,
+    ArtifactNotFoundError,
     ConcurrencyError,
     EventConflictError,
     EventEnvelope,
     EventStore,
     IdempotencyConflict,
     JsonValue,
+    ProjectionRunner,
     utc_now,
 )
-from blackcell.kernel._json import JsonInput, json_digest, thaw_json
+from blackcell.kernel._json import JsonInput, bytes_digest, json_digest, thaw_json
 from blackcell.orchestration.alpha_lifecycle import (
     ALPHA_EVENT_SOURCE,
     ALPHA_NODE_CANCELED,
@@ -101,6 +112,25 @@ from blackcell.orchestration.alpha_review_lifecycle import (
     AlphaReviewCandidate,
     alpha_review_id,
 )
+from blackcell.orchestration.alpha_v2 import (
+    ALPHA_V2_PLAN_ADMITTED,
+    ALPHA_V2_TASK_VERIFIED,
+    AlphaGoalSpec,
+    AlphaPlanVersion,
+    AlphaVerificationCheck,
+    alpha_plan_from_payload,
+)
+from blackcell.orchestration.alpha_v2 import (
+    RunLifecycleStatus as AlphaKernelRunStatus,
+)
+from blackcell.orchestration.alpha_v2 import (
+    TaskLifecycleStatus as AlphaKernelTaskStatus,
+)
+from blackcell.orchestration.alpha_v2_runtime import (
+    AlphaV2RunProjection,
+    AlphaV2RunState,
+    AlphaV2RuntimeError,
+)
 from blackcell.orchestration.alpha_verify_lifecycle import ALPHA_VERIFICATION_EVENT_TYPES
 from blackcell.orchestration.alpha_verify_replay import replay_alpha_verification
 
@@ -119,6 +149,17 @@ _ALPHA_EVENT_TYPES = frozenset(
 )
 _PROVIDER_DISPATCH_AMBIGUOUS = "alpha-provider-dispatch-ambiguous"
 _MAX_RETAINED_SUCCESSFUL_WORKTREES = 1_024
+_MAX_KERNEL_REPLAY_ARTIFACTS = 4_096
+_MAX_KERNEL_REPLAY_BYTES = 512 * 1024 * 1024
+_ALPHA_KERNEL_TERMINAL_STATUSES = frozenset(
+    {
+        AlphaKernelRunStatus.SUCCEEDED,
+        AlphaKernelRunStatus.BLOCKED,
+        AlphaKernelRunStatus.CANCELED,
+        AlphaKernelRunStatus.ESCALATED,
+        AlphaKernelRunStatus.TERMINAL_FAILURE,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +168,14 @@ class AlphaReadyNode:
 
     run_id: str
     node: AlphaPlanNode
+
+
+@dataclass(frozen=True, slots=True)
+class AlphaGeneratedRun:
+    """One public v1 run awaiting or resuming deterministic generated-plan execution."""
+
+    run_id: str
+    goal: AlphaGoalSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +218,7 @@ class _LoadedRun:
     plan: AlphaPlanRequest
     events: tuple[EventEnvelope, ...]
     state: AlphaRunLifecycleState
+    kernel_state: AlphaV2RunState | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +226,14 @@ class _RunTransition:
     event_type: str
     payload: Mapping[str, JsonInput]
     idempotency_key: str
+
+
+@dataclass(frozen=True, slots=True)
+class _KernelArtifactReport:
+    status: AlphaReplayArtifactIntegrity
+    artifacts: tuple[AlphaReplayArtifactResponse, ...]
+    findings: tuple[AlphaReplayFindingResponse, ...]
+    evidence_digest: str
 
 
 class AlphaRuntimeApiService:
@@ -274,6 +332,8 @@ class AlphaRuntimeApiService:
             or intent.intent_id != request.intent_id
         ):
             raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+        if request.planning_mode == "generated":
+            _validate_generated_plan(intent, request)
         _require_reference(intent_event, "project", project_event)
         _require_review_evidence_capacity(request)
         plan_stream = _plan_stream(request.plan_id)
@@ -344,6 +404,53 @@ class AlphaRuntimeApiService:
         _identifier(run_id)
         return _run_response(self._load_run(run_id))
 
+    def query_runs(self, request: AlphaRunQueryRequest) -> AlphaRunQueryResponse:
+        """Search public run projections without appending events or reading artifact content."""
+
+        if not isinstance(request, AlphaRunQueryRequest):
+            raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST)
+        cursor = request.after_cursor
+        scanned_events = 0
+        runs: list[AlphaRunQueryItem] = []
+        exhausted = False
+        while scanned_events < MAX_ALPHA_RUN_QUERY_SCAN_EVENTS and len(runs) < request.limit:
+            remaining = MAX_ALPHA_RUN_QUERY_SCAN_EVENTS - scanned_events
+            page = self._events.read_all(after_position=cursor, limit=min(200, remaining))
+            if not page:
+                exhausted = True
+                break
+            stopped_early = False
+            for event in page:
+                cursor = _global_position(event)
+                scanned_events += 1
+                if (
+                    event.source == ALPHA_EVENT_SOURCE
+                    and event.event_type == ALPHA_RUN_QUEUED
+                    and event.stream_id.startswith("alpha:run:")
+                ):
+                    run_id = event.stream_id.removeprefix("alpha:run:")
+                    loaded = self._load_run(run_id)
+                    if _matches_run_query(loaded, request):
+                        runs.append(_run_query_item(loaded))
+                if scanned_events >= MAX_ALPHA_RUN_QUERY_SCAN_EVENTS or len(runs) >= request.limit:
+                    stopped_early = True
+                    break
+            if stopped_early:
+                break
+            if len(page) < min(200, remaining):
+                exhausted = True
+                break
+        has_more = (
+            False if exhausted else bool(self._events.read_all(after_position=cursor, limit=1))
+        )
+        return AlphaRunQueryResponse(
+            query=request,
+            scanned_events=scanned_events,
+            runs=tuple(runs),
+            next_cursor=cursor,
+            has_more=has_more,
+        )
+
     def next_ready_node(self) -> AlphaReadyNode | None:
         """Return the first dependency-ready node in global queued-run order."""
 
@@ -354,6 +461,8 @@ class AlphaRuntimeApiService:
                 not in {AlphaRunLifecycleStatus.QUEUED, AlphaRunLifecycleStatus.RUNNING}
                 or loaded.state.cancellation_requested
                 or loaded.state.active_lease is not None
+                or loaded.kernel_state is not None
+                or loaded.plan.planning_mode == "generated"
             ):
                 continue
             states = {node.node_id: node for node in loaded.state.nodes}
@@ -366,6 +475,24 @@ class AlphaRuntimeApiService:
                     for dependency in node.depends_on
                 ):
                     return AlphaReadyNode(run_id=run_id, node=node)
+        return None
+
+    def next_generated_run(self) -> AlphaGeneratedRun | None:
+        """Return the first queued generated-plan run from the public run order."""
+
+        for run_id in self._run_ids():
+            loaded = self._load_run(run_id)
+            kernel = loaded.kernel_state
+            if (
+                loaded.plan.planning_mode != "generated"
+                or loaded.state.status
+                not in {AlphaRunLifecycleStatus.QUEUED, AlphaRunLifecycleStatus.RUNNING}
+                or loaded.state.cancellation_requested
+                or loaded.state.active_lease is not None
+                or (kernel is not None and kernel.status in _ALPHA_KERNEL_TERMINAL_STATUSES)
+            ):
+                continue
+            return AlphaGeneratedRun(run_id, _generated_goal(loaded))
         return None
 
     def should_cancel_node(self, spec: WorktreeExecutionSpec) -> bool:
@@ -386,6 +513,19 @@ class AlphaRuntimeApiService:
             or active.worker_id != spec.lease.worker_id
         )
 
+    def should_cancel_generated_run(self, run_id: str) -> bool:
+        """Poll the durable public cancellation fence for generated-plan execution."""
+
+        try:
+            loaded = self._load_run(run_id)
+        except RuntimeApiError:
+            return True
+        return loaded.state.cancellation_requested or loaded.state.status in {
+            AlphaRunLifecycleStatus.CANCELED,
+            AlphaRunLifecycleStatus.FAILED,
+            AlphaRunLifecycleStatus.RECONCILIATION_REQUIRED,
+        }
+
     def cancel_run(
         self,
         run_id: str,
@@ -402,6 +542,11 @@ class AlphaRuntimeApiService:
         loaded = self._load_run(run_id)
         if loaded.state.status is AlphaRunLifecycleStatus.CANCELED:
             return _run_response(loaded)
+        effective_status = _effective_run_status(loaded)
+        if effective_status == "canceled":
+            return _run_response(loaded)
+        if effective_status in {"succeeded", "failed", "reconciliation-required"}:
+            raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
         if loaded.state.status in {
             AlphaRunLifecycleStatus.SUCCEEDED,
             AlphaRunLifecycleStatus.FAILED,
@@ -454,7 +599,8 @@ class AlphaRuntimeApiService:
         _principal(worker_id)
         loaded = self._load_run(run_id)
         if (
-            loaded.state.status
+            loaded.kernel_state is not None
+            or loaded.state.status
             not in {
                 AlphaRunLifecycleStatus.QUEUED,
                 AlphaRunLifecycleStatus.RUNNING,
@@ -911,7 +1057,7 @@ class AlphaRuntimeApiService:
         scanned = self._events.read_all(after_position=after_cursor, limit=limit + 1)
         window = scanned[:limit]
         alpha_events = tuple(
-            _event_response(event) for event in window if event.event_type.startswith("alpha.")
+            _event_response(event) for event in window if event.event_type in _ALPHA_EVENT_TYPES
         )
         next_cursor = _global_position(window[-1]) if window else after_cursor
         return AlphaEventPageResponse(
@@ -949,13 +1095,53 @@ class AlphaRuntimeApiService:
                 "plan": _request_value(plan_event),
                 "run": _request_value(run_event),
                 "lifecycle": alpha_run_lifecycle_payload(loaded.state),
+                "kernel": AlphaV2RunProjection().dump_state(loaded.kernel_state),
             }
         )
-        artifact_report = verify_alpha_run_artifacts(
-            self._artifacts,
-            run_id=run_id,
-            nodes=_artifact_expectations(loaded),
+        kernel_artifact_report = (
+            None if loaded.kernel_state is None else self._verify_kernel_artifacts(loaded)
         )
+        artifact_report = (
+            verify_alpha_run_artifacts(
+                self._artifacts,
+                run_id=run_id,
+                nodes=_artifact_expectations(loaded),
+            )
+            if kernel_artifact_report is None
+            else None
+        )
+        if kernel_artifact_report is not None:
+            artifact_integrity = kernel_artifact_report.status
+            artifacts = kernel_artifact_report.artifacts
+            findings = kernel_artifact_report.findings
+            artifact_evidence_digest = kernel_artifact_report.evidence_digest
+        else:
+            assert artifact_report is not None
+            artifact_integrity = artifact_report.status.value
+            artifacts = tuple(
+                AlphaReplayArtifactResponse(
+                    node_id=artifact.node_id,
+                    role=artifact.role.value,
+                    check_id=artifact.check_id,
+                    digest=artifact.digest,
+                    size_bytes=artifact.size_bytes,
+                    media_type=artifact.media_type,
+                    encoding=artifact.encoding,
+                    verified=artifact.verified,
+                )
+                for artifact in artifact_report.artifacts
+            )
+            findings = tuple(
+                AlphaReplayFindingResponse(
+                    code=finding.code.value,
+                    node_id=finding.node_id,
+                    role=None if finding.role is None else finding.role.value,
+                    check_id=finding.check_id,
+                    artifact_digest=finding.artifact_digest,
+                )
+                for finding in artifact_report.findings
+            )
+            artifact_evidence_digest = artifact_report.evidence_digest
         verification_report = replay_alpha_verification(
             self._events,
             self._artifacts,
@@ -969,31 +1155,10 @@ class AlphaRuntimeApiService:
             run=run_response,
             processed_events=3 + len(loaded.events),
             state_digest=state_digest,
-            artifact_integrity=artifact_report.status.value,
-            artifacts=tuple(
-                AlphaReplayArtifactResponse(
-                    node_id=artifact.node_id,
-                    role=artifact.role.value,
-                    check_id=artifact.check_id,
-                    digest=artifact.digest,
-                    size_bytes=artifact.size_bytes,
-                    media_type=artifact.media_type,
-                    encoding=artifact.encoding,
-                    verified=artifact.verified,
-                )
-                for artifact in artifact_report.artifacts
-            ),
-            findings=tuple(
-                AlphaReplayFindingResponse(
-                    code=finding.code.value,
-                    node_id=finding.node_id,
-                    role=None if finding.role is None else finding.role.value,
-                    check_id=finding.check_id,
-                    artifact_digest=finding.artifact_digest,
-                )
-                for finding in artifact_report.findings
-            ),
-            artifact_evidence_digest=artifact_report.evidence_digest,
+            artifact_integrity=artifact_integrity,
+            artifacts=artifacts,
+            findings=findings,
+            artifact_evidence_digest=artifact_evidence_digest,
             verification=AlphaVerificationReplayResponse(
                 lifecycle_status=verification_report.lifecycle_status.value,
                 verification_id=verification_report.verification_id,
@@ -1021,6 +1186,114 @@ class AlphaRuntimeApiService:
                 evidence_digest=verification_report.evidence_digest,
             ),
         )
+
+    def _verify_kernel_artifacts(self, loaded: _LoadedRun) -> _KernelArtifactReport:
+        relationships: list[tuple[str, str]] = []
+        for event in loaded.events:
+            if event.event_type != ALPHA_V2_TASK_VERIFIED:
+                continue
+            payload = _thawed_mapping(event.payload)
+            task_id = payload.get("task_id")
+            digests = payload.get("artifact_digests")
+            if (
+                not isinstance(task_id, str)
+                or not isinstance(digests, list)
+                or not all(isinstance(item, str) for item in digests)
+            ):
+                raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+            relationships.extend((task_id, digest) for digest in cast("list[str]", digests))
+        if not relationships:
+            return _kernel_artifact_report("not-applicable", (), ())
+        if len(relationships) > _MAX_KERNEL_REPLAY_ARTIFACTS:
+            finding = AlphaReplayFindingResponse(
+                code="alpha-replay-artifact-budget-exceeded",
+                node_id=None,
+                role=None,
+                check_id=None,
+                artifact_digest=None,
+            )
+            return _kernel_artifact_report("inconclusive", (), (finding,))
+        if self._artifacts is None:
+            finding = AlphaReplayFindingResponse(
+                code="alpha-replay-artifact-store-unavailable",
+                node_id=None,
+                role=None,
+                check_id=None,
+                artifact_digest=None,
+            )
+            return _kernel_artifact_report("inconclusive", (), (finding,))
+
+        artifacts: list[AlphaReplayArtifactResponse] = []
+        findings: list[AlphaReplayFindingResponse] = []
+        total_bytes = 0
+        status: AlphaReplayArtifactIntegrity = "verified"
+        for task_id, digest in relationships:
+            try:
+                reference = self._artifacts.stat(digest)
+                if total_bytes + reference.size_bytes > _MAX_KERNEL_REPLAY_BYTES:
+                    findings.append(
+                        AlphaReplayFindingResponse(
+                            code="alpha-replay-artifact-budget-exceeded",
+                            node_id=task_id,
+                            role="outcome",
+                            check_id=None,
+                            artifact_digest=digest,
+                        )
+                    )
+                    status = "inconclusive" if status == "verified" else status
+                    break
+                data = self._artifacts.get_bytes(digest, verify=True)
+                verified = len(data) == reference.size_bytes and bytes_digest(data) == digest
+                if not verified:
+                    raise ArtifactIntegrityError(digest)
+                total_bytes += reference.size_bytes
+                artifacts.append(
+                    AlphaReplayArtifactResponse(
+                        node_id=task_id,
+                        role="outcome",
+                        check_id=None,
+                        digest=digest,
+                        size_bytes=reference.size_bytes,
+                        media_type=reference.media_type,
+                        encoding=reference.encoding,
+                        verified=True,
+                    )
+                )
+            except ArtifactNotFoundError:
+                status = "failed"
+                findings.append(
+                    AlphaReplayFindingResponse(
+                        code="alpha-replay-artifact-missing",
+                        node_id=task_id,
+                        role="outcome",
+                        check_id=None,
+                        artifact_digest=digest,
+                    )
+                )
+            except ArtifactIntegrityError:
+                status = "failed"
+                findings.append(
+                    AlphaReplayFindingResponse(
+                        code="alpha-replay-artifact-integrity-failed",
+                        node_id=task_id,
+                        role="outcome",
+                        check_id=None,
+                        artifact_digest=digest,
+                    )
+                )
+            except Exception:
+                if status != "failed":
+                    status = "inconclusive"
+                findings.append(
+                    AlphaReplayFindingResponse(
+                        code="alpha-replay-artifact-read-unavailable",
+                        node_id=task_id,
+                        role="outcome",
+                        check_id=None,
+                        artifact_digest=digest,
+                    )
+                )
+        return _kernel_artifact_report(status, tuple(artifacts), tuple(findings))
 
     def review_candidates(self) -> tuple[AlphaReviewCandidate, ...]:
         """Return successful execution snapshots in durable run order."""
@@ -1195,10 +1468,20 @@ class AlphaRuntimeApiService:
         dependencies = {node.node_id: node.depends_on for node in plan.nodes}
         try:
             state = fold_alpha_run_lifecycle(run_id, dependencies, events)
+            kernel_state = ProjectionRunner().replay(AlphaV2RunProjection(), events).state
         except AlphaLifecycleError as error:
             raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from error
+        except AlphaV2RuntimeError as error:
+            raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from error
         self._validate_worktree_evidence(events, plan)
-        return _LoadedRun(request=request, intent=intent, plan=plan, events=events, state=state)
+        return _LoadedRun(
+            request=request,
+            intent=intent,
+            plan=plan,
+            events=events,
+            state=state,
+            kernel_state=kernel_state,
+        )
 
     def _validate_worktree_evidence(
         self,
@@ -1280,7 +1563,7 @@ class AlphaRuntimeApiService:
             raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST)
         at = _aware_timestamp(recorded_at or utc_now())
         events: list[EventEnvelope] = []
-        causation_id = loaded.state.latest_event.event_id
+        causation_id = loaded.events[-1].event_id
         sequence = loaded.state.stream_sequence
         for transition in transitions:
             sequence += 1
@@ -2017,17 +2300,47 @@ def _provider_context_digest(
 def _run_response(loaded: _LoadedRun) -> AlphaRunResponse:
     request = loaded.request
     state = loaded.state
-    event = state.latest_event
     active = state.active_lease
+    kernel = loaded.kernel_state
+    event = state.latest_event if kernel is None else _kernel_latest_event(loaded, kernel)
+    kernel_active = (
+        None
+        if kernel is None
+        else next(
+            (
+                item
+                for item in kernel.tasks
+                if item.status
+                in {
+                    AlphaKernelTaskStatus.READY,
+                    AlphaKernelTaskStatus.RUNNING,
+                    AlphaKernelTaskStatus.VERIFYING,
+                }
+            ),
+            None,
+        )
+    )
+    kernel_attempt = (
+        0 if kernel is None else max((item.attempts for item in kernel.tasks), default=0)
+    )
     return AlphaRunResponse(
         run_id=request.run_id,
         project_id=request.project_id,
         intent_id=request.intent_id,
         plan_id=request.plan_id,
-        status=state.status.value,
-        cancellation_requested=state.cancellation_requested,
-        active_node_id=None if active is None else active.node_id,
-        attempt=max(node.attempts for node in state.nodes),
+        status=_effective_run_status(loaded),
+        cancellation_requested=(
+            state.cancellation_requested
+            or (kernel is not None and kernel.status is AlphaKernelRunStatus.CANCELED)
+        ),
+        active_node_id=(
+            kernel_active.task_id
+            if kernel_active is not None
+            else None
+            if active is None
+            else active.node_id
+        ),
+        attempt=max(max(node.attempts for node in state.nodes), kernel_attempt),
         fencing_token=max(node.fencing_token for node in state.nodes),
         retained_worktree=any(node.retained_worktree for node in state.nodes),
         principal_id=_event_principal(state.queued_event),
@@ -2035,6 +2348,159 @@ def _run_response(loaded: _LoadedRun) -> AlphaRunResponse:
         cursor=_global_position(event),
         event_digest=event.payload_hash,
     )
+
+
+def _matches_run_query(loaded: _LoadedRun, request: AlphaRunQueryRequest) -> bool:
+    run = loaded.request
+    status = _effective_run_status(loaded)
+    return not (
+        (request.statuses and status not in request.statuses)
+        or (request.project_ids and run.project_id not in request.project_ids)
+        or (request.intent_ids and run.intent_id not in request.intent_ids)
+        or (request.plan_ids and run.plan_id not in request.plan_ids)
+        or (request.run_ids and run.run_id not in request.run_ids)
+    )
+
+
+def _kernel_artifact_report(
+    status: AlphaReplayArtifactIntegrity,
+    artifacts: tuple[AlphaReplayArtifactResponse, ...],
+    findings: tuple[AlphaReplayFindingResponse, ...],
+) -> _KernelArtifactReport:
+    evidence_digest = json_digest(
+        {
+            "status": status,
+            "artifacts": [
+                {
+                    "node_id": item.node_id,
+                    "role": item.role,
+                    "check_id": item.check_id,
+                    "digest": item.digest,
+                    "size_bytes": item.size_bytes,
+                    "media_type": item.media_type,
+                    "encoding": item.encoding,
+                    "verified": item.verified,
+                }
+                for item in artifacts
+            ],
+            "findings": [
+                {
+                    "code": item.code,
+                    "node_id": item.node_id,
+                    "role": item.role,
+                    "check_id": item.check_id,
+                    "artifact_digest": item.artifact_digest,
+                }
+                for item in findings
+            ],
+        }
+    )
+    return _KernelArtifactReport(status, artifacts, findings, evidence_digest)
+
+
+def _run_query_item(loaded: _LoadedRun) -> AlphaRunQueryItem:
+    kernel = loaded.kernel_state
+    if kernel is None:
+        public_nodes = {item.node_id: item for item in loaded.plan.nodes}
+        nodes = tuple(
+            AlphaRunNodeQueryResponse(
+                node_id=node.node_id,
+                status=node.status.value,
+                attempts=node.attempts,
+                fencing_token=node.fencing_token,
+                failure_code=node.failure_code,
+                retained_worktree=node.retained_worktree,
+                head_commit=node.head_commit,
+                depends_on=public_nodes[node.node_id].depends_on,
+            )
+            for node in loaded.state.nodes
+        )
+        usage = None
+    else:
+        kernel_plan = _kernel_plan(loaded)
+        tasks = {item.task_id: item for item in kernel_plan.tasks}
+        nodes = tuple(
+            AlphaRunNodeQueryResponse(
+                node_id=node.task_id,
+                status=node.status.value,
+                attempts=node.attempts,
+                fencing_token=0,
+                failure_code=(
+                    None if node.last_failure_class is None else node.last_failure_class.value
+                ),
+                retained_worktree=node.active_workspace_id is not None,
+                head_commit=node.head_commit,
+                depends_on=tasks[node.task_id].depends_on,
+                max_attempts=tasks[node.task_id].max_attempts,
+            )
+            for node in kernel.tasks
+        )
+        usage = AlphaRunBudgetUsageResponse(
+            input_tokens=kernel.input_tokens,
+            input_tokens_complete=kernel.input_tokens_complete,
+            max_input_tokens=kernel.budget.max_input_tokens,
+            output_tokens=kernel.output_tokens,
+            output_tokens_complete=kernel.output_tokens_complete,
+            max_output_tokens=kernel.budget.max_output_tokens,
+            latency_ms=kernel.latency_ms,
+            max_latency_ms=kernel.budget.max_latency_ms,
+            cost_microusd=kernel.cost_microusd,
+            cost_microusd_complete=kernel.cost_microusd_complete,
+            max_cost_microusd=kernel.budget.max_cost_microusd,
+        )
+    return AlphaRunQueryItem(
+        queued_cursor=_global_position(loaded.state.queued_event),
+        run=_run_response(loaded),
+        nodes=nodes,
+        usage=usage,
+    )
+
+
+def _kernel_plan(loaded: _LoadedRun) -> AlphaPlanVersion:
+    event = next(
+        (item for item in reversed(loaded.events) if item.event_type == ALPHA_V2_PLAN_ADMITTED),
+        None,
+    )
+    if event is None:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    try:
+        plan = alpha_plan_from_payload(_thawed_mapping(event.payload).get("plan"))
+    except (AlphaLifecycleError, TypeError, ValueError) as error:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from error
+    if (
+        loaded.kernel_state is None
+        or plan.plan_id != loaded.kernel_state.plan_id
+        or plan.plan_digest != loaded.kernel_state.plan_digest
+    ):
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT)
+    return plan
+
+
+def _effective_run_status(loaded: _LoadedRun) -> AlphaRunStatus:
+    kernel = loaded.kernel_state
+    if kernel is None:
+        return loaded.state.status.value
+    statuses: dict[AlphaKernelRunStatus, AlphaRunStatus] = {
+        AlphaKernelRunStatus.ADMITTED: "running",
+        AlphaKernelRunStatus.RUNNING: "running",
+        AlphaKernelRunStatus.REPLANNING: "running",
+        AlphaKernelRunStatus.SUCCEEDED: "succeeded",
+        AlphaKernelRunStatus.REPLAN_REQUIRED: "reconciliation-required",
+        AlphaKernelRunStatus.BLOCKED: "reconciliation-required",
+        AlphaKernelRunStatus.CANCELED: "canceled",
+        AlphaKernelRunStatus.ESCALATED: "reconciliation-required",
+        AlphaKernelRunStatus.TERMINAL_FAILURE: "failed",
+    }
+    return statuses[kernel.status]
+
+
+def _kernel_latest_event(loaded: _LoadedRun, state: AlphaV2RunState) -> EventEnvelope:
+    try:
+        return next(
+            event for event in reversed(loaded.events) if event.event_id == state.latest_event_id
+        )
+    except StopIteration as error:
+        raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from error
 
 
 def _event_response(event: EventEnvelope) -> AlphaEventResponse:
@@ -2301,6 +2767,53 @@ def _plan_stream(plan_id: str) -> str:
     return f"alpha:plan:{plan_id}"
 
 
+def _validate_generated_plan(intent: AlphaIntentRequest, plan: AlphaPlanRequest) -> None:
+    if intent.unresolved_questions:
+        raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST)
+    _generated_checks(plan)
+
+
+def _generated_goal(loaded: _LoadedRun) -> AlphaGoalSpec:
+    identity = json_digest(
+        {
+            "run_id": loaded.request.run_id,
+            "project_id": loaded.request.project_id,
+            "intent_id": loaded.request.intent_id,
+            "bounds_plan_id": loaded.request.plan_id,
+        }
+    )
+    return AlphaGoalSpec(
+        goal_id=f"goal-{identity.removeprefix('sha256:')[:32]}",
+        project_id=loaded.request.project_id,
+        intent_id=loaded.request.intent_id,
+        objective=loaded.intent.objective,
+        base_commit=loaded.plan.base_commit,
+        constraints=tuple(sorted({*loaded.intent.constraints, *loaded.intent.assumptions})),
+        allowed_paths=tuple(
+            sorted({path for node in loaded.plan.nodes for path in node.allowed_paths})
+        ),
+        verification_checks=_generated_checks(loaded.plan),
+        max_attempts=3,
+        same_error_limit=2,
+    )
+
+
+def _generated_checks(plan: AlphaPlanRequest) -> tuple[AlphaVerificationCheck, ...]:
+    checks: dict[str, AlphaVerificationCheck] = {}
+    for node in plan.nodes:
+        for check in node.checks:
+            converted = AlphaVerificationCheck(
+                check.check_id,
+                check.argv,
+                check.expected_exit_code,
+            )
+            prior = checks.get(check.check_id)
+            if prior is not None and prior != converted:
+                raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST)
+            checks[check.check_id] = converted
+    return tuple(checks[key] for key in sorted(checks))
+
+
 def _require_review_evidence_capacity(request: AlphaPlanRequest) -> None:
     required_items = sum(
         1 + (4 * len(node.checks)) + (3 * node.budget.max_changed_files) for node in request.nodes
@@ -2314,6 +2827,7 @@ def _run_stream(run_id: str) -> str:
 
 
 __all__ = [
+    "AlphaGeneratedRun",
     "AlphaPreparedNode",
     "AlphaReadyNode",
     "AlphaRuntimeApiService",

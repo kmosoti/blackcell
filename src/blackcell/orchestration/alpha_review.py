@@ -483,15 +483,15 @@ class AlphaReviewProviderResult:
     profile_id: str
     adapter_id: str
     model_id: str
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
     latency_ms: int
-    cost_microusd: int
+    cost_microusd: int | None
     completed_at: datetime
     schema_version: str = ALPHA_REVIEW_PROVIDER_RESULT_SCHEMA
 
     def __post_init__(self) -> None:
-        usage = (self.input_tokens, self.output_tokens, self.latency_ms, self.cost_microusd)
+        optional_usage = (self.input_tokens, self.output_tokens, self.cost_microusd)
         if (
             self.schema_version != ALPHA_REVIEW_PROVIDER_RESULT_SCHEMA
             or not isinstance(self.proposal, AlphaReviewProposal)
@@ -501,9 +501,13 @@ class AlphaReviewProviderResult:
                 for value in (self.profile_id, self.adapter_id, self.model_id)
             )
             or any(
-                isinstance(value, bool) or not isinstance(value, int) or value < 0
-                for value in usage
+                value is not None
+                and (isinstance(value, bool) or not isinstance(value, int) or value < 0)
+                for value in optional_usage
             )
+            or isinstance(self.latency_ms, bool)
+            or not isinstance(self.latency_ms, int)
+            or self.latency_ms < 0
             or not isinstance(self.completed_at, datetime)
             or self.completed_at.tzinfo is None
             or self.completed_at.utcoffset() is None
@@ -717,11 +721,18 @@ def alpha_review_provider_result_from_mapping(
     text_values = tuple(
         raw.get(key) for key in ("provider_output_digest", "profile_id", "adapter_id", "model_id")
     )
-    integer_values = tuple(
-        raw.get(key) for key in ("input_tokens", "output_tokens", "latency_ms", "cost_microusd")
-    )
-    if not all(isinstance(item, str) for item in text_values) or any(
-        isinstance(item, bool) or not isinstance(item, int) for item in integer_values
+    input_tokens = raw.get("input_tokens")
+    output_tokens = raw.get("output_tokens")
+    latency_ms = raw.get("latency_ms")
+    cost_microusd = raw.get("cost_microusd")
+    if (
+        not all(isinstance(item, str) for item in text_values)
+        or any(
+            item is not None and (isinstance(item, bool) or not isinstance(item, int))
+            for item in (input_tokens, output_tokens, cost_microusd)
+        )
+        or isinstance(latency_ms, bool)
+        or not isinstance(latency_ms, int)
     ):
         raise AlphaReviewContractError(AlphaReviewContractFailureCode.INVALID_PROPOSAL)
     return AlphaReviewProviderResult(
@@ -730,10 +741,10 @@ def alpha_review_provider_result_from_mapping(
         profile_id=cast("str", text_values[1]),
         adapter_id=cast("str", text_values[2]),
         model_id=cast("str", text_values[3]),
-        input_tokens=cast("int", integer_values[0]),
-        output_tokens=cast("int", integer_values[1]),
-        latency_ms=cast("int", integer_values[2]),
-        cost_microusd=cast("int", integer_values[3]),
+        input_tokens=cast("int | None", input_tokens),
+        output_tokens=cast("int | None", output_tokens),
+        latency_ms=latency_ms,
+        cost_microusd=cast("int | None", cost_microusd),
         completed_at=completed,
     )
 

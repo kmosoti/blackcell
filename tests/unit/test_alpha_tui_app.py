@@ -18,12 +18,20 @@ from blackcell.interfaces.http import (
     AlphaProjectRequest,
     AlphaReplayFindingResponse,
     AlphaReplayResponse,
+    AlphaRunBudgetUsageResponse,
+    AlphaRunNodeQueryResponse,
+    AlphaRunQueryItem,
     AlphaRunRequest,
     AlphaRunResponse,
     StrictStruct,
     encode_contract,
 )
-from blackcell.interfaces.tui.app import AlphaTuiApp
+from blackcell.interfaces.tui.app import (
+    AlphaTuiApp,
+    _run_summary,
+    _runs_summary,
+    _task_graph_summary,
+)
 from blackcell.interfaces.tui.controller import AlphaTuiProjection
 from blackcell.kernel import EventStore
 from tests.unit.test_alpha_runtime import _intent, _plan, _project, _repository, _run
@@ -291,7 +299,7 @@ def test_alpha_tui_app_projects_events_and_run_operations_without_blocking(
 
     frame = _Frame()
     app.render(frame)
-    assert len(frame.widgets) == 5
+    assert len(frame.widgets) == 6
     assert all(isinstance(widget, Paragraph) for widget, _area in frame.widgets)
     assert controller.calls == ["connect", "refresh", "status", "replay", "cancel"]
     assert controller.cancel_request is not None
@@ -469,6 +477,66 @@ def test_alpha_tui_app_runs_and_restores_injected_async_terminal(tmp_path: Path)
     assert terminal.draw_count == 2
     assert app.view.quit_requested is True
     assert all(isinstance(widget, Paragraph) for widget, _area in terminal.frame.widgets)
+
+
+def test_alpha_tui_projects_generated_dag_attempt_limits_and_unknown_usage(
+    tmp_path: Path,
+) -> None:
+    run, _replay, _canceled, _events = _runtime_records(tmp_path)
+    nodes = (
+        AlphaRunNodeQueryResponse(
+            node_id="inspect",
+            status="succeeded",
+            attempts=1,
+            fencing_token=1,
+            failure_code=None,
+            retained_worktree=False,
+            head_commit="a" * 40,
+            depends_on=(),
+            max_attempts=2,
+        ),
+        AlphaRunNodeQueryResponse(
+            node_id="implement",
+            status="ready",
+            attempts=1,
+            fencing_token=2,
+            failure_code=None,
+            retained_worktree=False,
+            head_commit=None,
+            depends_on=("inspect",),
+            max_attempts=3,
+        ),
+    )
+    usage = AlphaRunBudgetUsageResponse(
+        input_tokens=17,
+        input_tokens_complete=False,
+        max_input_tokens=100,
+        output_tokens=5,
+        output_tokens_complete=True,
+        max_output_tokens=50,
+        latency_ms=23,
+        max_latency_ms=1_000,
+        cost_microusd=41,
+        cost_microusd_complete=False,
+        max_cost_microusd=500,
+    )
+    discovered = AlphaRunQueryItem(
+        queued_cursor=1,
+        run=run,
+        nodes=nodes,
+        usage=usage,
+    )
+    state = AlphaTuiProjection(runs=(discovered,), run=run)
+
+    graph = _task_graph_summary(state)
+    assert f"Run plan: {run.plan_id}" in graph
+    assert "inspect <- root [succeeded; attempts=1/2]" in graph
+    assert "implement <- inspect [ready; attempts=1/3]" in graph
+    expected_budget = (
+        "in=unknown(known>=17)/100 out=5/50 latency=23/1000ms cost=unknown(known>=41)/500"
+    )
+    assert expected_budget in _runs_summary(state, "ready")
+    assert f"Model budget: {expected_budget}" in _run_summary(state)
 
 
 def _edit(app: AlphaTuiApp, key: str, value: str) -> None:

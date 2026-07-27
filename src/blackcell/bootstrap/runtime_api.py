@@ -26,6 +26,8 @@ from blackcell.interfaces.http.alpha_contracts import (
     AlphaProjectRequest,
     AlphaProjectResponse,
     AlphaReplayResponse,
+    AlphaRunQueryRequest,
+    AlphaRunQueryResponse,
     AlphaRunRequest,
     AlphaRunResponse,
 )
@@ -187,6 +189,9 @@ class RuntimeApiService(RuntimeApiPort, AlphaRuntimeApiPort):
 
     def inspect_alpha_run(self, run_id: str) -> AlphaRunResponse:
         return _translate(lambda: self._alpha.inspect_run(run_id))
+
+    def query_alpha_runs(self, request: AlphaRunQueryRequest) -> AlphaRunQueryResponse:
+        return _translate(lambda: self._alpha.query_runs(request))
 
     def cancel_alpha_run(
         self,

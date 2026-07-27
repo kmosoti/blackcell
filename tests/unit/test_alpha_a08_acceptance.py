@@ -466,7 +466,7 @@ def _requests(repository: Path, base_commit: str) -> dict[str, StrictStruct]:
         project_id="project-a08",
         root=str(repository),
         configuration_provider="kernform",
-        configuration_version="0.1.0",
+        configuration_version="0.2.0",
         configuration_digest=_CONFIGURATION_DIGEST,
         idempotency_key="project-a08",
     )

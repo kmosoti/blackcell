@@ -27,14 +27,15 @@ from blackcell.interfaces.http import (
 from blackcell.interfaces.kernform_contracts import (
     KernformWireArtifact,
     KernformWireCheckResult,
+    KernformWireCompileResult,
     KernformWireEnvelope,
     KernformWireInitResult,
     KernformWireStatus,
 )
 from blackcell.kernel._json import json_digest
 
-SUPPORTED_KERNFORM_VERSION = "0.1.0"
-KERNFORM_COMMAND_SCHEMA = "kernform.command/v1"
+SUPPORTED_KERNFORM_VERSION = "0.2.0"
+KERNFORM_COMMAND_SCHEMA = "kernform.command/v2"
 KERNFORM_EXECUTABLE_ENV = "BLACKCELL_KERNFORM_EXECUTABLE"
 DEFAULT_KERNFORM_EXECUTABLE = "kernform"
 
@@ -46,15 +47,15 @@ _MAX_TOKEN_BYTES = 4096
 _MAX_CAPABILITIES = 32
 _MAX_DIAGNOSTICS = 256
 _MAX_ARTIFACTS = 256
-_MAX_REQUIREMENTS = 256
 _MAX_FILES_CHECKED = 1_000_000
 _MAX_OPERATIONS = 1_000_000
 _DIAGNOSTIC_ID = re.compile(r"KF-[A-Z]+-[0-9]{3}\Z")
 _ARTIFACT_HASH = re.compile(r"[0-9a-f]{64}\Z")
-_TEST_REQUIREMENT_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,127}\Z")
+_PROJECT_NAME = re.compile(r"[a-z][a-z0-9-]{0,62}\Z")
 
 KernformStatus = KernformWireStatus
-KernformProfile = Literal["library", "cli", "api"]
+KernformSignature = Literal["sdk", "cli", "api", "interactive-web", "daemon"]
+_SIGNATURES = frozenset({"sdk", "cli", "api", "interactive-web", "daemon"})
 
 
 class KernformClientFailureCode(StrEnum):
@@ -115,7 +116,7 @@ class KernformArtifact:
 class KernformInvocationResult:
     kernform_version: str
     project_root: Path
-    command: Literal["check", "init"]
+    command: Literal["check", "compile", "init"]
     status: KernformStatus
     exit_code: int
     result: dict[str, object] | None
@@ -123,7 +124,7 @@ class KernformInvocationResult:
     artifacts: tuple[KernformArtifact, ...]
     argv_digest: str
     result_digest: str
-    schema_version: Literal["kernform-invocation/v1"] = "kernform-invocation/v1"
+    schema_version: Literal["kernform-invocation/v2"] = "kernform-invocation/v2"
 
 
 KernformStreamCapture = BoundedStreamCapture
@@ -226,18 +227,48 @@ class KernformCliClient:
         )
         return self._invoke(argv, command="check", project_root=root, version=version, cwd=root)
 
+    def compile(self, form: Path) -> KernformInvocationResult:
+        form_path = _existing_form_path(form)
+        cwd = form_path.parent
+        version = self._probe_version(cwd=cwd)
+        argv = (
+            self.executable,
+            "--agent",
+            "--format",
+            "json",
+            "compile",
+            "--form",
+            str(form_path),
+        )
+        return self._invoke(
+            argv,
+            command="compile",
+            project_root=cwd,
+            version=version,
+            cwd=cwd,
+        )
+
     def init(
         self,
         *,
         name: str,
         destination: Path,
-        profile: KernformProfile = "library",
+        signatures: Sequence[KernformSignature] = ("sdk",),
+        default_signature: KernformSignature | None = None,
         capabilities: Sequence[str] = (),
         no_git: bool = False,
         initial_commit: bool = False,
     ) -> KernformInvocationResult:
         _require_token(name, code=KernformClientFailureCode.INVALID_ARGUMENT)
-        if not isinstance(profile, str) or profile not in {"library", "cli", "api"}:
+        if isinstance(signatures, str | bytes | bytearray) or not isinstance(signatures, Sequence):
+            raise KernformClientError(KernformClientFailureCode.INVALID_ARGUMENT)
+        normalized_signatures = tuple(signatures)
+        if (
+            not normalized_signatures
+            or len(normalized_signatures) != len(set(normalized_signatures))
+            or any(signature not in _SIGNATURES for signature in normalized_signatures)
+            or (default_signature is not None and default_signature not in normalized_signatures)
+        ):
             raise KernformClientError(KernformClientFailureCode.INVALID_ARGUMENT)
         if isinstance(capabilities, str | bytes | bytearray) or not isinstance(
             capabilities, Sequence
@@ -265,9 +296,11 @@ class KernformCliClient:
             name,
             "--destination",
             str(root),
-            "--profile",
-            profile,
         ]
+        for signature in normalized_signatures:
+            tokens.extend(("--signature", signature))
+        if default_signature is not None:
+            tokens.extend(("--default-signature", default_signature))
         for capability in normalized_capabilities:
             tokens.extend(("--with", capability))
         if no_git:
@@ -297,7 +330,7 @@ class KernformCliClient:
         self,
         argv: tuple[str, ...],
         *,
-        command: Literal["check", "init"],
+        command: Literal["check", "compile", "init"],
         project_root: Path,
         version: str,
         cwd: Path,
@@ -413,12 +446,14 @@ def _confined_artifacts(
 def _validated_command_result(
     envelope: KernformWireEnvelope,
     *,
-    command: Literal["check", "init"],
+    command: Literal["check", "compile", "init"],
     project_root: Path,
     artifacts: tuple[KernformArtifact, ...],
 ) -> dict[str, object] | None:
     if command == "check":
         return _validated_check_result(envelope, artifacts=artifacts)
+    if command == "compile":
+        return _validated_compile_result(envelope, artifacts=artifacts)
     return _validated_init_result(
         envelope,
         project_root=project_root,
@@ -439,16 +474,100 @@ def _validated_check_result(
         return None
     if envelope.status == "refused":
         raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
+    if envelope.status == "failure":
+        return _plain_result_object(envelope.result)
     result = _convert_result(envelope.result, KernformWireCheckResult)
+    source_shape = (
+        result.conformant
+        and result.mode == "source-repository"
+        and result.catalog_hash is not None
+        and _ARTIFACT_HASH.fullmatch(result.catalog_hash) is not None
+        and result.files_checked is None
+        and result.legacy_schema is None
+        and result.migration_required is None
+        and not result.mapped_signatures
+        and result.managed_state is None
+    )
+    managed_shape = (
+        result.conformant
+        and result.mode is None
+        and result.catalog_hash is None
+        and result.files_checked is not None
+        and not isinstance(result.files_checked, bool)
+        and 0 <= result.files_checked <= _MAX_FILES_CHECKED
+        and result.legacy_schema is None
+        and result.migration_required is None
+        and not result.mapped_signatures
+        and result.managed_state is None
+    )
+    legacy_shape = (
+        result.mode is None
+        and result.catalog_hash is None
+        and result.legacy_schema == "kernform/v1"
+        and result.migration_required is True
+        and bool(result.mapped_signatures)
+        and len(set(result.mapped_signatures)) == len(result.mapped_signatures)
+        and (
+            (result.managed_state is False and result.files_checked is None)
+            or (
+                result.managed_state is None
+                and result.files_checked is not None
+                and not isinstance(result.files_checked, bool)
+                and 0 <= result.files_checked <= _MAX_FILES_CHECKED
+            )
+        )
+    )
+    if not (source_shape or managed_shape or legacy_shape):
+        raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
+    return _plain_result_object(envelope.result)
+
+
+def _validated_compile_result(
+    envelope: KernformWireEnvelope,
+    *,
+    artifacts: tuple[KernformArtifact, ...],
+) -> dict[str, object] | None:
+    if envelope.status != "success" or artifacts or envelope.result is None:
+        raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
+    result = _convert_result(envelope.result, KernformWireCompileResult)
+    intent = result.intent
+    operation_ids: list[str] = []
     if (
-        result.conformant != (envelope.status == "success")
-        or not _ARTIFACT_HASH.fullmatch(result.catalog_hash)
-        or isinstance(result.files_checked, bool)
-        or not 0 <= result.files_checked <= _MAX_FILES_CHECKED
+        result.generator_version != SUPPORTED_KERNFORM_VERSION
+        or not _ARTIFACT_HASH.fullmatch(result.plan_id)
+        or not _ARTIFACT_HASH.fullmatch(result.catalog.hash)
+        or not _PROJECT_NAME.fullmatch(intent.name)
+        or not intent.requested_signatures
+        or len(set(intent.requested_signatures)) != len(intent.requested_signatures)
+        or not intent.resolved_signatures
+        or len(set(intent.resolved_signatures)) != len(intent.resolved_signatures)
+        or not set(intent.requested_signatures).issubset(intent.resolved_signatures)
+        or (
+            intent.default_signature is not None
+            and intent.default_signature not in intent.requested_signatures
+        )
+        or tuple(sorted(set(intent.capabilities))) != intent.capabilities
+        or len(result.operations) > _MAX_OPERATIONS
+        or len(result.diagnostics) > _MAX_DIAGNOSTICS
     ):
         raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
-    _validate_requirements(result.requirements.conformance, diagnostic_ids=True)
-    _validate_requirements(result.requirements.tests, diagnostic_ids=False)
+    for operation in result.operations:
+        operation_id = operation.get("id")
+        kind = operation.get("kind")
+        if (
+            not isinstance(operation_id, str)
+            or not operation_id
+            or not isinstance(kind, str)
+            or not kind
+        ):
+            raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
+        operation_ids.append(operation_id)
+        for key in ("path", "cwd"):
+            value = operation.get(key)
+            if value is not None and not _safe_relative_path(value):
+                raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
+    if len(set(operation_ids)) != len(operation_ids):
+        raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
     return _result_document(result)
 
 
@@ -472,21 +591,16 @@ def _validated_init_result(
     ):
         raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
     state_path = _confined_result_path(result.state_path, project_root)
-    evidence_path = _confined_result_path(result.evidence_path, project_root)
     artifact_paths: dict[str, str] = {}
     for artifact in artifacts:
-        if artifact.kind not in {"managed-state", "apply-evidence"}:
+        if artifact.kind != "managed-state":
             raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
         if artifact.kind in artifact_paths:
             raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
         artifact_paths[artifact.kind] = artifact.path
-    if artifact_paths != {
-        "managed-state": state_path,
-        "apply-evidence": evidence_path,
-    }:
+    if artifact_paths != {"managed-state": state_path}:
         raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
     return {
-        "evidence_path": evidence_path,
         "operation_count": result.operation_count,
         "plan_id": result.plan_id,
         "state_path": state_path,
@@ -510,12 +624,17 @@ def _result_document(value: StrictStruct) -> dict[str, object]:
     return cast("dict[str, object]", document)
 
 
-def _validate_requirements(values: tuple[str, ...], *, diagnostic_ids: bool) -> None:
-    if len(values) > _MAX_REQUIREMENTS or tuple(sorted(set(values))) != values:
+def _plain_result_object(value: object) -> dict[str, object]:
+    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
         raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
-    pattern = _DIAGNOSTIC_ID if diagnostic_ids else _TEST_REQUIREMENT_ID
-    if any(pattern.fullmatch(value) is None for value in values):
-        raise KernformClientError(KernformClientFailureCode.INVALID_ENVELOPE)
+    return cast("dict[str, object]", value)
+
+
+def _safe_relative_path(value: object) -> bool:
+    if not isinstance(value, str) or not value or "\x00" in value:
+        return False
+    path = Path(value)
+    return not path.is_absolute() and ".." not in path.parts
 
 
 def _confined_result_path(value: str, project_root: Path) -> str:
@@ -577,6 +696,18 @@ def _initialization_root(value: Path) -> Path:
     if root.parent != parent or root == root.parent or (root.exists() and not root.is_dir()):
         raise KernformClientError(KernformClientFailureCode.INVALID_PROJECT_ROOT)
     return root
+
+
+def _existing_form_path(value: Path) -> Path:
+    if not isinstance(value, Path):
+        raise KernformClientError(KernformClientFailureCode.INVALID_ARGUMENT)
+    try:
+        form = value.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise KernformClientError(KernformClientFailureCode.INVALID_ARGUMENT) from error
+    if not form.is_file():
+        raise KernformClientError(KernformClientFailureCode.INVALID_ARGUMENT)
+    return form
 
 
 def _require_token(value: object, *, code: KernformClientFailureCode) -> None:

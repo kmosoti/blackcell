@@ -21,9 +21,12 @@ from blackcell.adapters.runtime_http import (
 from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
 from blackcell.config import SecretValue
 from blackcell.interfaces.http import (
+    ALPHA_RUN_QUERY_MEDIA_TYPE,
+    ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
     AlphaCancelRunRequest,
     AlphaEventPageResponse,
     AlphaEventResponse,
+    AlphaRunQueryRequest,
     ErrorResponse,
     HealthResponse,
     encode_contract,
@@ -239,12 +242,18 @@ def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
     events = service.list_events(after_cursor=0, limit=20)
     replay = service.replay_run("run-1")
     canceled = service.cancel_run("run-1", cancel_request, principal_id="client:test")
+    query_request = AlphaRunQueryRequest(
+        schema_version="alpha-run-query-request/v1",
+        run_ids=("run-1",),
+    )
+    query = service.query_runs(query_request)
     transport = FakeTransport(
         _response(201, project),
         _response(201, intent),
         _response(201, plan),
         _response(202, run),
         _response(200, run),
+        _vendor_response(200, query, ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE),
         _response(200, events),
         _response(200, replay),
         _response(202, canceled),
@@ -256,6 +265,7 @@ def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
     assert client.accept_alpha_plan(plan_request) == plan
     assert client.submit_alpha_run(run_request) == run
     assert client.inspect_alpha_run("run-1") == run
+    assert client.query_alpha_runs(query_request) == query
     assert client.list_alpha_events(after_cursor=0, limit=20) == events
     assert client.replay_alpha_run("run-1") == replay
     assert client.cancel_alpha_run("run-1", cancel_request) == canceled
@@ -266,6 +276,7 @@ def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
         "POST",
         "POST",
         "GET",
+        "QUERY",
         "GET",
         "GET",
         "POST",
@@ -276,6 +287,7 @@ def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
         "http://127.0.0.1:8080/api/alpha/v1/plans",
         "http://127.0.0.1:8080/api/alpha/v1/runs",
         "http://127.0.0.1:8080/api/alpha/v1/runs/run-1/status",
+        "http://127.0.0.1:8080/api/alpha/v1/run-query",
         "http://127.0.0.1:8080/api/alpha/v1/events?after=0&limit=20",
         "http://127.0.0.1:8080/api/alpha/v1/runs/run-1/replay",
         "http://127.0.0.1:8080/api/alpha/v1/runs/run-1/cancel",
@@ -283,8 +295,12 @@ def test_alpha_client_sends_strict_authenticated_requests_and_decodes_contracts(
     assert all(item.headers["authorization"] == f"Bearer {_TOKEN}" for item in transport.requests)
     assert transport.requests[0].body == encode_contract(project_request)
     assert transport.requests[4].body is None
+    assert transport.requests[5].body == encode_contract(query_request)
+    assert transport.requests[5].headers["content-type"] == ALPHA_RUN_QUERY_MEDIA_TYPE
+    assert transport.requests[5].headers["accept"] == ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE
     assert transport.requests[-1].body == encode_contract(cancel_request)
     assert [item.timeout_seconds for item in transport.requests] == [
+        5.0,
         5.0,
         5.0,
         5.0,
@@ -368,5 +384,17 @@ def _response(
     return RuntimeHttpResponse(
         status_code=status_code,
         content_type="application/json; charset=utf-8",
+        body=encode_contract(contract),
+    )
+
+
+def _vendor_response(
+    status_code: int,
+    contract: msgspec.Struct,
+    media_type: str,
+) -> RuntimeHttpResponse:
+    return RuntimeHttpResponse(
+        status_code=status_code,
+        content_type=media_type,
         body=encode_contract(contract),
     )

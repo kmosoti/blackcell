@@ -15,8 +15,10 @@ from typing import Any, Literal, cast
 import pytest
 
 import blackcell.bootstrap.alpha_process as alpha_process_module
-from blackcell.adapters.models import CodexCliModelAdapter
+from blackcell.adapters.models import AgyCliModelAdapter, CodexCliModelAdapter
 from blackcell.bootstrap.alpha_process import (
+    ALPHA_CHANGE_AGY_MAX_INPUT_BYTES,
+    ALPHA_CHANGE_AGY_MAX_STDOUT_BYTES,
     AlphaWorkerProcess,
     AlphaWorkerProcessError,
     AlphaWorkerProcessFailureCode,
@@ -36,6 +38,7 @@ from blackcell.config import (
     DATA_DIR_ENV,
     REPOSITORY_ROOT_ENV,
     WORKER_ID_ENV,
+    AlphaExecutionProviderAdapter,
     RuntimeProcessConfig,
 )
 from blackcell.interfaces.http import (
@@ -77,6 +80,12 @@ class RecordingCoordinator:
 class RecordingRuntime:
     def __init__(self, order: list[str]) -> None:
         self.order = order
+
+    def next_generated_run(self) -> None:
+        return None
+
+    def should_cancel_generated_run(self, run_id: str) -> bool:
+        return False
 
     def reconcile_startup(self, *, principal_id: str) -> tuple[object, ...]:
         self.order.append(f"reconcile:{principal_id}")
@@ -144,6 +153,37 @@ def test_alpha_process_composes_codex_caps_from_change_wire_contracts(
         captured["max_stdout_bytes"]
         == 2 * (MAX_ALPHA_CHANGE_PROPOSAL_BYTES + 1024 * 1024) + 1024 * 1024
     )
+    coordinator = cast("AlphaRuntimeWorker", process.coordinator)
+    assert coordinator.evidence.lifecycle is coordinator.worktrees
+
+
+def test_alpha_process_composes_agy_as_active_change_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def recording_adapter(**kwargs: Any) -> AgyCliModelAdapter:
+        captured.update(kwargs)
+        return AgyCliModelAdapter(**kwargs)
+
+    monkeypatch.setattr(alpha_process_module, "AgyCliModelAdapter", recording_adapter)
+    config = _config(tmp_path)
+    assert config.alpha_worker is not None
+    provider = replace(
+        config.alpha_worker.provider,
+        adapter=AlphaExecutionProviderAdapter.AGY_CLI,
+        model_id="gemini-alpha",
+        effort="high",
+    )
+    alpha = replace(config.alpha_worker, provider=provider)
+
+    process = AlphaWorkerProcess.from_config(replace(config, alpha_worker=alpha), environment={})
+
+    assert "auth_token_path" not in captured
+    assert captured["effort"] == "high"
+    assert captured["max_input_bytes"] == ALPHA_CHANGE_AGY_MAX_INPUT_BYTES
+    assert captured["max_stdout_bytes"] == ALPHA_CHANGE_AGY_MAX_STDOUT_BYTES
     coordinator = cast("AlphaRuntimeWorker", process.coordinator)
     assert coordinator.evidence.lifecycle is coordinator.worktrees
 
@@ -423,9 +463,10 @@ def _config(tmp_path: Path) -> RuntimeProcessConfig:
             {
                 "schema_version": ALPHA_WORKER_CONFIG_SCHEMA,
                 "provider": {
+                    "adapter": "codex-cli",
                     "profile_id": "alpha-code",
                     "model_id": "gpt-alpha",
-                    "codex_executable": str(true),
+                    "executable": str(true),
                     "git_executable": str(_executable("git")),
                     "classification": "private",
                     "locality": "remote-allowed",
@@ -491,7 +532,7 @@ def _submit_check_only(
             project_id="project-1",
             root=str(repository),
             configuration_provider="kernform",
-            configuration_version="0.1.0",
+            configuration_version="0.2.0",
             configuration_digest=CONFIGURATION_DIGEST,
             idempotency_key="project-1",
         ),

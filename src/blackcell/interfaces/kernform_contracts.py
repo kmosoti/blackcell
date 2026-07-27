@@ -7,6 +7,7 @@ from typing import Literal
 from blackcell.interfaces.http.contracts import StrictStruct
 
 KernformWireStatus = Literal["success", "failure", "refused"]
+KernformWireSignature = Literal["sdk", "cli", "api", "interactive-web", "daemon"]
 
 
 class KernformWireDiagnostic(StrictStruct, frozen=True):
@@ -23,7 +24,7 @@ class KernformWireArtifact(StrictStruct, frozen=True):
 
 
 class KernformWireEnvelope(StrictStruct, frozen=True):
-    schema: Literal["kernform.command/v1"]
+    schema: Literal["kernform.command/v2"]
     command: str
     status: KernformWireStatus
     exit_code: int
@@ -32,44 +33,60 @@ class KernformWireEnvelope(StrictStruct, frozen=True):
     artifacts: tuple[KernformWireArtifact, ...]
 
 
-class KernformWireCheckSet(StrictStruct, frozen=True):
-    architecture: bool
-    boundary: bool
-    environment: bool
-    git: bool
-    state: bool
-    testing: bool
-    versions: bool
-
-
-class KernformWireRequirements(StrictStruct, frozen=True):
-    conformance: tuple[str, ...]
-    tests: tuple[str, ...]
-
-
 class KernformWireCheckResult(StrictStruct, frozen=True):
-    catalog_hash: str
-    checks: KernformWireCheckSet
     conformant: bool
-    files_checked: int
-    mode: Literal["managed-project", "source-repository"]
-    requirements: KernformWireRequirements
+    mode: Literal["source-repository"] | None = None
+    catalog_hash: str | None = None
+    files_checked: int | None = None
+    legacy_schema: Literal["kernform/v1"] | None = None
+    migration_required: bool | None = None
+    mapped_signatures: tuple[KernformWireSignature, ...] = ()
+    managed_state: bool | None = None
 
 
 class KernformWireInitResult(StrictStruct, frozen=True):
-    evidence_path: str
     operation_count: int
     plan_id: str
     state_path: str
 
 
+class KernformWirePlanIntent(StrictStruct, frozen=True):
+    name: str
+    requested_signatures: tuple[KernformWireSignature, ...]
+    resolved_signatures: tuple[KernformWireSignature, ...]
+    default_signature: KernformWireSignature | None
+    capabilities: tuple[str, ...]
+    git: bool
+
+
+class KernformWirePlanCatalog(StrictStruct, frozen=True):
+    id: str
+    hash: str
+    resolved_at: str
+    source: str
+    versions: dict[str, str]
+    images: dict[str, str]
+
+
+class KernformWireCompileResult(StrictStruct, frozen=True):
+    schema: Literal["kernform.plan/v2"]
+    plan_id: str
+    generator_version: str
+    intent: KernformWirePlanIntent
+    catalog: KernformWirePlanCatalog
+    operations: tuple[dict[str, object], ...]
+    diagnostics: tuple[KernformWireDiagnostic, ...]
+
+
 __all__ = [
     "KernformWireArtifact",
     "KernformWireCheckResult",
-    "KernformWireCheckSet",
+    "KernformWireCompileResult",
     "KernformWireDiagnostic",
     "KernformWireEnvelope",
     "KernformWireInitResult",
-    "KernformWireRequirements",
+    "KernformWirePlanCatalog",
+    "KernformWirePlanIntent",
+    "KernformWireSignature",
     "KernformWireStatus",
 ]

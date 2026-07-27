@@ -148,12 +148,12 @@ def test_alpha_architecture_has_one_daemon_and_explicit_client_boundaries() -> N
     assert clients["web"]["updates"] == (
         "channels and WebSockets consume the ordered daemon event stream"
     )
-    assert kernform["supported_version"] == "0.1.0"
-    assert kernform["wire_schema"] == "kernform.command/v1"
+    assert kernform["supported_version"] == "0.2.0"
+    assert kernform["wire_schema"] == "kernform.command/v2"
     assert kernform["transport"] == "argv-only subprocess"
     assert kernform["version_probe"] == ["kernform", "--agent", "--version"]
     assert kernform["command_prefix"] == ["kernform", "--agent", "--format", "json"]
-    assert kernform["initial_commands"] == ["check", "init"]
+    assert kernform["initial_commands"] == ["compile", "check", "init"]
     assert kernform["prohibited_initial_commands"] == ["inspect"]
     assert legacy["component"] == "DailyOperatorV2Workflow"
     assert legacy["disposition"] == "migration-and-replay-evidence-only"

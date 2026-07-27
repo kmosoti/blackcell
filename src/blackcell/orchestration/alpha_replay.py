@@ -1391,10 +1391,10 @@ def _provider_from_mapping(
         profile_id=_string(value.get("profile_id")),
         adapter_id=_string(value.get("adapter_id")),
         model_id=_string(value.get("model_id")),
-        input_tokens=_integer(value.get("input_tokens")),
-        output_tokens=_integer(value.get("output_tokens")),
+        input_tokens=_optional_integer(value.get("input_tokens")),
+        output_tokens=_optional_integer(value.get("output_tokens")),
         latency_ms=_integer(value.get("latency_ms")),
-        cost_microusd=_integer(value.get("cost_microusd")),
+        cost_microusd=_optional_integer(value.get("cost_microusd")),
         completed_at=datetime.fromisoformat(_string(value.get("completed_at"))),
         schema_version=cast("str", value.get("schema_version")),
     )
@@ -1687,6 +1687,12 @@ def _integer(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError
     return value
+
+
+def _optional_integer(value: object) -> int | None:
+    if value is None:
+        return None
+    return _integer(value)
 
 
 def _number(value: object) -> int | float:

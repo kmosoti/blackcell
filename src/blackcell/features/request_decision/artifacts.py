@@ -424,10 +424,10 @@ def decode_decision_usage(
     usage = DecisionUsage(
         request_id=_text(payload, "request_id"),
         attempt_id=_text(payload, "attempt_id"),
-        input_tokens=_integer(payload, "input_tokens"),
-        output_tokens=_integer(payload, "output_tokens"),
+        input_tokens=_optional_integer(payload, "input_tokens"),
+        output_tokens=_optional_integer(payload, "output_tokens"),
         latency_ms=_integer(payload, "latency_ms"),
-        cost_microusd=_integer(payload, "cost_microusd"),
+        cost_microusd=_optional_integer(payload, "cost_microusd"),
         deterministic=_boolean(payload, "deterministic"),
         schema_version=_text(payload, "schema_version"),
     )
@@ -526,6 +526,15 @@ def _integer(payload: Mapping[str, object], field: str) -> int:
     value = payload[field]
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{field} must be an integer")
+    return value
+
+
+def _optional_integer(payload: Mapping[str, object], field: str) -> int | None:
+    value = payload[field]
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be an integer or null")
     return value
 
 

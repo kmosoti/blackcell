@@ -27,6 +27,8 @@ from blackcell.interfaces.http import (
     AlphaIntentRequest,
     AlphaPlanRequest,
     AlphaProjectRequest,
+    AlphaRunBudgetUsageResponse,
+    AlphaRunQueryItem,
     AlphaRunRequest,
     WireContractError,
     decode_contract,
@@ -499,15 +501,21 @@ class AlphaTuiApp:
         columns = (
             Layout()
             .direction(Direction.Horizontal)
-            .constraints([Constraint.percentage(54), Constraint.fill(1)])
+            .constraints([Constraint.percentage(50), Constraint.fill(1)])
         )
-        events_area, details_area = columns.split(body_area)
-        details = (
+        left_area, right_area = columns.split(body_area)
+        left = (
             Layout()
             .direction(Direction.Vertical)
-            .constraints([Constraint.percentage(52), Constraint.fill(1)])
+            .constraints([Constraint.percentage(34), Constraint.fill(1)])
         )
-        workflow_area, run_area = details.split(details_area)
+        runs_area, graph_area = left.split(left_area)
+        right = (
+            Layout()
+            .direction(Direction.Vertical)
+            .constraints([Constraint.percentage(50), Constraint.fill(1)])
+        )
+        attempt_area, verifier_area = right.split(right_area)
 
         frame.render_widget(
             Paragraph.from_string(f"BlackCell Alpha · {view.connection}")
@@ -516,14 +524,21 @@ class AlphaTuiApp:
             header_area,
         )
         frame.render_widget(
-            _panel(view.events, f" Ordered events · {len(self._state.events)} retained "),
-            events_area,
+            _panel(_runs_summary(self._state, view.connection), " Runs "),
+            runs_area,
         )
         frame.render_widget(
-            _panel(_workflow_panel(view), " Project workflow "),
-            workflow_area,
+            _panel(_task_graph_summary(self._state), " Task graph "),
+            graph_area,
         )
-        frame.render_widget(_panel(_run_panel(view), " Run inspector "), run_area)
+        frame.render_widget(
+            _panel(_run_summary(self._state), " Attempt detail "),
+            attempt_area,
+        )
+        frame.render_widget(
+            _panel(_verification_summary(self._state), " Verifier / output "),
+            verifier_area,
+        )
         footer_color = Color.light_red() if view.message_is_error else Color.light_green()
         footer = (
             "1-4 operation · w edit path · Ctrl-W submit · i edit run · "
@@ -770,6 +785,76 @@ def _recovery_state(state: AlphaTuiProjection) -> str:
     return "no-retained-checkout"
 
 
+def _runs_summary(state: AlphaTuiProjection, connection: str) -> str:
+    lines = [f"Service: {connection}"]
+    selected_run_id = None if state.run is None else state.run.run_id
+    if not state.runs:
+        lines.append("No runs discovered.")
+    for item in state.runs[:10]:
+        marker = ">" if item.run.run_id == selected_run_id else " "
+        active = item.run.active_node_id or "-"
+        lines.append(
+            f"{marker} {item.run.run_id} · {item.run.status} · "
+            f"node={active} · attempt={item.run.attempt}"
+        )
+        if item.usage is not None:
+            lines.append(f"    budget {_usage_summary(item.usage)}")
+    if len(state.runs) > 10:
+        lines.append(f"  ... {len(state.runs) - 10} runs omitted")
+    if selected_run_id is None:
+        lines.append("No run selected.")
+    lines.append(f"Projection cursor: {state.cursor}")
+    lines.append(f"Retained events: {len(state.events)}")
+    return "\n".join(lines)
+
+
+def _task_graph_summary(state: AlphaTuiProjection) -> str:
+    discovered = _selected_query_run(state)
+    if discovered is not None:
+        lines = [f"Run plan: {discovered.run.plan_id}"]
+        for node in discovered.nodes:
+            dependencies = ",".join(node.depends_on) or "root"
+            attempts = (
+                str(node.attempts)
+                if node.max_attempts is None
+                else f"{node.attempts}/{node.max_attempts}"
+            )
+            lines.append(f"{node.node_id} <- {dependencies} [{node.status}; attempts={attempts}]")
+        return "\n".join(lines)
+    plan = state.plan
+    if plan is None:
+        return "No plan selected."
+    by_id = {item.node_id: item for item in plan.nodes}
+    active = None if state.run is None else state.run.active_node_id
+    lines = [f"Plan: {plan.plan_id}"]
+    for node_id in plan.topological_order:
+        node = by_id[node_id]
+        dependencies = ",".join(node.depends_on) or "root"
+        marker = "running" if node_id == active else "planned"
+        lines.append(f"{node_id} <- {dependencies} [{marker}]")
+    return "\n".join(lines)
+
+
+def _verification_summary(state: AlphaTuiProjection) -> str:
+    replay = state.replay
+    if replay is None:
+        return "No verifier evidence loaded. Use replay to inspect durable output."
+    verification = replay.verification
+    lines = [
+        f"Lifecycle: {verification.lifecycle_status}",
+        f"Verdict: {verification.verdict or '-'}",
+        f"Evidence: {verification.artifact_integrity}",
+        f"Finding: {verification.finding_code or '-'}",
+        f"Artifacts: {len(replay.artifacts)}",
+        f"Replay findings: {len(replay.findings)}",
+    ]
+    for finding in replay.findings[:_MAX_RENDERED_FINDINGS]:
+        lines.append(
+            f"{finding.code} node={finding.node_id or '-'} check={finding.check_id or '-'}"
+        )
+    return "\n".join(lines)
+
+
 def _run_summary(state: AlphaTuiProjection) -> str:
     run = state.run
     if run is None:
@@ -782,6 +867,9 @@ def _run_summary(state: AlphaTuiProjection) -> str:
         f"Cancellation requested: {str(run.cancellation_requested).lower()}",
         f"Retained worktree: {str(run.retained_worktree).lower()}",
     ]
+    discovered = _selected_query_run(state)
+    if discovered is not None and discovered.usage is not None:
+        lines.append(f"Model budget: {_usage_summary(discovered.usage)}")
     if state.replay is not None:
         lines.extend(
             (
@@ -795,6 +883,43 @@ def _run_summary(state: AlphaTuiProjection) -> str:
         )
     lines.append(f"Recovery state: {_recovery_state(state)}")
     return "\n".join(lines)
+
+
+def _selected_query_run(state: AlphaTuiProjection) -> AlphaRunQueryItem | None:
+    if state.run is not None:
+        selected = next(
+            (item for item in state.runs if item.run.run_id == state.run.run_id),
+            None,
+        )
+        if selected is not None:
+            return selected
+    return None if not state.runs else state.runs[0]
+
+
+def _usage_summary(usage: AlphaRunBudgetUsageResponse) -> str:
+    def measured(value: int, complete: bool, maximum: int) -> str:
+        prefix = str(value) if complete else f"unknown(known>={value})"
+        return f"{prefix}/{maximum}"
+
+    input_value = measured(
+        usage.input_tokens,
+        usage.input_tokens_complete,
+        usage.max_input_tokens,
+    )
+    output_value = measured(
+        usage.output_tokens,
+        usage.output_tokens_complete,
+        usage.max_output_tokens,
+    )
+    cost_value = measured(
+        usage.cost_microusd,
+        usage.cost_microusd_complete,
+        usage.max_cost_microusd,
+    )
+    return (
+        f"in={input_value} out={output_value} "
+        f"latency={usage.latency_ms}/{usage.max_latency_ms}ms cost={cost_value}"
+    )
 
 
 __all__ = [

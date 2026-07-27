@@ -136,7 +136,7 @@ def test_codex_cli_adapter_uses_exact_isolated_read_only_boundary() -> None:
     assert adapter.deterministic is False
     assert result.output == {"answer": "ready"}
     assert (result.input_tokens, result.output_tokens, result.latency_ms) == (41, 9, 30)
-    assert result.cost_microusd == 0
+    assert result.cost_microusd is None
     assert result.deterministic is False
 
     command, invocation = runner.calls[1]

@@ -16,6 +16,7 @@ from blackcell.interfaces.http import (
     AlphaIntentRequest,
     AlphaPlanRequest,
     AlphaProjectRequest,
+    AlphaRunQueryRequest,
     AlphaRunRequest,
     decode_contract,
 )
@@ -37,6 +38,9 @@ def test_alpha_request_templates_decode_and_cross_bind() -> None:
     )
     plan = decode_contract((REQUEST_ROOT / "plan.template.json").read_bytes(), AlphaPlanRequest)
     run = decode_contract((REQUEST_ROOT / "run.template.json").read_bytes(), AlphaRunRequest)
+    query = decode_contract(
+        (REQUEST_ROOT / "query.template.json").read_bytes(), AlphaRunQueryRequest
+    )
     cancel = decode_contract(
         (REQUEST_ROOT / "cancel.template.json").read_bytes(), AlphaCancelRunRequest
     )
@@ -47,7 +51,12 @@ def test_alpha_request_templates_decode_and_cross_bind() -> None:
     assert intent.project_id == plan.project_id == run.project_id == project.project_id
     assert plan.intent_id == run.intent_id == intent.intent_id
     assert run.plan_id == plan.plan_id
+    assert plan.planning_mode == "generated"
     assert run.run_id == "alpha-run"
+    assert query.project_ids == (project.project_id,)
+    assert query.intent_ids == (intent.intent_id,)
+    assert query.plan_ids == (plan.plan_id,)
+    assert query.run_ids == (run.run_id,)
     assert cancel.idempotency_key == "alpha-run-cancel-v1"
 
     assert len(plan.nodes) == 1
@@ -84,6 +93,7 @@ def test_alpha_guides_bind_live_commands_config_and_nonclaims(tmp_path: Path) ->
         "uv run blackcell alpha plan accept": ("alpha", "plan", "accept"),
         "uv run blackcell alpha run submit": ("alpha", "run", "submit"),
         "uv run blackcell alpha run status": ("alpha", "run", "status"),
+        "uv run blackcell alpha run query": ("alpha", "run", "query"),
         "uv run blackcell alpha run replay": ("alpha", "run", "replay"),
         "uv run blackcell alpha run cancel": ("alpha", "run", "cancel"),
         "uv run blackcell alpha events list": ("alpha", "events", "list"),

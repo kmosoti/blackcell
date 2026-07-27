@@ -71,10 +71,12 @@ through its pinned agent-mode JSON command contract; BlackCell does not import K
 | Install the optional user service | `uv run blackcell daemon install --environment-file ~/.config/blackcell/runtime.env` |
 | Start or inspect the daemon | `uv run blackcell daemon start`; `uv run blackcell daemon status` |
 | Read bounded daemon logs | `uv run blackcell daemon logs --lines 100` |
+| Compile a Kernform v2 project form | `uv run blackcell project compile --form project-form.json` |
 | Check a Kernform-managed project | `uv run blackcell project check --path .` |
-| Initialize project configuration | `uv run blackcell project init NAME --destination PATH` |
+| Initialize project configuration | `uv run blackcell project init NAME --destination PATH --signature sdk --signature cli --default-signature cli` |
+| Use AGY for a bounded proposal route | `uv run blackcell operator run --model agy --agy-model gemini-3.1-pro-high --agy-effort high` |
 | Use the authenticated alpha API | `POST /api/alpha/v1/projects`, `/intents`, `/plans`, then `/runs` |
-| Resume alpha state reads | `GET /api/alpha/v1/events?after=CURSOR`, run `status`, or run `replay` |
+| Discover and resume alpha state | RFC 10008 `QUERY /api/alpha/v1/run-query`, run `status`, or run `replay` |
 | Open the packaged browser client | `http://127.0.0.1:8080/alpha` while the daemon is running |
 | Open the packaged terminal client | `uv run blackcell alpha tui` with the endpoint and token environment set |
 | Inspect the active alpha DAG | `alpha.plan.yaml` |
@@ -84,7 +86,7 @@ Successful commands emit JSON by default. Add `--jsonl` for record streams or `-
 operator-facing tables. The A03 HTTP core now accepts immutable project, intent, and plan contracts
 and returns `202 Accepted` after durably queueing a run. It exposes status, cursor-based events, and
 live-free replay without calling the legacy V2 route. The daemon starts API-only by default, so a
-run remains `queued` until an explicit `blackcell.alpha-worker-config/v1` file enables the alpha
+run remains `queued` until an explicit `blackcell.alpha-worker-config/v3` file enables the alpha
 worker. That owner-only file lives outside the repository and fixes the model route, provider
 environment-variable names, executable identities, isolation roots, aliases, and resource limits;
 invalid or incomplete configuration stops startup without falling back to the legacy worker.
@@ -95,6 +97,13 @@ foreground environment, checked request templates, CLI/browser submission order,
 restart, and replay flow. Independent assurance configuration is split between the
 [review guide](docs/guides/alpha-review-configuration.md) and deterministic
 [verification guide](docs/guides/alpha-verify-configuration.md).
+
+The AGY adapter is pinned to 1.1.7 and uses its stdin-triggered print mode with `plan` and
+`sandbox` enabled. AGY's explicit `--print` flag is intentionally not used because 1.1.7 requires
+the prompt as an argument; BlackCell keeps canonical requests out of process argument lists. AGY
+owns its existing-session authentication; BlackCell accepts no credential path for this adapter.
+Subscription routes leave provider token counts and monetary cost unknown instead of recording
+fabricated zeroes.
 
 `daemon install` reads no credential value and never creates an environment file. Supply an
 existing absolute, owner-only mode-`0600` file containing the runtime configuration. Installation
@@ -133,10 +142,12 @@ Blackcell implements an operational state estimator and a replaceable proposal m
 symbolic validation. It does not claim a POMDP belief state, learned world model, JEPA architecture,
 causal understanding, or a neuro-symbolic reasoning contribution.
 
-It does not yet claim a complete project implementation runtime, sandboxed worktree executor,
-reward-hack-resistant reviewer, or calibrated predictive risk model. The active
-[alpha plan](alpha.plan.yaml) names the acceptance evidence required before those capabilities are
-promoted.
+The narrow production alpha now includes immutable versioned plans, bounded repair, a policy gate,
+isolated Git worktrees, proposal-only providers, host-owned checks in Bubblewrap, replayable event
+history, and content-addressed evidence. This is a repository-local implementation kernel, not a
+claim of arbitrary hostile-code containment, a calibrated predictive risk model, or an infallible
+reward-hack-resistant reviewer. The active [alpha plan](alpha.plan.yaml) names the additional live,
+operator, platform, and release evidence required before broader claims are promoted.
 
 The runtime records state, action, expected effect, observed outcome, and residual tuples. A learned
 transition model becomes eligible only after those records support held-out comparison against
@@ -147,6 +158,7 @@ persistence, symbolic, empirical, and LLM-only baselines.
 | Start here | Purpose |
 | --- | --- |
 | [Alpha operator quickstart](docs/guides/alpha-operator-quickstart.md) | Source-run daemon, checked requests, CLI/browser workflow, restart, and current nonclaims |
+| [Alpha v2 kernel](docs/guides/alpha-v2-kernel.md) | Versioned plans, bounded repair, event replay, provider ports, and policy |
 | [Runtime-v1 release guide](docs/guides/runtime-v1-release.md) | Credential-free walkthrough and runtime boundaries |
 | [Alpha plan](alpha.plan.yaml) | Active work packages, dependency DAG, architecture, and fast gates |
 | [Charter](docs/charter.md) | Product identity, scope, acceptance, and claim gates |

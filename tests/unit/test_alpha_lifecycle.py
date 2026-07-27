@@ -751,7 +751,7 @@ def _submit(
             project_id="project-1",
             root=str(repository),
             configuration_provider="kernform",
-            configuration_version="0.1.0",
+            configuration_version="0.2.0",
             configuration_digest=_CONFIGURATION_DIGEST,
             idempotency_key="project-1",
         ),

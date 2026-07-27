@@ -15,7 +15,7 @@ from typing import cast
 from blackcell.gateway import DataClassification, LocalityPolicy
 
 ALPHA_WORKER_CONFIG_FILE_ENV = "BLACKCELL_ALPHA_WORKER_CONFIG_FILE"
-ALPHA_WORKER_CONFIG_SCHEMA = "blackcell.alpha-worker-config/v1"
+ALPHA_WORKER_CONFIG_SCHEMA = "blackcell.alpha-worker-config/v3"
 
 _MAX_CONFIG_BYTES = 64 * 1024
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
@@ -23,11 +23,12 @@ _ALIAS = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,63}\Z")
 _WORKER_IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,119}\Z")
 _ENVIRONMENT_NAME = re.compile(r"[A-Z_][A-Z0-9_]{0,127}\Z")
 _ROOT_KEYS = frozenset({"schema_version", "provider", "isolation", "worker"})
-_PROVIDER_KEYS = frozenset(
+_PROVIDER_COMMON_KEYS = frozenset(
     {
+        "adapter",
         "profile_id",
         "model_id",
-        "codex_executable",
+        "executable",
         "git_executable",
         "classification",
         "locality",
@@ -38,6 +39,8 @@ _PROVIDER_KEYS = frozenset(
         "environment_variables",
     }
 )
+_CODEX_PROVIDER_KEYS = _PROVIDER_COMMON_KEYS
+_AGY_PROVIDER_KEYS = _PROVIDER_COMMON_KEYS | {"effort"}
 _ISOLATION_KEYS = frozenset(
     {
         "root",
@@ -80,6 +83,28 @@ class AlphaWorkerConfigError(RuntimeError):
     def __init__(self) -> None:
         self.code = AlphaWorkerConfigFailureCode.INVALID
         super().__init__(self.code.value)
+
+
+class AlphaExecutionProviderAdapter(StrEnum):
+    CODEX_CLI = "codex-cli"
+    AGY_CLI = "agy-cli"
+
+
+@dataclass(frozen=True, slots=True)
+class AlphaExecutionProviderRuntimeConfig:
+    adapter: AlphaExecutionProviderAdapter
+    profile_id: str
+    model_id: str
+    executable: Path
+    git_executable: Path
+    classification: DataClassification
+    locality: LocalityPolicy
+    max_input_tokens: int
+    max_output_tokens: int
+    max_cost_microusd: int
+    timeout_ceiling_seconds: int
+    environment_variables: tuple[str, ...]
+    effort: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,7 +156,7 @@ class AlphaWorkerLoopConfig:
 @dataclass(frozen=True, slots=True)
 class AlphaWorkerRuntimeConfig:
     source_path: Path
-    provider: AlphaProviderRuntimeConfig
+    provider: AlphaExecutionProviderRuntimeConfig
     isolation: AlphaIsolationRuntimeConfig
     worker: AlphaWorkerLoopConfig
     schema_version: str = ALPHA_WORKER_CONFIG_SCHEMA
@@ -171,8 +196,19 @@ def load_alpha_worker_config(
         raise AlphaWorkerConfigError from error
 
 
-def _provider(value: Mapping[str, object]) -> AlphaProviderRuntimeConfig:
-    _exact(value, _PROVIDER_KEYS)
+def _provider(value: Mapping[str, object]) -> AlphaExecutionProviderRuntimeConfig:
+    try:
+        adapter = AlphaExecutionProviderAdapter(_text(value, "adapter"))
+    except ValueError as error:
+        raise AlphaWorkerConfigError from error
+    if adapter is AlphaExecutionProviderAdapter.CODEX_CLI:
+        _exact(value, _CODEX_PROVIDER_KEYS)
+        effort = None
+    else:
+        _exact(value, _AGY_PROVIDER_KEYS)
+        effort = _text(value, "effort")
+        if effort not in {"low", "medium", "high"}:
+            raise AlphaWorkerConfigError
     classification_text = _text(value, "classification").upper()
     try:
         classification = DataClassification[classification_text]
@@ -196,10 +232,11 @@ def _provider(value: Mapping[str, object]) -> AlphaProviderRuntimeConfig:
     environment_variables = tuple(sorted(_environment_name(item) for item in environment_value))
     if len(set(environment_variables)) != len(environment_variables):
         raise AlphaWorkerConfigError
-    return AlphaProviderRuntimeConfig(
+    return AlphaExecutionProviderRuntimeConfig(
+        adapter=adapter,
         profile_id=_identifier(value, "profile_id"),
         model_id=_token(value, "model_id"),
-        codex_executable=_executable(_text(value, "codex_executable")),
+        executable=_executable(_text(value, "executable")),
         git_executable=_executable(_text(value, "git_executable")),
         classification=classification,
         locality=locality,
@@ -208,6 +245,7 @@ def _provider(value: Mapping[str, object]) -> AlphaProviderRuntimeConfig:
         max_cost_microusd=_integer(value, "max_cost_microusd", 0, 1_000_000_000_000),
         timeout_ceiling_seconds=_integer(value, "timeout_ceiling_seconds", 1, 3_600),
         environment_variables=environment_variables,
+        effort=effort,
     )
 
 
@@ -491,6 +529,8 @@ __all__ = [
     "ALPHA_WORKER_CONFIG_FILE_ENV",
     "ALPHA_WORKER_CONFIG_SCHEMA",
     "AlphaExecutableAliasConfig",
+    "AlphaExecutionProviderAdapter",
+    "AlphaExecutionProviderRuntimeConfig",
     "AlphaIsolationRuntimeConfig",
     "AlphaProviderRuntimeConfig",
     "AlphaWorkerConfigError",

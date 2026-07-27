@@ -14,6 +14,7 @@ from blackcell.config import (
     API_TOKEN_ENV,
     DATA_DIR_ENV,
     REPOSITORY_ROOT_ENV,
+    AlphaExecutionProviderAdapter,
     AlphaWorkerConfigError,
     ProcessConfigError,
     ProcessConfigFailureCode,
@@ -42,6 +43,9 @@ def test_alpha_worker_config_loads_one_closed_owner_only_runtime_contract(
     assert config.source_path == source
     assert config.provider.profile_id == "alpha-code"
     assert config.provider.model_id == "gpt-alpha"
+    assert config.provider.adapter is AlphaExecutionProviderAdapter.CODEX_CLI
+    assert config.provider.executable == _executable("true")
+    assert config.provider.effort is None
     assert config.provider.classification is DataClassification.PRIVATE
     assert config.provider.locality is LocalityPolicy.REMOTE_ALLOWED
     assert config.provider.environment_variables == ()
@@ -55,6 +59,53 @@ def test_alpha_worker_config_loads_one_closed_owner_only_runtime_contract(
     assert config.worker.lease_grace_seconds == 15
     assert config.worker.max_retained_successful_worktrees == 2
     assert load_alpha_worker_config({}, repository_root=repository, data_root=data_root) is None
+
+
+def test_alpha_worker_config_loads_closed_agy_existing_session_provider(tmp_path: Path) -> None:
+    repository, data_root, isolation_root = _roots(tmp_path)
+    payload = _payload(isolation_root)
+    provider = cast("dict[str, object]", payload["provider"])
+    provider.update(
+        {
+            "adapter": "agy-cli",
+            "model_id": "gemini-alpha",
+            "effort": "high",
+        }
+    )
+    source = tmp_path / "alpha-worker-agy.json"
+    _write_config(source, payload)
+
+    config = load_alpha_worker_config(
+        {ALPHA_WORKER_CONFIG_FILE_ENV: str(source)},
+        repository_root=repository,
+        data_root=data_root,
+    )
+
+    assert config is not None
+    assert config.provider.adapter is AlphaExecutionProviderAdapter.AGY_CLI
+    assert config.provider.effort == "high"
+
+
+def test_alpha_worker_config_rejects_agy_credential_path_authority(tmp_path: Path) -> None:
+    repository, data_root, isolation_root = _roots(tmp_path)
+    payload = _payload(isolation_root)
+    provider = cast("dict[str, object]", payload["provider"])
+    provider.update(
+        {
+            "adapter": "agy-cli",
+            "auth_token_path": "/credentials/must-remain-owned-by-agy",
+            "effort": "high",
+        }
+    )
+    source = tmp_path / "alpha-worker-unsafe-agy.json"
+    _write_config(source, payload)
+
+    with pytest.raises(AlphaWorkerConfigError, match="invalid-alpha-worker-config"):
+        load_alpha_worker_config(
+            {ALPHA_WORKER_CONFIG_FILE_ENV: str(source)},
+            repository_root=repository,
+            data_root=data_root,
+        )
 
 
 def test_alpha_worker_config_rejects_unsafe_implicit_and_unknown_input_content_free(
@@ -92,9 +143,9 @@ def test_alpha_worker_config_rejects_unsafe_implicit_and_unknown_input_content_f
     cases.append((tmp_path / "invalid-retention.json", json.dumps(invalid_retention), 0o600))
 
     duplicate = json.dumps(valid).replace(
-        '"schema_version": "blackcell.alpha-worker-config/v1"',
-        '"schema_version": "blackcell.alpha-worker-config/v1", '
-        '"schema_version": "blackcell.alpha-worker-config/v1"',
+        '"schema_version": "blackcell.alpha-worker-config/v3"',
+        '"schema_version": "blackcell.alpha-worker-config/v3", '
+        '"schema_version": "blackcell.alpha-worker-config/v3"',
         1,
     )
     cases.append((tmp_path / "duplicate.json", duplicate, 0o600))
@@ -163,8 +214,8 @@ def test_alpha_worker_config_rejects_each_typed_authority_boundary(tmp_path: Pat
     add("environment-forbidden", "provider", "environment_variables", ["PYTHONPATH"])
     add("profile-id", "provider", "profile_id", "bad id")
     add("model-token", "provider", "model_id", "bad\nmodel")
-    add("missing-executable", "provider", "codex_executable", str(tmp_path / "missing"))
-    add("unsafe-executable", "provider", "codex_executable", str(unsafe_executable))
+    add("missing-executable", "provider", "executable", str(tmp_path / "missing"))
+    add("unsafe-executable", "provider", "executable", str(unsafe_executable))
     add("integer", "provider", "max_input_tokens", True)
     add("repository-overlap", "isolation", "root", str(repository_isolation))
     add("owner-mode", "isolation", "root", str(wrong_mode_root))
@@ -235,9 +286,10 @@ def _payload(isolation_root: Path) -> dict[str, object]:
     return {
         "schema_version": ALPHA_WORKER_CONFIG_SCHEMA,
         "provider": {
+            "adapter": "codex-cli",
             "profile_id": "alpha-code",
             "model_id": "gpt-alpha",
-            "codex_executable": str(true),
+            "executable": str(true),
             "git_executable": str(_executable("git")),
             "classification": "private",
             "locality": "remote-allowed",

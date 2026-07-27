@@ -298,9 +298,10 @@ def _execution_payload(isolation_root: Path) -> dict[str, object]:
     return {
         "schema_version": ALPHA_WORKER_CONFIG_SCHEMA,
         "provider": {
+            "adapter": "codex-cli",
             "profile_id": "alpha-code",
             "model_id": "gpt-code",
-            "codex_executable": str(executable),
+            "executable": str(executable),
             "git_executable": str(_executable("git")),
             "classification": "private",
             "locality": "remote-allowed",

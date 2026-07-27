@@ -14,6 +14,7 @@ edges:
     - migration-ledger
     - guides/runtime-v1-release
     - guides/alpha-operator-quickstart
+    - guides/alpha-v2-kernel
     - guides/alpha-worker-configuration
     - guides/alpha-review-configuration
     - guides/alpha-verify-configuration
@@ -33,6 +34,7 @@ edges:
 - `migration-ledger.md`: strangler map from current packages to target feature ownership
 - `guides/runtime-v1-release.md`: executable runtime-v1 walkthrough and unpublished evidence bundle
 - `guides/alpha-operator-quickstart.md`: source-run alpha environment, request flow, browser, restart, and nonclaims
+- `guides/alpha-v2-kernel.md`: versioned plan compilation, bounded task repair, replay, policy, and provider ports
 - `guides/alpha-worker-configuration.md`: fail-closed provider and isolation setup for opt-in alpha dispatch
 - `guides/alpha-review-configuration.md`: separate REVIEW-only profile, identity, budget, and process setup
 - `guides/alpha-verify-configuration.md`: deterministic verifier identity, lifecycle, and evidence setup

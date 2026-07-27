@@ -9,6 +9,7 @@ from typing import Literal, Protocol
 
 from blackcell.interfaces.http import (
     MAX_ALPHA_EVENT_PAGE_SIZE,
+    MAX_ALPHA_RUN_QUERY_SCAN_EVENTS,
     AlphaCancelRunRequest,
     AlphaEventPageResponse,
     AlphaEventResponse,
@@ -19,6 +20,9 @@ from blackcell.interfaces.http import (
     AlphaProjectRequest,
     AlphaProjectResponse,
     AlphaReplayResponse,
+    AlphaRunQueryItem,
+    AlphaRunQueryRequest,
+    AlphaRunQueryResponse,
     AlphaRunRequest,
     AlphaRunResponse,
     alpha_plan_topological_order,
@@ -41,6 +45,7 @@ class AlphaTuiFailureCode(StrEnum):
     INVALID_WORKFLOW_REQUEST = "alpha-tui-invalid-workflow-request"
     CURSOR_STORE_NOT_CONNECTED = "alpha-tui-cursor-store-not-connected"
     RESPONSE_BINDING_MISMATCH = "alpha-tui-response-binding-mismatch"
+    INVALID_RUN_QUERY = "alpha-tui-invalid-run-query"
 
 
 class AlphaTuiError(RuntimeError):
@@ -76,6 +81,8 @@ class AlphaTuiClient(Protocol):
     def submit_alpha_run(self, request: AlphaRunRequest) -> AlphaRunResponse: ...
 
     def inspect_alpha_run(self, run_id: str) -> AlphaRunResponse: ...
+
+    def query_alpha_runs(self, request: AlphaRunQueryRequest) -> AlphaRunQueryResponse: ...
 
     def cancel_alpha_run(
         self,
@@ -113,6 +120,7 @@ class AlphaTuiProjection:
     endpoint: str | None = None
     cursor: int = 0
     events: tuple[AlphaEventResponse, ...] = ()
+    runs: tuple[AlphaRunQueryItem, ...] = ()
     project: AlphaProjectResponse | None = None
     intent: AlphaIntentResponse | None = None
     plan: AlphaPlanResponse | None = None
@@ -157,6 +165,12 @@ class AlphaTuiController:
     async def connect(self) -> AlphaTuiProjection:
         async with self._command_lock:
             status = await _offload(self._client.status)
+            query_request = AlphaRunQueryRequest(
+                schema_version="alpha-run-query-request/v1",
+                limit=50,
+            )
+            query = await _offload(self._client.query_alpha_runs, query_request)
+            _validate_run_query(query, query_request)
             async with self._event_lock:
                 cursor = self._state.cursor
                 events = self._state.events
@@ -172,6 +186,7 @@ class AlphaTuiController:
                     endpoint=status.endpoint,
                     cursor=cursor,
                     events=events,
+                    runs=query.runs,
                     last_operation="connect",
                     revision=self._state.revision + 1,
                 )
@@ -613,6 +628,72 @@ def _validate_event_page(
         or len({event.event_id for event in page.events}) != len(page.events)
     ):
         raise AlphaTuiError(AlphaTuiFailureCode.INVALID_EVENT_PAGE)
+
+
+def _validate_run_query(
+    response: AlphaRunQueryResponse,
+    request: AlphaRunQueryRequest,
+) -> None:
+    queued_cursors = tuple(item.queued_cursor for item in response.runs)
+    run_ids = tuple(item.run.run_id for item in response.runs)
+    if (
+        not isinstance(response, AlphaRunQueryResponse)
+        or response.query != request
+        or isinstance(response.scanned_events, bool)
+        or not isinstance(response.scanned_events, int)
+        or not 0 <= response.scanned_events <= MAX_ALPHA_RUN_QUERY_SCAN_EVENTS
+        or len(response.runs) > request.limit
+        or len(response.runs) > response.scanned_events
+        or isinstance(response.next_cursor, bool)
+        or not isinstance(response.next_cursor, int)
+        or not request.after_cursor <= response.next_cursor <= 2**63 - 1
+        or not isinstance(response.has_more, bool)
+        or (response.scanned_events == 0 and response.next_cursor != request.after_cursor)
+        or (response.scanned_events > 0 and response.next_cursor <= request.after_cursor)
+        or (response.has_more and response.next_cursor == request.after_cursor)
+        or (
+            response.has_more
+            and response.scanned_events < MAX_ALPHA_RUN_QUERY_SCAN_EVENTS
+            and len(response.runs) < request.limit
+        )
+        or any(
+            isinstance(cursor, bool)
+            or not isinstance(cursor, int)
+            or not request.after_cursor < cursor <= response.next_cursor
+            for cursor in queued_cursors
+        )
+        or any(previous >= current for previous, current in pairwise(queued_cursors))
+        or len(run_ids) != len(set(run_ids))
+        or any(not _run_query_item_matches(item, request) for item in response.runs)
+    ):
+        raise AlphaTuiError(AlphaTuiFailureCode.INVALID_RUN_QUERY)
+
+
+def _run_query_item_matches(
+    item: AlphaRunQueryItem,
+    request: AlphaRunQueryRequest,
+) -> bool:
+    run = item.run
+    node_ids = tuple(node.node_id for node in item.nodes)
+    return not (
+        item.queued_cursor > run.cursor
+        or (request.statuses and run.status not in request.statuses)
+        or (request.project_ids and run.project_id not in request.project_ids)
+        or (request.intent_ids and run.intent_id not in request.intent_ids)
+        or (request.plan_ids and run.plan_id not in request.plan_ids)
+        or (request.run_ids and run.run_id not in request.run_ids)
+        or not item.nodes
+        or len(node_ids) != len(set(node_ids))
+        or any(
+            isinstance(node.attempts, bool)
+            or not isinstance(node.attempts, int)
+            or node.attempts < 0
+            or isinstance(node.fencing_token, bool)
+            or not isinstance(node.fencing_token, int)
+            or node.fencing_token < 0
+            for node in item.nodes
+        )
+    )
 
 
 __all__ = [

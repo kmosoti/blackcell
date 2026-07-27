@@ -13,6 +13,8 @@ from urllib.request import HTTPRedirectHandler, OpenerDirector, ProxyHandler, Re
 
 from blackcell.config import SecretValue
 from blackcell.interfaces.http import (
+    ALPHA_RUN_QUERY_MEDIA_TYPE,
+    ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
     MAX_ALPHA_EVENT_PAGE_SIZE,
     MAX_RESPONSE_BODY_BYTES,
     AlphaCancelRunRequest,
@@ -24,6 +26,8 @@ from blackcell.interfaces.http import (
     AlphaProjectRequest,
     AlphaProjectResponse,
     AlphaReplayResponse,
+    AlphaRunQueryRequest,
+    AlphaRunQueryResponse,
     AlphaRunRequest,
     AlphaRunResponse,
     ErrorResponse,
@@ -43,7 +47,7 @@ _MAX_REPLAY_TIMEOUT_SECONDS = 3_600.0
 _MAX_ENDPOINT_CHARS = 2_048
 _MAX_SERVICE_ERROR_CHARS = 100
 
-HttpMethod = Literal["GET", "POST"]
+HttpMethod = Literal["GET", "POST", "QUERY"]
 
 
 class RuntimeClientFailureCode(StrEnum):
@@ -267,6 +271,28 @@ class RuntimeHttpClient:
             AlphaRunResponse,
         )
 
+    def query_alpha_runs(self, request: AlphaRunQueryRequest) -> AlphaRunQueryResponse:
+        if not isinstance(request, AlphaRunQueryRequest):
+            raise RuntimeClientError(RuntimeClientFailureCode.INVALID_REQUEST)
+        if self.token is None:
+            raise RuntimeClientError(RuntimeClientFailureCode.MISSING_AUTHENTICATION)
+        response = self._request(
+            "/api/alpha/v1/run-query",
+            method="QUERY",
+            headers={
+                "accept": ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
+                "authorization": self.token.authorization_header(),
+                "content-type": ALPHA_RUN_QUERY_MEDIA_TYPE,
+            },
+            body=encode_contract(request),
+        )
+        return _decode_expected(
+            response,
+            (200,),
+            AlphaRunQueryResponse,
+            media_types=(ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,),
+        )
+
     def cancel_alpha_run(
         self,
         run_id: str,
@@ -389,6 +415,8 @@ def _decode_expected[ContractT: StrictStruct](
     response: RuntimeHttpResponse,
     expected_statuses: tuple[int, ...],
     contract_type: type[ContractT],
+    *,
+    media_types: tuple[str, ...] = ("application/json",),
 ) -> ContractT:
     if response.status_code not in expected_statuses:
         raise RuntimeClientError(
@@ -396,7 +424,7 @@ def _decode_expected[ContractT: StrictStruct](
             status_code=response.status_code,
             service_error=_decode_service_error(response),
         )
-    if _media_type(response.content_type) != "application/json":
+    if _media_type(response.content_type) not in media_types:
         raise RuntimeClientError(RuntimeClientFailureCode.INVALID_RESPONSE)
     try:
         return decode_response_contract(response.body, contract_type)

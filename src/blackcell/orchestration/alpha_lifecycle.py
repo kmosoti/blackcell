@@ -16,6 +16,7 @@ from typing import cast
 
 from blackcell.kernel import EventEnvelope, JsonInput, JsonValue
 from blackcell.kernel._json import json_digest, thaw_json
+from blackcell.orchestration.alpha_v2 import ALPHA_V2_EVENT_SOURCE, ALPHA_V2_EVENT_TYPES
 
 ALPHA_EVENT_SOURCE = "blackcell.alpha.runtime"
 ALPHA_RUN_QUEUED = "alpha.run.queued"
@@ -137,10 +138,11 @@ class AlphaRunLifecycleState:
     active_lease: AlphaActiveLease | None
     queued_event: EventEnvelope
     latest_event: EventEnvelope
+    last_stream_sequence: int
 
     @property
     def stream_sequence(self) -> int:
-        return self.latest_event.stream_sequence
+        return self.last_stream_sequence
 
 
 @dataclass(slots=True)
@@ -182,21 +184,32 @@ def fold_alpha_run_lifecycle(
     stream_id = f"alpha:run:{run_id}"
     ordered_events = tuple(events)
     for sequence, event in enumerate(ordered_events, start=1):
+        known_event = (
+            event.source == ALPHA_EVENT_SOURCE and event.event_type in ALPHA_RUN_EVENT_TYPES
+        ) or (event.source == ALPHA_V2_EVENT_SOURCE and event.event_type in ALPHA_V2_EVENT_TYPES)
         if (
             not isinstance(event, EventEnvelope)
             or event.stream_id != stream_id
             or event.stream_sequence != sequence
             or event.schema_version != 1
-            or event.source != ALPHA_EVENT_SOURCE
-            or event.event_type not in ALPHA_RUN_EVENT_TYPES
+            or not known_event
         ):
             raise AlphaLifecycleError()
-    queued = ordered_events[0]
+    public_events = tuple(
+        event
+        for event in ordered_events
+        if event.source == ALPHA_EVENT_SOURCE and event.event_type in ALPHA_RUN_EVENT_TYPES
+    )
+    if not public_events:
+        raise AlphaLifecycleError()
+    queued = public_events[0]
     if queued.event_type != ALPHA_RUN_QUEUED:
         raise AlphaLifecycleError()
     _validate_queued(queued, run_id)
+    if any(event.correlation_id != queued.correlation_id for event in public_events):
+        raise AlphaLifecycleError()
     for previous, event in pairwise(ordered_events):
-        if event.correlation_id != queued.correlation_id or event.causation_id != previous.event_id:
+        if event.causation_id != previous.event_id:
             raise AlphaLifecycleError()
 
     status = AlphaRunLifecycleStatus.QUEUED
@@ -205,7 +218,7 @@ def fold_alpha_run_lifecycle(
     terminal = False
     reconciliation_recorded = False
     maximum_fence = 0
-    for event in ordered_events[1:]:
+    for event in public_events[1:]:
         cleanup_event = event.event_type in {
             ALPHA_NODE_WORKTREE_CLEANUP_REQUESTED,
             ALPHA_NODE_WORKTREE_CLEANED,
@@ -853,7 +866,8 @@ def fold_alpha_run_lifecycle(
         cancellation_requested=cancellation_requested,
         active_lease=active,
         queued_event=queued,
-        latest_event=ordered_events[-1],
+        latest_event=public_events[-1],
+        last_stream_sequence=ordered_events[-1].stream_sequence,
     )
 
 

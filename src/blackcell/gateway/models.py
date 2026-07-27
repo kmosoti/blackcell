@@ -101,23 +101,17 @@ class ModelRequest:
 @dataclass(frozen=True, slots=True)
 class AdapterResult:
     output: Mapping[str, JsonValue]
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
     latency_ms: int
-    cost_microusd: int
+    cost_microusd: int | None
     deterministic: bool
 
     def __post_init__(self) -> None:
-        if (
-            min(
-                self.input_tokens,
-                self.output_tokens,
-                self.latency_ms,
-                self.cost_microusd,
-            )
-            < 0
-        ):
-            raise ValueError("adapter usage values must be non-negative")
+        _validate_usage_value(self.input_tokens, "adapter input token usage", optional=True)
+        _validate_usage_value(self.output_tokens, "adapter output token usage", optional=True)
+        _validate_usage_value(self.latency_ms, "adapter latency", optional=False)
+        _validate_usage_value(self.cost_microusd, "adapter cost", optional=True)
         frozen = freeze_json(self.output, path="$.output")
         object.__setattr__(self, "output", cast("Mapping[str, JsonValue]", frozen))
 
@@ -127,10 +121,10 @@ class GatewayCompletion:
     """Content-free evidence that an admitted adapter call completed."""
 
     output_digest: str
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
     latency_ms: int
-    cost_microusd: int
+    cost_microusd: int | None
     deterministic: bool
     completed_at: datetime
 
@@ -142,16 +136,14 @@ class GatewayCompletion:
             int(hexadecimal, 16)
         except ValueError as error:
             raise ValueError("gateway completion output_digest must be a SHA-256 digest") from error
-        values = (
-            self.input_tokens,
-            self.output_tokens,
-            self.latency_ms,
-            self.cost_microusd,
+        _validate_usage_value(
+            self.input_tokens, "gateway completion input token usage", optional=True
         )
-        if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
-            raise TypeError("gateway completion usage values must be integers")
-        if min(values) < 0:
-            raise ValueError("gateway completion usage values must be non-negative")
+        _validate_usage_value(
+            self.output_tokens, "gateway completion output token usage", optional=True
+        )
+        _validate_usage_value(self.latency_ms, "gateway completion latency", optional=False)
+        _validate_usage_value(self.cost_microusd, "gateway completion cost", optional=True)
         if not isinstance(self.deterministic, bool):
             raise TypeError("gateway completion determinism marker must be a boolean")
         if self.completed_at.tzinfo is None or self.completed_at.utcoffset() is None:
@@ -176,10 +168,10 @@ class ModelResponse:
     profile_id: str
     adapter_id: str
     model_id: str
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
     latency_ms: int
-    cost_microusd: int
+    cost_microusd: int | None
     deterministic: bool
     completed_at: datetime
 
@@ -195,10 +187,10 @@ class GatewayAuditRecord:
     correlation_id: str
     run_id: str
     node_id: str
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
     latency_ms: int
-    cost_microusd: int
+    cost_microusd: int | None
     deterministic: bool
 
 
@@ -231,3 +223,15 @@ class PreparedGatewayCall:
             raise ValueError("prepared latency budget exceeds the request budget")
         if self.effective_budget.max_cost_microusd > self.request.budget.max_cost_microusd:
             raise ValueError("prepared cost budget exceeds the request budget")
+
+
+def _validate_usage_value(value: int | None, label: str, *, optional: bool) -> None:
+    if value is None:
+        if optional:
+            return
+        raise TypeError(f"{label} must be an integer")
+    if isinstance(value, bool) or not isinstance(value, int):
+        suffix = "an integer or null" if optional else "an integer"
+        raise TypeError(f"{label} must be {suffix}")
+    if value < 0:
+        raise ValueError(f"{label} must be non-negative")

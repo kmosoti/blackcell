@@ -1,0 +1,18 @@
+{
+  "after_cursor": 0,
+  "intent_ids": [
+    "alpha-intent"
+  ],
+  "limit": 50,
+  "plan_ids": [
+    "alpha-plan"
+  ],
+  "project_ids": [
+    "alpha-project"
+  ],
+  "run_ids": [
+    "alpha-run"
+  ],
+  "schema_version": "alpha-run-query-request/v1",
+  "statuses": []
+}

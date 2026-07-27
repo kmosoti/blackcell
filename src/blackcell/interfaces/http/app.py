@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from collections.abc import Callable
 from contextlib import suppress
 from itertools import pairwise
@@ -8,7 +10,7 @@ from typing import Any, cast
 from urllib.parse import parse_qsl
 
 import msgspec
-from litestar import Litestar, Request, Response, WebSocket, get, post, websocket
+from litestar import Litestar, Request, Response, WebSocket, asgi, get, post, websocket
 from litestar.concurrency import sync_to_thread
 from litestar.connection import ASGIConnection
 from litestar.exceptions import HTTPException, WebSocketDisconnect
@@ -18,19 +20,24 @@ from litestar.status_codes import (
     HTTP_200_OK,
     HTTP_201_CREATED,
     HTTP_202_ACCEPTED,
+    HTTP_204_NO_CONTENT,
+    HTTP_304_NOT_MODIFIED,
     HTTP_400_BAD_REQUEST,
     HTTP_401_UNAUTHORIZED,
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
     HTTP_405_METHOD_NOT_ALLOWED,
+    HTTP_406_NOT_ACCEPTABLE,
     HTTP_409_CONFLICT,
     HTTP_413_REQUEST_ENTITY_TOO_LARGE,
     HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    HTTP_422_UNPROCESSABLE_ENTITY,
     HTTP_429_TOO_MANY_REQUESTS,
     HTTP_500_INTERNAL_SERVER_ERROR,
     HTTP_503_SERVICE_UNAVAILABLE,
     HTTP_507_INSUFFICIENT_STORAGE,
 )
+from litestar.types import ASGIApp, HTTPResponseBodyEvent, Receive, Scope, Send
 
 from blackcell.interfaces import (
     AuthenticationError,
@@ -41,12 +48,15 @@ from blackcell.interfaces import (
     ServiceScope,
 )
 from blackcell.interfaces.http.alpha_contracts import (
+    ALPHA_RUN_QUERY_MEDIA_TYPE,
+    ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
     MAX_ALPHA_EVENT_PAGE_SIZE,
     AlphaCancelRunRequest,
     AlphaEventPageResponse,
     AlphaIntentRequest,
     AlphaPlanRequest,
     AlphaProjectRequest,
+    AlphaRunQueryRequest,
     AlphaRunRequest,
 )
 from blackcell.interfaces.http.alpha_web import (
@@ -81,6 +91,8 @@ _MAX_PATH_ID_CHARS = 200
 _MAX_WEB_SOCKET_QUERY_BYTES = 512
 _WEB_EVENT_PAGE_LIMIT = 100
 _DEFAULT_WEB_POLL_SECONDS = 0.25
+_ALPHA_RUN_QUERY_PATH = "/api/alpha/v1/run-query"
+_ALPHA_RUN_QUERY_ALLOW = "HEAD, OPTIONS, QUERY"
 _WS_INVALID_REQUEST = 4400
 _WS_AUTHENTICATION_REQUIRED = 4401
 _WS_CAPACITY_EXCEEDED = 4429
@@ -104,6 +116,332 @@ class HttpBoundaryError(RuntimeError):
         self.code = code
         self.status_code = status_code
         super().__init__(code)
+
+
+class _QuerySyntaxError(ValueError):
+    pass
+
+
+class _AlphaRunQueryMiddleware:
+    """Narrow ASGI adapter for RFC 10008 while Litestar lacks QUERY routing support."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        service: AlphaRuntimeApiPort,
+        authenticator: BearerAuthenticator,
+        authorizer: ScopeAuthorizer,
+        request_quota: RequestQuotaPort | None,
+    ) -> None:
+        self._app = app
+        self._service = service
+        self._authenticator = authenticator
+        self._authorizer = authorizer
+        self._request_quota = request_quota
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("path") != _ALPHA_RUN_QUERY_PATH:
+            await self._app(scope, receive, send)
+            return
+        method = scope.get("method", "").upper()
+        if method == "OPTIONS":
+            await _send_query_response(send, status=HTTP_204_NO_CONTENT)
+            return
+        if method == "HEAD":
+            await _send_query_response(
+                send,
+                status=HTTP_200_OK,
+                content_type=ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
+            )
+            return
+        if method != "QUERY":
+            await _send_query_error(send, HTTP_405_METHOD_NOT_ALLOWED, "method-not-allowed")
+            return
+        try:
+            _authorize_query(
+                scope,
+                authenticator=self._authenticator,
+                authorizer=self._authorizer,
+                request_quota=self._request_quota,
+            )
+            content_type_values = _header_values(scope, b"content-type")
+            if not content_type_values:
+                await _send_query_error(
+                    send,
+                    HTTP_400_BAD_REQUEST,
+                    "query-content-type-required",
+                )
+                return
+            if len(content_type_values) != 1 or not _supported_query_content_type(
+                content_type_values[0]
+            ):
+                await _send_query_error(
+                    send,
+                    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                    "unsupported-query-media-type",
+                )
+                return
+            content_encoding = _header_values(scope, b"content-encoding")
+            if len(content_encoding) > 1 or (
+                content_encoding and content_encoding[0].strip().casefold() != "identity"
+            ):
+                await _send_query_error(
+                    send,
+                    HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                    "unsupported-query-content-encoding",
+                )
+                return
+            if not _query_response_acceptable(_header_values(scope, b"accept")):
+                await _send_query_error(send, HTTP_406_NOT_ACCEPTABLE, "not-acceptable")
+                return
+            body = await _read_query_body(scope, receive)
+            try:
+                decoded = _decode_query_json(body)
+            except _QuerySyntaxError:
+                await _send_query_error(
+                    send,
+                    HTTP_400_BAD_REQUEST,
+                    "invalid-query-content",
+                )
+                return
+            try:
+                contract = msgspec.convert(decoded, type=AlphaRunQueryRequest, strict=True)
+            except msgspec.ValidationError, TypeError, ValueError:
+                await _send_query_error(
+                    send,
+                    HTTP_422_UNPROCESSABLE_ENTITY,
+                    "unprocessable-query",
+                )
+                return
+            response = await sync_to_thread(self._service.query_alpha_runs, contract)
+            content = encode_contract(response)
+            etag = f'"{hashlib.sha256(content).hexdigest()}"'
+            if _etag_matches(_header_values(scope, b"if-none-match"), etag):
+                await _send_query_response(
+                    send,
+                    status=HTTP_304_NOT_MODIFIED,
+                    etag=etag,
+                )
+                return
+            await _send_query_response(
+                send,
+                status=HTTP_200_OK,
+                body=content,
+                content_type=ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
+                etag=etag,
+            )
+        except AuthenticationError:
+            await _send_query_error(
+                send,
+                HTTP_401_UNAUTHORIZED,
+                "authentication-required",
+                authenticate=True,
+            )
+        except AuthorizationError:
+            await _send_query_error(send, HTTP_403_FORBIDDEN, "insufficient-scope")
+        except HttpBoundaryError as error:
+            await _send_query_error(
+                send,
+                error.status_code,
+                error.code,
+                authenticate=error.status_code == HTTP_401_UNAUTHORIZED,
+            )
+        except RuntimeApiError as error:
+            statuses = {
+                RuntimeApiFailureCode.INVALID_REQUEST: HTTP_400_BAD_REQUEST,
+                RuntimeApiFailureCode.NOT_FOUND: HTTP_404_NOT_FOUND,
+                RuntimeApiFailureCode.CONFLICT: HTTP_409_CONFLICT,
+                RuntimeApiFailureCode.NOT_READY: HTTP_503_SERVICE_UNAVAILABLE,
+                RuntimeApiFailureCode.STORAGE_QUOTA_EXCEEDED: HTTP_507_INSUFFICIENT_STORAGE,
+            }
+            await _send_query_error(send, statuses[error.code], error.code.value)
+        except Exception:
+            await _send_query_error(send, HTTP_500_INTERNAL_SERVER_ERROR, "internal-error")
+
+
+def _authorize_query(
+    scope: Scope,
+    *,
+    authenticator: BearerAuthenticator,
+    authorizer: ScopeAuthorizer,
+    request_quota: RequestQuotaPort | None,
+) -> None:
+    if request_quota is not None and not request_quota.consume():
+        raise HttpBoundaryError("request-quota-exceeded", HTTP_429_TOO_MANY_REQUESTS)
+    principal = authenticator.authenticate(_header_values(scope, b"authorization"))
+    authorizer.require(principal, ServiceScope.READ)
+
+
+def _header_values(scope: Scope, name: bytes) -> tuple[str, ...]:
+    headers = scope.get("headers", ())
+    return tuple(
+        value.decode("latin-1") for candidate, value in headers if candidate.lower() == name
+    )
+
+
+def _supported_query_content_type(value: str) -> bool:
+    pieces = tuple(piece.strip() for piece in value.split(";"))
+    if not pieces or pieces[0].casefold() != ALPHA_RUN_QUERY_MEDIA_TYPE:
+        return False
+    for parameter in pieces[1:]:
+        name, separator, raw_value = parameter.partition("=")
+        if (
+            not separator
+            or name.strip().casefold() != "charset"
+            or raw_value.strip().strip('"').casefold() != "utf-8"
+        ):
+            return False
+    return True
+
+
+def _query_response_acceptable(values: tuple[str, ...]) -> bool:
+    if not values:
+        return True
+    combined = ",".join(values)
+    if len(combined) > 8_192:
+        return False
+    offered_type, offered_subtype = ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE.split("/", 1)
+    for item in combined.split(","):
+        fields = tuple(field.strip() for field in item.split(";"))
+        media_range = fields[0].casefold()
+        quality = 1.0
+        valid = bool(media_range)
+        for parameter in fields[1:]:
+            name, separator, value = parameter.partition("=")
+            if name.strip().casefold() != "q" or not separator:
+                valid = False
+                break
+            try:
+                quality = float(value)
+            except ValueError:
+                valid = False
+                break
+            if not 0.0 <= quality <= 1.0:
+                valid = False
+                break
+        if not valid or quality <= 0.0:
+            continue
+        if media_range in {
+            "*/*",
+            f"{offered_type}/*",
+            f"{offered_type}/{offered_subtype}",
+        }:
+            return True
+    return False
+
+
+async def _read_query_body(scope: Scope, receive: Receive) -> bytes:
+    lengths = _header_values(scope, b"content-length")
+    if len(lengths) > 1 or (
+        lengths and (not lengths[0].isdecimal() or int(lengths[0]) > MAX_REQUEST_BODY_BYTES)
+    ):
+        status = (
+            HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            if lengths and lengths[0].isdecimal()
+            else HTTP_400_BAD_REQUEST
+        )
+        raise HttpBoundaryError(
+            "request-too-large"
+            if status == HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            else "invalid-request",
+            status,
+        )
+    body = bytearray()
+    while True:
+        event = await receive()
+        if event["type"] == "http.disconnect":
+            raise HttpBoundaryError("invalid-request", HTTP_400_BAD_REQUEST)
+        chunk = event.get("body", b"")
+        if not isinstance(chunk, bytes):
+            raise HttpBoundaryError("invalid-request", HTTP_400_BAD_REQUEST)
+        body.extend(chunk)
+        if len(body) > MAX_REQUEST_BODY_BYTES:
+            raise HttpBoundaryError("request-too-large", HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+        if not event.get("more_body", False):
+            return bytes(body)
+
+
+def _decode_query_json(body: bytes) -> object:
+    def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        value: dict[str, object] = {}
+        for key, item in pairs:
+            if key in value:
+                raise _QuerySyntaxError()
+            value[key] = item
+        return value
+
+    def reject_constant(_: str) -> object:
+        raise _QuerySyntaxError()
+
+    try:
+        return json.loads(
+            body.decode("utf-8"),
+            object_pairs_hook=unique_object,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, _QuerySyntaxError) as error:
+        raise _QuerySyntaxError() from error
+
+
+def _etag_matches(values: tuple[str, ...], etag: str) -> bool:
+    if not values:
+        return False
+    opaque = etag.removeprefix("W/")
+    for item in ",".join(values).split(","):
+        candidate = item.strip()
+        if candidate == "*" or candidate.removeprefix("W/") == opaque:
+            return True
+    return False
+
+
+async def _send_query_error(
+    send: Send,
+    status: int,
+    code: str,
+    *,
+    authenticate: bool = False,
+) -> None:
+    await _send_query_response(
+        send,
+        status=status,
+        body=encode_contract(ErrorResponse(error=code)),
+        content_type="application/json",
+        cache_control="no-store",
+        authenticate=authenticate,
+    )
+
+
+async def _send_query_response(
+    send: Send,
+    *,
+    status: int,
+    body: bytes = b"",
+    content_type: str | None = None,
+    etag: str | None = None,
+    cache_control: str = "private, max-age=0, must-revalidate",
+    authenticate: bool = False,
+) -> None:
+    headers: list[tuple[bytes, bytes]] = [
+        (b"accept-query", ALPHA_RUN_QUERY_MEDIA_TYPE.encode("ascii")),
+        (b"allow", _ALPHA_RUN_QUERY_ALLOW.encode("ascii")),
+        (b"cache-control", cache_control.encode("ascii")),
+        (b"content-length", str(len(body)).encode("ascii")),
+        (b"x-content-type-options", b"nosniff"),
+    ]
+    if content_type is not None:
+        headers.append((b"content-type", content_type.encode("ascii")))
+    if etag is not None:
+        headers.append((b"etag", etag.encode("ascii")))
+    if authenticate:
+        headers.append((b"www-authenticate", b"Bearer"))
+    await send({"type": "http.response.start", "status": status, "headers": headers})
+    response_body: HTTPResponseBodyEvent = {
+        "type": "http.response.body",
+        "body": body,
+        "more_body": False,
+    }
+    await send(response_body)
 
 
 def create_http_app(
@@ -131,6 +469,17 @@ def create_http_app(
     read_guard = _scope_guard(authenticator, authorizer, ServiceScope.READ, request_quota)
     run_guard = _scope_guard(authenticator, authorizer, ServiceScope.RUN, request_quota)
     approve_guard = _scope_guard(authenticator, authorizer, ServiceScope.APPROVE, request_quota)
+    query_endpoint = _AlphaRunQueryMiddleware(
+        _unmatched_query_app,
+        service=alpha_service,
+        authenticator=authenticator,
+        authorizer=authorizer,
+        request_quota=request_quota,
+    )
+
+    @asgi(_ALPHA_RUN_QUERY_PATH, copy_scope=True)
+    async def alpha_run_query(scope: Scope, receive: Receive, send: Send) -> None:
+        await query_endpoint(scope, receive, send)
 
     @get("/health/live", status_code=HTTP_200_OK, sync_to_thread=False)
     def liveness() -> Response[bytes]:
@@ -461,6 +810,7 @@ def create_http_app(
             inspect_alpha_run,
             replay_alpha_run,
             list_alpha_events,
+            alpha_run_query,
             issue_alpha_web_socket_ticket,
             stream_alpha_web_events,
             submit_run,
@@ -483,6 +833,11 @@ def create_http_app(
             Exception: _exception_response,
         },
     )
+
+
+async def _unmatched_query_app(scope: Scope, receive: Receive, send: Send) -> None:
+    del scope, receive
+    await _send_query_error(send, HTTP_404_NOT_FOUND, "not-found")
 
 
 def _scope_guard(

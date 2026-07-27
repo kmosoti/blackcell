@@ -835,7 +835,7 @@ function validateProjectRequest(value) {
     !validIdentifier(value.project_id) ||
     !boundedNonblankText(value.root, 4096) ||
     value.configuration_provider !== "kernform" ||
-    value.configuration_version !== "0.1.0" ||
+    value.configuration_version !== "0.2.0" ||
     typeof value.configuration_digest !== "string" ||
     !DIGEST.test(value.configuration_digest) ||
     !validIdentifier(value.idempotency_key)

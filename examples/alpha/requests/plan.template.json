@@ -42,6 +42,7 @@
       "objective": "Replace this node objective and paths with the admitted project change."
     }
   ],
+  "planning_mode": "generated",
   "plan_id": "alpha-plan",
   "project_id": "alpha-project",
   "schema_version": "alpha-plan-request/v1"

@@ -13,6 +13,8 @@ from blackcell.interfaces.http.alpha_contracts import (
     AlphaProjectRequest,
     AlphaProjectResponse,
     AlphaReplayResponse,
+    AlphaRunQueryRequest,
+    AlphaRunQueryResponse,
     AlphaRunRequest,
     AlphaRunResponse,
 )
@@ -115,6 +117,8 @@ class AlphaRuntimeApiPort(Protocol):
     ) -> AlphaRunResponse: ...
 
     def inspect_alpha_run(self, run_id: str) -> AlphaRunResponse: ...
+
+    def query_alpha_runs(self, request: AlphaRunQueryRequest) -> AlphaRunQueryResponse: ...
 
     def cancel_alpha_run(
         self,

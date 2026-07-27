@@ -10,7 +10,7 @@ from blackcell.adapters.runtime_http import RuntimeClientError, RuntimeClientFai
 from blackcell.bootstrap.alpha_runtime import AlphaRuntimeApiService
 from blackcell.cli.app import app
 from blackcell.config import API_TOKEN_ENV, API_TOKEN_FILE_ENV, DATA_DIR_ENV, SecretValue
-from blackcell.interfaces.http import AlphaCancelRunRequest, encode_contract
+from blackcell.interfaces.http import AlphaCancelRunRequest, AlphaRunQueryRequest, encode_contract
 from blackcell.kernel import EventStore
 from tests.cli_runner import CycloptsCliRunner
 from tests.unit.test_alpha_runtime import _intent, _plan, _project, _repository, _run
@@ -44,6 +44,9 @@ class FakeAlphaClient:
     def inspect_alpha_run(self, run_id: str) -> object:
         return self._call("status", run_id)
 
+    def query_alpha_runs(self, request: object) -> object:
+        return self._call("query", request)
+
     def cancel_alpha_run(self, run_id: str, request: object) -> object:
         return self._call("cancel", (run_id, request))
 
@@ -72,12 +75,18 @@ def test_alpha_cli_executes_complete_json_first_client_surface(
         schema_version="alpha-cancel-run-request/v1",
         idempotency_key="cancel-run-1",
     )
+    query_request = AlphaRunQueryRequest(
+        schema_version="alpha-run-query-request/v1",
+        statuses=("queued",),
+        limit=10,
+    )
     project = service.register_project(project_request, principal_id="client:test")
     intent = service.accept_intent(intent_request, principal_id="client:test")
     plan = service.accept_plan(plan_request, principal_id="client:test")
     run = service.submit_run(run_request, principal_id="client:test")
     events = service.list_events(after_cursor=0, limit=20)
     replay = service.replay_run("run-1")
+    query = service.query_runs(query_request)
     canceled = service.cancel_run("run-1", cancel_request, principal_id="client:test")
     FakeAlphaClient.instances = []
     FakeAlphaClient.calls = []
@@ -87,6 +96,7 @@ def test_alpha_cli_executes_complete_json_first_client_surface(
         "plan": plan,
         "submit": run,
         "status": run,
+        "query": query,
         "events": events,
         "replay": replay,
         "cancel": canceled,
@@ -100,6 +110,7 @@ def test_alpha_cli_executes_complete_json_first_client_surface(
         "plan": _request_file(tmp_path, "plan.json", plan_request),
         "run": _request_file(tmp_path, "run.json", run_request),
         "cancel": _request_file(tmp_path, "cancel.json", cancel_request),
+        "query": _request_file(tmp_path, "query.json", query_request),
     }
     commands = (
         ("project", ["alpha", "project", "register", "--request", request_files["project"]]),
@@ -107,6 +118,7 @@ def test_alpha_cli_executes_complete_json_first_client_surface(
         ("plan", ["alpha", "plan", "accept", "--request", request_files["plan"]]),
         ("submit", ["alpha", "run", "submit", "--request", request_files["run"]]),
         ("status", ["alpha", "run", "status", "run-1"]),
+        ("query", ["alpha", "run", "query", "--request", request_files["query"]]),
         ("events", ["alpha", "events", "list", "--after", "0", "--limit", "20"]),
         ("replay", ["alpha", "run", "replay", "run-1"]),
         (
@@ -127,6 +139,7 @@ def test_alpha_cli_executes_complete_json_first_client_surface(
 
     assert outputs["project"]["schema_version"] == "alpha-project/v1"
     assert outputs["submit"]["status"] == "queued"
+    assert outputs["query"]["runs"][0]["run"]["run_id"] == "run-1"
     assert outputs["events"]["events"][0]["event_type"] == "alpha.project.registered"
     assert outputs["replay"]["verification"]["lifecycle_status"] == "not-started"
     assert outputs["cancel"]["status"] == "canceled"
@@ -136,6 +149,7 @@ def test_alpha_cli_executes_complete_json_first_client_surface(
         "plan",
         "submit",
         "status",
+        "query",
         "events",
         "replay",
         "cancel",
@@ -195,7 +209,7 @@ def test_alpha_help_exposes_client_surface_without_legacy_submission() -> None:
     assert alpha.exit_code == run.exit_code == 0
     for command in ("project", "intent", "plan", "run", "events", "tui"):
         assert command in alpha.stdout
-    for command in ("submit", "status", "cancel", "replay"):
+    for command in ("submit", "status", "query", "cancel", "replay"):
         assert command in run.stdout
     assert "--token" not in alpha.stdout
     assert "/api/v1/runs" not in alpha.stdout

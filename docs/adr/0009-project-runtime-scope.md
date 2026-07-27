@@ -62,16 +62,17 @@ storage.
 
 ### Integrate Kernform through its public command contract
 
-The first boundary pins Kernform `0.1.0`, `kernform.command/v1`, and agent-mode JSON output. It
-executes argv without a shell, enforces timeout/output limits, validates the closed response, maps
-stable exit classes, and confines accepted artifacts to the requested project root. It initially
-supports `check` and `init`; large raw `inspect` inventories are not admitted.
+The boundary pins Kernform `0.2.0`, `kernform.command/v2`, and agent-mode JSON output. It executes
+argv without a shell, enforces timeout/output limits, validates the closed response, maps stable
+exit classes, and confines accepted artifacts to the requested project root. It supports read-only
+`compile`, `check`, and effectful `init`; large raw `inspect` inventories are not admitted.
 
 The envelope's generic `result` slot is not treated as trusted merely because the outer schema is
-valid. BlackCell applies pinned command-specific contracts: `check` validates its exact conformance
-flags, catalog identity, mode, bounded file count, and deterministic requirement identifiers;
-`init` validates its plan identity and bounded operation count, then requires its state and evidence
-paths to match the canonical accepted artifacts. This keeps evolving Python/Rust implementation
+valid. BlackCell applies pinned command-specific contracts: `check` validates the documented
+source, managed, or explicit legacy-migration shape; `compile` validates the plan, catalog,
+signature closure, operation identities, and repository-relative paths; `init` validates its plan
+identity and bounded operation count, then requires its state path to match the canonical accepted
+artifact. This keeps evolving Python/Rust implementation
 details behind Kernform's public wire contract without turning an open JSON object into an implicit
 integration API.
 

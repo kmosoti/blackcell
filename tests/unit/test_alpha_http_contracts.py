@@ -11,6 +11,7 @@ from blackcell.interfaces.http import (
     AlphaPlanNode,
     AlphaPlanRequest,
     AlphaProjectRequest,
+    AlphaRunQueryRequest,
     WireContractError,
     alpha_plan_topological_order,
     decode_contract,
@@ -29,7 +30,7 @@ def test_alpha_contracts_are_closed_versioned_and_bounded() -> None:
                 "project_id": "project-1",
                 "root": "/tmp/project",
                 "configuration_provider": "kernform",
-                "configuration_version": "0.1.0",
+                "configuration_version": "0.2.0",
                 "configuration_digest": _DIGEST,
                 "idempotency_key": "project-1",
             }
@@ -44,7 +45,7 @@ def test_alpha_contracts_are_closed_versioned_and_bounded() -> None:
             "project_id": "project-1",
             "root": "/tmp/project",
             "configuration_provider": "kernform",
-            "configuration_version": "0.1.0",
+            "configuration_version": "0.2.0",
             "configuration_digest": _DIGEST,
             "idempotency_key": "project-1",
         },
@@ -53,7 +54,7 @@ def test_alpha_contracts_are_closed_versioned_and_bounded() -> None:
             "project_id": "project-1",
             "root": "/tmp/project",
             "configuration_provider": "kernform",
-            "configuration_version": "0.1.0",
+            "configuration_version": "0.2.0",
             "configuration_digest": _DIGEST,
             "idempotency_key": "project-1",
             "unknown": True,
@@ -63,7 +64,7 @@ def test_alpha_contracts_are_closed_versioned_and_bounded() -> None:
             "project_id": "project:invalid",
             "root": "/tmp/project",
             "configuration_provider": "kernform",
-            "configuration_version": "0.1.0",
+            "configuration_version": "0.2.0",
             "configuration_digest": "not-a-digest",
             "idempotency_key": "project-1",
         },
@@ -116,6 +117,41 @@ def test_alpha_cancel_contract_is_closed_versioned_and_bounded() -> None:
     ):
         with pytest.raises(WireContractError):
             decode_contract(msgspec.json.encode(invalid), AlphaCancelRunRequest)
+
+
+def test_alpha_run_query_contract_is_closed_canonical_and_bounded() -> None:
+    request = decode_contract(
+        msgspec.json.encode(
+            {
+                "schema_version": "alpha-run-query-request/v1",
+                "statuses": ["succeeded", "queued"],
+                "project_ids": ["project-2", "project-1"],
+                "run_ids": ["run-2", "run-1"],
+                "limit": 25,
+            }
+        ),
+        AlphaRunQueryRequest,
+    )
+
+    assert request.statuses == ("queued", "succeeded")
+    assert request.project_ids == ("project-1", "project-2")
+    assert request.run_ids == ("run-1", "run-2")
+    assert request.after_cursor == 0
+
+    valid = msgspec.to_builtins(request)
+    assert isinstance(valid, dict)
+    for invalid in (
+        {**valid, "schema_version": "alpha-run-query-request/v2"},
+        {**valid, "unexpected": True},
+        {**valid, "statuses": ["queued", "queued"]},
+        {**valid, "statuses": ["unknown"]},
+        {**valid, "project_ids": ["invalid:project"]},
+        {**valid, "after_cursor": True},
+        {**valid, "limit": 0},
+        {**valid, "limit": 101},
+    ):
+        with pytest.raises(WireContractError):
+            decode_contract(msgspec.json.encode(invalid), AlphaRunQueryRequest)
 
 
 def test_alpha_event_contract_accepts_provider_dispatch_marker() -> None:

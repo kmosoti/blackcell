@@ -1,7 +1,11 @@
 """Versioned Litestar HTTP adapter and msgspec wire contracts."""
 
 from blackcell.interfaces.http.alpha_contracts import (
+    ALPHA_RUN_QUERY_MEDIA_TYPE,
+    ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE,
     MAX_ALPHA_EVENT_PAGE_SIZE,
+    MAX_ALPHA_RUN_QUERY_PAGE_SIZE,
+    MAX_ALPHA_RUN_QUERY_SCAN_EVENTS,
     AlphaAcceptanceCheck,
     AlphaCancelRunRequest,
     AlphaEventPageResponse,
@@ -21,6 +25,12 @@ from blackcell.interfaces.http.alpha_contracts import (
     AlphaReplayFindingCode,
     AlphaReplayFindingResponse,
     AlphaReplayResponse,
+    AlphaRunBudgetUsageResponse,
+    AlphaRunNodeQueryResponse,
+    AlphaRunNodeStatus,
+    AlphaRunQueryItem,
+    AlphaRunQueryRequest,
+    AlphaRunQueryResponse,
     AlphaRunRequest,
     AlphaRunResponse,
     AlphaRunStatus,
@@ -81,8 +91,12 @@ from blackcell.interfaces.http.quota import (
 )
 
 __all__ = [
+    "ALPHA_RUN_QUERY_MEDIA_TYPE",
+    "ALPHA_RUN_QUERY_RESULT_MEDIA_TYPE",
     "ALPHA_WEB_SOCKET_PATH",
     "MAX_ALPHA_EVENT_PAGE_SIZE",
+    "MAX_ALPHA_RUN_QUERY_PAGE_SIZE",
+    "MAX_ALPHA_RUN_QUERY_SCAN_EVENTS",
     "MAX_RESPONSE_BODY_BYTES",
     "AlphaAcceptanceCheck",
     "AlphaCancelRunRequest",
@@ -103,6 +117,12 @@ __all__ = [
     "AlphaReplayFindingCode",
     "AlphaReplayFindingResponse",
     "AlphaReplayResponse",
+    "AlphaRunBudgetUsageResponse",
+    "AlphaRunNodeQueryResponse",
+    "AlphaRunNodeStatus",
+    "AlphaRunQueryItem",
+    "AlphaRunQueryRequest",
+    "AlphaRunQueryResponse",
     "AlphaRunRequest",
     "AlphaRunResponse",
     "AlphaRunStatus",

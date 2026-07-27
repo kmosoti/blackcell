@@ -33,8 +33,8 @@ from blackcell.config import (
     API_TOKEN_ENV,
     DATA_DIR_ENV,
     REPOSITORY_ROOT_ENV,
+    AlphaExecutionProviderRuntimeConfig,
     AlphaIsolationRuntimeConfig,
-    AlphaProviderRuntimeConfig,
     AlphaVerifyConfigError,
     AlphaWorkerLoopConfig,
     AlphaWorkerRuntimeConfig,
@@ -152,7 +152,7 @@ def test_alpha_verify_config_is_owner_only_closed_and_authority_separated(
     assert config.alpha_verify_worker is not None
     execution = AlphaWorkerRuntimeConfig(
         source_path=tmp_path / "alpha-worker.json",
-        provider=cast("AlphaProviderRuntimeConfig", object()),
+        provider=cast("AlphaExecutionProviderRuntimeConfig", object()),
         isolation=cast("AlphaIsolationRuntimeConfig", object()),
         worker=AlphaWorkerLoopConfig("alpha-executor.test", 1, 1, 1, 0),
     )

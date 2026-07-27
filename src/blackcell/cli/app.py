@@ -27,7 +27,7 @@ from blackcell.adapters.kernform_cli import (
     KernformCliClient,
     KernformClientError,
     KernformInvocationResult,
-    KernformProfile,
+    KernformSignature,
 )
 from blackcell.adapters.retrieval import Fts5EvidenceRetriever
 from blackcell.adapters.runtime_http import (
@@ -82,6 +82,7 @@ from blackcell.interfaces.http import (
     AlphaIntentRequest,
     AlphaPlanRequest,
     AlphaProjectRequest,
+    AlphaRunQueryRequest,
     AlphaRunRequest,
     StrictStruct,
     WireContractError,
@@ -397,6 +398,24 @@ def alpha_run_status(
     )
 
 
+@alpha_run_app.command(name="query")
+def alpha_run_query(
+    request: Annotated[
+        Path,
+        Parameter("--request", help="Closed alpha-run-query-request/v1 JSON file."),
+    ],
+    endpoint: Annotated[
+        str | None,
+        Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
+    ] = None,
+) -> None:
+    """Search bounded run projections through RFC 10008 QUERY."""
+    contract = _load_alpha_request(request, AlphaRunQueryRequest)
+    _output().emit(
+        _invoke_alpha_http(lambda client: client.query_alpha_runs(contract), endpoint=endpoint)
+    )
+
+
 @alpha_run_app.command(name="cancel")
 def alpha_run_cancel(
     run_id: str,
@@ -524,6 +543,28 @@ def project_check(
         raise SystemExit(result.exit_code)
 
 
+@project_app.command(name="compile")
+def project_compile(
+    form: Annotated[
+        Path,
+        Parameter("--form", help="Kernform project-form v2 JSON file to compile."),
+    ],
+    kernform: Annotated[
+        str | None,
+        Parameter(
+            "--kernform",
+            help=(
+                f"Kernform executable; defaults to ${KERNFORM_EXECUTABLE_ENV} "
+                f"or {DEFAULT_KERNFORM_EXECUTABLE}."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Compile one project form through Kernform's pinned read-only contract."""
+    result = _invoke_kernform(lambda client: client.compile(form), executable=kernform)
+    _output().emit(result)
+
+
 @project_app.command(name="init")
 def project_init(
     name: str,
@@ -531,10 +572,14 @@ def project_init(
         Path,
         Parameter("--destination", help="Project root to initialize."),
     ],
-    profile: Annotated[
-        KernformProfile,
-        Parameter("--profile", help="Kernform project profile."),
-    ] = "library",
+    signatures: Annotated[
+        tuple[KernformSignature, ...],
+        Parameter("--signature", help="Composable Kernform signature; repeat as needed."),
+    ] = ("sdk",),
+    default_signature: Annotated[
+        KernformSignature | None,
+        Parameter("--default-signature", help="Default executable signature when ambiguous."),
+    ] = None,
     capabilities: Annotated[
         tuple[str, ...],
         Parameter("--with", help="Additional Kernform capability; repeat as needed."),
@@ -563,7 +608,8 @@ def project_init(
         lambda client: client.init(
             name=name,
             destination=destination,
-            profile=profile,
+            signatures=signatures,
+            default_signature=default_signature,
             capabilities=capabilities,
             no_git=no_git,
             initial_commit=initial_commit,
@@ -590,13 +636,21 @@ def operator_run(
         Parameter("--artifacts", help="Artifact root; defaults beside the kernel database."),
     ] = None,
     model: Annotated[
-        Literal["recorded", "codex"],
+        Literal["recorded", "codex", "agy"],
         Parameter("--model", help="Proposal model boundary."),
     ] = "recorded",
     codex_model: Annotated[
         str | None,
         Parameter("--codex-model", help="Optional model name for the Codex CLI adapter."),
     ] = None,
+    agy_model: Annotated[
+        str | None,
+        Parameter("--agy-model", help="Required AGY model identifier when --model=agy."),
+    ] = None,
+    agy_effort: Annotated[
+        Literal["low", "medium", "high"],
+        Parameter("--agy-effort", help="AGY reasoning effort for the planning boundary."),
+    ] = "high",
     objective: Annotated[
         str,
         Parameter("--objective", help="Task objective for ContextFrame projection."),
@@ -635,6 +689,8 @@ def operator_run(
             artifact_root=artifacts,
             model=model,
             codex_model=codex_model,
+            agy_model=agy_model,
+            agy_effort=agy_effort,
         ).operator
         result = operator.run(
             objective=objective,

@@ -7,9 +7,16 @@ from pathlib import Path
 from typing import Literal, cast
 
 from blackcell.adapters.models import (
+    AGY_CLI_ADAPTER_ID,
     CODEX_CLI_ADAPTER_ID,
+    AgyCliModelAdapter,
     CodexCliModelAdapter,
     GatewayDecisionAdapter,
+)
+from blackcell.adapters.models.agy_cli import (
+    AGY_CLI_DEFAULT_INPUT_TOKEN_BUDGET,
+    AgyEffort,
+    estimate_agy_cli_input_tokens,
 )
 from blackcell.adapters.models.codex_cli import (
     CODEX_CLI_DEFAULT_INPUT_TOKEN_BUDGET,
@@ -83,8 +90,10 @@ def compose_repository_runtime(
     *,
     database_path: Path | str | None = None,
     artifact_root: Path | str | None = None,
-    model: Literal["recorded", "codex"] = "recorded",
+    model: Literal["recorded", "codex", "agy"] = "recorded",
     codex_model: str | None = None,
+    agy_model: str | None = None,
+    agy_effort: AgyEffort = "high",
     status_reader: RepositoryStatusPort | None = None,
     clock: Clock = lambda: datetime.now(UTC),
     workflow_telemetry: WorkflowTelemetry | None = None,
@@ -92,7 +101,7 @@ def compose_repository_runtime(
 ) -> RepositoryRuntimeComponents:
     """Assemble concrete repository runtime dependencies at the bootstrap edge."""
 
-    _validate_model_route(model, codex_model)
+    _validate_model_route(model, codex_model, agy_model)
     root = Path(repo_root).resolve()
     database = (
         Path(database_path) if database_path is not None else default_repository_database_path(root)
@@ -121,7 +130,7 @@ def compose_repository_runtime(
     repository_status = status_reader or RepositoryStatusReader(root, clock=clock)
     execution_adapter = RepositoryStatusExecutionAdapter(repository_status, artifacts)
     outcome_observer = RepositoryStatusOutcomeObserver(repository_status, artifacts)
-    model_adapter, profile = _model_configuration(model, codex_model)
+    model_adapter, profile = _model_configuration(model, codex_model, agy_model, agy_effort)
     gateway = ModelGateway(
         (profile,),
         {model_adapter.adapter_id: model_adapter},
@@ -184,10 +193,16 @@ def compose_repository_runtime(
             default_token_budget=(
                 DEFAULT_RECORDED_TOKEN_BUDGET
                 if model == "recorded"
+                else AGY_CLI_DEFAULT_INPUT_TOKEN_BUDGET
+                if model == "agy"
                 else CODEX_CLI_DEFAULT_INPUT_TOKEN_BUDGET
             ),
             input_token_estimator=(
-                _recorded_model_input_tokens if model == "recorded" else _codex_model_input_tokens
+                _recorded_model_input_tokens
+                if model == "recorded"
+                else _agy_model_input_tokens
+                if model == "agy"
+                else _codex_model_input_tokens
             ),
             execution_adapter_id=REPOSITORY_STATUS_ADAPTER_ID,
             outcome_observer_id=REPOSITORY_OUTCOME_OBSERVER_ID,
@@ -204,13 +219,21 @@ def compose_repository_runtime(
     )
 
 
-def _validate_model_route(model: str, codex_model: str | None) -> None:
-    if model not in {"recorded", "codex"}:
+def _validate_model_route(
+    model: str,
+    codex_model: str | None,
+    agy_model: str | None,
+) -> None:
+    if model not in {"recorded", "codex", "agy"}:
         raise ValueError(f"unsupported repository operator model route: {model!r}")
     if model == "codex" and (codex_model is None or not codex_model.strip()):
         raise ValueError("--codex-model is required when --model=codex")
-    if model == "recorded" and codex_model is not None:
+    if model != "codex" and codex_model is not None:
         raise ValueError("--codex-model is only valid when --model=codex")
+    if model == "agy" and (agy_model is None or not agy_model.strip()):
+        raise ValueError("--agy-model is required when --model=agy")
+    if model != "agy" and agy_model is not None:
+        raise ValueError("--agy-model is only valid when --model=agy")
 
 
 def _recorded_model_input_tokens(objective: str, context_character_budget: int) -> int:
@@ -225,9 +248,18 @@ def _codex_model_input_tokens(objective: str, context_character_budget: int) -> 
     )
 
 
+def _agy_model_input_tokens(objective: str, context_character_budget: int) -> int:
+    return estimate_agy_cli_input_tokens(
+        objective=objective,
+        context_character_budget=context_character_budget,
+    )
+
+
 def _model_configuration(
-    model: Literal["recorded", "codex"],
+    model: Literal["recorded", "codex", "agy"],
     codex_model: str | None,
+    agy_model: str | None,
+    agy_effort: AgyEffort,
 ) -> tuple[ModelAdapter, GatewayProfile]:
     if model == "recorded":
         adapter = RepositoryRecordedModelAdapter()
@@ -244,12 +276,27 @@ def _model_configuration(
             4_096,
             0,
         )
-    adapter = CodexCliModelAdapter()
+    if model == "codex":
+        adapter = CodexCliModelAdapter()
+        return adapter, GatewayProfile(
+            "repository-reason-codex",
+            ModelCapability.REASON,
+            CODEX_CLI_ADAPTER_ID,
+            cast("str", codex_model),
+            0,
+            False,
+            False,
+            DataClassification.PRIVATE,
+            32_000,
+            4_096,
+            0,
+        )
+    adapter = AgyCliModelAdapter(effort=agy_effort)
     return adapter, GatewayProfile(
-        "repository-reason-codex",
+        "repository-reason-agy",
         ModelCapability.REASON,
-        CODEX_CLI_ADAPTER_ID,
-        cast("str", codex_model),
+        AGY_CLI_ADAPTER_ID,
+        cast("str", agy_model),
         0,
         False,
         False,
