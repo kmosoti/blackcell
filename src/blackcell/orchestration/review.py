@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import StrEnum
 from pathlib import PurePosixPath
@@ -20,10 +20,21 @@ from blackcell.kernel._json import canonical_json_bytes, json_digest
 from blackcell.orchestration.changes import TextOperation
 
 REVIEW_ACCEPTANCE_SCHEMA = "review-acceptance/v1"
-REVIEW_CONTEXT_SCHEMA = "review-context/v1"
-REVIEW_PROPOSAL_SCHEMA = "review-proposal/v1"
-ADMITTED_REVIEW_SCHEMA = "execution-admitted-review/v1"
+REVIEW_CONTEXT_SCHEMA = "review-context/v2"
+REVIEW_PROPOSAL_SCHEMA = "review-proposal/v2"
+ADMITTED_REVIEW_SCHEMA = "execution-admitted-review/v2"
 REVIEW_PROVIDER_RESULT_SCHEMA = "review-provider-result/v1"
+
+_PRIOR_REVIEW_CONTEXT_SCHEMA = "review-context/v1"
+_PRIOR_REVIEW_PROPOSAL_SCHEMA = "review-proposal/v1"
+_PRIOR_ADMITTED_REVIEW_SCHEMA = "execution-admitted-review/v1"
+_SUPPORTED_REVIEW_CONTEXT_SCHEMAS = frozenset({REVIEW_CONTEXT_SCHEMA, _PRIOR_REVIEW_CONTEXT_SCHEMA})
+_SUPPORTED_REVIEW_PROPOSAL_SCHEMAS = frozenset(
+    {REVIEW_PROPOSAL_SCHEMA, _PRIOR_REVIEW_PROPOSAL_SCHEMA}
+)
+_SUPPORTED_ADMITTED_REVIEW_SCHEMAS = frozenset(
+    {ADMITTED_REVIEW_SCHEMA, _PRIOR_ADMITTED_REVIEW_SCHEMA}
+)
 
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -101,6 +112,14 @@ class EpistemicDimension(StrEnum):
     ORDER_SENSITIVITY = "order-sensitivity"
 
 
+_PRIOR_EPISTEMIC_DIMENSIONS = (
+    EpistemicDimension.EVIDENCE_GROUNDING,
+    EpistemicDimension.COUNTEREVIDENCE,
+    EpistemicDimension.ACCEPTANCE_COVERAGE,
+    EpistemicDimension.CAUSAL_OVERREACH,
+    EpistemicDimension.SCOPE_CHALLENGE,
+    EpistemicDimension.UNCERTAINTY,
+)
 _MAX_EPISTEMIC_ASSESSMENTS = len(EpistemicDimension)
 
 
@@ -325,7 +344,8 @@ class ReviewContext:
 
     def __post_init__(self) -> None:
         if (
-            self.schema_version != REVIEW_CONTEXT_SCHEMA
+            not isinstance(self.schema_version, str)
+            or self.schema_version not in _SUPPORTED_REVIEW_CONTEXT_SCHEMAS
             or not isinstance(self.acceptance, ReviewAcceptance)
             or _DIGEST.fullmatch(self.state_digest) is None
             or _DIGEST.fullmatch(self.artifact_evidence_digest) is None
@@ -439,8 +459,9 @@ class ReviewProposal:
     schema_version: str = REVIEW_PROPOSAL_SCHEMA
 
     def __post_init__(self) -> None:
+        expected_dimensions = _proposal_dimensions(self.schema_version)
         if (
-            self.schema_version != REVIEW_PROPOSAL_SCHEMA
+            expected_dimensions is None
             or _DIGEST.fullmatch(self.context_digest) is None
             or not isinstance(self.findings, tuple)
             or len(self.findings) > _MAX_FINDINGS
@@ -450,6 +471,7 @@ class ReviewProposal:
             or not _valid_epistemic_assessments(
                 self.epistemic_assessments,
                 finding_ids={item.finding_id for item in self.findings},
+                expected_dimensions=expected_dimensions,
             )
         ):
             raise ReviewContractError(ReviewContractFailureCode.INVALID_PROPOSAL)
@@ -476,8 +498,9 @@ class AdmittedReview:
     schema_version: str = ADMITTED_REVIEW_SCHEMA
 
     def __post_init__(self) -> None:
+        expected_dimensions = _admitted_dimensions(self.schema_version)
         if (
-            self.schema_version != ADMITTED_REVIEW_SCHEMA
+            expected_dimensions is None
             or _DIGEST.fullmatch(self.context_digest) is None
             or _DIGEST.fullmatch(self.acceptance_digest) is None
             or not isinstance(self.findings, tuple)
@@ -488,6 +511,7 @@ class AdmittedReview:
             or not _valid_epistemic_assessments(
                 self.epistemic_assessments,
                 finding_ids={item.finding_id for item in self.findings},
+                expected_dimensions=expected_dimensions,
             )
         ):
             raise ReviewContractError(ReviewContractFailureCode.ADMISSION_REJECTED)
@@ -587,6 +611,7 @@ def admit_review(
         not isinstance(context, ReviewContext)
         or not isinstance(proposal, ReviewProposal)
         or proposal.context_digest != context.digest
+        or not _review_contracts_align(context.schema_version, proposal.schema_version)
     ):
         raise ReviewContractError(ReviewContractFailureCode.ADMISSION_REJECTED)
     evidence = {item.evidence_id: item for item in context.evidence}
@@ -606,6 +631,11 @@ def admit_review(
         findings=proposal.findings,
         summary=proposal.summary,
         epistemic_assessments=proposal.epistemic_assessments,
+        schema_version=(
+            _PRIOR_ADMITTED_REVIEW_SCHEMA
+            if proposal.schema_version == _PRIOR_REVIEW_PROPOSAL_SCHEMA
+            else ADMITTED_REVIEW_SCHEMA
+        ),
     )
 
 
@@ -656,7 +686,7 @@ def review_context_payload(value: ReviewContext) -> dict[str, JsonInput]:
         "state_digest": value.state_digest,
         "artifact_evidence_digest": value.artifact_evidence_digest,
         "review_categories": [category.value for category in ReviewFindingCategory],
-        "epistemic_dimensions": [item.value for item in EpistemicDimension],
+        "epistemic_dimensions": [item.value for item in _context_dimensions(value.schema_version)],
         "epistemic_dispositions": [item.value for item in EpistemicDisposition],
         "evidence": [
             {
@@ -674,6 +704,26 @@ def review_context_payload(value: ReviewContext) -> dict[str, JsonInput]:
             for item in value.evidence
         ],
     }
+
+
+def review_context_matching_digest(value: ReviewContext, expected_digest: str) -> ReviewContext:
+    """Select the supported context contract whose canonical payload has the durable digest."""
+
+    if (
+        not isinstance(value, ReviewContext)
+        or not isinstance(expected_digest, str)
+        or _DIGEST.fullmatch(expected_digest) is None
+    ):
+        raise ReviewContractError(ReviewContractFailureCode.INVALID_CONTEXT)
+    for schema_version in (REVIEW_CONTEXT_SCHEMA, _PRIOR_REVIEW_CONTEXT_SCHEMA):
+        candidate = (
+            value
+            if value.schema_version == schema_version
+            else replace(value, schema_version=schema_version)
+        )
+        if candidate.digest == expected_digest:
+            return candidate
+    raise ReviewContractError(ReviewContractFailureCode.INVALID_CONTEXT)
 
 
 def review_proposal_payload(value: ReviewProposal) -> dict[str, JsonInput]:
@@ -727,6 +777,7 @@ def admitted_review_payload(value: AdmittedReview) -> dict[str, JsonInput]:
 
 def admitted_review_from_mapping(value: Mapping[str, object]) -> AdmittedReview:
     raw = _mapping(value)
+    schema_version = raw.get("schema_version")
     if (
         set(raw)
         != {
@@ -737,7 +788,8 @@ def admitted_review_from_mapping(value: Mapping[str, object]) -> AdmittedReview:
             "summary",
             "epistemic_assessments",
         }
-        or raw.get("schema_version") != ADMITTED_REVIEW_SCHEMA
+        or not isinstance(schema_version, str)
+        or schema_version not in _SUPPORTED_ADMITTED_REVIEW_SCHEMAS
     ):
         raise ReviewContractError(ReviewContractFailureCode.ADMISSION_REJECTED)
     findings = tuple(
@@ -762,6 +814,7 @@ def admitted_review_from_mapping(value: Mapping[str, object]) -> AdmittedReview:
         findings=findings,
         summary=cast("str", summary),
         epistemic_assessments=assessments,
+        schema_version=schema_version,
     )
 
 
@@ -836,7 +889,11 @@ def review_proposal_from_mapping(value: Mapping[str, object]) -> ReviewProposal:
         "epistemic_assessments",
     }:
         raise ReviewContractError(ReviewContractFailureCode.INVALID_PROPOSAL)
-    if value.get("schema_version") != REVIEW_PROPOSAL_SCHEMA:
+    schema_version = value.get("schema_version")
+    if (
+        not isinstance(schema_version, str)
+        or schema_version not in _SUPPORTED_REVIEW_PROPOSAL_SCHEMAS
+    ):
         raise ReviewContractError(ReviewContractFailureCode.INVALID_PROPOSAL)
     raw_findings = _sequence(value.get("findings"), maximum=_MAX_FINDINGS)
     findings = tuple(_finding_from_mapping(item) for item in raw_findings)
@@ -856,6 +913,7 @@ def review_proposal_from_mapping(value: Mapping[str, object]) -> ReviewProposal:
         findings=findings,
         summary=summary,
         epistemic_assessments=assessments,
+        schema_version=schema_version,
     )
 
 
@@ -1022,21 +1080,54 @@ def _unique_identifiers(value: object, maximum: int) -> bool:
     )
 
 
+def _context_dimensions(schema_version: str) -> tuple[EpistemicDimension, ...]:
+    if schema_version == REVIEW_CONTEXT_SCHEMA:
+        return tuple(EpistemicDimension)
+    if schema_version == _PRIOR_REVIEW_CONTEXT_SCHEMA:
+        return _PRIOR_EPISTEMIC_DIMENSIONS
+    raise ReviewContractError(ReviewContractFailureCode.INVALID_CONTEXT)
+
+
+def _proposal_dimensions(schema_version: str) -> tuple[EpistemicDimension, ...] | None:
+    if schema_version == REVIEW_PROPOSAL_SCHEMA:
+        return tuple(EpistemicDimension)
+    if schema_version == _PRIOR_REVIEW_PROPOSAL_SCHEMA:
+        return _PRIOR_EPISTEMIC_DIMENSIONS
+    return None
+
+
+def _admitted_dimensions(schema_version: str) -> tuple[EpistemicDimension, ...] | None:
+    if schema_version == ADMITTED_REVIEW_SCHEMA:
+        return tuple(EpistemicDimension)
+    if schema_version == _PRIOR_ADMITTED_REVIEW_SCHEMA:
+        return _PRIOR_EPISTEMIC_DIMENSIONS
+    return None
+
+
+def _review_contracts_align(context_schema: str, proposal_schema: str) -> bool:
+    return (context_schema, proposal_schema) in {
+        (REVIEW_CONTEXT_SCHEMA, REVIEW_PROPOSAL_SCHEMA),
+        (_PRIOR_REVIEW_CONTEXT_SCHEMA, _PRIOR_REVIEW_PROPOSAL_SCHEMA),
+    }
+
+
 def _valid_epistemic_assessments(
     value: object,
     *,
     finding_ids: set[str],
+    expected_dimensions: tuple[EpistemicDimension, ...] | None,
 ) -> bool:
     if (
-        not isinstance(value, tuple)
-        or len(value) != len(EpistemicDimension)
+        expected_dimensions is None
+        or not isinstance(value, tuple)
+        or len(value) != len(expected_dimensions)
         or not all(isinstance(item, EpistemicAssessment) for item in value)
     ):
         return False
     assessments = cast("tuple[EpistemicAssessment, ...]", value)
     dimensions = {item.dimension for item in assessments}
     linked_findings = {finding_id for item in assessments for finding_id in item.finding_ids}
-    return dimensions == set(EpistemicDimension) and linked_findings == finding_ids
+    return dimensions == set(expected_dimensions) and linked_findings == finding_ids
 
 
 def _citations_fit_evidence(
@@ -1298,6 +1389,7 @@ __all__ = [
     "admitted_review_from_mapping",
     "admitted_review_payload",
     "review_acceptance_payload",
+    "review_context_matching_digest",
     "review_context_payload",
     "review_proposal_from_mapping",
     "review_proposal_payload",
