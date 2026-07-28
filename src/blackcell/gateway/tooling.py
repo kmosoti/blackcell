@@ -2,13 +2,37 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from blackcell.gateway.models import ModelCapability
 
 _NonEmptyText = Annotated[str, Field(min_length=1)]
+type ToolingDifferenceFacetName = Literal[
+    "output-schema",
+    "response-transport",
+    "usage-accounting",
+    "version-policy",
+    "configuration-and-session",
+    "authority-flags",
+    "effort-and-provider-timeout",
+]
+
+_DIFFERENCE_FACET_UNIQUENESS_SCHEMA = {
+    "allOf": [
+        {
+            "contains": {
+                "type": "object",
+                "properties": {"facet": {"const": facet}},
+                "required": ["facet"],
+            },
+            "minContains": 0,
+            "maxContains": 1,
+        }
+        for facet in get_args(ToolingDifferenceFacetName.__value__)
+    ]
+}
 
 
 class ClosedToolingModel(BaseModel):
@@ -161,7 +185,7 @@ ToolingSurface = Annotated[
 
 
 class ToolingFacetDifference(ClosedToolingModel):
-    facet: str = Field(min_length=1)
+    facet: ToolingDifferenceFacetName
     codex_cli: str = Field(min_length=1)
     agy_cli: str = Field(min_length=1)
     operational_effect: str = Field(min_length=1)
@@ -173,7 +197,10 @@ class ToolingSurfaceCatalog(ClosedToolingModel):
         min_length=1,
         json_schema_extra={"uniqueItems": True},
     )
-    differences: tuple[ToolingFacetDifference, ...] = Field(min_length=1)
+    differences: tuple[ToolingFacetDifference, ...] = Field(
+        min_length=1,
+        json_schema_extra=_DIFFERENCE_FACET_UNIQUENESS_SCHEMA,
+    )
 
     @model_validator(mode="after")
     def validate_catalog(self) -> ToolingSurfaceCatalog:
@@ -199,6 +226,7 @@ __all__ = [
     "PromptSurface",
     "SessionSurface",
     "StructuredOutputSurface",
+    "ToolingDifferenceFacetName",
     "ToolingFacetDifference",
     "ToolingSurface",
     "ToolingSurfaceCatalog",

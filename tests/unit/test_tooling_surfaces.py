@@ -95,6 +95,14 @@ def _tooling_catalog_payload(case: str) -> dict[str, object]:
         case "duplicate-shared-facet":
             shared_facets = cast("list[str]", payload["shared_facets"])
             shared_facets.append(shared_facets[0])
+        case "duplicate-difference-facet":
+            differences = cast("list[dict[str, object]]", payload["differences"])
+            duplicate = dict(differences[0])
+            duplicate["operational_effect"] = "different description, same facet"
+            differences.append(duplicate)
+        case "unknown-difference-facet":
+            differences = cast("list[dict[str, object]]", payload["differences"])
+            differences[0]["facet"] = "unknown-facet"
         case "exact-preflight-without-command":
             version = cast("dict[str, object]", agy["version"])
             version["command_template"] = []
@@ -119,6 +127,8 @@ def _tooling_catalog_payload(case: str) -> dict[str, object]:
         ("extra-property", False),
         ("duplicate-capability", False),
         ("duplicate-shared-facet", False),
+        ("duplicate-difference-facet", False),
+        ("unknown-difference-facet", False),
         ("exact-preflight-without-command", False),
         ("blank-required-version", False),
     ],
