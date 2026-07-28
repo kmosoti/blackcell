@@ -140,7 +140,7 @@ class ToolingFacetDifference(ClosedToolingModel):
 
 
 class ToolingSurfaceCatalog(ClosedToolingModel):
-    surfaces: tuple[ToolingSurface, ...]
+    surfaces: tuple[CodexCliToolingSurface, AgyCliToolingSurface]
     shared_facets: tuple[_NonEmptyText, ...] = Field(min_length=1)
     differences: tuple[ToolingFacetDifference, ...] = Field(min_length=1)
 

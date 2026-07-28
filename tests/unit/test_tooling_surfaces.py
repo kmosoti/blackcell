@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from blackcell.adapters.models import (
     AGY_CLI_REQUIRED_VERSION,
@@ -18,6 +18,7 @@ from blackcell.cli.app import app
 from blackcell.gateway import (
     AgyCliToolingSurface,
     CodexCliToolingSurface,
+    ToolingSurface,
     ToolingSurfaceCatalog,
     ToolingSurfaceProvider,
 )
@@ -50,6 +51,38 @@ def test_cli_tooling_catalog_is_closed_discriminated_and_round_trips() -> None:
     mismatched["surfaces"][0]["adapter_id"] = "agy-cli"
     with pytest.raises(ValidationError, match="literal_error"):
         ToolingSurfaceCatalog.model_validate_json(json.dumps(mismatched))
+
+
+def test_tooling_surface_provider_contract_remains_discriminated() -> None:
+    schema = TypeAdapter(ToolingSurface).json_schema()
+
+    assert schema["discriminator"] == {
+        "mapping": {
+            "agy-cli": "#/$defs/AgyCliToolingSurface",
+            "codex-cli": "#/$defs/CodexCliToolingSurface",
+        },
+        "propertyName": "tool",
+    }
+
+
+@pytest.mark.parametrize(
+    "surface_tools",
+    [
+        (),
+        ("codex-cli", "codex-cli"),
+        ("agy-cli", "codex-cli"),
+        ("codex-cli", "agy-cli", "codex-cli"),
+    ],
+)
+def test_cli_tooling_catalog_rejects_invalid_surface_sequences(
+    surface_tools: tuple[str, ...],
+) -> None:
+    payload = tooling_surface_catalog().model_dump(mode="json")
+    surfaces_by_tool = {item["tool"]: item for item in payload["surfaces"]}
+    payload["surfaces"] = [surfaces_by_tool[tool] for tool in surface_tools]
+
+    with pytest.raises(ValidationError):
+        ToolingSurfaceCatalog.model_validate_json(json.dumps(payload))
 
 
 def test_codex_and_agy_surfaces_expose_shared_and_distinct_authority() -> None:
@@ -125,4 +158,10 @@ def test_adapter_inspection_cli_emits_catalog_and_schema_without_invocation() ->
     schema_payload = json.loads(schema.stdout)
     assert tuple(item.adapter_id for item in catalog.surfaces) == ("codex-cli", "agy-cli")
     assert schema_payload["additionalProperties"] is False
-    assert "discriminator" in json.dumps(schema_payload)
+    surfaces_schema = schema_payload["properties"]["surfaces"]
+    assert surfaces_schema["type"] == "array"
+    assert surfaces_schema["minItems"] == surfaces_schema["maxItems"] == 2
+    assert surfaces_schema["prefixItems"] == [
+        {"$ref": "#/$defs/CodexCliToolingSurface"},
+        {"$ref": "#/$defs/AgyCliToolingSurface"},
+    ]
