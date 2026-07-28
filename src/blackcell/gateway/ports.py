@@ -1,6 +1,6 @@
 from collections.abc import Mapping, Set
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from blackcell.gateway.models import (
     AdapterResult,
@@ -8,6 +8,7 @@ from blackcell.gateway.models import (
     ModelCapability,
     ModelRequest,
 )
+from blackcell.gateway.tooling import ToolingSurface
 
 
 class ModelAdapter(Protocol):
@@ -24,6 +25,14 @@ class ModelAdapter(Protocol):
     def deterministic(self) -> bool: ...
 
     def invoke(self, request: ModelRequest, *, model_id: str) -> AdapterResult: ...
+
+
+@runtime_checkable
+class ToolingSurfaceProvider(Protocol):
+    """Adapter that can describe its non-secret CLI boundary without invoking it."""
+
+    @property
+    def tooling_surface(self) -> ToolingSurface: ...
 
 
 class GatewayAuditSink(Protocol):

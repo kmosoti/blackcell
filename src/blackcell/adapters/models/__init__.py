@@ -8,6 +8,7 @@ from blackcell.adapters.models.agy_cli import (
     AgyCliOutputError,
     AgyCliTimeoutError,
 )
+from blackcell.adapters.models.catalog import tooling_surface_catalog
 from blackcell.adapters.models.codex_cli import (
     CODEX_CLI_ADAPTER_ID,
     CodexCliAdapterError,
@@ -38,4 +39,5 @@ __all__ = [
     "GatewayReviewer",
     "ReviewProviderError",
     "ReviewProviderFailureCode",
+    "tooling_surface_catalog",
 ]

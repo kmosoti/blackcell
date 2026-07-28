@@ -1,0 +1,32 @@
+id: workflow-generation-labelled-scalar
+language: Yaml
+severity: error
+message: Use a semantic workflow label instead of an implementation generation label.
+files:
+  - .github/workflows/**/*.yml
+  - .github/workflows/**/*.yaml
+rule:
+  kind: string_scalar
+  regex: '(^|[-_. ])[vV][0-9]+($|[-_. ])'
+---
+id: workflow-maturity-labelled-scalar
+language: Yaml
+severity: error
+message: Use a semantic workflow label instead of a product maturity label.
+files:
+  - .github/workflows/**/*.yml
+  - .github/workflows/**/*.yaml
+rule:
+  kind: string_scalar
+  regex: '(?i)(^|[-_. ])(alpha|beta|preview)($|[-_. ])'
+---
+id: workflow-retired-source-evidence-label
+language: Yaml
+severity: error
+message: Retired source-bound evidence automation must not return to CI.
+files:
+  - .github/workflows/**/*.yml
+  - .github/workflows/**/*.yaml
+rule:
+  kind: string_scalar
+  regex: '(?i)release[-_ ]evidence'

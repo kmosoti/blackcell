@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -13,7 +13,9 @@ from blackcell.kernel._json import json_digest
 from blackcell.orchestration.changes import TextOperation
 from blackcell.orchestration.review import (
     ADMITTED_REVIEW_SCHEMA,
+    REVIEW_CONTEXT_SCHEMA,
     REVIEW_PROPOSAL_OUTPUT_SCHEMA,
+    REVIEW_PROPOSAL_SCHEMA,
     EpistemicAssessment,
     EpistemicDimension,
     EpistemicDisposition,
@@ -48,6 +50,15 @@ DIGEST_B = "sha256:" + "b" * 64
 DIGEST_C = "sha256:" + "c" * 64
 DIGEST_D = "sha256:" + "d" * 64
 DIGEST_E = "sha256:" + "e" * 64
+
+PRIOR_EPISTEMIC_DIMENSIONS = (
+    EpistemicDimension.EVIDENCE_GROUNDING,
+    EpistemicDimension.COUNTEREVIDENCE,
+    EpistemicDimension.ACCEPTANCE_COVERAGE,
+    EpistemicDimension.CAUSAL_OVERREACH,
+    EpistemicDimension.SCOPE_CHALLENGE,
+    EpistemicDimension.UNCERTAINTY,
+)
 
 
 def test_review_context_binds_immutable_acceptance_and_host_derived_evidence() -> None:
@@ -226,6 +237,11 @@ def test_review_proposal_parser_is_closed_bounded_and_cannot_self_admit() -> Non
 
     raw_properties = REVIEW_PROPOSAL_OUTPUT_SCHEMA["properties"]
     assert isinstance(raw_properties, dict)
+    assessments_schema = cast("dict[str, Any]", raw_properties["epistemic_assessments"])
+    assert assessments_schema["minItems"] == assessments_schema["maxItems"] == 9
+    assert set(assessments_schema["items"]["properties"]["dimension"]["enum"]) == {
+        item.value for item in EpistemicDimension
+    }
     assert "admitted" not in raw_properties
     assert "acceptance_digest" not in raw_properties
     assert "expected_exit_code" not in raw_properties
@@ -326,6 +342,57 @@ def test_review_persisted_artifact_parsers_are_closed_and_round_trip() -> None:
     provider_mismatch["proposal_digest"] = DIGEST_E
     with pytest.raises(ReviewContractError):
         review_provider_result_from_mapping(provider_mismatch, proposal=proposal)
+
+
+def test_prior_review_contracts_round_trip_six_dimension_artifacts() -> None:
+    current_context = review_context()
+    prior_context = replace(current_context, schema_version="review-context/v1")
+    prior_context_payload = review_context_payload(prior_context)
+    evidence = prior_context.evidence[0]
+    finding = _finding(
+        "finding-1",
+        ReviewCitation(evidence.evidence_id, evidence.start_line, evidence.end_line),
+    )
+    prior_proposal = ReviewProposal(
+        context_digest=prior_context.digest,
+        findings=(finding,),
+        summary="One cited proposal for host admission.",
+        epistemic_assessments=_prior_assessments(prior_context, (finding.finding_id,)),
+        schema_version="review-proposal/v1",
+    )
+    prior_admitted = admit_review(prior_context, prior_proposal)
+
+    assert current_context.schema_version == REVIEW_CONTEXT_SCHEMA == "review-context/v2"
+    assert REVIEW_PROPOSAL_SCHEMA == "review-proposal/v2"
+    assert ADMITTED_REVIEW_SCHEMA == "execution-admitted-review/v2"
+    assert prior_context.digest != current_context.digest
+    assert prior_context_payload["epistemic_dimensions"] == [
+        item.value for item in PRIOR_EPISTEMIC_DIMENSIONS
+    ]
+    # Frozen from the pre-expansion serializer at ed05e67050a1d57b716f64c64b9e68ed4eb7afc2.
+    assert prior_context.digest == (
+        "sha256:e6c0f897cd3fa3614abb84947e4289e77b03aeafcaccd5881bf5408dc852c190"
+    )
+    assert prior_proposal.digest == (
+        "sha256:28462dc2c18fe5502c7e6e40cdd5a7fd501100ebb30800bda982dcea348dfe83"
+    )
+    assert prior_admitted.digest == (
+        "sha256:f39e5e5eceda0d8e5fe0b6253992db888222f3d5e17a4d86dc3f266401cb5470"
+    )
+    assert review_proposal_from_mapping(review_proposal_payload(prior_proposal)) == prior_proposal
+    assert admitted_review_from_mapping(admitted_review_payload(prior_admitted)) == prior_admitted
+    assert prior_admitted.schema_version == "execution-admitted-review/v1"
+
+    mixed_prior_proposal = replace(prior_proposal, context_digest=current_context.digest)
+    with pytest.raises(ReviewContractError) as mixed_context:
+        admit_review(current_context, mixed_prior_proposal)
+    assert mixed_context.value.code is ReviewContractFailureCode.ADMISSION_REJECTED
+
+    current_proposal = review_proposal_from_mapping(review_output(current_context))
+    mixed_current_proposal = replace(current_proposal, context_digest=prior_context.digest)
+    with pytest.raises(ReviewContractError) as mixed_proposal:
+        admit_review(prior_context, mixed_current_proposal)
+    assert mixed_proposal.value.code is ReviewContractFailureCode.ADMISSION_REJECTED
 
 
 def test_review_acceptance_rejects_ambiguous_checks_scope_and_dependencies() -> None:
@@ -433,7 +500,7 @@ def test_review_evidence_and_context_bind_exact_host_evidence() -> None:
         check_id="unknown-check",
     )
     invalid_contexts = (
-        {"schema_version": "review-context/v2"},
+        {"schema_version": "review-context/v3"},
         {"acceptance": cast("ReviewAcceptance", object())},
         {"state_digest": "not-a-digest"},
         {"artifact_evidence_digest": "not-a-digest"},
@@ -489,7 +556,7 @@ def test_review_proposal_provider_and_admission_boundaries_reject_wrong_types() 
         assert caught.value.code is ReviewContractFailureCode.INVALID_PROPOSAL
 
     invalid_proposals = (
-        {"schema_version": "review-proposal/v2"},
+        {"schema_version": "review-proposal/v3"},
         {"context_digest": "not-a-digest"},
         {"findings": cast("tuple[ProposedReviewFinding, ...]", [finding])},
         {"findings": cast("tuple[ProposedReviewFinding, ...]", ("not-a-finding",))},
@@ -502,7 +569,7 @@ def test_review_proposal_provider_and_admission_boundaries_reject_wrong_types() 
 
     admitted = admit_review(context, proposal)
     for replacement in (
-        {"schema_version": "execution-admitted-review/v2"},
+        {"schema_version": "execution-admitted-review/v3"},
         {"context_digest": "not-a-digest"},
         {"acceptance_digest": "not-a-digest"},
         {"findings": cast("tuple[ProposedReviewFinding, ...]", [finding])},
@@ -601,7 +668,8 @@ def test_review_serializers_and_parsers_reject_malformed_persisted_shapes() -> N
     admitted_payload = admitted_review_payload(admitted)
     admitted_variants = (
         [],
-        {**admitted_payload, "schema_version": "execution-admitted-review/v2"},
+        {**admitted_payload, "schema_version": []},
+        {**admitted_payload, "schema_version": "execution-admitted-review/v3"},
         {**admitted_payload, "summary": 1},
         {**admitted_payload, "findings": "not-an-array"},
     )
@@ -625,7 +693,8 @@ def test_review_serializers_and_parsers_reject_malformed_persisted_shapes() -> N
     citation = cast("list[dict[str, JsonInput]]", finding["citations"])[0]
     proposal_variants: list[object] = [
         [],
-        {**output, "schema_version": "review-proposal/v2"},
+        {**output, "schema_version": []},
+        {**output, "schema_version": "review-proposal/v3"},
         {**output, "summary": 1},
         {**output, "findings": "not-an-array"},
         {**output, "findings": [{"finding_id": "incomplete"}]},
@@ -739,4 +808,15 @@ def _assessments(
             finding_ids=finding_ids if index == 0 else (),
         )
         for index, dimension in enumerate(EpistemicDimension)
+    )
+
+
+def _prior_assessments(
+    context: ReviewContext,
+    finding_ids: tuple[str, ...] = (),
+) -> tuple[EpistemicAssessment, ...]:
+    return tuple(
+        assessment
+        for assessment in _assessments(context, finding_ids)
+        if assessment.dimension in PRIOR_EPISTEMIC_DIMENSIONS
     )

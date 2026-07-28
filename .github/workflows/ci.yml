@@ -17,6 +17,44 @@ jobs:
         with:
           python-version: "3.14"
           enable-cache: true
+      - name: Semantic naming
+        uses: ast-grep/action@d9518f632658f9c7c4b4dd4df22e98388a0d2c68
+        with:
+          version: "0.45.0"
+          config: sgconfig.yml
+          paths: src tests tools examples .github/workflows/ci.yml
+      - name: Structural rule probes
+        shell: bash
+        run: |
+          probe_rule() {
+            expected_rule="$1"
+            probe="$2"
+            set +e
+            output="$(
+              printf '%s\n' "$probe" \
+                | ast-grep scan \
+                    --rule architecture/ast-grep/python-semantic-names.yml \
+                    --stdin \
+                    --json=compact \
+                    2>/dev/null
+            )"
+            status=$?
+            set -e
+            if [ "$status" -ne 1 ] \
+              || ! grep -Fq "\"ruleId\":\"$expected_rule\"" <<<"$output"; then
+              exit 1
+            fi
+          }
+
+          probe_rule \
+            python-maturity-labelled-identifier \
+            "$(printf '%s%s_%s = 1' al pha review)"
+          probe_rule \
+            python-generation-labelled-identifier \
+            "$(printf 'class Engine%s%s: pass' V 3)"
+          probe_rule \
+            python-retired-source-evidence-label \
+            "$(printf 'marker = \"%s_%s\"' release evidence)"
       - name: Configure Bubblewrap sandbox
         run: |
           sudo apt-get update

@@ -26,6 +26,7 @@ from blackcell.orchestration.review import (
     admit_review,
     admitted_review_from_mapping,
     admitted_review_payload,
+    review_context_matching_digest,
     review_context_payload,
     review_proposal_from_mapping,
     review_proposal_payload,
@@ -170,11 +171,14 @@ class VerificationSourceService:
             raise VerificationSourceError(
                 VerificationSourceFailureCode.EXECUTION_EVIDENCE_INVALID
             ) from error
-        if (
-            context.digest != candidate.context_digest
-            or context.acceptance.digest != candidate.acceptance_digest
-        ):
+        if context.acceptance.digest != candidate.acceptance_digest:
             raise VerificationSourceError(VerificationSourceFailureCode.SNAPSHOT_MISMATCH)
+        try:
+            context = review_context_matching_digest(context, candidate.context_digest)
+        except ReviewContractError as error:
+            raise VerificationSourceError(
+                VerificationSourceFailureCode.SNAPSHOT_MISMATCH
+            ) from error
         try:
             self._require_exact_artifact(
                 candidate.context_digest,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from time import monotonic, sleep
 
@@ -112,7 +112,7 @@ def _reject_incompatible_existing_schema(path: Path) -> None:
 
     if not path.is_file() or path.stat().st_size == 0:
         return
-    with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as connection:
+    with closing(sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)) as connection:
         current = int(connection.execute("pragma user_version").fetchone()[0])
     if current not in {0, SCHEMA_VERSION}:
         raise SchemaVersionError(

@@ -15,11 +15,32 @@ from blackcell.gateway.models import (
     PreparedGatewayCall,
     RoutingDecision,
 )
+from blackcell.gateway.ports import ToolingSurfaceProvider
 from blackcell.gateway.profiles import GatewayProfile
 from blackcell.gateway.router import GatewayAdmissionError, ModelGateway
+from blackcell.gateway.tooling import (
+    AccountingSurface,
+    AgyCliToolingSurface,
+    AuthoritySurface,
+    BudgetSurface,
+    CodexCliToolingSurface,
+    InvocationSurface,
+    PromptSurface,
+    SessionSurface,
+    StructuredOutputSurface,
+    ToolingFacetDifference,
+    ToolingSurface,
+    ToolingSurfaceCatalog,
+    VersionSurface,
+)
 
 __all__ = [
+    "AccountingSurface",
     "AdapterResult",
+    "AgyCliToolingSurface",
+    "AuthoritySurface",
+    "BudgetSurface",
+    "CodexCliToolingSurface",
     "DataClassification",
     "GatewayAdmissionError",
     "GatewayAuditRecord",
@@ -28,11 +49,20 @@ __all__ = [
     "GatewayFailureCode",
     "GatewayProfile",
     "GatewayResult",
+    "InvocationSurface",
     "LocalityPolicy",
     "ModelCapability",
     "ModelGateway",
     "ModelRequest",
     "ModelResponse",
     "PreparedGatewayCall",
+    "PromptSurface",
     "RoutingDecision",
+    "SessionSurface",
+    "StructuredOutputSurface",
+    "ToolingFacetDifference",
+    "ToolingSurface",
+    "ToolingSurfaceCatalog",
+    "ToolingSurfaceProvider",
+    "VersionSurface",
 ]

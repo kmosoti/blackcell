@@ -20,7 +20,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
-from blackcell.gateway import AdapterResult, ModelCapability, ModelRequest
+from blackcell.gateway import (
+    AccountingSurface,
+    AdapterResult,
+    AgyCliToolingSurface,
+    AuthoritySurface,
+    BudgetSurface,
+    InvocationSurface,
+    ModelCapability,
+    ModelRequest,
+    PromptSurface,
+    SessionSurface,
+    StructuredOutputSurface,
+    VersionSurface,
+)
 from blackcell.kernel import JsonValue
 from blackcell.kernel._json import canonical_json_bytes
 
@@ -202,6 +215,69 @@ class AgyCliModelAdapter:
     @property
     def deterministic(self) -> bool:
         return False
+
+    @property
+    def tooling_surface(self) -> AgyCliToolingSurface:
+        """Describe the configured non-secret CLI boundary without starting AGY."""
+
+        return AgyCliToolingSurface(
+            capabilities=tuple(sorted(self.capabilities, key=lambda item: item.value)),
+            configured_effort=self._effort,
+            prompt=PromptSurface(
+                document="canonical-request-envelope",
+                includes_output_schema=True,
+            ),
+            invocation=InvocationSurface(
+                argument_template=(
+                    "<agy-executable>",
+                    "--mode",
+                    "plan",
+                    "--sandbox",
+                    "--model",
+                    "<model-id>",
+                    "--effort",
+                    self._effort,
+                    "--print-timeout",
+                    "<remaining-ceiling-seconds>s",
+                ),
+                noninteractive_mode="piped-stdin-auto-print",
+                model_selector="--model",
+                effort_selector="--effort",
+                provider_timeout_selector="--print-timeout",
+            ),
+            authority=AuthoritySurface(
+                sandbox="plan-mode-with-sandbox-flag",
+                approval_policy="provider-plan-mode-without-bypass-flags",
+                tool_policy="provider-sandbox-plus-host-no-tools-contract",
+                disabled_features=(),
+            ),
+            structured_output=StructuredOutputSurface(
+                schema_transport="canonical-request-over-stdin",
+                provider_schema_enforcement=False,
+                response_transport="stdout",
+                process_stdout="single-json-object",
+            ),
+            accounting=AccountingSurface(
+                input_tokens="unavailable",
+                output_tokens="unavailable",
+            ),
+            session=SessionSurface(
+                persistence="provider-owned-not-resumed",
+                configuration="provider-owned",
+            ),
+            version=VersionSurface(
+                preflight="exact-stdout-match",
+                command_template=("<agy-executable>", "--version"),
+                required_version=self._expected_version,
+            ),
+            budgets=BudgetSurface(
+                timeout_ceiling_seconds=self._timeout_ceiling_seconds,
+                max_input_bytes=self._max_input_bytes,
+                max_stdout_bytes=self._max_stdout_bytes,
+                max_stderr_bytes=self._max_stderr_bytes,
+                max_response_bytes=self._max_stdout_bytes,
+            ),
+        )
 
     def invoke(self, request: ModelRequest, *, model_id: str) -> AdapterResult:
         _validate_model_id(model_id)

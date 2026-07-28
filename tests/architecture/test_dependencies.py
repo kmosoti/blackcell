@@ -28,6 +28,7 @@ _MATURITY_LABEL = re.compile(rf"(?i)(?:^|[^a-z0-9])({'|'.join(_MATURITY_TERMS)})
 _GENERATION_PATH = re.compile(r"(?i)(?:^|[-_.])v[0-9]+(?:$|[-_.])")
 _GENERATION_IDENTIFIER = re.compile(r"(?i)(?:^|_)v[0-9]+(?=_|$)|(?<=[a-z])v[0-9]+(?=[A-Z_]|$)")
 _VERSION_LITERAL = re.compile(r"(?i)(?:/|[._-])v[0-9]+(?:$|[^0-9])")
+_RETIRED_EVIDENCE_LABEL = re.compile("(?i)release" + r"[-_]evidence")
 _VERSION_BOUNDARY_MODULES = frozenset(
     {
         "blackcell.adapters.daemon_systemd",
@@ -142,6 +143,7 @@ def test_executable_names_are_maturity_and_generation_agnostic() -> None:
     maturity_violations: list[str] = []
     path_violations: list[str] = []
     identifier_violations: list[str] = []
+    retired_evidence_violations: list[str] = []
     for root in EXECUTABLE_ROOTS:
         if not root.exists():
             continue
@@ -149,9 +151,13 @@ def test_executable_names_are_maturity_and_generation_agnostic() -> None:
             if "__pycache__" in path.parts:
                 continue
             relative = path.relative_to(ROOT)
+            if _RETIRED_EVIDENCE_LABEL.search(str(relative)):
+                retired_evidence_violations.append(str(relative))
             if any(_GENERATION_PATH.search(part) for part in relative.parts):
                 path_violations.append(str(relative))
             text = path.read_text(encoding="utf-8")
+            if _RETIRED_EVIDENCE_LABEL.search(text):
+                retired_evidence_violations.append(str(relative))
             if _MATURITY_LABEL.search(text):
                 maturity_violations.append(str(relative))
             if path.suffix == ".py":
@@ -179,6 +185,10 @@ def test_executable_names_are_maturity_and_generation_agnostic() -> None:
     assert not identifier_violations, "generation-labelled identifiers are forbidden:\n" + (
         "\n".join(identifier_violations)
     )
+    assert not retired_evidence_violations, (
+        "retired source-bound evidence labels are forbidden:\n"
+        + "\n".join(sorted(set(retired_evidence_violations)))
+    )
 
 
 def test_contract_versions_are_confined_to_boundary_modules() -> None:
@@ -205,6 +215,9 @@ def test_epistemic_guard_has_closed_review_and_verification_rows() -> None:
         "causal-overreach",
         "counterevidence",
         "evidence-grounding",
+        "independent-corroboration",
+        "order-sensitivity",
+        "provenance-freshness",
         "scope-challenge",
         "uncertainty",
     }

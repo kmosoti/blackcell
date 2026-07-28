@@ -142,11 +142,11 @@ def test_review_worker_persists_context_dispatch_proposal_provider_and_admission
     proposal = _json_object(artifacts.get_json(state.proposal_artifact_digest or ""))
     provider = _json_object(artifacts.get_json(state.provider_result_artifact_digest or ""))
     admitted = _json_object(artifacts.get_json(state.admitted_artifact_digest or ""))
-    assert context["schema_version"] == "review-context/v1"
-    assert proposal["schema_version"] == "review-proposal/v1"
+    assert context["schema_version"] == "review-context/v2"
+    assert proposal["schema_version"] == "review-proposal/v2"
     assert provider["schema_version"] == "review-provider-result/v1"
     assert provider["proposal_digest"] == state.proposal_artifact_digest
-    assert admitted["schema_version"] == "execution-admitted-review/v1"
+    assert admitted["schema_version"] == "execution-admitted-review/v2"
     assert admitted["acceptance_digest"] == call.context.acceptance.digest
     assert "approved" not in admitted
     assert "verified" not in admitted

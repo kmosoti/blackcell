@@ -1,0 +1,38 @@
+id: javascript-generation-labelled-identifier
+language: JavaScript
+severity: error
+message: Use a semantic capability name instead of an implementation generation label.
+files:
+  - src/**/*.js
+  - tests/**/*.js
+  - tools/**/*.js
+  - examples/**/*.js
+rule:
+  kind: identifier
+  regex: '(^|_)[vV][0-9]+(_|$)|[a-z][vV][0-9]+([A-Z_]|$)'
+---
+id: javascript-maturity-labelled-identifier
+language: JavaScript
+severity: error
+message: Use a semantic capability name instead of a product maturity label.
+files:
+  - src/**/*.js
+  - tests/**/*.js
+  - tools/**/*.js
+  - examples/**/*.js
+rule:
+  kind: identifier
+  regex: '(?i)(^|_)(alpha|beta|preview)(_|$)'
+---
+id: javascript-retired-source-evidence-label
+language: JavaScript
+severity: error
+message: Retired source-bound evidence automation must not return to executable code.
+files:
+  - src/**/*.js
+  - tests/**/*.js
+  - tools/**/*.js
+  - examples/**/*.js
+rule:
+  kind: string
+  regex: '(?i)release[-_]evidence'

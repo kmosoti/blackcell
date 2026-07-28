@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 from collections.abc import Mapping
+from contextlib import closing
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 from pathlib import Path
@@ -240,7 +241,7 @@ def test_database_reopens_with_wal_and_persisted_events(tmp_path: Path) -> None:
     second_store = EventStore(path)
 
     assert second_store.read_stream("task:1") == (stored,)
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         assert connection.execute("pragma user_version").fetchone()[0] == SCHEMA_VERSION
         assert connection.execute("pragma journal_mode").fetchone()[0] == "wal"
 
@@ -249,7 +250,7 @@ def test_read_detects_payload_tampering(tmp_path: Path) -> None:
     path = tmp_path / "kernel.sqlite3"
     store = EventStore(path)
     stored = store.append(event(1), expected_sequence=0)
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute(
             "update kernel_events set payload_json = ? where event_id = ?",
             ('{"sequence":999}', stored.event_id),
@@ -261,7 +262,7 @@ def test_read_detects_payload_tampering(tmp_path: Path) -> None:
 
 def test_newer_database_schema_is_rejected(tmp_path: Path) -> None:
     path = tmp_path / "future.sqlite3"
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute("pragma user_version = 999")
 
     with pytest.raises(SchemaVersionError, match="incompatible"):

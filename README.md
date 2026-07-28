@@ -79,6 +79,7 @@ Expected output:
 | Inspect or query runs | `uv run blackcell run status RUN_ID`; `uv run blackcell run query --request query.json` |
 | Cancel or replay | `uv run blackcell run cancel RUN_ID --request cancel.json`; `uv run blackcell run replay RUN_ID` |
 | Resume ordered events | `uv run blackcell events list --after 0 --limit 100` |
+| Inspect model CLI authority and transport | `uv run blackcell adapters inspect` |
 | Open the terminal client | `uv run blackcell tui` |
 | Open the browser client | `http://127.0.0.1:8080/ui` |
 
@@ -93,11 +94,11 @@ write-capable connection is opened; BlackCell does not migrate or delete it auto
 
 ## Epistemic guard
 
-Review and verification use a closed matrix covering acceptance coverage, evidence grounding,
-counterevidence, causal overreach, scope challenge, and uncertainty. Findings must cite admitted
-evidence. Missing evidence remains unknown and produces an inconclusive verification result rather
-than model-authored certainty. Human acceptance stays separate from both model review and
-deterministic verification.
+Review and verification use a closed nine-dimension matrix covering acceptance, evidence,
+counterevidence, causality, scope, uncertainty, provenance freshness, independent corroboration,
+and order sensitivity. Findings must cite admitted evidence. Missing evidence remains unknown and
+produces an inconclusive verification result rather than model-authored certainty. Human acceptance
+stays separate from both model review and deterministic verification.
 
 See [Epistemic evaluation](docs/epistemic-evaluation.md) for the research basis, threat model, and
 matrix contract.
