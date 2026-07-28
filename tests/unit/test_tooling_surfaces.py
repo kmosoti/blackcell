@@ -89,6 +89,18 @@ def _tooling_catalog_payload(case: str) -> dict[str, object]:
             codex["tool"] = "agy-cli"
         case "extra-property":
             payload["unexpected"] = True
+        case "duplicate-capability":
+            capabilities = cast("list[str]", codex["capabilities"])
+            capabilities.append(capabilities[0])
+        case "duplicate-shared-facet":
+            shared_facets = cast("list[str]", payload["shared_facets"])
+            shared_facets.append(shared_facets[0])
+        case "exact-preflight-without-command":
+            version = cast("dict[str, object]", agy["version"])
+            version["command_template"] = []
+        case "blank-required-version":
+            version = cast("dict[str, object]", agy["version"])
+            version["required_version"] = " "
         case _:
             raise AssertionError(f"unknown tooling catalog parity case: {case}")
     return payload
@@ -105,6 +117,10 @@ def _tooling_catalog_payload(case: str) -> dict[str, object]:
         ("extra", False),
         ("wrong-discriminator", False),
         ("extra-property", False),
+        ("duplicate-capability", False),
+        ("duplicate-shared-facet", False),
+        ("exact-preflight-without-command", False),
+        ("blank-required-version", False),
     ],
 )
 def test_adapter_cli_schema_matches_runtime_acceptance_matrix(
