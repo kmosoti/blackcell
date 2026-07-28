@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
+import jsonschema_rs
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
@@ -65,24 +67,68 @@ def test_tooling_surface_provider_contract_remains_discriminated() -> None:
     }
 
 
+def _tooling_catalog_payload(case: str) -> dict[str, object]:
+    payload = tooling_surface_catalog().model_dump(mode="json")
+    surfaces = cast("list[dict[str, object]]", payload["surfaces"])
+    codex, agy = surfaces
+
+    match case:
+        case "canonical":
+            return payload
+        case "missing":
+            del payload["surfaces"]
+        case "empty":
+            payload["surfaces"] = []
+        case "duplicate":
+            payload["surfaces"] = [codex, codex]
+        case "reversed":
+            payload["surfaces"] = [agy, codex]
+        case "extra":
+            payload["surfaces"] = [codex, agy, codex]
+        case "wrong-discriminator":
+            codex["tool"] = "agy-cli"
+        case "extra-property":
+            payload["unexpected"] = True
+        case _:
+            raise AssertionError(f"unknown tooling catalog parity case: {case}")
+    return payload
+
+
 @pytest.mark.parametrize(
-    "surface_tools",
+    ("case", "expected_valid"),
     [
-        (),
-        ("codex-cli", "codex-cli"),
-        ("agy-cli", "codex-cli"),
-        ("codex-cli", "agy-cli", "codex-cli"),
+        ("canonical", True),
+        ("missing", False),
+        ("empty", False),
+        ("duplicate", False),
+        ("reversed", False),
+        ("extra", False),
+        ("wrong-discriminator", False),
+        ("extra-property", False),
     ],
 )
-def test_cli_tooling_catalog_rejects_invalid_surface_sequences(
-    surface_tools: tuple[str, ...],
+def test_adapter_cli_schema_matches_runtime_acceptance_matrix(
+    case: str,
+    expected_valid: bool,
 ) -> None:
-    payload = tooling_surface_catalog().model_dump(mode="json")
-    surfaces_by_tool = {item["tool"]: item for item in payload["surfaces"]}
-    payload["surfaces"] = [surfaces_by_tool[tool] for tool in surface_tools]
+    schema_result = CycloptsCliRunner().invoke(
+        app,
+        ["adapters", "schema"],
+        catch_exceptions=False,
+    )
+    assert schema_result.exit_code == 0
+    validator = jsonschema_rs.Draft202012Validator(json.loads(schema_result.stdout))
+    payload = _tooling_catalog_payload(case)
 
-    with pytest.raises(ValidationError):
+    try:
         ToolingSurfaceCatalog.model_validate_json(json.dumps(payload))
+    except ValidationError:
+        runtime_accepts = False
+    else:
+        runtime_accepts = True
+
+    assert runtime_accepts is expected_valid, case
+    assert validator.is_valid(payload) is expected_valid, case
 
 
 def test_codex_and_agy_surfaces_expose_shared_and_distinct_authority() -> None:
