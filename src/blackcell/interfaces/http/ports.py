@@ -14,10 +14,12 @@ from blackcell.interfaces.http.contracts import (
     ProjectRequest,
     ProjectResponse,
     ReplayResponse,
+    RunQueryItem,
     RunQueryRequest,
     RunQueryResponse,
     RunRequest,
     RunResponse,
+    RunSurfaceWindow,
     RuntimeEventPageResponse,
 )
 
@@ -93,6 +95,10 @@ class RuntimeApiPort(Protocol):
     def inspect_run(self, run_id: str) -> RunResponse: ...
 
     def query_runs(self, request: RunQueryRequest) -> RunQueryResponse: ...
+
+    def presentation_run_window(self, *, limit: int) -> RunSurfaceWindow: ...
+
+    def presentation_run_item(self, run_id: str) -> RunQueryItem: ...
 
     def cancel_run(
         self,

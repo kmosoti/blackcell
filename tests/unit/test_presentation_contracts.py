@@ -19,9 +19,8 @@ from blackcell.interfaces.http import (
     PlanNode,
     PlanRequest,
     ProjectRequest,
-    RunQueryRequest,
-    RunQueryResponse,
     RunRequest,
+    RunSurfaceWindow,
 )
 from blackcell.interfaces.presentation import (
     ACTION_BINDINGS,
@@ -86,12 +85,12 @@ def test_every_canonical_request_field_has_one_explicit_ui_disposition() -> None
 
 
 def test_workspace_surface_is_deterministic_closed_and_a2ui_compatible() -> None:
-    query = RunQueryResponse(
-        query=RunQueryRequest(schema_version="run-query-request/v1"),
+    query = RunSurfaceWindow(
+        limit=50,
         scanned_events=0,
         runs=(),
-        next_cursor=0,
-        has_more=False,
+        event_cursor=0,
+        has_older_runs=False,
     )
     surface = workspace_surface(query, tooling=tooling_surface_catalog())
 
@@ -116,12 +115,12 @@ def test_workspace_surface_is_deterministic_closed_and_a2ui_compatible() -> None
 
 def test_tooling_projection_preserves_every_codex_and_agy_leaf() -> None:
     tooling = tooling_surface_catalog()
-    query = RunQueryResponse(
-        query=RunQueryRequest(schema_version="run-query-request/v1"),
+    query = RunSurfaceWindow(
+        limit=50,
         scanned_events=0,
         runs=(),
-        next_cursor=0,
-        has_more=False,
+        event_cursor=0,
+        has_older_runs=False,
     )
     surface = workspace_surface(query, tooling=tooling)
     components = {
@@ -155,12 +154,12 @@ def test_tooling_projection_preserves_every_codex_and_agy_leaf() -> None:
 
 
 def test_surface_rejects_dangling_section_and_graph_references() -> None:
-    query = RunQueryResponse(
-        query=RunQueryRequest(schema_version="run-query-request/v1"),
+    query = RunSurfaceWindow(
+        limit=50,
         scanned_events=0,
         runs=(),
-        next_cursor=0,
-        has_more=False,
+        event_cursor=0,
+        has_older_runs=False,
     )
     invalid = workspace_surface(query).model_dump(mode="json")
     section = cast("dict[str, object]", invalid["components"][0])

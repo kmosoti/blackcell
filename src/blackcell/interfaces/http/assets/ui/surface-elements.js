@@ -263,7 +263,7 @@ function fieldControl(field) {
   }
   control.id = field.field_id;
   control.name = field.field_id;
-  control.required = field.required;
+  control.required = requiresNonemptyInput(field);
   if (field.default !== null) {
     if (field.control === "checkbox") {
       control.checked = Boolean(field.default);
@@ -276,6 +276,10 @@ function fieldControl(field) {
     }
   }
   return control;
+}
+
+export function requiresNonemptyInput(field) {
+  return field.required && !["checkbox", "string-list"].includes(field.control);
 }
 
 function readControl(field, control) {

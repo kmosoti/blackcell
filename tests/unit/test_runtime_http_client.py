@@ -28,7 +28,7 @@ from blackcell.interfaces.http import (
     ErrorResponse,
     HealthResponse,
     RunQueryRequest,
-    RunQueryResponse,
+    RunSurfaceWindow,
     RuntimeEventPageResponse,
     RuntimeEventResponse,
     encode_contract,
@@ -350,12 +350,12 @@ def test_runtime_client_bounds_identifiers_pagination_auth_and_failures() -> Non
 
 def test_runtime_client_decodes_authenticated_presentation_surfaces() -> None:
     surface = workspace_surface(
-        RunQueryResponse(
-            query=RunQueryRequest(schema_version="run-query-request/v1"),
+        RunSurfaceWindow(
+            limit=50,
             scanned_events=0,
             runs=(),
-            next_cursor=0,
-            has_more=False,
+            event_cursor=0,
+            has_older_runs=False,
         ),
         tooling=tooling_surface_catalog(),
     )

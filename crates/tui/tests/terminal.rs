@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
 
+use blackcell_terminal::client::build_action_request;
 use blackcell_terminal::config::{
     API_TOKEN_ENV, API_TOKEN_FILE_ENV, Config, ConfigError, ParseOutcome,
 };
-use blackcell_terminal::contract::{ContractError, PresentationSurface};
-use blackcell_terminal::view::{AppModel, view};
+use blackcell_terminal::contract::{ActionBinding, Component, ContractError, PresentationSurface};
+use blackcell_terminal::view::{AppModel, FormInputError, InputMode, view};
 use proptest::prelude::*;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
@@ -127,6 +128,119 @@ fn terminal_buffer_remains_readable_at_narrow_size() {
     assert!(scrolled.contains("q quit"));
 }
 
+#[test]
+fn terminal_form_editor_builds_typed_values_from_surface_bindings() {
+    let mut model = AppModel::new(workspace_surface());
+
+    model.begin_action_selection();
+    assert_eq!(model.input_mode, InputMode::ActionSelect);
+    model.begin_action_edit();
+    assert_eq!(model.input_mode, InputMode::ActionEdit);
+    model.select_next_option();
+
+    let submission = model.action_submission().unwrap();
+    assert_eq!(submission.action.operation, "accept-plan");
+    assert_eq!(submission.values["planning_mode"], json!("generated"));
+    assert_eq!(
+        build_action_request(&submission.action, &submission.values).unwrap(),
+        json!({
+            "schema_version": "plan-request/v1",
+            "planning_mode": "generated",
+        })
+    );
+}
+
+#[test]
+fn typed_action_builder_supports_every_mutating_workspace_operation() {
+    let operations = [
+        ("register-project", "project-request/v1"),
+        ("accept-intent", "intent-request/v1"),
+        ("accept-plan", "plan-request/v1"),
+        ("submit-run", "run-request/v1"),
+    ];
+    for (operation, schema) in operations {
+        let action = action_binding(operation, schema);
+        let values = std::collections::BTreeMap::from([("value".to_owned(), json!("typed"))]);
+
+        assert_eq!(
+            build_action_request(&action, &values).unwrap(),
+            json!({"schema_version": schema, "value": "typed"})
+        );
+    }
+}
+
+#[test]
+fn background_synchronization_preserves_active_terminal_input() {
+    let surface = workspace_surface();
+    let mut action_model = AppModel::new(surface.clone());
+    action_model.begin_action_selection();
+    action_model.begin_action_edit();
+    action_model.select_next_option();
+
+    action_model.synchronize_surface(surface.clone());
+
+    assert_eq!(action_model.input_mode, InputMode::ActionEdit);
+    assert_eq!(
+        action_model.action_submission().unwrap().values["planning_mode"],
+        json!("generated")
+    );
+
+    let mut run_model = AppModel::new(surface.clone());
+    run_model.input_mode = InputMode::RunId;
+    run_model.run_input = "run-in-progress".to_owned();
+
+    run_model.synchronize_surface(surface);
+
+    assert_eq!(run_model.input_mode, InputMode::RunId);
+    assert_eq!(run_model.run_input, "run-in-progress");
+}
+
+#[test]
+fn terminal_form_limits_and_confirmed_failures_are_explicit() {
+    let mut model = AppModel::new(workspace_surface());
+    model.begin_action_selection();
+    model.begin_action_edit();
+
+    assert_eq!(
+        model.set_action_value(&"x".repeat(64 * 1024 + 1)),
+        Err(FormInputError::ValueTooLarge)
+    );
+    model.set_action_value(&"x".repeat(64 * 1024)).unwrap();
+    model.edit_action_character('x');
+    assert_eq!(model.message, "action-field-too-large");
+
+    model.begin_action_confirmation();
+    model.action_failed("runtime-request-rejected".to_owned());
+    assert_eq!(model.input_mode, InputMode::ActionEdit);
+    assert_eq!(model.message, "runtime-request-rejected");
+}
+
+#[test]
+fn required_string_list_fields_accept_canonical_empty_arrays() {
+    let mut surface = workspace_surface();
+    let form = surface
+        .components
+        .iter_mut()
+        .find_map(|component| match component {
+            Component::Form(form) => Some(form),
+            _ => None,
+        })
+        .unwrap();
+    let field = &mut form.action.fields[0];
+    field.control = "string-list".to_owned();
+    field.options.clear();
+    field.default = Value::Null;
+
+    let mut model = AppModel::new(surface);
+    model.begin_action_selection();
+    model.begin_action_edit();
+
+    assert_eq!(
+        model.action_submission().unwrap().values["planning_mode"],
+        json!([])
+    );
+}
+
 proptest! {
     #[test]
     fn scrolling_is_saturating(down in any::<u16>(), up in any::<u16>()) {
@@ -162,6 +276,33 @@ fn sample_surface() -> PresentationSurface {
     PresentationSurface::decode(&serde_json::to_vec(&sample_value()).unwrap()).unwrap()
 }
 
+fn workspace_surface() -> PresentationSurface {
+    let value = serde_json::from_str::<Value>(SCENARIO).unwrap()["surfaces"][0].clone();
+    PresentationSurface::decode(&serde_json::to_vec(&value).unwrap()).unwrap()
+}
+
 fn sample_value() -> Value {
     serde_json::from_str::<Value>(SCENARIO).unwrap()["surfaces"][1].clone()
+}
+
+fn action_binding(operation: &str, schema: &str) -> ActionBinding {
+    serde_json::from_value(json!({
+        "action_id": operation,
+        "operation": operation,
+        "label": operation,
+        "request_schema": schema,
+        "fields": [{
+            "field_id": "value",
+            "json_pointer": "/value",
+            "label": "Value",
+            "help": "",
+            "control": "text",
+            "required": true,
+            "sensitive": false,
+            "default": null,
+            "options": [],
+        }],
+        "confirmation": null,
+    }))
+    .unwrap()
 }

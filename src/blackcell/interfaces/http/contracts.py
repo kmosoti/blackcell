@@ -514,6 +514,28 @@ class RunQueryResponse(StrictStruct, frozen=True):
     schema_version: Literal["run-query/v1"] = "run-query/v1"
 
 
+class RunSurfaceWindow(StrictStruct, frozen=True):
+    """Bounded presentation read model over a fixed event-ledger snapshot."""
+
+    limit: int
+    scanned_events: int
+    runs: tuple[RunQueryItem, ...]
+    event_cursor: int
+    has_older_runs: bool
+    schema_version: Literal["run-surface-window/v1"] = "run-surface-window/v1"
+
+    def __post_init__(self) -> None:
+        _bounded_integer(self.limit, minimum=1, maximum=MAX_RUN_QUERY_PAGE_SIZE)
+        _bounded_integer(
+            self.scanned_events,
+            minimum=0,
+            maximum=MAX_RUN_QUERY_SCAN_EVENTS,
+        )
+        _bounded_integer(self.event_cursor, minimum=0, maximum=2**63 - 1)
+        if len(self.runs) > self.limit or not isinstance(self.has_older_runs, bool):
+            raise WireContractError()
+
+
 class RuntimeEventResponse(StrictStruct, frozen=True):
     event_id: str
     cursor: int
@@ -809,6 +831,7 @@ __all__ = [
     "RunRequest",
     "RunResponse",
     "RunStatus",
+    "RunSurfaceWindow",
     "RuntimeEventPageResponse",
     "RuntimeEventResponse",
     "RuntimeEventType",

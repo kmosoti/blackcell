@@ -1,5 +1,6 @@
 //! Pure terminal model and deterministic Ratatui rendering.
 
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use ratatui::Frame;
@@ -8,15 +9,43 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use serde_json::Value;
+use thiserror::Error;
 
-use crate::contract::{Component, PresentationSurface};
+use crate::contract::{ActionBinding, Component, FieldBinding, PresentationSurface};
 
 const TOKENS: &str = include_str!("../../../src/blackcell/interfaces/presentation/tokens.json");
+const MAX_FORM_VALUE_BYTES: usize = 64 * 1024;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputMode {
     Normal,
     RunId,
+    ActionSelect,
+    ActionEdit,
+    ActionConfirm,
+}
+
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum FormInputError {
+    #[error("missing-required-action-field")]
+    MissingRequired,
+    #[error("invalid-action-field")]
+    InvalidField,
+    #[error("action-field-too-large")]
+    ValueTooLarge,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActionSubmission {
+    pub action: ActionBinding,
+    pub values: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FormEditor {
+    pub action: ActionBinding,
+    pub field_index: usize,
+    values: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +54,8 @@ pub struct AppModel {
     pub scroll: u16,
     pub input_mode: InputMode,
     pub run_input: String,
+    pub action_index: usize,
+    pub form_editor: Option<FormEditor>,
     pub message: String,
 }
 
@@ -35,6 +66,8 @@ impl AppModel {
             scroll: 0,
             input_mode: InputMode::Normal,
             run_input: String::new(),
+            action_index: 0,
+            form_editor: None,
             message: "Surface synchronized with the daemon.".to_owned(),
         }
     }
@@ -42,7 +75,22 @@ impl AppModel {
     pub fn replace_surface(&mut self, surface: PresentationSurface) {
         self.surface = surface;
         self.scroll = 0;
+        self.input_mode = InputMode::Normal;
+        self.run_input.clear();
+        self.action_index = 0;
+        self.form_editor = None;
         self.message = "Surface synchronized with the daemon.".to_owned();
+    }
+
+    pub fn synchronize_surface(&mut self, surface: PresentationSurface) {
+        self.surface = surface;
+        if self.input_mode == InputMode::Normal {
+            self.scroll = 0;
+            self.action_index = 0;
+            self.message = "Surface synchronized with the daemon.".to_owned();
+        } else if self.input_mode == InputMode::ActionSelect {
+            self.action_index = self.action_index.min(self.action_count().saturating_sub(1));
+        }
     }
 
     pub fn current_run_id(&self) -> Option<&str> {
@@ -55,6 +103,355 @@ impl AppModel {
 
     pub fn scroll_up(&mut self, amount: u16) {
         self.scroll = self.scroll.saturating_sub(amount);
+    }
+
+    pub fn begin_action_selection(&mut self) {
+        if self.action_count() == 0 {
+            self.message = "This surface exposes no actions.".to_owned();
+            return;
+        }
+        self.action_index = self.action_index.min(self.action_count() - 1);
+        self.form_editor = None;
+        self.input_mode = InputMode::ActionSelect;
+    }
+
+    pub fn close_actions(&mut self) {
+        self.form_editor = None;
+        self.input_mode = InputMode::Normal;
+    }
+
+    pub fn select_next_action(&mut self) {
+        let count = self.action_count();
+        if count > 0 {
+            self.action_index = (self.action_index + 1) % count;
+        }
+    }
+
+    pub fn select_previous_action(&mut self) {
+        let count = self.action_count();
+        if count > 0 {
+            self.action_index = (self.action_index + count - 1) % count;
+        }
+    }
+
+    pub fn begin_action_edit(&mut self) {
+        let Some(action) = self.selected_action().cloned() else {
+            self.close_actions();
+            return;
+        };
+        self.form_editor = Some(FormEditor::new(action));
+        self.message = "Editing typed action.".to_owned();
+        self.input_mode = InputMode::ActionEdit;
+    }
+
+    pub fn return_to_action_selection(&mut self) {
+        self.form_editor = None;
+        self.input_mode = InputMode::ActionSelect;
+    }
+
+    pub fn action_requires_confirmation(&self) -> bool {
+        self.form_editor
+            .as_ref()
+            .and_then(|editor| editor.action.confirmation.as_ref())
+            .is_some()
+    }
+
+    pub fn begin_action_confirmation(&mut self) {
+        self.input_mode = InputMode::ActionConfirm;
+    }
+
+    pub fn return_to_action_edit(&mut self) {
+        self.input_mode = InputMode::ActionEdit;
+    }
+
+    pub fn select_next_field(&mut self) {
+        if let Some(editor) = &mut self.form_editor {
+            editor.select_next_field();
+        }
+    }
+
+    pub fn select_previous_field(&mut self) {
+        if let Some(editor) = &mut self.form_editor {
+            editor.select_previous_field();
+        }
+    }
+
+    pub fn edit_action_character(&mut self, character: char) {
+        if !character.is_control()
+            && let Some(editor) = &mut self.form_editor
+            && let Err(error) = editor.push(character)
+        {
+            self.message = error.to_string();
+        }
+    }
+
+    pub fn edit_action_newline(&mut self) {
+        let Some(editor) = &mut self.form_editor else {
+            return;
+        };
+        if editor.current_field().is_some_and(|field| {
+            matches!(
+                field.control.as_str(),
+                "textarea" | "string-list" | "structured-list"
+            )
+        }) {
+            if let Err(error) = editor.push('\n') {
+                self.message = error.to_string();
+            }
+        } else {
+            editor.select_next_field();
+        }
+    }
+
+    pub fn edit_action_backspace(&mut self) {
+        if let Some(editor) = &mut self.form_editor {
+            editor.backspace();
+        }
+    }
+
+    pub fn edit_action_toggle(&mut self) {
+        if let Some(editor) = &mut self.form_editor {
+            editor.toggle();
+        }
+    }
+
+    pub fn edit_action_space(&mut self) {
+        let Some(editor) = &mut self.form_editor else {
+            return;
+        };
+        if editor
+            .current_field()
+            .is_some_and(|field| field.control == "checkbox")
+        {
+            editor.toggle();
+        } else if let Err(error) = editor.push(' ') {
+            self.message = error.to_string();
+        }
+    }
+
+    pub fn select_next_option(&mut self) {
+        if let Some(editor) = &mut self.form_editor {
+            editor.select_next_option();
+        }
+    }
+
+    pub fn select_previous_option(&mut self) {
+        if let Some(editor) = &mut self.form_editor {
+            editor.select_previous_option();
+        }
+    }
+
+    pub fn set_action_value(&mut self, value: &str) -> Result<(), FormInputError> {
+        let Some(editor) = &mut self.form_editor else {
+            return Err(FormInputError::InvalidField);
+        };
+        editor.set_value(value)
+    }
+
+    pub fn action_submission(&self) -> Result<ActionSubmission, FormInputError> {
+        self.form_editor
+            .as_ref()
+            .ok_or(FormInputError::InvalidField)?
+            .submission()
+    }
+
+    pub fn action_failed(&mut self, message: String) {
+        if self.input_mode == InputMode::ActionConfirm {
+            self.return_to_action_edit();
+        }
+        self.message = message;
+    }
+
+    fn action_count(&self) -> usize {
+        self.surface
+            .components
+            .iter()
+            .filter(|component| matches!(component, Component::Form(_)))
+            .count()
+    }
+
+    fn selected_action(&self) -> Option<&ActionBinding> {
+        self.surface
+            .components
+            .iter()
+            .filter_map(|component| match component {
+                Component::Form(form) => Some(&form.action),
+                _ => None,
+            })
+            .nth(self.action_index)
+    }
+}
+
+impl FormEditor {
+    fn new(action: ActionBinding) -> Self {
+        let values = action
+            .fields
+            .iter()
+            .map(initial_field_value)
+            .collect::<Vec<_>>();
+        Self {
+            action,
+            field_index: 0,
+            values,
+        }
+    }
+
+    fn current_field(&self) -> Option<&FieldBinding> {
+        self.action.fields.get(self.field_index)
+    }
+
+    fn current_value(&self) -> Option<&str> {
+        self.values.get(self.field_index).map(String::as_str)
+    }
+
+    fn select_next_field(&mut self) {
+        if !self.values.is_empty() {
+            self.field_index = (self.field_index + 1) % self.values.len();
+        }
+    }
+
+    fn select_previous_field(&mut self) {
+        if !self.values.is_empty() {
+            self.field_index = (self.field_index + self.values.len() - 1) % self.values.len();
+        }
+    }
+
+    fn push(&mut self, character: char) -> Result<(), FormInputError> {
+        let value = self
+            .values
+            .get_mut(self.field_index)
+            .ok_or(FormInputError::InvalidField)?;
+        if value.len().saturating_add(character.len_utf8()) > MAX_FORM_VALUE_BYTES {
+            return Err(FormInputError::ValueTooLarge);
+        }
+        value.push(character);
+        Ok(())
+    }
+
+    fn backspace(&mut self) {
+        if let Some(value) = self.values.get_mut(self.field_index) {
+            value.pop();
+        }
+    }
+
+    fn toggle(&mut self) {
+        if self
+            .current_field()
+            .is_none_or(|field| field.control != "checkbox")
+        {
+            return;
+        }
+        if let Some(value) = self.values.get_mut(self.field_index) {
+            *value = if value == "true" { "false" } else { "true" }.to_owned();
+        }
+    }
+
+    fn select_next_option(&mut self) {
+        self.select_option(1);
+    }
+
+    fn select_previous_option(&mut self) {
+        let count = self.current_field().map_or(0, |field| field.options.len());
+        if count > 0 {
+            self.select_option(count - 1);
+        }
+    }
+
+    fn select_option(&mut self, increment: usize) {
+        let Some(field) = self.current_field() else {
+            return;
+        };
+        if field.control != "select" || field.options.is_empty() {
+            return;
+        }
+        let options = field.options.clone();
+        let current = self.current_value().unwrap_or_default();
+        let index = options
+            .iter()
+            .position(|option| option.value == current)
+            .unwrap_or(0);
+        if let Some(value) = self.values.get_mut(self.field_index) {
+            *value = options[(index + increment) % options.len()].value.clone();
+        }
+    }
+
+    fn set_value(&mut self, value: &str) -> Result<(), FormInputError> {
+        if value.len() > MAX_FORM_VALUE_BYTES {
+            return Err(FormInputError::ValueTooLarge);
+        }
+        let selected = self
+            .values
+            .get_mut(self.field_index)
+            .ok_or(FormInputError::InvalidField)?;
+        *selected = value.to_owned();
+        Ok(())
+    }
+
+    fn submission(&self) -> Result<ActionSubmission, FormInputError> {
+        let mut values = BTreeMap::new();
+        for (field, raw) in self.action.fields.iter().zip(&self.values) {
+            let key = field
+                .json_pointer
+                .strip_prefix('/')
+                .filter(|value| !value.is_empty() && !value.contains('/'))
+                .ok_or(FormInputError::InvalidField)?;
+            if field.required
+                && raw.trim().is_empty()
+                && !matches!(field.control.as_str(), "checkbox" | "string-list")
+            {
+                return Err(FormInputError::MissingRequired);
+            }
+            values.insert(key.to_owned(), parse_field_value(field, raw)?);
+        }
+        Ok(ActionSubmission {
+            action: self.action.clone(),
+            values,
+        })
+    }
+}
+
+fn initial_field_value(field: &FieldBinding) -> String {
+    match (&field.control[..], &field.default) {
+        (_, Value::Null) => String::new(),
+        ("string-list", Value::Array(values)) => values
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>()
+            .join("\n"),
+        (_, Value::String(value)) => value.clone(),
+        (_, value) => value.to_string(),
+    }
+}
+
+fn parse_field_value(field: &FieldBinding, raw: &str) -> Result<Value, FormInputError> {
+    match field.control.as_str() {
+        "checkbox" => raw
+            .parse::<bool>()
+            .map(Value::Bool)
+            .map_err(|_| FormInputError::InvalidField),
+        "number" => serde_json::from_str(raw)
+            .ok()
+            .filter(Value::is_number)
+            .ok_or(FormInputError::InvalidField),
+        "select" => field
+            .options
+            .iter()
+            .find(|option| option.value == raw)
+            .map(|option| Value::String(option.value.clone()))
+            .ok_or(FormInputError::InvalidField),
+        "string-list" => Ok(Value::Array(
+            raw.lines()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| Value::String(value.to_owned()))
+                .collect(),
+        )),
+        "structured-list" => serde_json::from_str(raw)
+            .ok()
+            .filter(Value::is_array)
+            .ok_or(FormInputError::InvalidField),
+        "text" | "textarea" => Ok(Value::String(raw.to_owned())),
+        _ => Err(FormInputError::InvalidField),
     }
 }
 
@@ -104,15 +501,57 @@ pub fn view(frame: &mut Frame<'_>, model: &AppModel) {
 
     let footer_text = match model.input_mode {
         InputMode::Normal => format!(
-            "{}  ·  q quit · w workspace · r inspect run · c cancel run · j/k scroll",
+            "{}  ·  q quit · a actions · w workspace · r inspect run · c cancel run · j/k scroll",
             model.message
         ),
         InputMode::RunId => format!("Run ID: {}_  ·  Enter open · Esc cancel", model.run_input),
+        InputMode::ActionSelect => {
+            let action = model
+                .selected_action()
+                .map_or("No action", |action| action.label.as_str());
+            format!("Action: {action}  ·  ↑/↓ choose · Enter edit · Esc close")
+        }
+        InputMode::ActionEdit => action_footer(model),
+        InputMode::ActionConfirm => {
+            let confirmation = model
+                .form_editor
+                .as_ref()
+                .and_then(|editor| editor.action.confirmation.as_deref())
+                .unwrap_or("Submit this action?");
+            format!("{confirmation}  ·  y confirm · n/Esc return")
+        }
     };
     let footer = Paragraph::new(footer_text)
         .style(Style::default().fg(palette.muted))
         .block(Block::default().borders(Borders::ALL));
     frame.render_widget(footer, layout[2]);
+}
+
+fn action_footer(model: &AppModel) -> String {
+    let Some(editor) = &model.form_editor else {
+        return "Action unavailable · Esc close".to_owned();
+    };
+    let Some(field) = editor.current_field() else {
+        return format!(
+            "{} · {} · no fields · Ctrl+S submit · Esc actions",
+            model.message, editor.action.label
+        );
+    };
+    let value = if field.sensitive {
+        "••••••".to_owned()
+    } else {
+        editor
+            .current_value()
+            .unwrap_or_default()
+            .replace('\n', "↵")
+            .chars()
+            .take(120)
+            .collect()
+    };
+    format!(
+        "{} · {} · {}: {}_ · Tab/Shift+Tab field · Ctrl+S submit · Esc actions",
+        model.message, editor.action.label, field.label, value
+    )
 }
 
 pub fn surface_lines(surface: &PresentationSurface) -> Vec<Line<'static>> {

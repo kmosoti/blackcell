@@ -49,5 +49,5 @@ expression: "render_at(120, 48, 0)"
 │Cancel run  [form]                                                                                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│Surface synchronized with the daemon.  ·  q quit · w workspace · r inspect run · c cancel run · j/k scroll            │
+│Surface synchronized with the daemon.  ·  q quit · a actions · w workspace · r inspect run · c cancel run · j/k scroll│
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

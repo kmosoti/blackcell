@@ -111,14 +111,154 @@ test("declared oversized surfaces fail before the body is consumed", async ({ pa
   expect(socketTicketRequests).toBe(0);
 });
 
-async function installRuntimeRoutes(page, requests) {
+test("a superseded workspace response cannot overwrite a selected run", async ({ page }) => {
+  let workspaceRequests = 0;
+  let releaseWorkspace;
+  let markWorkspaceStarted;
+  let markWorkspaceFinished;
+  const workspaceStarted = new Promise((resolve) => {
+    markWorkspaceStarted = resolve;
+  });
+  const workspaceFinished = new Promise((resolve) => {
+    markWorkspaceFinished = resolve;
+  });
+  const workspaceRelease = new Promise((resolve) => {
+    releaseWorkspace = resolve;
+  });
+  await installRuntimeRoutes(page, [], {
+    workspaceResponder: async (route) => {
+      const requestNumber = ++workspaceRequests;
+      if (requestNumber === 2) {
+        markWorkspaceStarted();
+        await workspaceRelease;
+      }
+      await surfaceResponse(route, workspaceSurface);
+      if (requestNumber === 2) {
+        markWorkspaceFinished();
+      }
+    },
+  });
+  await page.routeWebSocket("**/api/v1/ui/events?*", () => {});
+
+  await page.goto("/ui");
+  await page.getByLabel("API bearer token").fill(token);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("heading", { name: workspaceSurface.title })).toBeVisible();
+
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  await workspaceStarted;
+  await page.getByLabel("Inspect run").fill("run-1");
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(page.getByRole("heading", { name: runSurface.title })).toBeVisible();
+
+  releaseWorkspace();
+  await workspaceFinished;
+  await expect(page.getByRole("heading", { name: runSurface.title })).toBeVisible();
+  await expect(page.getByRole("heading", { name: workspaceSurface.title })).toHaveCount(0);
+});
+
+test("a live refresh cannot supersede pending run navigation", async ({ page }) => {
+  let socket;
+  let workspaceRequests = 0;
+  let runRequests = 0;
+  let releaseRun;
+  let markRunStarted;
+  const runStarted = new Promise((resolve) => {
+    markRunStarted = resolve;
+  });
+  const runRelease = new Promise((resolve) => {
+    releaseRun = resolve;
+  });
+  await installRuntimeRoutes(page, [], {
+    workspaceResponder: async (route) => {
+      workspaceRequests += 1;
+      await surfaceResponse(route, workspaceSurface);
+    },
+    runResponder: async (route) => {
+      runRequests += 1;
+      if (runRequests === 1) {
+        markRunStarted();
+        await runRelease;
+      }
+      await surfaceResponse(route, runSurface);
+    },
+  });
+  await page.routeWebSocket("**/api/v1/ui/events?*", (webSocket) => {
+    socket = webSocket;
+  });
+
+  await page.goto("/ui");
+  await page.getByLabel("API bearer token").fill(token);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("heading", { name: workspaceSurface.title })).toBeVisible();
+  await expect.poll(() => socket !== undefined).toBe(true);
+
+  await page.getByLabel("Inspect run").fill("run-1");
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await runStarted;
+  socket.send(Buffer.from(JSON.stringify({ next_cursor: 99 }), "utf8"));
+  await page.waitForTimeout(120);
+  expect(workspaceRequests).toBe(1);
+
+  releaseRun();
+  await expect(page.getByRole("heading", { name: runSurface.title })).toBeVisible();
+  await expect.poll(() => runRequests).toBe(2);
+  await expect(page.getByRole("heading", { name: runSurface.title })).toBeVisible();
+  expect(workspaceRequests).toBe(1);
+});
+
+test("disconnect clears a pending surface's accessibility busy state", async ({ page }) => {
+  let workspaceRequests = 0;
+  let releaseWorkspace;
+  let markWorkspaceStarted;
+  const workspaceStarted = new Promise((resolve) => {
+    markWorkspaceStarted = resolve;
+  });
+  const workspaceRelease = new Promise((resolve) => {
+    releaseWorkspace = resolve;
+  });
+  await installRuntimeRoutes(page, [], {
+    workspaceResponder: async (route) => {
+      workspaceRequests += 1;
+      if (workspaceRequests === 2) {
+        markWorkspaceStarted();
+        await workspaceRelease;
+      }
+      await surfaceResponse(route, workspaceSurface);
+    },
+  });
+  await page.routeWebSocket("**/api/v1/ui/events?*", () => {});
+
+  await page.goto("/ui");
+  await page.getByLabel("API bearer token").fill(token);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("heading", { name: workspaceSurface.title })).toBeVisible();
+
+  await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  await workspaceStarted;
+  await expect(page.locator("blackcell-surface")).toHaveAttribute("aria-busy", "true");
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+
+  await expect(page.locator("blackcell-surface")).toHaveAttribute("aria-busy", "false");
+  releaseWorkspace();
+});
+
+async function installRuntimeRoutes(page, requests, options = {}) {
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/api/v1/ui/surfaces/workspace") {
-      await surfaceResponse(route, workspaceSurface);
+      if (options.workspaceResponder) {
+        await options.workspaceResponder(route);
+      } else {
+        await surfaceResponse(route, workspaceSurface);
+      }
     } else if (url.pathname === "/api/v1/ui/surfaces/runs/run-1") {
-      await surfaceResponse(route, runSurface);
+      if (options.runResponder) {
+        await options.runResponder(route);
+      } else {
+        await surfaceResponse(route, runSurface);
+      }
     } else if (url.pathname === "/api/v1/ui/socket-tickets") {
       await route.fulfill({
         contentType: "application/json",

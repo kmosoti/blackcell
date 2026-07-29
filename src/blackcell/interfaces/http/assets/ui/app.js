@@ -25,6 +25,9 @@ const state = {
   socket: null,
   cursor: 0,
   generation: 0,
+  surfaceGeneration: 0,
+  surfacePending: false,
+  refreshPending: false,
   reconnectAttempt: 0,
   reconnectTimer: null,
   refreshTimer: null,
@@ -64,19 +67,27 @@ async function showWorkspace(propagate = false) {
   if (state.client === null) {
     return;
   }
+  const generation = ++state.surfaceGeneration;
+  state.surfacePending = true;
   setBusy(true, "Loading workspace.");
   try {
     const surface = await state.client.workspaceSurface();
+    if (!currentSurfaceRequest(generation)) {
+      return;
+    }
     state.surfaceKind = "workspace";
     state.runId = null;
     render(surface);
   } catch (error) {
+    if (!currentSurfaceRequest(generation)) {
+      return;
+    }
     if (propagate) {
       throw error;
     }
     setMessage(elements.surfaceMessage, safeMessage(error), true);
   } finally {
-    setBusy(false);
+    finishSurfaceRequest(generation);
   }
 }
 
@@ -85,20 +96,44 @@ async function showRun(runId, propagate = false) {
     return;
   }
   const selected = String(runId).trim();
+  const generation = ++state.surfaceGeneration;
+  state.surfacePending = true;
   setBusy(true, `Loading run ${selected}.`);
   try {
     const surface = await state.client.runSurface(selected);
+    if (!currentSurfaceRequest(generation)) {
+      return;
+    }
     state.surfaceKind = "run";
     state.runId = selected;
     elements.runId.value = selected;
     render(surface);
   } catch (error) {
+    if (!currentSurfaceRequest(generation)) {
+      return;
+    }
     if (propagate) {
       throw error;
     }
     setMessage(elements.surfaceMessage, safeMessage(error), true);
   } finally {
-    setBusy(false);
+    finishSurfaceRequest(generation);
+  }
+}
+
+function currentSurfaceRequest(generation) {
+  return state.client !== null && generation === state.surfaceGeneration;
+}
+
+function finishSurfaceRequest(generation) {
+  if (!currentSurfaceRequest(generation)) {
+    return;
+  }
+  state.surfacePending = false;
+  setBusy(false);
+  if (state.refreshPending) {
+    state.refreshPending = false;
+    scheduleSurfaceRefresh();
   }
 }
 
@@ -200,6 +235,10 @@ function scheduleSurfaceRefresh() {
   }
   state.refreshTimer = window.setTimeout(async () => {
     state.refreshTimer = null;
+    if (state.surfacePending) {
+      state.refreshPending = true;
+      return;
+    }
     if (state.surfaceKind === "run" && state.runId !== null) {
       await showRun(state.runId);
     } else {
@@ -224,6 +263,7 @@ function scheduleReconnect() {
 function disconnect(announce) {
   state.wanted = false;
   state.generation += 1;
+  state.surfaceGeneration += 1;
   for (const timer of [state.reconnectTimer, state.refreshTimer]) {
     if (timer !== null) {
       window.clearTimeout(timer);
@@ -231,6 +271,8 @@ function disconnect(announce) {
   }
   state.reconnectTimer = null;
   state.refreshTimer = null;
+  state.surfacePending = false;
+  state.refreshPending = false;
   if (state.socket !== null) {
     state.socket.close(1000, "client-disconnect");
     state.socket = null;
@@ -244,6 +286,7 @@ function disconnect(announce) {
   state.surfaceKind = "workspace";
   elements.cursor.textContent = "Cursor 0";
   elements.surface.replaceChildren();
+  setBusy(false);
   elements.surfaceTitle.textContent = "Runtime surface";
   elements.surfaceRevision.textContent = "";
   setConnection("disconnected", "Disconnected");

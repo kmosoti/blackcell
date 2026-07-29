@@ -1,10 +1,12 @@
-//! Bounded authenticated client for presentation snapshots and event invalidations.
+//! Bounded authenticated client for presentation snapshots, typed actions, and invalidations.
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use futures_util::StreamExt;
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE, HeaderValue};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
@@ -12,11 +14,12 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::config::Secret;
-use crate::contract::PresentationSurface;
+use crate::contract::{ActionBinding, PresentationSurface};
 
 const PRESENTATION_MEDIA_TYPE: &str = "application/vnd.blackcell.presentation+json";
 const MAX_SURFACE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_EVENT_BYTES: usize = 8 * 1024 * 1024;
+const MAX_ACTION_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum ClientError {
@@ -30,6 +33,8 @@ pub enum ClientError {
     ResponseTooLarge,
     #[error("invalid-run-id")]
     InvalidRunId,
+    #[error("invalid-runtime-action")]
+    InvalidAction,
     #[error("event-stream-failed")]
     EventStreamFailed,
 }
@@ -97,6 +102,28 @@ impl RuntimeClient {
                 schema_version: "execution-cancel-run-request/v1",
                 idempotency_key: format!("tui-cancel-{}", Uuid::new_v4()),
             })
+            .send()
+            .await
+            .map_err(|_| ClientError::ConnectionFailed)?;
+        if !response.status().is_success() {
+            return Err(ClientError::RequestRejected);
+        }
+        Ok(())
+    }
+
+    pub async fn execute_action(
+        &self,
+        action: &ActionBinding,
+        values: &BTreeMap<String, Value>,
+    ) -> Result<(), ClientError> {
+        let (path, request_schema) = action_contract(&action.operation)?;
+        if action.request_schema != request_schema {
+            return Err(ClientError::InvalidAction);
+        }
+        let request = build_action_request(action, values)?;
+        let response = self
+            .authorized(self.http.post(self.url(path)?))?
+            .json(&request)
             .send()
             .await
             .map_err(|_| ClientError::ConnectionFailed)?;
@@ -223,6 +250,54 @@ impl RuntimeClient {
         self.endpoint
             .join(path)
             .map_err(|_| ClientError::InvalidResponse)
+    }
+}
+
+pub fn build_action_request(
+    action: &ActionBinding,
+    values: &BTreeMap<String, Value>,
+) -> Result<Value, ClientError> {
+    let (_, request_schema) = action_contract(&action.operation)?;
+    if action.request_schema != request_schema {
+        return Err(ClientError::InvalidAction);
+    }
+    let mut request = Map::from_iter([(
+        "schema_version".to_owned(),
+        Value::String(request_schema.to_owned()),
+    )]);
+    for field in &action.fields {
+        let Some(key) = field.json_pointer.strip_prefix('/') else {
+            return Err(ClientError::InvalidAction);
+        };
+        if key.is_empty() || key.contains('/') {
+            return Err(ClientError::InvalidAction);
+        }
+        let Some(value) = values.get(key) else {
+            if field.required {
+                return Err(ClientError::InvalidAction);
+            }
+            continue;
+        };
+        request.insert(key.to_owned(), value.clone());
+    }
+    let request = Value::Object(request);
+    if serde_json::to_vec(&request)
+        .map_err(|_| ClientError::InvalidAction)?
+        .len()
+        > MAX_ACTION_BYTES
+    {
+        return Err(ClientError::InvalidAction);
+    }
+    Ok(request)
+}
+
+fn action_contract(operation: &str) -> Result<(&'static str, &'static str), ClientError> {
+    match operation {
+        "register-project" => Ok(("/api/v1/projects", "project-request/v1")),
+        "accept-intent" => Ok(("/api/v1/intents", "intent-request/v1")),
+        "accept-plan" => Ok(("/api/v1/plans", "plan-request/v1")),
+        "submit-run" => Ok(("/api/v1/runs", "run-request/v1")),
+        _ => Err(ClientError::InvalidAction),
     }
 }
 

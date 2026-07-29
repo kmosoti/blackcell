@@ -26,6 +26,7 @@ from blackcell.adapters.execution.worktree import (
 from blackcell.config import RuntimeSecurityConfig
 from blackcell.gateway import GatewayBudget
 from blackcell.interfaces.http.contracts import (
+    MAX_RUN_QUERY_PAGE_SIZE,
     MAX_RUN_QUERY_SCAN_EVENTS,
     MAX_RUNTIME_EVENT_PAGE_SIZE,
     CancelRunRequest,
@@ -49,6 +50,7 @@ from blackcell.interfaces.http.contracts import (
     RunRequest,
     RunResponse,
     RunStatus,
+    RunSurfaceWindow,
     RuntimeEventPageResponse,
     RuntimeEventResponse,
     RuntimeEventType,
@@ -511,6 +513,68 @@ class RuntimeService:
             next_cursor=cursor,
             has_more=has_more,
         )
+
+    def presentation_run_window(self, *, limit: int) -> RunSurfaceWindow:
+        """Return the newest run projections from one bounded indexed snapshot."""
+
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= MAX_RUN_QUERY_PAGE_SIZE
+        ):
+            raise RuntimeApiError(RuntimeApiFailureCode.INVALID_REQUEST)
+        event_cursor = self._events.current_position()
+        through_position = event_cursor
+        scanned_events = 0
+        exhausted = event_cursor == 0
+        queued_events: list[EventEnvelope] = []
+        while (
+            not exhausted
+            and scanned_events < MAX_RUN_QUERY_SCAN_EVENTS
+            and len(queued_events) <= limit
+        ):
+            page_limit = min(200, MAX_RUN_QUERY_SCAN_EVENTS - scanned_events)
+            page = self._events.read_type_descending(
+                RUN_QUEUED,
+                through_position=through_position,
+                limit=page_limit,
+            )
+            if not page:
+                exhausted = True
+                break
+            for event in page:
+                scanned_events += 1
+                if event.source == RUNTIME_EVENT_SOURCE and event.stream_id.startswith("run:"):
+                    queued_events.append(event)
+                    if len(queued_events) > limit:
+                        break
+            oldest_position = _global_position(page[-1])
+            exhausted = len(page) < page_limit or oldest_position == 1
+            through_position = oldest_position - 1
+
+        selected = queued_events[:limit]
+        runs = tuple(
+            _run_query_item(
+                self._load_run(
+                    event.stream_id.removeprefix("run:"),
+                    through_position=event_cursor,
+                )
+            )
+            for event in reversed(selected)
+        )
+        return RunSurfaceWindow(
+            limit=limit,
+            scanned_events=scanned_events,
+            runs=runs,
+            event_cursor=event_cursor,
+            has_older_runs=len(queued_events) > limit or not exhausted,
+        )
+
+    def presentation_run_item(self, run_id: str) -> RunQueryItem:
+        """Load one run projection directly through its indexed event stream."""
+
+        _identifier(run_id)
+        return _run_query_item(self._load_run(run_id))
 
     def next_ready_node(self) -> ReadyNode | None:
         """Return the first dependency-ready node in global queued-run order."""
@@ -1701,8 +1765,11 @@ class RuntimeService:
                 return _require_run_idempotent(raced, payload)
             raise RuntimeApiError(RuntimeApiFailureCode.CONFLICT) from None
 
-    def _load_run(self, run_id: str) -> _LoadedRun:
-        events = self._events.read_stream(_run_stream(run_id))
+    def _load_run(self, run_id: str, *, through_position: int | None = None) -> _LoadedRun:
+        events = self._events.read_stream(
+            _run_stream(run_id),
+            through_position=through_position,
+        )
         if not events:
             raise RuntimeApiError(RuntimeApiFailureCode.NOT_FOUND)
         queued = events[0]

@@ -516,11 +516,7 @@ def create_http_app(
         sync_to_thread=True,
     )
     def project_workspace(request: Request[Any, Any, Any]) -> Response[bytes]:
-        runs = _invoke(
-            lambda: service.query_runs(
-                RunQueryRequest(schema_version="run-query-request/v1", limit=50)
-            )
-        )
+        runs = _invoke(lambda: service.presentation_run_window(limit=50))
         return _presentation_response(
             request,
             workspace_surface(runs, tooling=tooling_catalog),
@@ -537,16 +533,7 @@ def create_http_app(
     ) -> Response[bytes]:
         selected_run_id = _path_id(run_id)
         replay = _invoke(lambda: service.replay_run(selected_run_id))
-        query = _invoke(
-            lambda: service.query_runs(
-                RunQueryRequest(
-                    schema_version="run-query-request/v1",
-                    run_ids=(selected_run_id,),
-                    limit=1,
-                )
-            )
-        )
-        run_item = next((item for item in query.runs if item.run.run_id == selected_run_id), None)
+        run_item = _invoke(lambda: service.presentation_run_item(selected_run_id))
         return _presentation_response(request, run_surface(replay, run_item))
 
     @get(

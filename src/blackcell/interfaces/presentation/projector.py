@@ -11,7 +11,7 @@ from blackcell.gateway import ToolingSurfaceCatalog
 from blackcell.interfaces.http.contracts import (
     ReplayResponse,
     RunQueryItem,
-    RunQueryResponse,
+    RunSurfaceWindow,
     contract_to_json_builtins,
 )
 from blackcell.interfaces.presentation.fields import (
@@ -52,7 +52,7 @@ from blackcell.interfaces.presentation.models import (
 
 
 def workspace_surface(
-    runs: RunQueryResponse,
+    runs: RunSurfaceWindow,
     *,
     tooling: ToolingSurfaceCatalog | None = None,
 ) -> PresentationSurface:
@@ -92,7 +92,7 @@ def workspace_surface(
             metrics=(
                 Metric(label="Returned", value=len(runs.runs)),
                 Metric(label="Scanned events", value=runs.scanned_events),
-                Metric(label="Next cursor", value=runs.next_cursor),
+                Metric(label="Event cursor", value=runs.event_cursor),
             ),
             source=source,
         ),
@@ -106,8 +106,8 @@ def workspace_surface(
         surface_id="workspace",
         title="BlackCell project runtime",
         revision=SurfaceRevision(
-            number=runs.next_cursor,
-            event_cursor=runs.next_cursor,
+            number=runs.event_cursor,
+            event_cursor=runs.event_cursor,
             source_digest=digest,
         ),
         components=tuple(components),

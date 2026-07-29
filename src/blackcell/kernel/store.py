@@ -284,13 +284,18 @@ class EventStore:
         stream_id: str,
         *,
         after_sequence: int = 0,
+        through_position: int | None = None,
         limit: int | None = None,
     ) -> tuple[EventEnvelope, ...]:
         _validate_cursor(after_sequence, limit)
-        query = (
-            f"{_EVENT_SELECT} where stream_id = ? and stream_sequence > ? order by stream_sequence"
-        )
+        if through_position is not None:
+            _validate_cursor(through_position, None)
+        query = f"{_EVENT_SELECT} where stream_id = ? and stream_sequence > ?"
         params: tuple[object, ...] = (stream_id, after_sequence)
+        if through_position is not None:
+            query += " and global_position <= ?"
+            params += (through_position,)
+        query += " order by stream_sequence"
         if limit is not None:
             query += " limit ?"
             params += (limit,)
@@ -313,6 +318,38 @@ class EventStore:
         with connect(self.path) as connection:
             rows = connection.execute(query, params).fetchall()
         return tuple(_event_from_row(row) for row in rows)
+
+    def read_type_descending(
+        self,
+        event_type: str,
+        *,
+        through_position: int,
+        limit: int,
+    ) -> tuple[EventEnvelope, ...]:
+        """Read one indexed event-type page newest first within a fixed snapshot."""
+
+        if not isinstance(event_type, str) or not event_type:
+            raise ValueError("event_type must be non-empty")
+        _validate_cursor(through_position, limit)
+        query = (
+            f"{_EVENT_SELECT} where event_type = ? and global_position <= ? "
+            "order by global_position desc limit ?"
+        )
+        with connect(self.path) as connection:
+            rows = connection.execute(
+                query,
+                (event_type, through_position, limit),
+            ).fetchall()
+        return tuple(_event_from_row(row) for row in rows)
+
+    def current_position(self) -> int:
+        """Return the committed global event-ledger head, or zero when empty."""
+
+        with connect(self.path) as connection:
+            row = connection.execute(
+                "select coalesce(max(global_position), 0) from kernel_events"
+            ).fetchone()
+        return int(row[0])
 
     def current_sequence(self, stream_id: str) -> int:
         with connect(self.path) as connection:

@@ -7,7 +7,10 @@ import {
   semanticManifest,
   validateSurface,
 } from "../../src/blackcell/interfaces/http/assets/ui/runtime-client.js";
-import { graphLayout } from "../../src/blackcell/interfaces/http/assets/ui/surface-elements.js";
+import {
+  graphLayout,
+  requiresNonemptyInput,
+} from "../../src/blackcell/interfaces/http/assets/ui/surface-elements.js";
 
 const digest = `sha256:${"a".repeat(64)}`;
 const reviewScenario = JSON.parse(
@@ -94,6 +97,11 @@ test("plan request construction retains planning_mode without a client schema al
     schema_version: "plan-request/v1",
     planning_mode: "generated",
   });
+});
+
+test("required collection keys allow canonical empty list values", () => {
+  assert.equal(requiresNonemptyInput({ required: true, control: "string-list" }), false);
+  assert.equal(requiresNonemptyInput({ required: true, control: "text" }), true);
 });
 
 test("surface validation rejects unknown components and dangling sections", () => {

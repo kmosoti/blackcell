@@ -4,8 +4,9 @@ use std::time::Duration;
 
 use blackcell_terminal::client::{ClientError, RuntimeClient};
 use blackcell_terminal::config::{Config, ConfigError, ParseOutcome, help};
-use blackcell_terminal::view::{AppModel, InputMode, view};
-use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind};
+use blackcell_terminal::contract::PresentationSurface;
+use blackcell_terminal::view::{ActionSubmission, AppModel, InputMode, view};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -146,8 +147,49 @@ async fn handle_event(
             }
             _ => {}
         },
+        InputMode::ActionSelect => match key.code {
+            KeyCode::Esc => model.close_actions(),
+            KeyCode::Enter => model.begin_action_edit(),
+            KeyCode::Char('j') | KeyCode::Down => model.select_next_action(),
+            KeyCode::Char('k') | KeyCode::Up => model.select_previous_action(),
+            _ => {}
+        },
+        InputMode::ActionEdit => match key.code {
+            KeyCode::Esc => model.return_to_action_selection(),
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if model.action_requires_confirmation() {
+                    model.begin_action_confirmation();
+                } else {
+                    submit_action(model, client).await;
+                }
+            }
+            KeyCode::Tab if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                model.select_previous_field();
+            }
+            KeyCode::BackTab => model.select_previous_field(),
+            KeyCode::Tab => model.select_next_field(),
+            KeyCode::Left | KeyCode::Up => model.select_previous_option(),
+            KeyCode::Right | KeyCode::Down => model.select_next_option(),
+            KeyCode::Enter => model.edit_action_newline(),
+            KeyCode::Backspace => model.edit_action_backspace(),
+            KeyCode::Char(' ') => model.edit_action_space(),
+            KeyCode::Char(character)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                model.edit_action_character(character);
+            }
+            _ => {}
+        },
+        InputMode::ActionConfirm => match key.code {
+            KeyCode::Char('y') => submit_action(model, client).await,
+            KeyCode::Char('n') | KeyCode::Esc => model.return_to_action_edit(),
+            _ => {}
+        },
         InputMode::Normal => match key.code {
             KeyCode::Char('q') => return Ok(true),
+            KeyCode::Char('a') => model.begin_action_selection(),
             KeyCode::Char('w') => match client.workspace().await {
                 Ok(surface) => model.replace_surface(surface),
                 Err(error) => model.message = error.to_string(),
@@ -180,6 +222,64 @@ async fn handle_event(
     Ok(false)
 }
 
+async fn submit_action(model: &mut AppModel, client: &RuntimeClient) {
+    let submission = match model.action_submission() {
+        Ok(submission) => submission,
+        Err(error) => {
+            model.action_failed(error.to_string());
+            return;
+        }
+    };
+    let label = submission.action.label.clone();
+    let current_run_id = model.current_run_id().map(str::to_owned);
+    match execute_submission(client, current_run_id.as_deref(), &submission).await {
+        Ok(surface) => {
+            model.replace_surface(surface);
+            model.message = format!("{label} accepted.");
+        }
+        Err(error) => model.action_failed(error.to_string()),
+    }
+}
+
+async fn execute_submission(
+    client: &RuntimeClient,
+    current_run_id: Option<&str>,
+    submission: &ActionSubmission,
+) -> Result<PresentationSurface, ClientError> {
+    match submission.action.operation.as_str() {
+        "inspect-run" => client.run(action_identifier(submission, "run_id")?).await,
+        "cancel-run" => {
+            let run_id = current_run_id.ok_or(ClientError::InvalidAction)?;
+            client.cancel_run(run_id).await?;
+            client.run(run_id).await
+        }
+        "submit-run" => {
+            let run_id = action_identifier(submission, "run_id")?.to_owned();
+            client
+                .execute_action(&submission.action, &submission.values)
+                .await?;
+            client.run(&run_id).await
+        }
+        _ => {
+            client
+                .execute_action(&submission.action, &submission.values)
+                .await?;
+            client.workspace().await
+        }
+    }
+}
+
+fn action_identifier<'a>(
+    submission: &'a ActionSubmission,
+    key: &str,
+) -> Result<&'a str, ClientError> {
+    submission
+        .values
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .ok_or(ClientError::InvalidAction)
+}
+
 async fn refresh_surface(model: &mut AppModel, client: &RuntimeClient) {
     let result = if let Some(run_id) = model.current_run_id() {
         client.run(run_id).await
@@ -187,7 +287,7 @@ async fn refresh_surface(model: &mut AppModel, client: &RuntimeClient) {
         client.workspace().await
     };
     match result {
-        Ok(surface) => model.replace_surface(surface),
+        Ok(surface) => model.synchronize_surface(surface),
         Err(error) => model.message = error.to_string(),
     }
 }
