@@ -29,6 +29,7 @@ def test_docs_graph_entrypoints_exist() -> None:
         "docs/adr/0007-runtime-security-boundary.md",
         "docs/adr/0008-architecture-consolidation.md",
         "docs/adr/0009-project-runtime-scope.md",
+        "docs/adr/0010-semantic-presentation.md",
         "docs/spec/index.md",
         "docs/spec/bcp-0028-charter-reset.md",
         "docs/spec/bcp-0029-event-kernel.md",

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import os
 import shutil
 import stat
+import subprocess
 import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -30,15 +30,9 @@ from blackcell.adapters.runtime_http import (
     RuntimeHttpClient,
     RuntimeServiceStatus,
 )
-from blackcell.adapters.tui_cursor import FileTuiCursorStore
 from blackcell.bootstrap.process import main as runtime_process_main
 from blackcell.cli.output import OutputRenderer
-from blackcell.config import (
-    DATA_DIR_ENV,
-    SecurityConfigError,
-    SecurityConfigFailureCode,
-    load_service_token,
-)
+from blackcell.config import SecurityConfigError, load_service_token
 from blackcell.gateway import ToolingSurfaceCatalog
 from blackcell.interfaces.http import (
     CancelRunRequest,
@@ -51,7 +45,6 @@ from blackcell.interfaces.http import (
     WireContractError,
     decode_contract,
 )
-from blackcell.interfaces.tui import TuiApp, TuiController, TuiCursorError
 
 
 class BlackCellCli(App):
@@ -434,41 +427,29 @@ def tui(
         str | None,
         Parameter("--endpoint", help="Runtime base URL; defaults to configured endpoint."),
     ] = None,
-    cursor_dir: Annotated[
-        Path | None,
-        Parameter(
-            "--cursor-dir",
-            help=f"Owner-only cursor directory; defaults to ${DATA_DIR_ENV}/tui-cursors.",
-        ),
-    ] = None,
     refresh_seconds: Annotated[
-        float | None,
+        str,
         Parameter(
             "--refresh-seconds",
             help="Ordered-event refresh interval from 0.25 through 60; use none to disable.",
         ),
-    ] = 1.0,
+    ] = "1.0",
     frames_per_second: Annotated[
-        float,
+        int,
         Parameter("--frames-per-second", help="Terminal render rate from 1 through 60."),
-    ] = 20.0,
+    ] = 20,
 ) -> None:
-    """Run the terminal projection over the authenticated runtime client."""
+    """Run the native terminal projection over the authenticated runtime service."""
     try:
-        _launch_tui(
+        return_code = _launch_native_tui(
             endpoint=endpoint,
-            cursor_dir=cursor_dir,
             refresh_seconds=refresh_seconds,
             frames_per_second=frames_per_second,
         )
-    except SecurityConfigError as error:
-        _fail(str(error), code=2)
-    except RuntimeClientError as error:
-        _fail(str(error), code=error.cli_exit_code)
-    except TuiCursorError as error:
-        _fail(str(error), code=2)
-    except ValueError:
-        _fail("invalid-tui-configuration", code=2)
+    except OSError:
+        _fail("native-tui-unavailable", code=2)
+    if return_code != 0:
+        raise SystemExit(128 - return_code if return_code < 0 else return_code)
 
 
 def _output() -> OutputRenderer:
@@ -561,30 +542,25 @@ def _invoke_runtime_http[ResultT](
         _fail(str(error), code=error.cli_exit_code)
 
 
-def _launch_tui(
+def _launch_native_tui(
     *,
     endpoint: str | None,
-    cursor_dir: Path | None,
-    refresh_seconds: float | None,
-    frames_per_second: float,
-) -> None:
-    token = load_service_token(os.environ)
-    selected_endpoint = _daemon_endpoint(endpoint)
-    selected_cursor_dir = cursor_dir
-    if selected_cursor_dir is None:
-        data_root = os.environ.get(DATA_DIR_ENV)
-        if data_root is None:
-            raise SecurityConfigError(SecurityConfigFailureCode.INVALID_DATA_DIRECTORY)
-        selected_cursor_dir = Path(data_root) / "tui-cursors"
-    cursor_store = FileTuiCursorStore.prepare(selected_cursor_dir)
-    client = RuntimeHttpClient(endpoint=selected_endpoint, token=token)
-    controller = TuiController(client, cursor_store=cursor_store)
-    shell = TuiApp(
-        lambda: controller,
-        event_refresh_seconds=refresh_seconds,
-        frames_per_second=frames_per_second,
-    )
-    asyncio.run(shell.run())
+    refresh_seconds: str,
+    frames_per_second: int,
+) -> int:
+    executable = shutil.which("blackcell-tui")
+    if executable is None:
+        raise FileNotFoundError("blackcell-tui")
+    command = [
+        executable,
+        "--refresh-seconds",
+        refresh_seconds,
+        "--frames-per-second",
+        str(frames_per_second),
+    ]
+    if endpoint is not None:
+        command.extend(("--endpoint", endpoint))
+    return subprocess.run(command, check=False).returncode
 
 
 def _load_request[ContractT: StrictStruct](

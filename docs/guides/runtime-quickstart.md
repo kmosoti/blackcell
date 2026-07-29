@@ -111,8 +111,8 @@ uv run blackcell run cancel run \
 ## Open a client projection
 
 The packaged browser client is available at `http://127.0.0.1:8080/ui`. It keeps the token in
-memory and talks only to same-origin service routes. The terminal projection uses the same typed
-client and stores only an owner-readable cursor:
+memory and talks only to same-origin service routes. The native terminal consumes the same
+daemon-owned semantic surface and persists no client projection state:
 
 ```bash
 uv run blackcell tui

@@ -13,6 +13,7 @@ edges:
     - adr/0007-runtime-security-boundary
     - adr/0008-architecture-consolidation
     - adr/0009-project-runtime-scope
+    - adr/0010-semantic-presentation
 ---
 
 # Decisions
@@ -38,8 +39,8 @@ edges:
   exposure.
 - Remove false boundaries only when source evidence shows that authority, time, persistence,
   security, recovery, and independent failure semantics remain intact.
-- Build the alpha around one foreground daemon; keep CLI, PyRatatui TUI, and Litestar web as clients
-  of its typed service contracts.
+- Build the early runtime around one foreground daemon; keep the CLI, Rust terminal, and browser as
+  clients of its typed service and semantic presentation contracts.
 - Integrate Kernform through pinned agent-mode JSON rather than importing its Python/Rust internals.
 - Retain `DailyOperatorWorkflow` only for migration and replay evidence; no new alpha surface may
   invoke it.

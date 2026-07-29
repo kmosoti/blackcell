@@ -87,6 +87,12 @@ The typed HTTP boundary uses `/api/v1/projects`, `/intents`, `/plans`, `/runs`, 
 the same-origin `/api/v1/ui` support routes. Those revision tokens are public protocol contracts;
 internal modules and symbols use capability names instead of product maturity or generation labels.
 
+Both human clients render the same daemon-owned semantic presentation surface. Plans appear as a
+dependency graph plus an accessible table; review findings and the epistemic matrix are first-class
+components; verified artifacts open through run-scoped routes; canonical JSON remains available as
+secondary disclosure. The terminal is a packaged Rust/Ratatui binary launched by `blackcell tui`.
+Neither client stores a projection database or a durable cursor.
+
 Set `BLACKCELL_EXECUTION_CONFIG_FILE`, `BLACKCELL_REVIEW_CONFIG_FILE`, and
 `BLACKCELL_VERIFICATION_CONFIG_FILE` only for workers that should run. Without them, the daemon is
 API-only and submitted work remains queued. Incompatible persisted state is rejected before a
@@ -127,8 +133,10 @@ uv run ruff format --check path/to/changed.py path/to/test_changed.py
 uv run ruff check path/to/changed.py path/to/test_changed.py
 ```
 
-CI runs architecture fitness, formatting, linting, type checking, and the complete coverage gate.
-It does not generate or validate source-bound release artifacts.
+CI runs architecture fitness, formatting, linting, type checking, the complete coverage gate, Rust
+checks, browser contract tests, three-engine accessible UI flows, deterministic terminal buffers,
+and a clean installed-wheel smoke test. It does not generate or validate source-bound release
+artifacts; browser diagnostics are retained only when the UI gate fails.
 
 ## License
 

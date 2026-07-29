@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
@@ -15,6 +16,7 @@ from blackcell.adapters.execution.worktree import (
 from blackcell.bootstrap.runtime_service import RuntimeService
 from blackcell.gateway import DataClassification, GatewayBudget, LocalityPolicy
 from blackcell.interfaces.http import (
+    MAX_RUN_QUERY_SCAN_EVENTS,
     AcceptanceCheck,
     CancelRunRequest,
     IntentRequest,
@@ -54,6 +56,50 @@ class RefusingPlanRetentionWorktrees(GitWorktreeLifecycle):
         base_commit: str,
     ) -> str:
         raise WorktreeLifecycleError(WorktreeFailureCode.BASE_COMMIT_RETENTION_FAILED)
+
+
+class RacingPresentationEventStore(EventStore):
+    def __init__(self, path: Path) -> None:
+        super().__init__(path)
+        self.after_descending_read: Callable[[], None] | None = None
+        self.after_bounded_run_read: Callable[[], None] | None = None
+
+    def read_stream(
+        self,
+        stream_id: str,
+        *,
+        after_sequence: int = 0,
+        through_position: int | None = None,
+        limit: int | None = None,
+    ) -> tuple[EventEnvelope, ...]:
+        events = super().read_stream(
+            stream_id,
+            after_sequence=after_sequence,
+            through_position=through_position,
+            limit=limit,
+        )
+        if through_position is not None and stream_id.startswith("run:"):
+            callback, self.after_bounded_run_read = self.after_bounded_run_read, None
+            if callback is not None:
+                callback()
+        return events
+
+    def read_type_descending(
+        self,
+        event_type: str,
+        *,
+        through_position: int,
+        limit: int,
+    ) -> tuple[EventEnvelope, ...]:
+        events = super().read_type_descending(
+            event_type,
+            through_position=through_position,
+            limit=limit,
+        )
+        callback, self.after_descending_read = self.after_descending_read, None
+        if callback is not None:
+            callback()
+        return events
 
 
 class UnknownUsagePlanner:
@@ -543,6 +589,104 @@ def test_run_query_bounds_empty_filtered_and_paginated_results(tmp_path: Path) -
     with pytest.raises(RuntimeApiError) as invalid:
         service.query_runs(cast("RunQueryRequest", object()))
     assert invalid.value.code is RuntimeApiFailureCode.INVALID_REQUEST
+
+
+def test_presentation_run_sources_are_indexed_bounded_and_snapshot_consistent(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    events = EventStore(tmp_path / "presentation-runs.sqlite3")
+    service = RuntimeService(events, repository)
+    service.register_project(_project(repository), principal_id="operator")
+    service.accept_intent(_intent(), principal_id="operator")
+    service.accept_plan(_plan(repository), principal_id="operator")
+    service.submit_run(_run(), principal_id="operator")
+    unrelated = tuple(
+        _unrelated_event(f"external:{index}", f"tail-{index}")
+        for index in range(MAX_RUN_QUERY_SCAN_EVENTS + 1)
+    )
+    events.append_many(
+        unrelated,
+        expected_sequences={event.stream_id: 0 for event in unrelated},
+    )
+    service.submit_run(
+        msgspec.structs.replace(_run(), run_id="run-2", idempotency_key="run-2"),
+        principal_id="operator",
+    )
+
+    window = service.presentation_run_window(limit=1)
+    selected = service.presentation_run_item("run-1")
+
+    assert tuple(item.run.run_id for item in window.runs) == ("run-2",)
+    assert window.scanned_events == 2
+    assert window.event_cursor == events.current_position()
+    assert window.has_older_runs
+    assert selected.run.run_id == "run-1"
+
+
+def test_presentation_run_window_bounds_projections_to_its_captured_cursor(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    events = RacingPresentationEventStore(tmp_path / "presentation-race.sqlite3")
+    service = RuntimeService(events, repository)
+    service.register_project(_project(repository), principal_id="operator")
+    service.accept_intent(_intent(), principal_id="operator")
+    service.accept_plan(_plan(repository), principal_id="operator")
+    service.submit_run(_run(), principal_id="operator")
+    captured_cursor = events.current_position()
+
+    def cancel_after_snapshot_capture() -> None:
+        service.cancel_run(
+            "run-1",
+            CancelRunRequest(
+                schema_version="execution-cancel-run-request/v1",
+                idempotency_key="racing-cancel",
+            ),
+            principal_id="operator",
+        )
+
+    events.after_descending_read = cancel_after_snapshot_capture
+
+    window = service.presentation_run_window(limit=1)
+
+    assert window.event_cursor == captured_cursor
+    assert window.runs[0].run.cursor <= window.event_cursor
+    assert window.runs[0].run.status == "queued"
+    assert events.current_position() > window.event_cursor
+
+
+def test_presentation_run_snapshot_uses_one_cursor_during_concurrent_transition(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    events = RacingPresentationEventStore(tmp_path / "run-surface-race.sqlite3")
+    service = RuntimeService(events, repository)
+    service.register_project(_project(repository), principal_id="operator")
+    service.accept_intent(_intent(), principal_id="operator")
+    service.accept_plan(_plan(repository), principal_id="operator")
+    service.submit_run(_run(), principal_id="operator")
+    captured_cursor = events.current_position()
+
+    def cancel_after_bounded_run_read() -> None:
+        service.cancel_run(
+            "run-1",
+            CancelRunRequest(
+                schema_version="execution-cancel-run-request/v1",
+                idempotency_key="surface-racing-cancel",
+            ),
+            principal_id="operator",
+        )
+
+    events.after_bounded_run_read = cancel_after_bounded_run_read
+
+    snapshot = service.presentation_run_snapshot("run-1")
+
+    assert snapshot.event_cursor == captured_cursor
+    assert snapshot.replay.run == snapshot.run_item.run
+    assert snapshot.replay.run.status == "queued"
+    assert all(node.status == "pending" for node in snapshot.run_item.nodes)
+    assert events.current_position() > snapshot.event_cursor
 
 
 class _NoMutationCapacity:

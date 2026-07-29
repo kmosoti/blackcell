@@ -15,6 +15,7 @@ from blackcell.config import SecretValue
 from blackcell.interfaces.http import (
     MAX_RESPONSE_BODY_BYTES,
     MAX_RUNTIME_EVENT_PAGE_SIZE,
+    PRESENTATION_MEDIA_TYPE,
     RUN_QUERY_MEDIA_TYPE,
     RUN_QUERY_RESULT_MEDIA_TYPE,
     CancelRunRequest,
@@ -37,6 +38,7 @@ from blackcell.interfaces.http import (
     decode_response_contract,
     encode_contract,
 )
+from blackcell.interfaces.presentation import PresentationSurface
 
 DEFAULT_RUNTIME_ENDPOINT = "http://127.0.0.1:8080"
 RUNTIME_ENDPOINT_ENV = "BLACKCELL_RUNTIME_ENDPOINT"
@@ -315,6 +317,15 @@ class RuntimeHttpClient:
             timeout_seconds=self.replay_timeout_seconds,
         )
 
+    def workspace_surface(self) -> PresentationSurface:
+        return self._presentation_request("/api/v1/ui/surfaces/workspace")
+
+    def run_surface(self, run_id: str) -> PresentationSurface:
+        return self._presentation_request(
+            f"/api/v1/ui/surfaces/runs/{_path_identifier(run_id)}",
+            timeout_seconds=self.replay_timeout_seconds,
+        )
+
     def list_events(
         self,
         *,
@@ -369,6 +380,35 @@ class RuntimeHttpClient:
             expected_statuses,
             response_type,
         )
+
+    def _presentation_request(
+        self,
+        path: str,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> PresentationSurface:
+        if self.token is None:
+            raise RuntimeClientError(RuntimeClientFailureCode.MISSING_AUTHENTICATION)
+        response = self._request(
+            path,
+            headers={
+                "accept": PRESENTATION_MEDIA_TYPE,
+                "authorization": self.token.authorization_header(),
+            },
+            timeout_seconds=timeout_seconds,
+        )
+        if response.status_code != 200:
+            raise RuntimeClientError(
+                RuntimeClientFailureCode.REQUEST_REJECTED,
+                status_code=response.status_code,
+                service_error=_decode_service_error(response),
+            )
+        if _media_type(response.content_type) != PRESENTATION_MEDIA_TYPE:
+            raise RuntimeClientError(RuntimeClientFailureCode.INVALID_RESPONSE)
+        try:
+            return PresentationSurface.model_validate_json(response.body)
+        except ValueError as error:
+            raise RuntimeClientError(RuntimeClientFailureCode.INVALID_RESPONSE) from error
 
     def _request(
         self,

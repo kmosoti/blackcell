@@ -1,0 +1,357 @@
+{
+  "schema_version": "ui-scenario/v1",
+  "scenario_id": "review-workflow",
+  "title": "Review one run and inspect its verification evidence",
+  "surfaces": [
+    {
+      "schema_version": "presentation-surface/v1",
+      "surface_id": "workspace",
+      "title": "BlackCell project runtime",
+      "revision": {
+        "number": 7,
+        "event_cursor": 7,
+        "source_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "components": [
+        {
+          "kind": "form",
+          "component_id": "plan-form",
+          "label": "Accept plan",
+          "source": {
+            "kind": "contract",
+            "identity": "plan",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "json_pointer": null
+          },
+          "description": "Submit a typed planning choice to the daemon.",
+          "action": {
+            "action_id": "accept-plan",
+            "operation": "accept-plan",
+            "label": "Accept plan",
+            "request_schema": "plan-request/v1",
+            "fields": [
+              {
+                "field_id": "planning-mode",
+                "json_pointer": "/planning_mode",
+                "label": "Planning mode",
+                "help": "Preserve the declared or generated planning contract.",
+                "control": "select",
+                "required": true,
+                "sensitive": false,
+                "default": "declared",
+                "options": [
+                  {"value": "declared", "label": "Declared"},
+                  {"value": "generated", "label": "Generated"}
+                ]
+              }
+            ],
+            "confirmation": null
+          }
+        },
+        {
+          "kind": "table",
+          "component_id": "runs",
+          "label": "Recent runs",
+          "source": {
+            "kind": "run",
+            "identity": "workspace",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "json_pointer": null
+          },
+          "columns": [
+            {"key": "run", "label": "Run"},
+            {"key": "status", "label": "Status"}
+          ],
+          "rows": [
+            {"row_id": "run-1", "cells": {"run": "run-1", "status": "failed"}}
+          ],
+          "empty_message": "No runs."
+        }
+      ],
+      "field_dispositions": [
+        {
+          "contract": "plan-request/v1",
+          "json_pointer": "/schema_version",
+          "disposition": "derived",
+          "reason": "Derived from the declared action contract."
+        },
+        {
+          "contract": "plan-request/v1",
+          "json_pointer": "/planning_mode",
+          "disposition": "editable",
+          "reason": "Rendered as a typed user-editable field."
+        }
+      ]
+    },
+    {
+      "schema_version": "presentation-surface/v1",
+      "surface_id": "run:run-1",
+      "title": "Run run-1",
+      "revision": {
+        "number": 12,
+        "event_cursor": 12,
+        "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "components": [
+        {
+          "kind": "section",
+          "component_id": "overview",
+          "label": "Run overview",
+          "source": {
+            "kind": "run",
+            "identity": "run-1",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": null
+          },
+          "description": "Host-owned run state and verification outcome.",
+          "children": ["run-status", "run-metrics"]
+        },
+        {
+          "kind": "status",
+          "component_id": "run-status",
+          "label": "Run status",
+          "source": {
+            "kind": "run",
+            "identity": "run-1",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": null
+          },
+          "value": "failed",
+          "tone": "danger",
+          "detail": "Verification did not establish every acceptance claim."
+        },
+        {
+          "kind": "metrics",
+          "component_id": "run-metrics",
+          "label": "Run metrics",
+          "source": {
+            "kind": "run",
+            "identity": "run-1",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": null
+          },
+          "metrics": [
+            {"label": "Plan nodes", "value": 2, "unit": ""},
+            {"label": "Review findings", "value": 1, "unit": ""}
+          ]
+        },
+        {
+          "kind": "plan-graph",
+          "component_id": "plan-graph",
+          "label": "Plan dependency graph",
+          "source": {
+            "kind": "contract",
+            "identity": "plan-1",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": "/plan"
+          },
+          "nodes": [
+            {"node_id": "inspect", "label": "Inspect the change", "status": "succeeded", "detail": "Read only"},
+            {"node_id": "verify", "label": "Verify acceptance", "status": "failed", "detail": "Process"}
+          ],
+          "edges": [
+            {"source_id": "inspect", "target_id": "verify", "label": "depends on"}
+          ]
+        },
+        {
+          "kind": "table",
+          "component_id": "plan-table",
+          "label": "Plan nodes",
+          "source": {
+            "kind": "contract",
+            "identity": "plan-1",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": "/plan"
+          },
+          "columns": [
+            {"key": "node", "label": "Node"},
+            {"key": "depends_on", "label": "Depends on"},
+            {"key": "status", "label": "Status"}
+          ],
+          "rows": [
+            {"row_id": "inspect", "cells": {"node": "inspect", "depends_on": "—", "status": "succeeded"}},
+            {"row_id": "verify", "cells": {"node": "verify", "depends_on": "inspect", "status": "failed"}}
+          ],
+          "empty_message": "No plan nodes."
+        },
+        {
+          "kind": "timeline",
+          "component_id": "timeline",
+          "label": "Plan progress",
+          "source": {
+            "kind": "event",
+            "identity": "run-1",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": null
+          },
+          "items": [
+            {"item_id": "inspect", "title": "Inspect", "detail": "Inspection completed.", "cursor": 9, "status": "succeeded"},
+            {"item_id": "verify", "title": "Verify", "detail": "One criterion remained unsupported.", "cursor": 12, "status": "failed"}
+          ]
+        },
+        {
+          "kind": "findings",
+          "component_id": "findings",
+          "label": "Review findings",
+          "source": {
+            "kind": "artifact",
+            "identity": "review",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": null
+          },
+          "findings": [
+            {"finding_id": "finding-1", "severity": "P1", "summary": "Acceptance evidence is incomplete", "evidence": "The verifier could not bind the UI action result to a passing check."}
+          ]
+        },
+        {
+          "kind": "evidence-matrix",
+          "component_id": "evidence",
+          "label": "Verification evidence",
+          "source": {
+            "kind": "artifact",
+            "identity": "verification",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": null
+          },
+          "rows": [
+            {
+              "row_id": "acceptance",
+              "dimension": "Acceptance",
+              "disposition": "concern",
+              "evidence": "Required UI action check absent.",
+              "source_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            },
+            {
+              "row_id": "provenance",
+              "dimension": "Provenance freshness",
+              "disposition": "supported",
+              "evidence": "Projection digest matches replay.",
+              "source_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            }
+          ]
+        },
+        {
+          "kind": "artifacts",
+          "component_id": "artifacts",
+          "label": "Verified artifacts",
+          "source": {
+            "kind": "run",
+            "identity": "run-1",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": null
+          },
+          "run_id": "run-1",
+          "items": [
+            {
+              "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+              "role": "verification-output",
+              "node_id": "verify",
+              "media_type": "text/plain",
+              "size_bytes": 24,
+              "verified": true
+            }
+          ]
+        },
+        {
+          "kind": "form",
+          "component_id": "cancel-form",
+          "label": "Cancel run",
+          "source": {
+            "kind": "run",
+            "identity": "run-1",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": null
+          },
+          "description": "Request cooperative cancellation through the daemon.",
+          "action": {
+            "action_id": "cancel-run",
+            "operation": "cancel-run",
+            "label": "Cancel run",
+            "request_schema": "execution-cancel-run-request/v1",
+            "fields": [],
+            "confirmation": "Cancel this run?"
+          }
+        },
+        {
+          "kind": "source",
+          "component_id": "source",
+          "label": "Canonical replay source",
+          "source": {
+            "kind": "run",
+            "identity": "run-1",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "json_pointer": null
+          },
+          "operation": "replay-run",
+          "subject_id": "run-1",
+          "summary": "Raw replay JSON is loaded only after explicit disclosure."
+        }
+      ],
+      "field_dispositions": [
+        {
+          "contract": "execution-cancel-run-request/v1",
+          "json_pointer": "/schema_version",
+          "disposition": "derived",
+          "reason": "Derived from the declared action contract."
+        },
+        {
+          "contract": "execution-cancel-run-request/v1",
+          "json_pointer": "/idempotency_key",
+          "disposition": "derived",
+          "reason": "Generated for one explicit request."
+        }
+      ]
+    }
+  ],
+  "surface_expectations": [
+    {
+      "surface_id": "workspace",
+      "manifest": [
+        {"component_id": "plan-form", "kind": "form", "label": "Accept plan", "source_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "action": "accept-plan"},
+        {"component_id": "runs", "kind": "table", "label": "Recent runs", "source_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "action": null}
+      ]
+    },
+    {
+      "surface_id": "run:run-1",
+      "manifest": [
+        {"component_id": "overview", "kind": "section", "label": "Run overview", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": null},
+        {"component_id": "run-status", "kind": "status", "label": "Run status", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": null},
+        {"component_id": "run-metrics", "kind": "metrics", "label": "Run metrics", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": null},
+        {"component_id": "plan-graph", "kind": "plan-graph", "label": "Plan dependency graph", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": null},
+        {"component_id": "plan-table", "kind": "table", "label": "Plan nodes", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": null},
+        {"component_id": "timeline", "kind": "timeline", "label": "Plan progress", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": null},
+        {"component_id": "findings", "kind": "findings", "label": "Review findings", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": null},
+        {"component_id": "evidence", "kind": "evidence-matrix", "label": "Verification evidence", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": null},
+        {"component_id": "artifacts", "kind": "artifacts", "label": "Verified artifacts", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": null},
+        {"component_id": "cancel-form", "kind": "form", "label": "Cancel run", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": "cancel-run"},
+        {"component_id": "source", "kind": "source", "label": "Canonical replay source", "source_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "action": null}
+      ]
+    }
+  ],
+  "action_expectations": [
+    {
+      "surface_id": "workspace",
+      "action_id": "accept-plan",
+      "submitted_values": {"planning_mode": "generated"},
+      "expected_request_subset": {"schema_version": "plan-request/v1", "planning_mode": "generated"}
+    },
+    {
+      "surface_id": "run:run-1",
+      "action_id": "cancel-run",
+      "submitted_values": {},
+      "expected_request_subset": {"schema_version": "execution-cancel-run-request/v1"}
+    }
+  ],
+  "accessibility_expectations": [
+    {"surface_id": "workspace", "role": "form", "name": "Accept plan"},
+    {"surface_id": "workspace", "role": "table", "name": "Recent runs"},
+    {"surface_id": "run:run-1", "role": "figure", "name": "Plan dependency graph"},
+    {"surface_id": "run:run-1", "role": "table", "name": "Plan nodes"},
+    {"surface_id": "run:run-1", "role": "heading", "name": "Review findings"}
+  ],
+  "fault_expectations": [
+    {"fault": "unknown-component", "expected_code": "invalid-presentation-component"},
+    {"fault": "authorization-failure", "expected_code": "authorization-denied"},
+    {"fault": "oversized-response", "expected_code": "response-too-large"}
+  ]
+}

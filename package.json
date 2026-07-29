@@ -1,0 +1,17 @@
+{
+  "name": "blackcell-ui-checks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/blackcell/interfaces/http/assets/ui/app.js && node --check src/blackcell/interfaces/http/assets/ui/runtime-client.js && node --check src/blackcell/interfaces/http/assets/ui/surface-elements.js",
+    "test": "npm run check && node --test tests/ui/*.test.js",
+    "test:e2e": "playwright test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@playwright/test": "1.62.0"
+  }
+}

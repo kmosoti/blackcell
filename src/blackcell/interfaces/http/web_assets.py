@@ -8,6 +8,7 @@ from importlib.resources import files
 _MAX_HTML_BYTES = 64 * 1024
 _MAX_CSS_BYTES = 128 * 1024
 _MAX_JAVASCRIPT_BYTES = 256 * 1024
+_MAX_TOKENS_BYTES = 32 * 1024
 
 
 class WebAssetFailureCode(StrEnum):
@@ -25,16 +26,29 @@ class WebAssets:
     html: bytes = field(repr=False)
     css: bytes = field(repr=False)
     javascript: bytes = field(repr=False)
+    runtime_client_javascript: bytes = field(repr=False)
+    surface_elements_javascript: bytes = field(repr=False)
+    tokens: bytes = field(repr=False)
 
 
 @lru_cache(maxsize=1)
 def load_web_assets() -> WebAssets:
     try:
         root = files("blackcell.interfaces.http").joinpath("assets", "ui")
+        presentation = files("blackcell.interfaces.presentation")
         return WebAssets(
             html=_asset(root.joinpath("index.html").read_bytes(), _MAX_HTML_BYTES),
             css=_asset(root.joinpath("app.css").read_bytes(), _MAX_CSS_BYTES),
             javascript=_asset(root.joinpath("app.js").read_bytes(), _MAX_JAVASCRIPT_BYTES),
+            runtime_client_javascript=_asset(
+                root.joinpath("runtime-client.js").read_bytes(),
+                _MAX_JAVASCRIPT_BYTES,
+            ),
+            surface_elements_javascript=_asset(
+                root.joinpath("surface-elements.js").read_bytes(),
+                _MAX_JAVASCRIPT_BYTES,
+            ),
+            tokens=_asset(presentation.joinpath("tokens.json").read_bytes(), _MAX_TOKENS_BYTES),
         )
     except WebAssetError:
         raise

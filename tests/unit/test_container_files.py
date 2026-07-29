@@ -6,13 +6,20 @@ import yaml
 
 def test_containerfile_preserves_the_reproducible_development_target() -> None:
     text = Path("Containerfile").read_text(encoding="utf-8")
-    development = text.partition("FROM uv-base AS development")[2].partition(
-        "FROM uv-base AS runtime-builder"
+    build_base = text.partition("FROM uv-base AS build-base")[2].partition(
+        "FROM build-base AS development"
+    )[0]
+    development = text.partition("FROM build-base AS development")[2].partition(
+        "FROM build-base AS runtime-builder"
     )[0]
 
     assert "ghcr.io/astral-sh/uv:python3.14-trixie-slim" in text
+    assert "rust:1.88.0-slim-bookworm AS rust-toolchain" in text
+    assert "COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo" in build_base
+    assert "COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup" in build_base
     assert "uv sync --locked --all-groups" in development
     assert "build-essential" in development
+    assert "cmake" in development
     assert "ripgrep" in development
     assert "NVM_VERSION" not in text
     assert "curl" not in text
@@ -23,13 +30,16 @@ def test_containerfile_preserves_the_reproducible_development_target() -> None:
 def test_runtime_image_is_locked_minimal_non_root_and_process_shaped() -> None:
     text = Path("Containerfile").read_text(encoding="utf-8")
     project = Path("pyproject.toml").read_text(encoding="utf-8")
-    builder = text.partition("FROM uv-base AS runtime-builder")[2].partition(
+    builder = text.partition("FROM build-base AS runtime-builder")[2].partition(
         "FROM python:3.14-slim-trixie AS runtime"
     )[0]
     runtime = text.partition("FROM python:3.14-slim-trixie AS runtime")[2]
 
     assert "uv sync --locked --no-dev --no-editable" in builder
     assert '"granian[pname]>=2.7.9,<3"' in project
+    assert "build-essential cmake" in builder
+    assert "COPY pyproject.toml uv.lock README.md Cargo.toml Cargo.lock ./" in builder
+    assert "COPY crates ./crates" in builder
     assert "COPY src ./src" in builder
     assert "COPY . ." not in builder
     assert "COPY --from=runtime-builder" in runtime
@@ -42,6 +52,8 @@ def test_runtime_image_is_locked_minimal_non_root_and_process_shaped() -> None:
     assert "GIT_OPTIONAL_LOCKS=0" in runtime
     assert "build-essential" not in runtime
     assert "ripgrep" not in runtime
+    assert "/usr/local/cargo" not in runtime
+    assert "/usr/local/rustup" not in runtime
     assert "uv sync" not in runtime
     assert "COPY . ." not in runtime
 

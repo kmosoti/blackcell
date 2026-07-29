@@ -1,0 +1,34 @@
+[package]
+name = "blackcell-terminal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Native semantic terminal projection for BlackCell"
+
+[lib]
+name = "blackcell_terminal"
+path = "src/lib.rs"
+
+[[bin]]
+name = "blackcell-tui"
+path = "src/main.rs"
+
+[dependencies]
+crossterm.workspace = true
+futures-util.workspace = true
+ratatui.workspace = true
+reqwest.workspace = true
+rustix.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+insta = "1.48.0"
+proptest = "1.11.0"
+tempfile = "3.27.0"
