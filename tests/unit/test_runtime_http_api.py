@@ -30,6 +30,7 @@ from blackcell.interfaces.http import (
     RunQueryResponse,
     RunRequest,
     RunResponse,
+    RunSurfaceSnapshot,
     RunSurfaceWindow,
     RuntimeEventPageResponse,
     create_http_app,
@@ -312,6 +313,9 @@ class _HttpPort:
 
     def presentation_run_item(self, run_id: str) -> RunQueryItem:
         return self.service.presentation_run_item(run_id)
+
+    def presentation_run_snapshot(self, run_id: str) -> RunSurfaceSnapshot:
+        return self.service.presentation_run_snapshot(run_id)
 
     def cancel_run(
         self,

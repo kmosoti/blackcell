@@ -617,6 +617,25 @@ class ReplayResponse(StrictStruct, frozen=True):
     schema_version: Literal["replay/v2"] = "replay/v2"
 
 
+class RunSurfaceSnapshot(StrictStruct, frozen=True):
+    """One run presentation read model derived from a fixed ledger cursor."""
+
+    event_cursor: int
+    replay: ReplayResponse
+    run_item: RunQueryItem
+    schema_version: Literal["run-surface-snapshot/v1"] = "run-surface-snapshot/v1"
+
+    def __post_init__(self) -> None:
+        _bounded_integer(self.event_cursor, minimum=0, maximum=2**63 - 1)
+        if (
+            self.replay.run_id != self.run_item.run.run_id
+            or self.replay.run != self.run_item.run
+            or self.run_item.queued_cursor > self.event_cursor
+            or self.run_item.run.cursor > self.event_cursor
+        ):
+            raise WireContractError()
+
+
 def decode_contract[ContractT](data: bytes, contract_type: type[ContractT]) -> ContractT:
     return _decode_bounded_contract(
         data,

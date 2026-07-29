@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::os::unix::fs::{PermissionsExt, symlink};
+use std::process::Command;
 
 use blackcell_terminal::client::build_action_request;
 use blackcell_terminal::config::{
@@ -15,6 +16,23 @@ use serde_json::{Value, json};
 
 const TOKEN: &str = "Native-terminal-token.0123456789-ABCDEFG";
 const SCENARIO: &str = include_str!("../../../tests/ui/review-workflow.json");
+
+#[test]
+fn preterminal_failures_use_the_json_error_contract() {
+    let output = Command::new(env!("CARGO_BIN_EXE_blackcell-tui"))
+        .arg("--unsupported")
+        .env_remove(API_TOKEN_ENV)
+        .env_remove(API_TOKEN_FILE_ENV)
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output.stderr).unwrap(),
+        json!({"error": {"message": "invalid-tui-arguments"}})
+    );
+}
 
 #[test]
 fn closed_contract_preserves_semantic_manifest() {
@@ -44,6 +62,26 @@ fn closed_contract_rejects_unknown_fields() {
     let mut value = sample_value();
     value["components"][1]["renderer_hint"] = json!("trust-me");
 
+    assert_eq!(
+        PresentationSurface::decode(&serde_json::to_vec(&value).unwrap()).unwrap_err(),
+        ContractError::InvalidSurface
+    );
+}
+
+#[test]
+fn closed_contract_reserves_run_surface_prefix_space() {
+    let mut value = sample_value();
+    value["surface_id"] = json!(format!("run:{}", "r".repeat(120)));
+
+    PresentationSurface::decode(&serde_json::to_vec(&value).unwrap()).unwrap();
+
+    value["surface_id"] = json!("r".repeat(121));
+    assert_eq!(
+        PresentationSurface::decode(&serde_json::to_vec(&value).unwrap()).unwrap_err(),
+        ContractError::InvalidSurface
+    );
+
+    value["surface_id"] = json!(format!("run::{}", "r".repeat(119)));
     assert_eq!(
         PresentationSurface::decode(&serde_json::to_vec(&value).unwrap()).unwrap_err(),
         ContractError::InvalidSurface

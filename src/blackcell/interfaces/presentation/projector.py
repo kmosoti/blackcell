@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Literal, cast
 
 from pydantic import JsonValue
@@ -11,6 +10,7 @@ from blackcell.gateway import ToolingSurfaceCatalog
 from blackcell.interfaces.http.contracts import (
     ReplayResponse,
     RunQueryItem,
+    RunSurfaceSnapshot,
     RunSurfaceWindow,
     contract_to_json_builtins,
 )
@@ -115,9 +115,9 @@ def workspace_surface(
     )
 
 
-def run_surface(replay: ReplayResponse, run_item: RunQueryItem | None) -> PresentationSurface:
-    replay_value = cast("Mapping[str, JsonValue]", contract_to_json_builtins(replay))
-    digest = source_digest(replay_value)
+def run_surface(snapshot: RunSurfaceSnapshot) -> PresentationSurface:
+    replay = snapshot.replay
+    digest = source_digest(contract_to_json_builtins(snapshot))
     source = SourceBinding(kind="run", identity=replay.run_id, digest=digest)
     status_tone = cast(
         "Literal['neutral', 'info', 'success', 'warning', 'danger']",
@@ -131,13 +131,11 @@ def run_surface(replay: ReplayResponse, run_item: RunQueryItem | None) -> Presen
             "queued": "neutral",
         }[replay.run.status],
     )
-    node_statuses = (
-        {} if run_item is None else {node.node_id: node.status for node in run_item.nodes}
-    )
+    node_statuses = {node.node_id: node.status for node in snapshot.run_item.nodes}
     graph_nodes = tuple(
         GraphNode(
             node_id=node.node_id,
-            label=node.objective,
+            label=_graph_label(node.objective),
             status=node_statuses.get(node.node_id, "pending"),
             detail=", ".join(node.effects),
         )
@@ -332,8 +330,8 @@ def run_surface(replay: ReplayResponse, run_item: RunQueryItem | None) -> Presen
         surface_id=f"run:{replay.run_id}",
         title=f"Run {replay.run_id}",
         revision=SurfaceRevision(
-            number=replay.run.cursor,
-            event_cursor=replay.run.cursor,
+            number=snapshot.event_cursor,
+            event_cursor=snapshot.event_cursor,
             source_digest=digest,
         ),
         components=components,
@@ -434,6 +432,12 @@ def _tooling_components(
 
 def _action_description(binding: ActionBinding) -> str:
     return f"Produces one closed {binding.request_schema} request."
+
+
+def _graph_label(objective: str) -> str:
+    if len(objective) <= 240:
+        return objective
+    return f"{objective[:237]}..."
 
 
 def _verification_disposition(

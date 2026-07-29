@@ -532,9 +532,8 @@ def create_http_app(
         request: Request[Any, Any, Any],
     ) -> Response[bytes]:
         selected_run_id = _path_id(run_id)
-        replay = _invoke(lambda: service.replay_run(selected_run_id))
-        run_item = _invoke(lambda: service.presentation_run_item(selected_run_id))
-        return _presentation_response(request, run_surface(replay, run_item))
+        snapshot = _invoke(lambda: service.presentation_run_snapshot(selected_run_id))
+        return _presentation_response(request, run_surface(snapshot))
 
     @get(
         "/api/v1/runs/{run_id:str}/artifacts/{digest:str}",

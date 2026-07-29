@@ -22,19 +22,19 @@ class SemanticComponentExpectation(PresentationModel):
 
 
 class SurfaceExpectation(PresentationModel):
-    surface_id: Annotated[str, Field(min_length=1, max_length=120)]
+    surface_id: Annotated[str, Field(min_length=1, max_length=124)]
     manifest: tuple[SemanticComponentExpectation, ...]
 
 
 class ActionFidelityExpectation(PresentationModel):
-    surface_id: Annotated[str, Field(min_length=1, max_length=120)]
+    surface_id: Annotated[str, Field(min_length=1, max_length=124)]
     action_id: Annotated[str, Field(min_length=1, max_length=120)]
     submitted_values: dict[str, JsonValue]
     expected_request_subset: dict[str, JsonValue]
 
 
 class AccessibilityExpectation(PresentationModel):
-    surface_id: Annotated[str, Field(min_length=1, max_length=120)]
+    surface_id: Annotated[str, Field(min_length=1, max_length=124)]
     role: Literal[
         "button",
         "figure",

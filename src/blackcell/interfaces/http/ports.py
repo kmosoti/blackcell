@@ -19,6 +19,7 @@ from blackcell.interfaces.http.contracts import (
     RunQueryResponse,
     RunRequest,
     RunResponse,
+    RunSurfaceSnapshot,
     RunSurfaceWindow,
     RuntimeEventPageResponse,
 )
@@ -99,6 +100,8 @@ class RuntimeApiPort(Protocol):
     def presentation_run_window(self, *, limit: int) -> RunSurfaceWindow: ...
 
     def presentation_run_item(self, run_id: str) -> RunQueryItem: ...
+
+    def presentation_run_snapshot(self, run_id: str) -> RunSurfaceSnapshot: ...
 
     def cancel_run(
         self,

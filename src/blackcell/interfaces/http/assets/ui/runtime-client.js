@@ -239,7 +239,7 @@ export function validateSurface(value) {
     !hasExactKeys(value, ["schema_version", "surface_id", "title", "revision", "components", "field_dispositions"]) ||
     value.schema_version !== "presentation-surface/v1" ||
     typeof value.surface_id !== "string" ||
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(value.surface_id) ||
+    !presentationSurfaceId(value.surface_id) ||
     typeof value.title !== "string" ||
     value.title.length < 1 ||
     value.title.length > 240 ||
@@ -598,11 +598,23 @@ function boundedArray(value, minimum, maximum) {
 }
 
 function boundedText(value, minimum, maximum) {
-  return typeof value === "string" && value.length >= minimum && value.length <= maximum;
+  if (typeof value !== "string") return false;
+  let length = 0;
+  for (const _character of value) {
+    length += 1;
+    if (length > maximum) return false;
+  }
+  return length >= minimum;
 }
 
 function presentationId(value) {
   return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(value);
+}
+
+function presentationSurfaceId(value) {
+  return presentationId(value) || (
+    typeof value === "string" && value.startsWith("run:") && presentationId(value.slice(4))
+  );
 }
 
 function jsonPointer(value) {

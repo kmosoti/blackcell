@@ -299,7 +299,7 @@ PresentationComponent = Annotated[
 
 class PresentationSurface(PresentationModel):
     schema_version: Literal["presentation-surface/v1"] = "presentation-surface/v1"
-    surface_id: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$")]
+    surface_id: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,123}$")]
     title: Annotated[str, Field(min_length=1, max_length=240)]
     revision: SurfaceRevision
     components: tuple[PresentationComponent, ...] = Field(max_length=_MAX_COMPONENTS)
@@ -307,6 +307,10 @@ class PresentationSurface(PresentationModel):
 
     @model_validator(mode="after")
     def validate_surface(self) -> PresentationSurface:
+        if len(self.surface_id) > 120:
+            run_id = self.surface_id.removeprefix("run:")
+            if run_id == self.surface_id or _ID_PATTERN.fullmatch(run_id) is None:
+                raise ValueError("long surface IDs must reserve a canonical run prefix")
         component_ids = tuple(component.component_id for component in self.components)
         if len(component_ids) != len(set(component_ids)):
             raise ValueError("surface component IDs must be unique")

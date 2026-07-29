@@ -50,6 +50,7 @@ from blackcell.interfaces.http.contracts import (
     RunRequest,
     RunResponse,
     RunStatus,
+    RunSurfaceSnapshot,
     RunSurfaceWindow,
     RuntimeEventPageResponse,
     RuntimeEventResponse,
@@ -259,6 +260,24 @@ class _KernelArtifactReport:
     artifacts: tuple[ReplayArtifactResponse, ...]
     findings: tuple[ReplayFindingResponse, ...]
     evidence_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class _EventStoreSnapshot:
+    events: EventStore
+    through_position: int
+
+    def read_stream(self, stream_id: str) -> tuple[EventEnvelope, ...]:
+        return self.events.read_stream(
+            stream_id,
+            through_position=self.through_position,
+        )
+
+    def get(self, event_id: str) -> EventEnvelope | None:
+        event = self.events.get(event_id)
+        if event is None or _global_position(event) > self.through_position:
+            return None
+        return event
 
 
 class RuntimeService:
@@ -575,6 +594,18 @@ class RuntimeService:
 
         _identifier(run_id)
         return _run_query_item(self._load_run(run_id))
+
+    def presentation_run_snapshot(self, run_id: str) -> RunSurfaceSnapshot:
+        """Project replay and node state from one fixed event-ledger snapshot."""
+
+        _identifier(run_id)
+        event_cursor = self._events.current_position()
+        loaded = self._load_run(run_id, through_position=event_cursor)
+        return RunSurfaceSnapshot(
+            event_cursor=event_cursor,
+            replay=self._replay_loaded_run(loaded, through_position=event_cursor),
+            run_item=_run_query_item(loaded),
+        )
 
     def next_ready_node(self) -> ReadyNode | None:
         """Return the first dependency-ready node in global queued-run order."""
@@ -1241,7 +1272,17 @@ class RuntimeService:
 
     def replay_run(self, run_id: str) -> ReplayResponse:
         _identifier(run_id)
-        loaded = self._load_run(run_id)
+        event_cursor = self._events.current_position()
+        loaded = self._load_run(run_id, through_position=event_cursor)
+        return self._replay_loaded_run(loaded, through_position=event_cursor)
+
+    def _replay_loaded_run(
+        self,
+        loaded: _LoadedRun,
+        *,
+        through_position: int,
+    ) -> ReplayResponse:
+        run_id = loaded.request.run_id
         run_event = loaded.state.queued_event
         run = loaded.request
         project_event = self._required_event(_project_stream(run.project_id), _PROJECT_REGISTERED)
@@ -1313,7 +1354,7 @@ class RuntimeService:
             )
             artifact_evidence_digest = artifact_report.evidence_digest
         verification_report = replay_verification(
-            self._events,
+            _EventStoreSnapshot(self._events, through_position),
             self._artifacts,
             run_id=run_id,
         )

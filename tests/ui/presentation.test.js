@@ -121,6 +121,19 @@ test("surface validation rejects unknown components and dangling sections", () =
   assert.throws(() => validateSurface(dangling), /invalid-section-binding/);
 });
 
+test("run surface identifiers reserve their prefix for canonical run IDs", () => {
+  const value = JSON.parse(JSON.stringify(reviewScenario.surfaces[1]));
+  value.surface_id = `run:${"r".repeat(120)}`;
+
+  assert.equal(validateSurface(value), value);
+
+  value.surface_id = "r".repeat(121);
+  assert.throws(() => validateSurface(value), /invalid-presentation-surface/);
+
+  value.surface_id = `run::${"r".repeat(119)}`;
+  assert.throws(() => validateSurface(value), /invalid-presentation-surface/);
+});
+
 test("plan layout is deterministic and dependency ordered", () => {
   const nodes = [
     { node_id: "inspect" },

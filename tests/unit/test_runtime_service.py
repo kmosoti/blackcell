@@ -62,6 +62,27 @@ class RacingPresentationEventStore(EventStore):
     def __init__(self, path: Path) -> None:
         super().__init__(path)
         self.after_descending_read: Callable[[], None] | None = None
+        self.after_bounded_run_read: Callable[[], None] | None = None
+
+    def read_stream(
+        self,
+        stream_id: str,
+        *,
+        after_sequence: int = 0,
+        through_position: int | None = None,
+        limit: int | None = None,
+    ) -> tuple[EventEnvelope, ...]:
+        events = super().read_stream(
+            stream_id,
+            after_sequence=after_sequence,
+            through_position=through_position,
+            limit=limit,
+        )
+        if through_position is not None and stream_id.startswith("run:"):
+            callback, self.after_bounded_run_read = self.after_bounded_run_read, None
+            if callback is not None:
+                callback()
+        return events
 
     def read_type_descending(
         self,
@@ -633,6 +654,39 @@ def test_presentation_run_window_bounds_projections_to_its_captured_cursor(
     assert window.runs[0].run.cursor <= window.event_cursor
     assert window.runs[0].run.status == "queued"
     assert events.current_position() > window.event_cursor
+
+
+def test_presentation_run_snapshot_uses_one_cursor_during_concurrent_transition(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    events = RacingPresentationEventStore(tmp_path / "run-surface-race.sqlite3")
+    service = RuntimeService(events, repository)
+    service.register_project(_project(repository), principal_id="operator")
+    service.accept_intent(_intent(), principal_id="operator")
+    service.accept_plan(_plan(repository), principal_id="operator")
+    service.submit_run(_run(), principal_id="operator")
+    captured_cursor = events.current_position()
+
+    def cancel_after_bounded_run_read() -> None:
+        service.cancel_run(
+            "run-1",
+            CancelRunRequest(
+                schema_version="execution-cancel-run-request/v1",
+                idempotency_key="surface-racing-cancel",
+            ),
+            principal_id="operator",
+        )
+
+    events.after_bounded_run_read = cancel_after_bounded_run_read
+
+    snapshot = service.presentation_run_snapshot("run-1")
+
+    assert snapshot.event_cursor == captured_cursor
+    assert snapshot.replay.run == snapshot.run_item.run
+    assert snapshot.replay.run.status == "queued"
+    assert all(node.status == "pending" for node in snapshot.run_item.nodes)
+    assert events.current_position() > snapshot.event_cursor
 
 
 class _NoMutationCapacity:

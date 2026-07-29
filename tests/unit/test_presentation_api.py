@@ -6,6 +6,7 @@ from typing import Any, cast
 import msgspec
 import pytest
 from litestar.testing import TestClient
+from pydantic import ValidationError
 
 from blackcell.adapters.models import tooling_surface_catalog
 from blackcell.bootstrap.runtime_service import RuntimeService
@@ -20,6 +21,7 @@ from blackcell.interfaces.http import (
     PRESENTATION_MEDIA_TYPE,
     RunQueryItem,
     RunQueryRequest,
+    RunSurfaceSnapshot,
     RunSurfaceWindow,
     RuntimeApiError,
     RuntimeApiFailureCode,
@@ -31,6 +33,7 @@ from blackcell.interfaces.presentation import (
     PlanGraphComponent,
     PresentationSurface,
     TableComponent,
+    TimelineComponent,
 )
 from blackcell.kernel import EventStore
 from tests.unit.test_runtime_http_api import (
@@ -181,21 +184,22 @@ def test_workspace_surface_projects_the_bounded_latest_run_window(
     assert service.window_limits == [50]
 
 
-def test_run_surface_loads_the_selected_projection_directly(
+def test_run_surface_loads_one_consistent_selected_projection(
     tmp_path: Path,
 ) -> None:
     runtime = _queued_runtime(tmp_path)
-    seed = runtime.query_runs(RunQueryRequest(schema_version="run-query-request/v1", limit=1)).runs[
-        0
-    ]
+    snapshot = runtime.presentation_run_snapshot("run-1")
     selected = msgspec.structs.replace(
-        seed,
-        nodes=(msgspec.structs.replace(seed.nodes[0], status="running"), *seed.nodes[1:]),
+        snapshot,
+        run_item=msgspec.structs.replace(
+            snapshot.run_item,
+            nodes=(
+                msgspec.structs.replace(snapshot.run_item.nodes[0], status="running"),
+                *snapshot.run_item.nodes[1:],
+            ),
+        ),
     )
-    service = _PresentationPort(
-        item=selected,
-        replay=runtime.replay_run("run-1"),
-    )
+    service = _PresentationPort(snapshot=selected)
 
     with _client(cast(Any, service)) as client:
         response = client.get("/api/v1/ui/surfaces/runs/run-1", headers=_auth())
@@ -206,7 +210,54 @@ def test_run_surface_loads_the_selected_projection_directly(
     )
     assert response.status_code == 200
     assert graph.nodes[0].status == "running"
-    assert service.item_run_ids == ["run-1"]
+    assert surface.revision.event_cursor == selected.event_cursor
+    assert service.snapshot_run_ids == ["run-1"]
+
+
+def test_run_surface_accepts_the_full_canonical_node_objective(tmp_path: Path) -> None:
+    objective = "x" * 2_000
+    runtime = _queued_runtime(tmp_path, objective=objective)
+
+    with _client(cast(Any, runtime)) as client:
+        response = client.get("/api/v1/ui/surfaces/runs/run-1", headers=_auth())
+
+    surface = PresentationSurface.model_validate_json(response.content)
+    graph = next(
+        component for component in surface.components if isinstance(component, PlanGraphComponent)
+    )
+    table = next(
+        component
+        for component in surface.components
+        if isinstance(component, TableComponent) and component.component_id == "plan-table"
+    )
+    timeline = next(
+        component for component in surface.components if isinstance(component, TimelineComponent)
+    )
+    assert response.status_code == 200
+    assert graph.nodes[0].label == f"{'x' * 237}..."
+    assert table.rows[0].cells["objective"] == objective
+    assert timeline.items[0].detail == objective
+
+
+def test_run_surface_reserves_its_prefix_for_maximum_length_run_ids(tmp_path: Path) -> None:
+    run_id = "r" * 120
+    runtime = _queued_runtime(tmp_path, run_id=run_id)
+
+    with _client(cast(Any, runtime)) as client:
+        response = client.get(f"/api/v1/ui/surfaces/runs/{run_id}", headers=_auth())
+
+    surface = PresentationSurface.model_validate_json(response.content)
+    assert response.status_code == 200
+    assert surface.surface_id == f"run:{run_id}"
+
+    invalid = {name: getattr(surface, name) for name in PresentationSurface.model_fields}
+    invalid["surface_id"] = "r" * 121
+    with pytest.raises(ValidationError, match="canonical run prefix"):
+        PresentationSurface.model_validate(invalid)
+
+    invalid["surface_id"] = f"run::{'r' * 119}"
+    with pytest.raises(ValidationError, match="canonical run prefix"):
+        PresentationSurface.model_validate(invalid)
 
 
 class _ArtifactPort:
@@ -226,14 +277,12 @@ class _PresentationPort:
         self,
         *,
         window: RunSurfaceWindow | None = None,
-        item: RunQueryItem | None = None,
-        replay: object | None = None,
+        snapshot: RunSurfaceSnapshot | None = None,
     ) -> None:
         self.window = window
-        self.item = item
-        self.replay = replay
+        self.snapshot = snapshot
         self.window_limits: list[int] = []
-        self.item_run_ids: list[str] = []
+        self.snapshot_run_ids: list[str] = []
 
     def presentation_run_window(self, *, limit: int) -> RunSurfaceWindow:
         self.window_limits.append(limit)
@@ -241,19 +290,19 @@ class _PresentationPort:
             raise RuntimeApiError(RuntimeApiFailureCode.NOT_FOUND)
         return self.window
 
-    def presentation_run_item(self, run_id: str) -> RunQueryItem:
-        self.item_run_ids.append(run_id)
-        if self.item is None or self.item.run.run_id != run_id:
+    def presentation_run_snapshot(self, run_id: str) -> RunSurfaceSnapshot:
+        self.snapshot_run_ids.append(run_id)
+        if self.snapshot is None or self.snapshot.replay.run_id != run_id:
             raise RuntimeApiError(RuntimeApiFailureCode.NOT_FOUND)
-        return self.item
-
-    def replay_run(self, run_id: str) -> object:
-        if run_id != "run-1" or self.replay is None:
-            raise RuntimeApiError(RuntimeApiFailureCode.NOT_FOUND)
-        return self.replay
+        return self.snapshot
 
 
-def _queued_runtime(tmp_path: Path) -> RuntimeService:
+def _queued_runtime(
+    tmp_path: Path,
+    *,
+    objective: str | None = None,
+    run_id: str = "run-1",
+) -> RuntimeService:
     repository = _repository(tmp_path)
     runtime = RuntimeService(EventStore(tmp_path / "state.sqlite3"), repository)
     with _client(cast(Any, runtime)) as client:
@@ -266,15 +315,21 @@ def _queued_runtime(tmp_path: Path) -> RuntimeService:
         assert (
             client.post("/api/v1/intents", json=_intent_body(), headers=_auth()).status_code == 201
         )
+        plan_body = _plan_body(_base_commit(repository))
+        if objective is not None:
+            cast("list[dict[str, object]]", plan_body["nodes"])[0]["objective"] = objective
         assert (
             client.post(
                 "/api/v1/plans",
-                json={**_plan_body(_base_commit(repository)), "planning_mode": "declared"},
+                json={**plan_body, "planning_mode": "declared"},
                 headers=_auth(),
             ).status_code
             == 201
         )
-        assert client.post("/api/v1/runs", json=_run_body(), headers=_auth()).status_code == 202
+        run_body = _run_body()
+        run_body["run_id"] = run_id
+        run_body["idempotency_key"] = run_id
+        assert client.post("/api/v1/runs", json=run_body, headers=_auth()).status_code == 202
     return runtime
 
 

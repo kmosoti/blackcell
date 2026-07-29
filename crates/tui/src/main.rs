@@ -33,7 +33,10 @@ async fn main() -> ExitCode {
     match entry().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("{error}");
+            eprintln!(
+                "{}",
+                serde_json::json!({"error": {"message": error.to_string()}})
+            );
             ExitCode::from(if matches!(error, AppError::Config(_)) {
                 2
             } else {

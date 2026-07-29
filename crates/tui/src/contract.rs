@@ -364,7 +364,7 @@ impl PresentationSurface {
 
     pub fn validate(&self) -> Result<(), ContractError> {
         if self.schema_version != SURFACE_SCHEMA
-            || !valid_id(&self.surface_id)
+            || !valid_surface_id(&self.surface_id)
             || self.title.is_empty()
             || self.title.len() > 240
             || !valid_digest(&self.revision.source_digest)
@@ -798,6 +798,10 @@ fn valid_source(source: &SourceBinding) -> bool {
 
 fn valid_pointer(value: &str) -> bool {
     valid_text(value, 1, 1_024) && value.starts_with('/')
+}
+
+fn valid_surface_id(value: &str) -> bool {
+    valid_id(value) || value.strip_prefix("run:").is_some_and(valid_id)
 }
 
 fn valid_text(value: &str, minimum: usize, maximum: usize) -> bool {
