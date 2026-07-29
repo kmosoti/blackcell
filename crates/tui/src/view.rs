@@ -144,6 +144,25 @@ impl AppModel {
         self.input_mode = InputMode::ActionEdit;
     }
 
+    pub fn begin_action_by_operation(&mut self, operation: &str) -> bool {
+        let Some(index) = self
+            .surface
+            .components
+            .iter()
+            .filter_map(|component| match component {
+                Component::Form(form) => Some(&form.action),
+                _ => None,
+            })
+            .position(|action| action.operation == operation)
+        else {
+            self.message = format!("Action {operation} is unavailable.");
+            return false;
+        };
+        self.action_index = index;
+        self.begin_action_edit();
+        true
+    }
+
     pub fn return_to_action_selection(&mut self) {
         self.form_editor = None;
         self.input_mode = InputMode::ActionSelect;

@@ -110,7 +110,7 @@ async fn run(
                     );
                 }
             }
-            _ = refresh_tick.tick(), if config.refresh.is_some() => {
+            _ = refresh_tick.tick(), if config.refresh.is_some() && periodic_refresh_allowed(model) => {
                 queue_surface_refresh(
                     &mut refreshes,
                     &mut refresh_pending,
@@ -228,17 +228,11 @@ async fn handle_event(
                 model.input_mode = InputMode::RunId;
                 model.run_input.clear();
             }
-            KeyCode::Char('c') => {
-                if let Some(run_id) = model.current_run_id().map(str::to_owned) {
-                    match client.cancel_run(&run_id).await {
-                        Ok(()) => match client.run(&run_id).await {
-                            Ok(surface) => model.replace_surface(surface),
-                            Err(error) => model.message = error.to_string(),
-                        },
-                        Err(error) => model.message = error.to_string(),
-                    }
-                } else {
-                    model.message = "No run surface is active.".to_owned();
+            KeyCode::Char('c') if key.modifiers.is_empty() => {
+                if model.begin_action_by_operation("cancel-run")
+                    && model.action_requires_confirmation()
+                {
+                    model.begin_action_confirmation();
                 }
             }
             KeyCode::Char('j') | KeyCode::Down => model.scroll_down(1),
@@ -335,6 +329,10 @@ type SurfaceRefreshResult = (
     SurfaceRefreshRequest,
     Result<PresentationSurface, ClientError>,
 );
+
+fn periodic_refresh_allowed(model: &AppModel) -> bool {
+    model.current_run_id().is_none()
+}
 
 fn queue_surface_refresh(
     refreshes: &mut JoinSet<SurfaceRefreshResult>,
@@ -438,6 +436,50 @@ mod tests {
         while refreshes.join_next().await.is_some() {}
     }
 
+    #[tokio::test]
+    async fn cancel_shortcut_requires_an_unmodified_key_and_declared_confirmation() {
+        let client = local_client();
+        let mut model = run_model();
+
+        handle_event(
+            Event::Key(crossterm::event::KeyEvent::new(
+                KeyCode::Char('c'),
+                KeyModifiers::CONTROL,
+            )),
+            &mut model,
+            &client,
+        )
+        .await
+        .expect("modified shortcut must be handled safely");
+        assert_eq!(model.input_mode, InputMode::Normal);
+
+        handle_event(
+            Event::Key(crossterm::event::KeyEvent::new(
+                KeyCode::Char('c'),
+                KeyModifiers::NONE,
+            )),
+            &mut model,
+            &client,
+        )
+        .await
+        .expect("cancel shortcut must open its semantic action");
+        assert_eq!(model.input_mode, InputMode::ActionConfirm);
+        assert_eq!(
+            model
+                .action_submission()
+                .expect("cancel action must be submit-ready")
+                .action
+                .operation,
+            "cancel-run"
+        );
+    }
+
+    #[test]
+    fn periodic_polling_skips_artifact_verifying_run_surfaces() {
+        assert!(periodic_refresh_allowed(&workspace_model()));
+        assert!(!periodic_refresh_allowed(&run_model()));
+    }
+
     #[test]
     fn completed_refresh_is_rejected_after_the_visible_revision_changes() {
         let mut model = workspace_model();
@@ -462,8 +504,17 @@ mod tests {
     }
 
     fn workspace_model() -> AppModel {
+        scenario_model(0)
+    }
+
+    fn run_model() -> AppModel {
+        scenario_model(1)
+    }
+
+    fn scenario_model(index: usize) -> AppModel {
         let value =
-            serde_json::from_str::<Value>(SCENARIO).expect("scenario must be valid")["surfaces"][0]
+            serde_json::from_str::<Value>(SCENARIO).expect("scenario must be valid")["surfaces"]
+                [index]
                 .clone();
         let surface = PresentationSurface::decode(
             &serde_json::to_vec(&value).expect("surface must serialize"),
