@@ -162,3 +162,124 @@ jobs:
           uv pip install --python /tmp/blackcell-package-venv/bin/python "${wheel_files[0]}"
           /tmp/blackcell-package-venv/bin/blackcell --version
           /tmp/blackcell-package-venv/bin/blackcell-tui --help
+
+  snapshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "24"
+          cache: npm
+          package-manager-cache: true
+      - name: Configure Rust toolchain
+        run: |
+          rustup toolchain install 1.88.0 --profile minimal
+          rustup default 1.88.0
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Verify deterministic terminal buffer
+        run: cargo test --locked -p blackcell-terminal terminal_buffer_is_deterministic_at_standard_size
+      - name: Capture browser and terminal surfaces
+        shell: bash
+        run: |
+          mkdir -p ui-snapshots
+          cat > tests/ui/capture-artifacts.spec.js <<'EOF'
+          import path from "node:path";
+          import { readFile } from "node:fs/promises";
+          import { expect, test } from "@playwright/test";
+
+          const scenario = JSON.parse(
+            await readFile(new URL("review-workflow.json", import.meta.url), "utf8"),
+          );
+          const [workspaceSurface, runSurface] = scenario.surfaces;
+          const token = "Snapshot-token.0123456789-ABCDEFG";
+          const mediaType = "application/vnd.blackcell.presentation+json";
+
+          test.use({ viewport: { width: 1440, height: 1000 } });
+
+          test("capture semantic workspace and run surfaces", async ({ page }) => {
+            await page.route("**/api/v1/**", async (route) => {
+              const url = new URL(route.request().url());
+              if (url.pathname === "/api/v1/ui/surfaces/workspace") {
+                await route.fulfill({ contentType: mediaType, body: JSON.stringify(workspaceSurface) });
+              } else if (url.pathname === "/api/v1/ui/surfaces/runs/run-1") {
+                await route.fulfill({ contentType: mediaType, body: JSON.stringify(runSurface) });
+              } else if (url.pathname === "/api/v1/ui/socket-tickets") {
+                await route.fulfill({
+                  contentType: "application/json",
+                  body: JSON.stringify({
+                    schema_version: "execution-web-socket-ticket/v1",
+                    ticket: "abcdefghijklmnopqrstuvwxyzABCDEF",
+                    expires_in_seconds: 15,
+                    websocket_path: "/api/v1/ui/events",
+                  }),
+                });
+              } else {
+                await route.fulfill({
+                  status: 404,
+                  contentType: "application/json",
+                  body: JSON.stringify({ error: "not-found" }),
+                });
+              }
+            });
+            await page.routeWebSocket("**/api/v1/ui/events?*", () => {});
+
+            await page.goto("/ui");
+            await page.getByLabel("API bearer token").fill(token);
+            await page.getByRole("button", { name: "Connect", exact: true }).click();
+            await expect(page.getByRole("heading", { name: workspaceSurface.title })).toBeVisible();
+            await page.screenshot({
+              path: path.resolve("ui-snapshots/web-workspace-desktop.png"),
+              fullPage: true,
+            });
+
+            await page.getByLabel("Inspect run").fill("run-1");
+            await page.getByRole("button", { name: "Open", exact: true }).click();
+            await expect(page.getByRole("heading", { name: runSurface.title })).toBeVisible();
+            await page.screenshot({
+              path: path.resolve("ui-snapshots/web-run-desktop.png"),
+              fullPage: true,
+            });
+
+            await page.setViewportSize({ width: 412, height: 915 });
+            await page.screenshot({
+              path: path.resolve("ui-snapshots/web-run-mobile.png"),
+              fullPage: true,
+            });
+          });
+          EOF
+          npx playwright test tests/ui/capture-artifacts.spec.js --project=chromium --workers=1
+
+          node --input-type=module <<'EOF'
+          import { readFile, writeFile } from "node:fs/promises";
+          import { chromium } from "@playwright/test";
+
+          const source = await readFile(
+            "crates/tui/tests/snapshots/terminal__terminal_buffer_is_deterministic_at_standard_size.snap",
+            "utf8",
+          );
+          const sections = source.split("---\n");
+          const buffer = sections.slice(2).join("---\n").trimEnd();
+          const escaped = buffer
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;");
+          const browser = await chromium.launch();
+          const page = await browser.newPage({ viewport: { width: 1780, height: 1040 } });
+          await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>
+            html, body { margin: 0; background: #0b1020; color: #f4f7fb; }
+            body { padding: 28px; }
+            pre { margin: 0; white-space: pre; font: 15px/1.34 "DejaVu Sans Mono", "Liberation Mono", monospace; }
+          </style></head><body><pre>${escaped}</pre></body></html>`);
+          await page.screenshot({ path: "ui-snapshots/tui-run.png", fullPage: true });
+          await browser.close();
+          await writeFile("ui-snapshots/tui-run.txt", `${buffer}\n`, "utf8");
+          EOF
+      - name: Upload UI snapshots
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: blackcell-ui-snapshots
+          path: ui-snapshots
+          if-no-files-found: error
+          retention-days: 5
