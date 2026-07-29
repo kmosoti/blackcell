@@ -16,6 +16,7 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use thiserror::Error;
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 use tokio::time::{MissedTickBehavior, interval};
 
 #[derive(Debug, Error)]
@@ -84,6 +85,8 @@ async fn run(
     render_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut refresh_tick = interval(config.refresh.unwrap_or(Duration::from_secs(86_400)));
     refresh_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut refreshes = JoinSet::new();
+    let mut refresh_pending = false;
     let result = loop {
         tokio::select! {
             _ = render_tick.tick() => {
@@ -99,11 +102,35 @@ async fn run(
             cursor = invalidations.recv() => {
                 let Some(cursor) = cursor else { break Err(AppError::Client(ClientError::EventStreamFailed)); };
                 if cursor > model.surface.revision.event_cursor {
-                    refresh_surface(model, &client).await;
+                    queue_surface_refresh(
+                        &mut refreshes,
+                        &mut refresh_pending,
+                        model,
+                        &client,
+                    );
                 }
             }
             _ = refresh_tick.tick(), if config.refresh.is_some() => {
-                refresh_surface(model, &client).await;
+                queue_surface_refresh(
+                    &mut refreshes,
+                    &mut refresh_pending,
+                    model,
+                    &client,
+                );
+            }
+            refresh = refreshes.join_next(), if !refreshes.is_empty() => {
+                let Some(refresh) = refresh else { continue; };
+                if apply_surface_refresh(refresh, model) {
+                    refresh_pending = true;
+                }
+                if std::mem::take(&mut refresh_pending) {
+                    queue_surface_refresh(
+                        &mut refreshes,
+                        &mut refresh_pending,
+                        model,
+                        &client,
+                    );
+                }
             }
         }
     };
@@ -283,15 +310,71 @@ fn action_identifier<'a>(
         .ok_or(ClientError::InvalidAction)
 }
 
-async fn refresh_surface(model: &mut AppModel, client: &RuntimeClient) {
-    let result = if let Some(run_id) = model.current_run_id() {
-        client.run(run_id).await
-    } else {
-        client.workspace().await
-    };
-    match result {
-        Ok(surface) => model.synchronize_surface(surface),
-        Err(error) => model.message = error.to_string(),
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SurfaceRefreshRequest {
+    run_id: Option<String>,
+    surface_id: String,
+    revision: blackcell_terminal::contract::SurfaceRevision,
+}
+
+impl SurfaceRefreshRequest {
+    fn capture(model: &AppModel) -> Self {
+        Self {
+            run_id: model.current_run_id().map(str::to_owned),
+            surface_id: model.surface.surface_id.clone(),
+            revision: model.surface.revision.clone(),
+        }
+    }
+
+    fn is_current(&self, model: &AppModel) -> bool {
+        self.surface_id == model.surface.surface_id && self.revision == model.surface.revision
+    }
+}
+
+type SurfaceRefreshResult = (
+    SurfaceRefreshRequest,
+    Result<PresentationSurface, ClientError>,
+);
+
+fn queue_surface_refresh(
+    refreshes: &mut JoinSet<SurfaceRefreshResult>,
+    pending: &mut bool,
+    model: &AppModel,
+    client: &RuntimeClient,
+) {
+    if !refreshes.is_empty() {
+        *pending = true;
+        return;
+    }
+    let request = SurfaceRefreshRequest::capture(model);
+    let client = client.clone();
+    refreshes.spawn(async move {
+        let result = match &request.run_id {
+            Some(run_id) => client.run(run_id).await,
+            None => client.workspace().await,
+        };
+        (request, result)
+    });
+}
+
+fn apply_surface_refresh(
+    refresh: Result<SurfaceRefreshResult, tokio::task::JoinError>,
+    model: &mut AppModel,
+) -> bool {
+    match refresh {
+        Ok((request, _)) if !request.is_current(model) => true,
+        Ok((_, Ok(surface))) => {
+            model.synchronize_surface(surface);
+            false
+        }
+        Ok((_, Err(error))) => {
+            model.message = error.to_string();
+            false
+        }
+        Err(_) => {
+            model.message = "runtime-refresh-task-failed".to_owned();
+            false
+        }
     }
 }
 
@@ -324,5 +407,68 @@ impl Drop for TerminalSession {
         let _ = disable_raw_mode();
         let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
         let _ = self.terminal.show_cursor();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use blackcell_terminal::config::{API_TOKEN_ENV, ENDPOINT_ENV};
+    use serde_json::Value;
+
+    use super::*;
+
+    const SCENARIO: &str = include_str!("../../../tests/ui/review-workflow.json");
+    const TOKEN: &str = "Native-terminal-token.0123456789-ABCDEFG";
+
+    #[tokio::test]
+    async fn refresh_requests_are_backgrounded_and_coalesced() {
+        let model = workspace_model();
+        let client = local_client();
+        let mut refreshes = JoinSet::new();
+        let mut pending = false;
+
+        queue_surface_refresh(&mut refreshes, &mut pending, &model, &client);
+        queue_surface_refresh(&mut refreshes, &mut pending, &model, &client);
+
+        assert_eq!(refreshes.len(), 1);
+        assert!(pending);
+        refreshes.abort_all();
+        while refreshes.join_next().await.is_some() {}
+    }
+
+    #[test]
+    fn completed_refresh_is_rejected_after_the_visible_revision_changes() {
+        let mut model = workspace_model();
+        let request = SurfaceRefreshRequest::capture(&model);
+
+        model.surface.revision.number += 1;
+
+        assert!(!request.is_current(&model));
+    }
+
+    fn local_client() -> RuntimeClient {
+        let environment = HashMap::from([
+            (API_TOKEN_ENV.to_owned(), TOKEN.to_owned()),
+            (ENDPOINT_ENV.to_owned(), "http://127.0.0.1:9".to_owned()),
+        ]);
+        let ParseOutcome::Run(config) = Config::parse_from(Vec::<String>::new(), &environment)
+            .expect("test configuration must be valid")
+        else {
+            panic!("expected runnable configuration");
+        };
+        RuntimeClient::new(config.endpoint, config.token).expect("test client must be valid")
+    }
+
+    fn workspace_model() -> AppModel {
+        let value =
+            serde_json::from_str::<Value>(SCENARIO).expect("scenario must be valid")["surfaces"][0]
+                .clone();
+        let surface = PresentationSurface::decode(
+            &serde_json::to_vec(&value).expect("surface must serialize"),
+        )
+        .expect("surface must satisfy the contract");
+        AppModel::new(surface)
     }
 }
