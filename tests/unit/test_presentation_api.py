@@ -29,6 +29,7 @@ from blackcell.interfaces.http import (
     create_http_app,
 )
 from blackcell.interfaces.presentation import (
+    EvidenceMatrixComponent,
     FormComponent,
     PlanGraphComponent,
     PresentationSurface,
@@ -208,8 +209,16 @@ def test_run_surface_loads_one_consistent_selected_projection(
     graph = next(
         component for component in surface.components if isinstance(component, PlanGraphComponent)
     )
+    evidence = next(
+        component
+        for component in surface.components
+        if isinstance(component, EvidenceMatrixComponent)
+    )
     assert response.status_code == 200
     assert graph.nodes[0].status == "running"
+    assert next(row for row in evidence.rows if row.row_id == "artifact-integrity").disposition == (
+        "not-applicable"
+    )
     assert surface.revision.event_cursor == selected.event_cursor
     assert service.snapshot_run_ids == ["run-1"]
 

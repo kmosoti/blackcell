@@ -236,6 +236,39 @@ test("a live workspace refresh preserves an active form draft", async ({ page })
   await expect(planningMode).toBeFocused();
 });
 
+test("a failed invalidation refresh retries without another runtime event", async ({ page }) => {
+  let socket;
+  let workspaceRequests = 0;
+  await installRuntimeRoutes(page, [], {
+    workspaceResponder: async (route) => {
+      workspaceRequests += 1;
+      if (workspaceRequests === 2) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "runtime-unavailable" }),
+        });
+        return;
+      }
+      await surfaceResponse(route, workspaceSurface);
+    },
+  });
+  await page.routeWebSocket("**/api/v1/ui/events?*", (webSocket) => {
+    socket = webSocket;
+  });
+
+  await page.goto("/ui");
+  await page.getByLabel("API bearer token").fill(token);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("heading", { name: workspaceSurface.title })).toBeVisible();
+  await expect.poll(() => socket !== undefined).toBe(true);
+
+  socket.send(Buffer.from(JSON.stringify({ next_cursor: 99 }), "utf8"));
+
+  await expect.poll(() => workspaceRequests).toBe(3);
+  await expect(page.getByText("Surface synchronized with the daemon.")).toBeVisible();
+});
+
 test("disconnect clears a pending surface's accessibility busy state", async ({ page }) => {
   let workspaceRequests = 0;
   let releaseWorkspace;

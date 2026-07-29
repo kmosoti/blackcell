@@ -276,7 +276,9 @@ def run_surface(snapshot: RunSurfaceSnapshot) -> PresentationSurface:
                     dimension="artifact integrity",
                     disposition=(
                         "supported"
-                        if replay.artifact_integrity in {"verified", "not-applicable"}
+                        if replay.artifact_integrity == "verified"
+                        else "not-applicable"
+                        if replay.artifact_integrity == "not-applicable"
                         else "concern"
                         if replay.artifact_integrity == "failed"
                         else "unknown"

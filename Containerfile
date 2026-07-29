@@ -3,13 +3,25 @@ FROM ghcr.io/astral-sh/uv:python3.14-trixie-slim AS uv-base
 ENV DEBIAN_FRONTEND=noninteractive
 ENV UV_LINK_MODE=copy
 
-FROM uv-base AS development
+FROM rust:1.88.0-slim-bookworm AS rust-toolchain
+
+FROM uv-base AS build-base
+
+ENV CARGO_HOME=/usr/local/cargo
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV PATH=/usr/local/cargo/bin:$PATH
+
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+
+FROM build-base AS development
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         bash \
         build-essential \
         ca-certificates \
+        cmake \
         git \
         ripgrep \
     && git config --system init.defaultBranch main \
@@ -25,15 +37,20 @@ RUN uv sync --locked --all-groups
 
 CMD ["bash"]
 
-FROM uv-base AS runtime-builder
+FROM build-base AS runtime-builder
 
 ENV UV_COMPILE_BYTECODE=1
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential cmake \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /opt/blackcell
 
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md Cargo.toml Cargo.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
+COPY crates ./crates
 COPY src ./src
 RUN uv sync --locked --no-dev --no-editable
 

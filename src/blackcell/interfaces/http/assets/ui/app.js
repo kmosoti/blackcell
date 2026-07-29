@@ -28,6 +28,7 @@ const state = {
   surfaceGeneration: 0,
   surfacePending: false,
   refreshPending: false,
+  refreshRetryAttempt: 0,
   reconnectAttempt: 0,
   reconnectTimer: null,
   refreshTimer: null,
@@ -63,7 +64,11 @@ elements.runNavigation.addEventListener("submit", (event) => {
 });
 window.addEventListener("pagehide", () => disconnect(false));
 
-async function showWorkspace(propagate = false, preserveFormDrafts = false) {
+async function showWorkspace(
+  propagate = false,
+  preserveFormDrafts = false,
+  retryInvalidation = false,
+) {
   if (state.client === null) {
     return;
   }
@@ -77,6 +82,7 @@ async function showWorkspace(propagate = false, preserveFormDrafts = false) {
     }
     state.surfaceKind = "workspace";
     state.runId = null;
+    state.refreshRetryAttempt = 0;
     render(surface, preserveFormDrafts);
   } catch (error) {
     if (!currentSurfaceRequest(generation)) {
@@ -85,13 +91,22 @@ async function showWorkspace(propagate = false, preserveFormDrafts = false) {
     if (propagate) {
       throw error;
     }
+    if (retryInvalidation) {
+      state.refreshRetryAttempt += 1;
+      state.refreshPending = true;
+    }
     setMessage(elements.surfaceMessage, safeMessage(error), true);
   } finally {
     finishSurfaceRequest(generation);
   }
 }
 
-async function showRun(runId, propagate = false, preserveFormDrafts = false) {
+async function showRun(
+  runId,
+  propagate = false,
+  preserveFormDrafts = false,
+  retryInvalidation = false,
+) {
   if (state.client === null) {
     return;
   }
@@ -106,6 +121,7 @@ async function showRun(runId, propagate = false, preserveFormDrafts = false) {
     }
     state.surfaceKind = "run";
     state.runId = selected;
+    state.refreshRetryAttempt = 0;
     elements.runId.value = selected;
     render(surface, preserveFormDrafts);
   } catch (error) {
@@ -114,6 +130,10 @@ async function showRun(runId, propagate = false, preserveFormDrafts = false) {
     }
     if (propagate) {
       throw error;
+    }
+    if (retryInvalidation) {
+      state.refreshRetryAttempt += 1;
+      state.refreshPending = true;
     }
     setMessage(elements.surfaceMessage, safeMessage(error), true);
   } finally {
@@ -133,7 +153,7 @@ function finishSurfaceRequest(generation) {
   setBusy(false);
   if (state.refreshPending) {
     state.refreshPending = false;
-    scheduleSurfaceRefresh();
+    scheduleSurfaceRefresh(refreshDelay());
   }
 }
 
@@ -229,7 +249,7 @@ async function openEventSocket() {
   socket.addEventListener("error", () => socket.close());
 }
 
-function scheduleSurfaceRefresh() {
+function scheduleSurfaceRefresh(delay = 80) {
   if (state.refreshTimer !== null) {
     return;
   }
@@ -240,11 +260,18 @@ function scheduleSurfaceRefresh() {
       return;
     }
     if (state.surfaceKind === "run" && state.runId !== null) {
-      await showRun(state.runId, false, true);
+      await showRun(state.runId, false, true, true);
     } else {
-      await showWorkspace(false, true);
+      await showWorkspace(false, true, true);
     }
-  }, 80);
+  }, delay);
+}
+
+function refreshDelay() {
+  if (state.refreshRetryAttempt === 0) {
+    return 80;
+  }
+  return Math.min(10_000, 250 * (2 ** Math.min(state.refreshRetryAttempt - 1, 6)));
 }
 
 function scheduleReconnect() {
@@ -273,6 +300,7 @@ function disconnect(announce) {
   state.refreshTimer = null;
   state.surfacePending = false;
   state.refreshPending = false;
+  state.refreshRetryAttempt = 0;
   if (state.socket !== null) {
     state.socket.close(1000, "client-disconnect");
     state.socket = null;
