@@ -55,7 +55,11 @@ from blackcell.interfaces.http.contracts import (
     VerificationReplayResponse,
     plan_topological_order,
 )
-from blackcell.interfaces.http.ports import RuntimeApiError, RuntimeApiFailureCode
+from blackcell.interfaces.http.ports import (
+    RuntimeApiError,
+    RuntimeApiFailureCode,
+    RuntimeArtifactPayload,
+)
 from blackcell.kernel import (
     ArtifactIntegrityError,
     ArtifactNotFoundError,
@@ -168,6 +172,7 @@ _PROVIDER_DISPATCH_AMBIGUOUS = "provider-dispatch-ambiguous"
 _MAX_RETAINED_SUCCESSFUL_WORKTREES = 1_024
 _MAX_KERNEL_REPLAY_ARTIFACTS = 4_096
 _MAX_KERNEL_REPLAY_BYTES = 512 * 1024 * 1024
+_MAX_UI_ARTIFACT_BYTES = 8 * 1024 * 1024
 _EXECUTION_TERMINAL_STATUSES = frozenset(
     {
         ExecutionRunStatus.SUCCEEDED,
@@ -1286,6 +1291,48 @@ class RuntimeService:
                 processed_events=verification_report.processed_events,
                 evidence_digest=verification_report.evidence_digest,
             ),
+        )
+
+    def read_run_artifact(self, run_id: str, digest: str) -> RuntimeArtifactPayload:
+        """Read one verified artifact only when replay binds it to the requested run."""
+
+        _identifier(run_id)
+        replay = self.replay_run(run_id)
+        matches = tuple(
+            artifact
+            for artifact in replay.artifacts
+            if artifact.digest == digest and artifact.verified
+        )
+        if not matches or self._artifacts is None:
+            raise RuntimeApiError(RuntimeApiFailureCode.NOT_FOUND)
+        reference = matches[0]
+        if reference.size_bytes > _MAX_UI_ARTIFACT_BYTES or any(
+            artifact.size_bytes != reference.size_bytes
+            or artifact.media_type != reference.media_type
+            or artifact.encoding != reference.encoding
+            for artifact in matches[1:]
+        ):
+            raise RuntimeApiError(RuntimeApiFailureCode.NOT_FOUND)
+        try:
+            stored = self._artifacts.stat(digest)
+            content = self._artifacts.get_bytes(stored, verify=True)
+        except (ArtifactIntegrityError, ArtifactNotFoundError, ValueError) as error:
+            raise RuntimeApiError(RuntimeApiFailureCode.NOT_FOUND) from error
+        if (
+            stored.digest != reference.digest
+            or stored.size_bytes != reference.size_bytes
+            or stored.media_type != reference.media_type
+            or stored.encoding != reference.encoding
+            or len(content) != stored.size_bytes
+            or bytes_digest(content) != stored.digest
+        ):
+            raise RuntimeApiError(RuntimeApiFailureCode.NOT_FOUND)
+        return RuntimeArtifactPayload(
+            digest=stored.digest,
+            size_bytes=stored.size_bytes,
+            media_type=stored.media_type,
+            encoding=stored.encoding,
+            content=content,
         )
 
     def _require_storage(self) -> None:

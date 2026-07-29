@@ -1,6 +1,10 @@
 """Authenticated HTTP adapter and bounded runtime contracts."""
 
-from blackcell.interfaces.http.app import create_http_app
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from blackcell.interfaces.http.app import PRESENTATION_MEDIA_TYPE, create_http_app
 from blackcell.interfaces.http.contracts import (
     MAX_REQUEST_BODY_BYTES,
     MAX_RESPONSE_BODY_BYTES,
@@ -58,6 +62,7 @@ from blackcell.interfaces.http.ports import (
     RuntimeApiError,
     RuntimeApiFailureCode,
     RuntimeApiPort,
+    RuntimeArtifactPayload,
 )
 from blackcell.interfaces.http.quota import RequestQuotaPort, SlidingWindowRequestQuota
 from blackcell.interfaces.http.web import (
@@ -70,12 +75,20 @@ from blackcell.interfaces.http.web import (
     WebTicketFailureCode,
 )
 
+
+def __getattr__(name: str) -> Any:
+    if name in {"PRESENTATION_MEDIA_TYPE", "create_http_app"}:
+        return getattr(import_module("blackcell.interfaces.http.app"), name)
+    raise AttributeError(name)
+
+
 __all__ = [
     "MAX_REQUEST_BODY_BYTES",
     "MAX_RESPONSE_BODY_BYTES",
     "MAX_RUNTIME_EVENT_PAGE_SIZE",
     "MAX_RUN_QUERY_PAGE_SIZE",
     "MAX_RUN_QUERY_SCAN_EVENTS",
+    "PRESENTATION_MEDIA_TYPE",
     "RUN_QUERY_MEDIA_TYPE",
     "RUN_QUERY_RESULT_MEDIA_TYPE",
     "WEB_SOCKET_PATH",
@@ -112,6 +125,7 @@ __all__ = [
     "RuntimeApiError",
     "RuntimeApiFailureCode",
     "RuntimeApiPort",
+    "RuntimeArtifactPayload",
     "RuntimeEventPageResponse",
     "RuntimeEventResponse",
     "RuntimeEventType",

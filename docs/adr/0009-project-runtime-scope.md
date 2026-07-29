@@ -55,11 +55,11 @@ or an embedded scheduler in any client.
 
 ### Treat CLI, TUI, and web as clients
 
-The JSON-first CLI is the complete automation and recovery surface. A PyRatatui TUI and Litestar
-web UI use the same typed client. The native terminal remains on the asyncio event-loop thread while
-the controller offloads synchronous client calls and the shell schedules bounded non-blocking tasks.
-WebSocket or channel consumers resume from an ordered event cursor rather than reading mutable
-storage.
+The JSON-first CLI is the complete automation and recovery surface. The Rust Ratatui terminal and
+standards-native browser render the same daemon-owned semantic presentation contract. Neither
+client owns a projection database or scheduler. WebSocket consumers treat the ordered cursor as an
+invalidation signal and refetch the authoritative surface rather than reading mutable storage.
+This client decision is refined by ADR 0010.
 
 ### Integrate Kernform through its public command contract
 
@@ -125,8 +125,8 @@ CI does not generate, compare, or require source-bound release evidence.
 
 - [Docker Engine overview](https://docs.docker.com/engine/): daemon/client separation and a
   versioned API.
-- [PyRatatui async updates](https://pyratatui.github.io/pyratatui/tutorials/async/): native terminal
-  rendering on the asyncio thread with cooperative background updates.
+- [Ratatui `TestBackend`](https://docs.rs/ratatui/latest/ratatui/backend/struct.TestBackend.html):
+  deterministic in-memory terminal rendering and verification.
 - [Litestar channels](https://docs.litestar.dev/main/usage/channels.html): broker-backed event
   delivery to WebSocket clients.
 - [systemd service units](https://www.freedesktop.org/software/systemd/man/systemd.service.html):

@@ -10,6 +10,7 @@ import msgspec
 import pytest
 
 import blackcell.adapters.runtime_http as runtime_http
+from blackcell.adapters.models import tooling_surface_catalog
 from blackcell.adapters.runtime_http import (
     RuntimeClientError,
     RuntimeClientFailureCode,
@@ -27,11 +28,13 @@ from blackcell.interfaces.http import (
     ErrorResponse,
     HealthResponse,
     RunQueryRequest,
+    RunQueryResponse,
     RuntimeEventPageResponse,
     RuntimeEventResponse,
     encode_contract,
 )
 from blackcell.interfaces.http.contracts import MAX_REQUEST_BODY_BYTES
+from blackcell.interfaces.presentation import canonical_surface_bytes, workspace_surface
 from blackcell.kernel import EventStore
 from tests.unit.test_runtime_service import _intent, _plan, _project, _repository, _run
 
@@ -343,6 +346,52 @@ def test_runtime_client_bounds_identifiers_pagination_auth_and_failures() -> Non
     assert denied.value.cli_exit_code == 4
     assert _TOKEN not in str(denied.value)
     assert _TOKEN not in repr(denied.value)
+
+
+def test_runtime_client_decodes_authenticated_presentation_surfaces() -> None:
+    surface = workspace_surface(
+        RunQueryResponse(
+            query=RunQueryRequest(schema_version="run-query-request/v1"),
+            scanned_events=0,
+            runs=(),
+            next_cursor=0,
+            has_more=False,
+        ),
+        tooling=tooling_surface_catalog(),
+    )
+    transport = FakeTransport(
+        RuntimeHttpResponse(
+            200,
+            "application/vnd.blackcell.presentation+json",
+            canonical_surface_bytes(surface),
+        ),
+        RuntimeHttpResponse(
+            200,
+            "application/vnd.blackcell.presentation+json; charset=utf-8",
+            canonical_surface_bytes(surface),
+        ),
+    )
+    client = RuntimeHttpClient(
+        transport=transport,
+        token=SecretValue(_TOKEN),
+        replay_timeout_seconds=90,
+    )
+
+    assert client.workspace_surface() == surface
+    assert client.run_surface("run-1") == surface
+    assert [request.url for request in transport.requests] == [
+        "http://127.0.0.1:8080/api/v1/ui/surfaces/workspace",
+        "http://127.0.0.1:8080/api/v1/ui/surfaces/runs/run-1",
+    ]
+    assert all(
+        request.headers
+        == {
+            "accept": "application/vnd.blackcell.presentation+json",
+            "authorization": f"Bearer {_TOKEN}",
+        }
+        for request in transport.requests
+    )
+    assert [request.timeout_seconds for request in transport.requests] == [5.0, 90.0]
 
 
 class _FakeHeaders:

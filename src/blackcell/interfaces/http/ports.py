@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
 
@@ -33,6 +34,29 @@ class RuntimeApiError(RuntimeError):
     def __init__(self, code: RuntimeApiFailureCode) -> None:
         self.code = code
         super().__init__(code.value)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeArtifactPayload:
+    digest: str
+    size_bytes: int
+    media_type: str
+    encoding: str | None
+    content: bytes = field(repr=False)
+
+    def __post_init__(self) -> None:
+        hexadecimal = self.digest.removeprefix("sha256:")
+        if (
+            not self.digest.startswith("sha256:")
+            or len(hexadecimal) != 64
+            or any(character not in "0123456789abcdef" for character in hexadecimal)
+            or isinstance(self.size_bytes, bool)
+            or not isinstance(self.size_bytes, int)
+            or self.size_bytes < 0
+            or len(self.content) != self.size_bytes
+            or not self.media_type.strip()
+        ):
+            raise ValueError("invalid runtime artifact payload")
 
 
 class RuntimeApiPort(Protocol):
@@ -87,5 +111,12 @@ class RuntimeApiPort(Protocol):
 
     def replay_run(self, run_id: str) -> ReplayResponse: ...
 
+    def read_run_artifact(self, run_id: str, digest: str) -> RuntimeArtifactPayload: ...
 
-__all__ = ["RuntimeApiError", "RuntimeApiFailureCode", "RuntimeApiPort"]
+
+__all__ = [
+    "RuntimeApiError",
+    "RuntimeApiFailureCode",
+    "RuntimeApiPort",
+    "RuntimeArtifactPayload",
+]

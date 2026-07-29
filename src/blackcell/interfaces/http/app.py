@@ -39,6 +39,7 @@ from litestar.status_codes import (
 )
 from litestar.types import ASGIApp, HTTPResponseBodyEvent, Receive, Scope, Send
 
+from blackcell.gateway import ToolingSurfaceCatalog
 from blackcell.interfaces import (
     AuthenticationError,
     AuthorizationError,
@@ -69,6 +70,7 @@ from blackcell.interfaces.http.ports import (
     RuntimeApiError,
     RuntimeApiFailureCode,
     RuntimeApiPort,
+    RuntimeArtifactPayload,
 )
 from blackcell.interfaces.http.quota import RequestQuotaPort
 from blackcell.interfaces.http.web import (
@@ -78,6 +80,12 @@ from blackcell.interfaces.http.web import (
     WebTicketFailureCode,
 )
 from blackcell.interfaces.http.web_assets import load_web_assets
+from blackcell.interfaces.presentation import (
+    PresentationSurface,
+    canonical_surface_bytes,
+    run_surface,
+    workspace_surface,
+)
 
 _PRINCIPAL_STATE_KEY = "blackcell.service_principal"
 _MAX_PATH_ID_CHARS = 200
@@ -86,6 +94,7 @@ _WEB_EVENT_PAGE_LIMIT = 100
 _DEFAULT_WEB_POLL_SECONDS = 0.25
 _RUN_QUERY_PATH = "/api/v1/runs"
 _RUN_QUERY_ALLOW = "HEAD, OPTIONS, QUERY"
+PRESENTATION_MEDIA_TYPE = "application/vnd.blackcell.presentation+json"
 _WS_INVALID_REQUEST = 4400
 _WS_AUTHENTICATION_REQUIRED = 4401
 _WS_CAPACITY_EXCEEDED = 4429
@@ -446,6 +455,7 @@ def create_http_app(
     web_ticket_authority: WebTicketAuthority | None = None,
     web_connection_limiter: WebConnectionLimiter | None = None,
     web_poll_seconds: float = _DEFAULT_WEB_POLL_SECONDS,
+    tooling_catalog: ToolingSurfaceCatalog | None = None,
 ) -> Litestar:
     """Create the HTTP edge over one injected runtime application port."""
     if (
@@ -481,6 +491,76 @@ def create_http_app(
     @get("/ui/assets/app.js", sync_to_thread=False)
     def web_javascript() -> Response[bytes]:
         return _web_asset_response(web_assets.javascript, media_type="application/javascript")
+
+    @get("/ui/assets/runtime-client.js", sync_to_thread=False)
+    def web_runtime_client() -> Response[bytes]:
+        return _web_asset_response(
+            web_assets.runtime_client_javascript,
+            media_type="application/javascript",
+        )
+
+    @get("/ui/assets/surface-elements.js", sync_to_thread=False)
+    def web_surface_elements() -> Response[bytes]:
+        return _web_asset_response(
+            web_assets.surface_elements_javascript,
+            media_type="application/javascript",
+        )
+
+    @get("/ui/assets/tokens.json", sync_to_thread=False)
+    def web_tokens() -> Response[bytes]:
+        return _web_asset_response(web_assets.tokens, media_type="application/json")
+
+    @get(
+        "/api/v1/ui/surfaces/workspace",
+        guards=[read_guard],
+        sync_to_thread=True,
+    )
+    def project_workspace(request: Request[Any, Any, Any]) -> Response[bytes]:
+        runs = _invoke(
+            lambda: service.query_runs(
+                RunQueryRequest(schema_version="run-query-request/v1", limit=50)
+            )
+        )
+        return _presentation_response(
+            request,
+            workspace_surface(runs, tooling=tooling_catalog),
+        )
+
+    @get(
+        "/api/v1/ui/surfaces/runs/{run_id:str}",
+        guards=[read_guard],
+        sync_to_thread=True,
+    )
+    def project_run(
+        run_id: FromPath[str],
+        request: Request[Any, Any, Any],
+    ) -> Response[bytes]:
+        selected_run_id = _path_id(run_id)
+        replay = _invoke(lambda: service.replay_run(selected_run_id))
+        query = _invoke(
+            lambda: service.query_runs(
+                RunQueryRequest(
+                    schema_version="run-query-request/v1",
+                    run_ids=(selected_run_id,),
+                    limit=1,
+                )
+            )
+        )
+        run_item = next((item for item in query.runs if item.run.run_id == selected_run_id), None)
+        return _presentation_response(request, run_surface(replay, run_item))
+
+    @get(
+        "/api/v1/runs/{run_id:str}/artifacts/{digest:str}",
+        guards=[read_guard],
+        sync_to_thread=True,
+    )
+    def read_run_artifact(
+        run_id: FromPath[str],
+        digest: FromPath[str],
+        request: Request[Any, Any, Any],
+    ) -> Response[bytes]:
+        payload = _invoke(lambda: service.read_run_artifact(_path_id(run_id), _path_id(digest)))
+        return _artifact_response(request, payload)
 
     @post(
         "/api/v1/projects",
@@ -675,6 +755,12 @@ def create_http_app(
             web_ui,
             web_css,
             web_javascript,
+            web_runtime_client,
+            web_surface_elements,
+            web_tokens,
+            project_workspace,
+            project_run,
+            read_run_artifact,
             register_project,
             accept_intent,
             accept_plan,
@@ -868,6 +954,58 @@ def _json_response(
         media_type="application/json",
         status_code=status_code,
         headers=response_headers,
+    )
+
+
+def _presentation_response(
+    request: Request[Any, Any, Any],
+    surface: PresentationSurface,
+) -> Response[bytes]:
+    content = canonical_surface_bytes(surface)
+    etag = f'"{hashlib.sha256(content).hexdigest()}"'
+    headers = {
+        "cache-control": "private, max-age=0, must-revalidate",
+        "etag": etag,
+        "x-content-type-options": "nosniff",
+    }
+    if _etag_matches((request.headers.get("if-none-match", ""),), etag):
+        return Response(content=b"", status_code=HTTP_304_NOT_MODIFIED, headers=headers)
+    return Response(
+        content=content,
+        media_type=PRESENTATION_MEDIA_TYPE,
+        status_code=HTTP_200_OK,
+        headers=headers,
+    )
+
+
+def _artifact_response(
+    request: Request[Any, Any, Any],
+    payload: RuntimeArtifactPayload,
+) -> Response[bytes]:
+    etag = f'"{payload.digest.removeprefix("sha256:")}"'
+    inline_media = {
+        "application/json",
+        "text/markdown",
+        "text/plain",
+    }
+    media_type = (
+        payload.media_type if payload.media_type in inline_media else "application/octet-stream"
+    )
+    disposition = "inline" if payload.media_type in inline_media else "attachment"
+    filename = payload.digest.removeprefix("sha256:")
+    headers = {
+        "cache-control": "private, max-age=0, must-revalidate",
+        "content-disposition": f'{disposition}; filename="{filename}"',
+        "etag": etag,
+        "x-content-type-options": "nosniff",
+    }
+    if _etag_matches((request.headers.get("if-none-match", ""),), etag):
+        return Response(content=b"", status_code=HTTP_304_NOT_MODIFIED, headers=headers)
+    return Response(
+        content=payload.content,
+        media_type=media_type,
+        status_code=HTTP_200_OK,
+        headers=headers,
     )
 
 

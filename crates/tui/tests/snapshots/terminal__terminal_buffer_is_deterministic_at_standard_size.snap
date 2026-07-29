@@ -1,0 +1,53 @@
+---
+source: crates/tui/tests/terminal.rs
+assertion_line: 75
+expression: "render_at(120, 48, 0)"
+---
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│BlackCell Run run-1  revision 12 · cursor 12                                                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Semantic surface ────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Source: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb                                       │
+│                                                                                                                      │
+│Run overview  [section]                                                                                               │
+│Host-owned run state and verification outcome.                                                                        │
+│Contains: run-status, run-metrics                                                                                     │
+│                                                                                                                      │
+│Run status  [status]                                                                                                  │
+│failed · Verification did not establish every acceptance claim.                                                       │
+│                                                                                                                      │
+│Run metrics  [metrics]                                                                                                │
+│  Plan nodes: 2                                                                                                       │
+│  Review findings: 1                                                                                                  │
+│                                                                                                                      │
+│Plan dependency graph  [plan-graph]                                                                                   │
+│  inspect ← root · succeeded · Inspect the change                                                                     │
+│  verify ← inspect · failed · Verify acceptance                                                                       │
+│                                                                                                                      │
+│Plan nodes  [table]                                                                                                   │
+│Node │ Depends on │ Status                                                                                            │
+│inspect │ — │ succeeded                                                                                               │
+│verify │ inspect │ failed                                                                                             │
+│                                                                                                                      │
+│Plan progress  [timeline]                                                                                             │
+│  Inspect · succeeded · Inspection completed.                                                                         │
+│  Verify · failed · One criterion remained unsupported.                                                               │
+│                                                                                                                      │
+│Review findings  [findings]                                                                                           │
+│  P1 · Acceptance evidence is incomplete · The verifier could not bind the UI action result to a passing check.       │
+│                                                                                                                      │
+│Verification evidence  [evidence-matrix]                                                                              │
+│  Acceptance │ concern │ Required UI action check absent. │                                                           │
+│sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc                                               │
+│  Provenance freshness │ supported │ Projection digest matches replay. │                                              │
+│sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd                                               │
+│                                                                                                                      │
+│Verified artifacts  [artifacts]                                                                                       │
+│  verify · verification-output · 24 bytes · verified=true ·                                                           │
+│sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee                                               │
+│                                                                                                                      │
+│Cancel run  [form]                                                                                                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Surface synchronized with the daemon.  ·  q quit · w workspace · r inspect run · c cancel run · j/k scroll            │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

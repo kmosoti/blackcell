@@ -16,7 +16,6 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.42.1,<2",
     "opentelemetry-sdk>=1.42.1,<2",
     "pydantic>=2.12.5,<3",
-    "pyratatui>=0.2.9,<0.3",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
 ]
@@ -26,8 +25,24 @@ blackcell = "blackcell.cli.app:main"
 blackcell-runtime = "blackcell.bootstrap.process:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools==82.0.1", "setuptools-rust==1.13.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"blackcell.interfaces.http" = ["assets/ui/*"]
+"blackcell.interfaces.presentation" = ["tokens.json"]
+
+[[tool.setuptools-rust.bins]]
+target = "blackcell-tui"
+path = "crates/tui/Cargo.toml"
+cargo-manifest-args = ["--locked"]
+rust-version = ">=1.88"
 
 [dependency-groups]
 dev = [

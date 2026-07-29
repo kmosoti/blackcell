@@ -14,6 +14,7 @@ edges:
     - adr/0007-runtime-security-boundary
     - adr/0008-architecture-consolidation
     - adr/0009-project-runtime-scope
+    - adr/0010-semantic-presentation
 ---
 
 # Runtime architecture
@@ -79,7 +80,31 @@ owner-only token file; they are never accepted as command arguments or emitted i
 
 The browser shell is public and data-free at `/ui`; fixed assets live at `/ui/assets`. Runtime data
 requires authentication. The browser keeps credentials only in memory, uses same-origin requests,
-validates its own response bindings, and retains a bounded event window.
+and validates its own response bindings. The ordered event socket is an invalidation signal, not a
+second state authority: clients refetch a deterministic presentation surface after its cursor
+advances.
+
+## Semantic presentation
+
+The daemon projects canonical project-work contracts into one strict, renderer-neutral Pydantic
+surface. The closed component catalog covers sections, status, metrics, key/value facts, tables,
+typed forms, plan graphs, timelines, findings, epistemic evidence, verified artifacts, and explicit
+source disclosure. Stable component IDs, source digests, revision cursors, and field dispositions
+make meaning independently comparable across clients. Every canonical request field is either
+editable, displayed, derived, or hidden with a reason; a client cannot silently omit a field such
+as planning mode.
+
+The browser uses native modules, custom elements, semantic HTML, and SVG. A plan graph always has
+an adjacent data table, and raw JSON is secondary disclosure rather than the primary interface.
+The native Rust terminal uses Ratatui and the same closed surface; it owns neither a projection
+database nor a durable cursor. Both clients submit only the fixed host-declared action catalog.
+Codex and Agy inspection remains lossless: common facets, material differences, and every leaf of
+each strict tooling model are projected separately.
+
+Presentation tokens use the Design Tokens Community Group JSON shape so visual refinement can
+iterate without changing domain meaning. An A2UI-compatible export is a pure adapter for
+interoperability experiments; it is not accepted as executable agent-authored UI and does not
+replace the canonical presentation contract.
 
 ## Project, intent, plan, and run admission
 
@@ -165,7 +190,13 @@ remain visible because interoperability depends on them.
 
 ## Continuous verification
 
-CI runs formatting, linting, the complete architecture fitness set, the full pytest coverage gate,
-and static type checking. It does not generate source-bound evidence that ordinary incremental work
-must continually reissue. Executable naming and retired-import guards run on every change, so old
-architectural labels and paths cannot silently return.
+CI runs formatting, linting, architecture fitness, the full pytest coverage gate, static type
+checking, Rust formatting/lint/tests, browser contract tests, three-engine Playwright flows with
+automated accessibility checks, and a clean installed-wheel smoke test. One synthetic review
+scenario carries renderer-independent semantic expectations into Python, browser, and terminal
+checks. Ratatui buffers are deterministic snapshots; browser traces and screenshots are retained
+briefly only when the UI gate fails.
+
+CI does not generate source-bound evidence that ordinary incremental work must continually
+reissue, and no real run trace or screenshot is committed. Executable naming and retired-import
+guards run on every change, so old architectural labels and paths cannot silently return.

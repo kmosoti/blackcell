@@ -7,6 +7,7 @@ from granian import Granian
 from granian.constants import HTTPModes, Interfaces, Loops, RuntimeModes, TaskImpl
 from litestar import Litestar
 
+from blackcell.adapters.models import tooling_surface_catalog
 from blackcell.adapters.telemetry import RuntimeTelemetry
 from blackcell.bootstrap.runtime_service import RuntimeService
 from blackcell.config import RuntimeProcessConfig
@@ -40,6 +41,7 @@ def create_granian_app() -> Litestar:
             authenticator=config.security.authenticator(),
             authorizer=config.security.authorizer(),
             request_quota=SlidingWindowRequestQuota(config.quota.requests_per_minute),
+            tooling_catalog=tooling_surface_catalog(),
         )
     except Exception:
         telemetry.shutdown()

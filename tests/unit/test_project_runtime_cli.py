@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -9,7 +10,7 @@ import msgspec
 from blackcell.adapters.runtime_http import RuntimeClientError, RuntimeClientFailureCode
 from blackcell.bootstrap.runtime_service import RuntimeService
 from blackcell.cli.app import app
-from blackcell.config import API_TOKEN_ENV, API_TOKEN_FILE_ENV, DATA_DIR_ENV, SecretValue
+from blackcell.config import API_TOKEN_ENV, API_TOKEN_FILE_ENV, SecretValue
 from blackcell.interfaces.http import CancelRunRequest, RunQueryRequest, encode_contract
 from blackcell.kernel import EventStore
 from tests.cli_runner import CycloptsCliRunner
@@ -214,47 +215,19 @@ def test_runtime_help_exposes_only_the_project_runtime_client_surface() -> None:
     assert "operator" not in root.stdout
 
 
-def test_tui_command_composes_shared_client_cursor_and_controller(
+def test_tui_command_delegates_to_packaged_native_binary_without_credentials_in_argv(
     monkeypatch,
-    tmp_path: Path,
 ) -> None:
-    calls: dict[str, object] = {}
+    calls: list[list[str]] = []
 
-    class FakeCursorStore:
-        @classmethod
-        def prepare(cls, path: Path) -> FakeCursorStore:
-            calls["cursor_dir"] = path
-            return cls()
+    def fake_run(command: list[str], *, check: bool) -> subprocess.CompletedProcess[str]:
+        assert check is False
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0)
 
-    class FakeController:
-        def __init__(self, client: object, *, cursor_store: object) -> None:
-            calls["client"] = client
-            calls["cursor_store"] = cursor_store
-
-    class FakeTuiApp:
-        def __init__(
-            self,
-            controller_factory,
-            *,
-            event_refresh_seconds: float | None,
-            frames_per_second: float,
-        ) -> None:
-            calls["controller"] = controller_factory()
-            calls["refresh_seconds"] = event_refresh_seconds
-            calls["frames_per_second"] = frames_per_second
-
-        async def run(self) -> None:
-            calls["ran"] = True
-
-    FakeClient.instances = []
-    monkeypatch.setattr("blackcell.cli.app.FileTuiCursorStore", FakeCursorStore)
-    monkeypatch.setattr("blackcell.cli.app.TuiController", FakeController)
-    monkeypatch.setattr("blackcell.cli.app.TuiApp", FakeTuiApp)
-    monkeypatch.setattr("blackcell.cli.app.RuntimeHttpClient", FakeClient)
+    monkeypatch.setattr("blackcell.cli.app.shutil.which", lambda name: f"/opt/bin/{name}")
+    monkeypatch.setattr("blackcell.cli.app.subprocess.run", fake_run)
     monkeypatch.setenv(API_TOKEN_ENV, _TOKEN)
-    monkeypatch.delenv(API_TOKEN_FILE_ENV, raising=False)
-    data_root = tmp_path / "runtime-data"
-    monkeypatch.setenv(DATA_DIR_ENV, str(data_root))
 
     result = runner.invoke(
         app,
@@ -263,7 +236,7 @@ def test_tui_command_composes_shared_client_cursor_and_controller(
             "--endpoint",
             "https://runtime.example",
             "--refresh-seconds",
-            "2.5",
+            "none",
             "--frames-per-second",
             "30",
         ],
@@ -272,13 +245,18 @@ def test_tui_command_composes_shared_client_cursor_and_controller(
 
     assert result.exit_code == 0
     assert result.stdout == result.stderr == ""
-    assert calls["cursor_dir"] == data_root / "tui-cursors"
-    assert calls["refresh_seconds"] == 2.5
-    assert calls["frames_per_second"] == 30.0
-    assert calls["ran"] is True
-    assert len(FakeClient.instances) == 1
-    assert FakeClient.instances[0].endpoint == "https://runtime.example"
-    assert _TOKEN not in repr(FakeClient.instances[0].token)
+    assert calls == [
+        [
+            "/opt/bin/blackcell-tui",
+            "--refresh-seconds",
+            "none",
+            "--frames-per-second",
+            "30",
+            "--endpoint",
+            "https://runtime.example",
+        ]
+    ]
+    assert _TOKEN not in repr(calls)
 
 
 def _request_file(tmp_path: Path, name: str, contract: msgspec.Struct) -> str:
