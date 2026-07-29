@@ -63,7 +63,7 @@ elements.runNavigation.addEventListener("submit", (event) => {
 });
 window.addEventListener("pagehide", () => disconnect(false));
 
-async function showWorkspace(propagate = false) {
+async function showWorkspace(propagate = false, preserveFormDrafts = false) {
   if (state.client === null) {
     return;
   }
@@ -77,7 +77,7 @@ async function showWorkspace(propagate = false) {
     }
     state.surfaceKind = "workspace";
     state.runId = null;
-    render(surface);
+    render(surface, preserveFormDrafts);
   } catch (error) {
     if (!currentSurfaceRequest(generation)) {
       return;
@@ -91,7 +91,7 @@ async function showWorkspace(propagate = false) {
   }
 }
 
-async function showRun(runId, propagate = false) {
+async function showRun(runId, propagate = false, preserveFormDrafts = false) {
   if (state.client === null) {
     return;
   }
@@ -107,7 +107,7 @@ async function showRun(runId, propagate = false) {
     state.surfaceKind = "run";
     state.runId = selected;
     elements.runId.value = selected;
-    render(surface);
+    render(surface, preserveFormDrafts);
   } catch (error) {
     if (!currentSurfaceRequest(generation)) {
       return;
@@ -137,7 +137,7 @@ function finishSurfaceRequest(generation) {
   }
 }
 
-function render(surface) {
+function render(surface, preserveFormDrafts = false) {
   elements.surfaceTitle.textContent = surface.title;
   elements.surfaceRevision.textContent = `Revision ${surface.revision.number} · cursor ${surface.revision.event_cursor}`;
   state.cursor = Math.max(state.cursor, surface.revision.event_cursor);
@@ -146,7 +146,7 @@ function render(surface) {
     onAction: executeAction,
     onSource: (operation, subjectId) => state.client.fetchSource(operation, subjectId),
     onArtifact: (runId, artifact) => state.client.fetchArtifact(runId, artifact),
-  });
+  }, { preserveFormDrafts });
   setMessage(elements.surfaceMessage, "Surface synchronized with the daemon.");
   setControls(true);
 }
@@ -240,9 +240,9 @@ function scheduleSurfaceRefresh() {
       return;
     }
     if (state.surfaceKind === "run" && state.runId !== null) {
-      await showRun(state.runId);
+      await showRun(state.runId, false, true);
     } else {
-      await showWorkspace();
+      await showWorkspace(false, true);
     }
   }, 80);
 }

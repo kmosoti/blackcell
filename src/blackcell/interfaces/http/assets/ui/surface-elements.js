@@ -4,7 +4,10 @@ const SVG = "http://www.w3.org/2000/svg";
 const ElementBase = globalThis.HTMLElement || class {};
 
 export class BlackCellSurface extends ElementBase {
-  renderSurface(surface, handlers) {
+  renderSurface(surface, handlers, { preserveFormDrafts = false } = {}) {
+    const drafts = preserveFormDrafts && this._surface?.surface_id === surface.surface_id
+      ? captureFormDrafts(this)
+      : null;
     this._surface = surface;
     this._handlers = handlers;
     this.replaceChildren();
@@ -21,6 +24,9 @@ export class BlackCellSurface extends ElementBase {
     }
     if (surface.components.length === 0) {
       this.append(paragraph("This surface has no components.", "empty-state"));
+    }
+    if (drafts !== null) {
+      restoreFormDrafts(this, drafts);
     }
   }
 }
@@ -196,6 +202,7 @@ function renderForm(component, handlers, surface) {
   }
   const form = document.createElement("form");
   form.className = "semantic-form";
+  form.dataset.actionId = component.action.action_id;
   form.setAttribute("aria-label", component.label);
   const controls = new Map();
   for (const field of component.action.fields) {
@@ -205,6 +212,12 @@ function renderForm(component, handlers, surface) {
     label.htmlFor = field.field_id;
     label.textContent = field.label;
     const control = fieldControl(field);
+    const initialDraftValue = draftControlValue(control);
+    const markDraftDirty = () => {
+      control.dataset.draftDirty = String(draftControlValue(control) !== initialDraftValue);
+    };
+    control.addEventListener("input", markDraftDirty);
+    control.addEventListener("change", markDraftDirty);
     controls.set(field.json_pointer.slice(1), { field, control });
     wrapper.append(label, control);
     if (field.help) {
@@ -242,6 +255,78 @@ function renderForm(component, handlers, surface) {
   });
   card.append(form);
   return card;
+}
+
+function captureFormDrafts(root) {
+  const values = new Map();
+  let focus = null;
+  for (const form of root.querySelectorAll("form.semantic-form")) {
+    const controls = new Map();
+    for (const control of form.elements) {
+      if (!control.name) {
+        continue;
+      }
+      if (control === document.activeElement) {
+        focus = {
+          actionId: form.dataset.actionId,
+          fieldId: control.name,
+          selectionStart: Number.isInteger(control.selectionStart) ? control.selectionStart : null,
+          selectionEnd: Number.isInteger(control.selectionEnd) ? control.selectionEnd : null,
+        };
+      }
+      if (control.dataset.draftDirty !== "true") {
+        continue;
+      }
+      controls.set(control.name, { type: control.type, value: draftControlValue(control) });
+    }
+    if (controls.size > 0) {
+      values.set(form.dataset.actionId, controls);
+    }
+  }
+  return { focus, values };
+}
+
+function restoreFormDrafts(root, drafts) {
+  for (const form of root.querySelectorAll("form.semantic-form")) {
+    const controls = drafts.values.get(form.dataset.actionId);
+    if (controls === undefined) {
+      continue;
+    }
+    for (const control of form.elements) {
+      const draft = controls.get(control.name);
+      if (draft === undefined || draft.type !== control.type) {
+        continue;
+      }
+      if (control.type === "checkbox") {
+        control.checked = draft.value === "true";
+      } else {
+        control.value = draft.value;
+      }
+      control.dataset.draftDirty = "true";
+    }
+  }
+  if (drafts.focus === null) {
+    return;
+  }
+  const form = [...root.querySelectorAll("form.semantic-form")]
+    .find((candidate) => candidate.dataset.actionId === drafts.focus.actionId);
+  const control = form === undefined
+    ? null
+    : [...form.elements].find((candidate) => candidate.name === drafts.focus.fieldId);
+  if (control === null || control === undefined) {
+    return;
+  }
+  control.focus({ preventScroll: true });
+  if (
+    drafts.focus.selectionStart !== null &&
+    typeof control.setSelectionRange === "function"
+  ) {
+    control.setSelectionRange(drafts.focus.selectionStart, drafts.focus.selectionEnd);
+  }
+}
+
+function draftControlValue(control) {
+  return control.type === "checkbox" ? String(control.checked) : control.value;
 }
 
 function fieldControl(field) {

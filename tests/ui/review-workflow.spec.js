@@ -207,6 +207,35 @@ test("a live refresh cannot supersede pending run navigation", async ({ page }) 
   expect(workspaceRequests).toBe(1);
 });
 
+test("a live workspace refresh preserves an active form draft", async ({ page }) => {
+  let socket;
+  let workspaceRequests = 0;
+  await installRuntimeRoutes(page, [], {
+    workspaceResponder: async (route) => {
+      workspaceRequests += 1;
+      await surfaceResponse(route, workspaceSurface);
+    },
+  });
+  await page.routeWebSocket("**/api/v1/ui/events?*", (webSocket) => {
+    socket = webSocket;
+  });
+
+  await page.goto("/ui");
+  await page.getByLabel("API bearer token").fill(token);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("heading", { name: workspaceSurface.title })).toBeVisible();
+  await expect.poll(() => socket !== undefined).toBe(true);
+
+  const planningMode = page.getByLabel("Planning mode");
+  await planningMode.selectOption("generated");
+  await planningMode.focus();
+  socket.send(Buffer.from(JSON.stringify({ next_cursor: 99 }), "utf8"));
+
+  await expect.poll(() => workspaceRequests).toBe(2);
+  await expect(planningMode).toHaveValue("generated");
+  await expect(planningMode).toBeFocused();
+});
+
 test("disconnect clears a pending surface's accessibility busy state", async ({ page }) => {
   let workspaceRequests = 0;
   let releaseWorkspace;
